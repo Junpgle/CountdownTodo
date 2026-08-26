@@ -235,8 +235,11 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
 
       if (mounted) {
         if (!silent) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('✅ 数据同步完成'), backgroundColor: Colors.green));
+          AppStatusToast.show(
+            context: context,
+            anchorKey: _syncButtonKey,
+            message: '数据同步完成',
+          );
         }
         if (hasChanges) {
           // 同步后数据有变化，刷新 Island 槽位缓存

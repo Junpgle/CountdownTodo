@@ -6,6 +6,7 @@ import '../models.dart';
 import '../services/course_service.dart';
 import '../storage_service.dart';
 import '../services/pomodoro_control_service.dart';
+import '../utils/app_dialogs.dart';
 import '../services/pomodoro_service.dart';
 import 'course_screens.dart';
 import 'pomodoro_screen.dart';
@@ -610,7 +611,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
     DateTime endTime, {
     required bool autoFillEstimateOnTodoChange,
   }) {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -1121,7 +1122,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
   }
 
   void _showEditBlockSheet(TodoPlanBlock block) {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

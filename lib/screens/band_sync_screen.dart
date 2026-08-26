@@ -9,6 +9,7 @@ import '../services/pomodoro_service.dart';
 import '../services/permission_request_coordinator.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 
 /// 手环同步界面
 class BandSyncScreen extends StatefulWidget {
@@ -685,9 +686,14 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
                           onTap: () {
                             _copyToClipboard(msgStr, '手环消息');
                           },
-                          child: Card(
+                          child: OptionalLiquidGlassCard(
                             margin: const EdgeInsets.only(bottom: 8),
-                            color: cardColor,
+                            borderRadius: 12,
+                            highContrast: true,
+                            fallbackDecoration: BoxDecoration(
+                              color: cardColor,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                             child: Padding(
                               padding: const EdgeInsets.all(8),
                               child: Text(

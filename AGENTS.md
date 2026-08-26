@@ -1,10 +1,12 @@
 # Repository Guidelines
 
-Last reviewed against the working tree: 2026-07-20.
+Last reviewed against the working tree: 2026-08-25.
 
 ## Project layout
 
 - Flutter client: repository root; Dart source in `lib/`, tests in `test/`.
+- Self-contained feature modules: `lib/features/` (habits, private journal,
+  thirty-day challenge); shared theme extensions in `lib/theme/`.
 - Platform hosts: `android/`, `ios/`, `macos/`, `windows/`, and `web/`.
 - React web companion: `webpage/web/`.
 - Xiaomi band companion: `CountDownTodo-band/`.
@@ -89,6 +91,6 @@ npm run lint
   notifications, and services; use widget tests for visible flows.
 - State which commands ran and which were skipped.
 - Release commit summaries use the current version prefix, for example
-  `v5.5 【修复】...`, `v5.5 【优化】...`, or `v5.5 【新增】...`.
+  `v5.8 【修复】...`, `v5.8 【优化】...`, or `v5.8 【新增】...`.
 - PRs should summarize changes, tests, linked issues, UI evidence, and any
   version, asset, permission, backend, or platform risk.

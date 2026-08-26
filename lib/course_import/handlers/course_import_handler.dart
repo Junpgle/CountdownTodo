@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../models.dart';
 import '../../services/browser_file_service.dart';
 import '../../services/course_service.dart';
+import '../../utils/app_dialogs.dart';
 import '../parsers/hfut_parser.dart';
 import '../parsers/xmu_parser.dart';
 import '../parsers/xujc_parser.dart';
@@ -548,7 +549,7 @@ class CourseImportHandler {
 
   Future<void> smartImportCourse() async {
     // 1. 先弹出学校选择器
-    final String? selectedSchool = await showModalBottomSheet<String>(
+    final String? selectedSchool = await showAppModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true, // 允许弹窗超过半屏
@@ -780,7 +781,7 @@ class CourseImportHandler {
       '河南财经政法大学': 'https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html',
     };
 
-    final String? selectedUrl = await showModalBottomSheet<String>(
+    final String? selectedUrl = await showAppModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {

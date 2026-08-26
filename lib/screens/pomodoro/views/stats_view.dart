@@ -6,8 +6,10 @@ import '../../../storage_service.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../screens/course_screens.dart';
 import '../../../utils/app_color_utils.dart';
+import '../../../utils/app_dialogs.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../utils/todo_recurrence_picker.dart';
+import '../../../widgets/optional_liquid_glass_surface.dart';
 
 class PomodoroStats extends StatefulWidget {
   final String username;
@@ -790,16 +792,17 @@ class PomodoroStatsState extends State<PomodoroStats> {
             ]),
           );
 
-    return Card(
+    return OptionalLiquidGlassCard(
       key: cardKey,
-      elevation: 0,
-      color: Theme.of(context)
-          .colorScheme
-          .surfaceContainerHighest
-          .withValues(alpha: 0.3),
+      borderRadius: widget.isCompact ? 12 : 16,
       margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(widget.isCompact ? 12 : 16)),
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(widget.isCompact ? 12 : 16),
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(widget.isCompact ? 12 : 16),
         onTap: () {
@@ -942,7 +945,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
     String? editTodoTitle = session.todoTitle;
     String editNote = session.note ?? '';
 
-    await showModalBottomSheet(
+    await showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -1439,10 +1442,11 @@ class PomodoroTrendChart extends StatelessWidget {
     final maxVal = data.fold(0, (max, d) => d.value > max ? d.value : max);
     final displayMax = maxVal == 0 ? 3600.0 : maxVal.toDouble();
 
-    return Container(
+    return OptionalLiquidGlassCard(
       height: 220,
       padding: const EdgeInsets.fromLTRB(12, 24, 12, 12),
-      decoration: BoxDecoration(
+      borderRadius: 24,
+      fallbackDecoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [

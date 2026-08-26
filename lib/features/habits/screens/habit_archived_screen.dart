@@ -45,6 +45,10 @@ class _HabitArchivedScreenState extends State<HabitArchivedScreen> {
       context: context,
       page: HabitDetailScreen(goal: goal),
       sourceKey: _cardKeyFor(goal),
+      placeholderBuilder: (_) => Text(
+        goal.icon.isNotEmpty ? goal.icon : '🎯',
+        style: const TextStyle(fontSize: 30),
+      ),
       sourceBorderRadius: BorderRadius.circular(16),
     );
     if (changed == true && mounted) {

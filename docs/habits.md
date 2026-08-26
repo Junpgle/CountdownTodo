@@ -5,6 +5,12 @@
 **适用客户端：** Android、Windows、macOS、Web
 **核心原则：** 复用现有待办和专注能力，仅为现有功能无法表达的习惯新增独立打卡模型。
 
+> **实现状态（2026-08-25 核对）**：习惯中心核心能力已落地，代码位于
+> `lib/features/habits/`（models / repositories / services / widgets / screens），
+> 包含打卡模型与统计、睡眠作息渐进训练、提醒、快捷打卡与小组件打卡；
+> 首页展示为 `habit_today_section`。本文其余部分保留原始设计背景，
+> 与实现的差异以代码为准。
+
 ---
 
 # 一、功能背景

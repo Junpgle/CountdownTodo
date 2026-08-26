@@ -1,7 +1,7 @@
 # Medal recommendation
 
 Status: implemented rule-based and ML-assisted recommendation paths. Last
-reviewed: 2026-07-20.
+reviewed: 2026-08-25.
 
 ## Source of truth
 

@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../services/liquid_glass_effect_service.dart';
 import '../utils/app_platform.dart';
 
 /// Avoids creating an offscreen blurred texture on Android.
@@ -13,16 +14,27 @@ import '../utils/app_platform.dart';
 class PlatformBackdropFilter extends StatelessWidget {
   final ImageFilter filter;
   final Widget child;
+  final bool bypassWhenLiquidGlassEnabled;
 
   const PlatformBackdropFilter({
     super.key,
     required this.filter,
     required this.child,
+    this.bypassWhenLiquidGlassEnabled = false,
   });
 
   @override
   Widget build(BuildContext context) {
     if (AppPlatform.isAndroid) return child;
+    if (bypassWhenLiquidGlassEnabled) {
+      return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
+        valueListenable: LiquidGlassEffectService.configurationListenable,
+        builder: (context, configuration, _) {
+          if (configuration.enabled) return child;
+          return BackdropFilter(filter: filter, child: child);
+        },
+      );
+    }
     return BackdropFilter(filter: filter, child: child);
   }
 }

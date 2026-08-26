@@ -1,13 +1,16 @@
 # Documentation index
 
-All 36 project Markdown files in this workspace were reviewed against the working tree
-on 2026-07-20. Dependency/build output Markdown is intentionally excluded.
+All 35 project Markdown files in this workspace were reviewed against the
+working tree on 2026-08-25. Dependency/build output Markdown is intentionally
+excluded.
 
 ## Current references
 
 - `PROJECT_ARCHITECTURE.md` — code, storage, backend and platform map.
 - `features/todo-semantics.md` — approved product semantics; tracks the remaining
   P1 gaps and the capability-gated generic fixed-schedule sync boundary.
+- `habits.md` — habit center design; core capabilities are implemented in
+  `../lib/features/habits/` (check-ins, sleep coaching, widget check-in).
 - `features/plan-blocks.md` — plan-block model and current behavior.
 - `features/captcha-verification.md` — Turnstile paths by platform.
 - `features/mac-support.md` — macOS integrations.
@@ -16,6 +19,8 @@ on 2026-07-20. Dependency/build output Markdown is intentionally excluded.
 - `sync/conflict-logic.md` — current client/server conflict contract.
 - `../lib/README.md`, `../lib/screens/README.md`,
   `../lib/services/README.md`, and `../lib/widgets/README.md` — source maps.
+- `../globalize.md` — shared-component and refactor inventory.
+- `../feature.md` — capability map of implemented and partial features.
 - `../android/README.md`, `../windows/README.md`, and
   `../lib/windows_island/README.md` — platform implementation notes.
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../utils/app_dialogs.dart';
 import 'home_sections.dart';
 
 import '../screens/add_todo_screen.dart';
@@ -10,6 +11,7 @@ import '../screens/todo_plan_screen.dart';
 import '../services/course_service.dart';
 import '../storage_service.dart';
 import '../utils/page_transitions.dart';
+import 'optional_liquid_glass_surface.dart';
 import 'version_history_sheet.dart';
 
 // ─────────────────────────────────────────────
@@ -323,7 +325,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
   }
 
   Future<void> _openScheduleActions() async {
-    final action = await showModalBottomSheet<String>(
+    final action = await showAppModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
@@ -581,9 +583,11 @@ class _EndedScheduleSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
+    return OptionalLiquidGlassCard(
       margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
+      borderRadius: 12,
+      tint: colorScheme.primary.withValues(alpha: 0.12),
+      fallbackDecoration: BoxDecoration(
         color: colorScheme.surface.withValues(alpha: isLight ? 0.78 : 0.48),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
@@ -697,9 +701,11 @@ class _FixedScheduleCompactCard extends StatelessWidget {
       if (item.location?.trim().isNotEmpty == true) item.location!.trim(),
       if (item.remark?.trim().isNotEmpty == true) item.remark!.trim(),
     ].join(' · ');
-    return Container(
+    return OptionalLiquidGlassCard(
       margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
+      borderRadius: 14,
+      tint: colors.primary.withValues(alpha: 0.16),
+      fallbackDecoration: BoxDecoration(
         color: colors.surface.withValues(alpha: isLight ? 0.97 : 0.75),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
@@ -827,10 +833,12 @@ class _CourseCompactCardState extends State<_CourseCompactCard> {
     final colorScheme = Theme.of(context).colorScheme;
     final String typeLabel = _lessonTypeLabel(widget.course.lessonType);
 
-    return Container(
+    return OptionalLiquidGlassCard(
       key: _cardKey,
       margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
+      borderRadius: 14,
+      tint: colorScheme.primary.withValues(alpha: 0.16),
+      fallbackDecoration: BoxDecoration(
         color:
             colorScheme.surface.withValues(alpha: widget.isLight ? 0.97 : 0.75),
         borderRadius: BorderRadius.circular(14),
@@ -1001,9 +1009,11 @@ class _PlanCompactCard extends StatelessWidget {
         .format(DateTime.fromMillisecondsSinceEpoch(block.endTime));
     final statusColor = _statusColor(block.status);
 
-    return Container(
+    return OptionalLiquidGlassCard(
       margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
+      borderRadius: 14,
+      tint: statusColor.withValues(alpha: 0.16),
+      fallbackDecoration: BoxDecoration(
         color: colorScheme.surface.withValues(alpha: isLight ? 0.97 : 0.75),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
@@ -1198,10 +1208,12 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
         : (end.isBefore(now) ? Colors.redAccent : Colors.amber.shade700);
     final minutes = end.difference(start).inMinutes;
 
-    return Container(
+    return OptionalLiquidGlassCard(
       key: _cardKey,
       margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
+      borderRadius: 14,
+      tint: statusColor.withValues(alpha: 0.16),
+      fallbackDecoration: BoxDecoration(
         color:
             colorScheme.surface.withValues(alpha: widget.isLight ? 0.97 : 0.75),
         borderRadius: BorderRadius.circular(14),

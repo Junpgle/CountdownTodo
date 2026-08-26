@@ -1,7 +1,7 @@
 # Current conflict logic
 
 Last verified against the Flutter client and external Alibaba debug/release
-servers: 2026-07-21.
+servers: 2026-08-25.
 
 ## Two conflict classes
 
@@ -71,6 +71,11 @@ the normal LWW rejection path.
 
 - Client: `lib/storage_service.dart`, `lib/screens/conflict_inbox_screen.dart`,
   `lib/models.dart`, `lib/services/storage/storage_conflict_cleanup.dart`.
+- Habit conflicts: habit payloads use their own oplog family and stay pending
+  until the server declares the habits capabilities; identical habit content
+  after ignoring sync metadata is not a conflict
+  (`lib/features/habits/services/habit_sync_conflict_service.dart`,
+  `lib/services/sync_capability_service.dart`).
 - Alibaba debug/release server: `CDT-server/debug/routes/sync.js` and
   `CDT-server/math_quiz_backend/routes/sync.js`, plus their shared helper and
   service modules in the separate checkout.

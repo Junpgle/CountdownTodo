@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../services/home_layout_service.dart';
+import '../../../widgets/optional_liquid_glass_surface.dart';
 
 class HomeLayoutSettingsPage extends StatefulWidget {
   final bool isEmbedded;
@@ -199,9 +200,15 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
     final isMovingToNextGroup =
         _visibleTargets.indexOf(otherTarget) > _visibleTargets.indexOf(target);
 
-    return Card(
+    return OptionalLiquidGlassCard(
       key: ValueKey('layout-group-$target'),
+      borderRadius: 12,
+      highContrast: true,
       clipBehavior: Clip.antiAlias,
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
         child: Column(
@@ -216,9 +223,15 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const Spacer(),
-                Text(
-                  '$visibleCount 个显示 / ${order.length} 个组件',
-                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                // 窄容器下允许计数文本省略，杜绝头部行横向溢出。
+                Flexible(
+                  child: Text(
+                    '$visibleCount 个显示 / ${order.length} 个组件',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(color: colorScheme.onSurfaceVariant),
+                  ),
                 ),
               ],
             ),
@@ -250,51 +263,57 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
                 itemBuilder: (context, index) {
                   final key = order[index];
                   final isVisible = _visibility[key] ?? true;
-                  return ListTile(
+                  return Material(
                     key: ValueKey('$target-$key'),
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(_icons[key], color: colorScheme.primary),
-                    title: Text(
-                      _labels[key] ?? key,
-                      style: isVisible
-                          ? null
-                          : TextStyle(color: colorScheme.onSurfaceVariant),
-                    ),
-                    subtitle: Text(
-                      isVisible ? '第 ${index + 1} 位' : '已隐藏 · 第 ${index + 1} 位',
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          tooltip: isVisible ? '隐藏组件' : '显示组件',
-                          onPressed: () => _setVisibility(key, !isVisible),
-                          icon: Icon(
-                            isVisible
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                          ),
-                        ),
-                        Semantics(
-                          button: true,
-                          label: '移到${_groupLabel(otherTarget)}',
-                          child: IconButton(
-                            onPressed: () => _moveTo(target, otherTarget, key),
+                    type: MaterialType.transparency,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(_icons[key], color: colorScheme.primary),
+                      title: Text(
+                        _labels[key] ?? key,
+                        style: isVisible
+                            ? null
+                            : TextStyle(color: colorScheme.onSurfaceVariant),
+                      ),
+                      subtitle: Text(
+                        isVisible
+                            ? '第 ${index + 1} 位'
+                            : '已隐藏 · 第 ${index + 1} 位',
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: isVisible ? '隐藏组件' : '显示组件',
+                            onPressed: () => _setVisibility(key, !isVisible),
                             icon: Icon(
-                              isMovingToNextGroup
-                                  ? Icons.arrow_forward_rounded
-                                  : Icons.arrow_back_rounded,
+                              isVisible
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
                             ),
                           ),
-                        ),
-                        ReorderableDelayedDragStartListener(
-                          index: index,
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 8),
-                            child: Icon(Icons.drag_handle),
+                          Semantics(
+                            button: true,
+                            label: '移到${_groupLabel(otherTarget)}',
+                            child: IconButton(
+                              onPressed: () =>
+                                  _moveTo(target, otherTarget, key),
+                              icon: Icon(
+                                isMovingToNextGroup
+                                    ? Icons.arrow_forward_rounded
+                                    : Icons.arrow_back_rounded,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
+                          ReorderableDelayedDragStartListener(
+                            index: index,
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 8),
+                              child: Icon(Icons.drag_handle),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 },
@@ -307,29 +326,38 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
 
   Widget _buildHabitDisplayLimitSetting(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Card(
-      child: ListTile(
-        leading: Icon(Icons.format_list_numbered_rounded,
-            color: colorScheme.primary),
-        title: const Text('首页展示习惯数量'),
-        subtitle: const Text('首页默认展示 3 个，可按需要调整为 1–5 个'),
-        trailing: DropdownButtonHideUnderline(
-          child: DropdownButton<int>(
-            value: _habitDisplayLimit,
-            items: [
-              for (var count = HomeLayoutService.minHabitDisplayLimit;
-                  count <= HomeLayoutService.maxHabitDisplayLimit;
-                  count++)
-                DropdownMenuItem(
-                  value: count,
-                  child: Text('$count 个'),
-                ),
-            ],
-            onChanged: (value) {
-              if (value != null && value != _habitDisplayLimit) {
-                _setHabitDisplayLimit(value);
-              }
-            },
+    return OptionalLiquidGlassCard(
+      borderRadius: 12,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: ListTile(
+          leading: Icon(Icons.format_list_numbered_rounded,
+              color: colorScheme.primary),
+          title: const Text('首页展示习惯数量'),
+          subtitle: const Text('首页默认展示 3 个，可按需要调整为 1–5 个'),
+          trailing: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: _habitDisplayLimit,
+              items: [
+                for (var count = HomeLayoutService.minHabitDisplayLimit;
+                    count <= HomeLayoutService.maxHabitDisplayLimit;
+                    count++)
+                  DropdownMenuItem(
+                    value: count,
+                    child: Text('$count 个'),
+                  ),
+              ],
+              onChanged: (value) {
+                if (value != null && value != _habitDisplayLimit) {
+                  _setHabitDisplayLimit(value);
+                }
+              },
+            ),
           ),
         ),
       ),

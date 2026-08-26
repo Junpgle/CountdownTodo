@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 import '../screens/course_screens.dart';
 import '../utils/page_transitions.dart';
+import 'optional_liquid_glass_surface.dart';
 
 class ShimmerWidget extends StatefulWidget {
   final bool isLight;
@@ -104,6 +105,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
   final GlobalKey? settingsKey;
   final GlobalKey? courseKey;
   final GlobalKey? searchKey; // 🚀 新增
+  final GlobalKey? syncKey;
   final GlobalKey? teamsKey; // 🚀 新增
   final GlobalKey? aiKey;
   final GlobalKey? menuKey; // 🚀 新增：左侧菜单键
@@ -127,6 +129,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
     this.settingsKey,
     this.courseKey,
     this.searchKey,
+    this.syncKey,
     this.teamsKey,
     this.aiKey,
     this.menuKey,
@@ -195,86 +198,100 @@ class _HomeAppBarState extends State<HomeAppBar>
     final double iconSize = isSmall ? 22.0 : 28.0;
     final double padding = isSmall ? 4.0 : 8.0;
     final double? containerSize = isSmall ? 34.0 : null;
+    final colorScheme = Theme.of(context).colorScheme;
+    final useDarkGlass =
+        widget.isLight || colorScheme.brightness == Brightness.dark;
 
-    return Container(
-      key: buttonKey,
+    final content = Stack(
+      alignment: Alignment.center,
+      children: [
+        IconButton(
+          iconSize: iconSize,
+          padding: EdgeInsets.all(padding),
+          constraints: isSmall ? const BoxConstraints() : null,
+          icon: isLoading
+              ? RotationTransition(
+                  turns: _syncRotationController,
+                  child: Icon(icon,
+                      size: iconSize,
+                      color: widget.isLight
+                          ? colorScheme.onInverseSurface
+                          : colorScheme.primary),
+                )
+              : Icon(icon,
+                  size: iconSize,
+                  color: widget.isLight
+                      ? colorScheme.onInverseSurface
+                      : colorScheme.onSurface),
+          onPressed: onPressed,
+        ),
+        if (badgeCount > 0)
+          Positioned(
+            right: isSmall ? 0 : 6,
+            top: isSmall ? 0 : 6,
+            child: Container(
+              padding: EdgeInsets.all(isSmall ? 2 : 4),
+              decoration: BoxDecoration(
+                color: colorScheme.error,
+                shape: BoxShape.circle,
+              ),
+              constraints: BoxConstraints(
+                  minWidth: isSmall ? 12 : 16, minHeight: isSmall ? 12 : 16),
+              child: Text(
+                badgeCount > 9 ? '9+' : badgeCount.toString(),
+                style: TextStyle(
+                    color: colorScheme.onError,
+                    fontSize: isSmall ? 7 : 8,
+                    fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        if (showAlertDot && badgeCount <= 0)
+          Positioned(
+            right: isSmall ? 2 : 7,
+            top: isSmall ? 2 : 7,
+            child: Container(
+              width: isSmall ? 8 : 10,
+              height: isSmall ? 8 : 10,
+              decoration: BoxDecoration(
+                color: colorScheme.error,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: widget.isLight
+                      ? colorScheme.onInverseSurface.withValues(alpha: 0.85)
+                      : colorScheme.surface,
+                  width: 1.2,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+    final fallback = Container(
       width: containerSize,
       height: containerSize,
       alignment: Alignment.center,
       margin: margin ?? const EdgeInsets.only(right: 8, top: 4, bottom: 4),
       decoration: BoxDecoration(
         color: widget.isLight
-            ? Colors.white.withValues(alpha: 0.15)
-            : Theme.of(context)
-                .colorScheme
-                .surfaceContainerHighest
-                .withValues(alpha: 0.5),
+            ? colorScheme.onInverseSurface.withValues(alpha: 0.15)
+            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
         shape: BoxShape.circle,
       ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          IconButton(
-            iconSize: iconSize,
-            padding: EdgeInsets.all(padding),
-            constraints: isSmall ? const BoxConstraints() : null,
-            icon: isLoading
-                ? RotationTransition(
-                    turns: _syncRotationController,
-                    child: Icon(icon,
-                        size: iconSize,
-                        color: widget.isLight
-                            ? Colors.white
-                            : Theme.of(context).colorScheme.primary),
-                  )
-                : Icon(icon,
-                    size: iconSize,
-                    color: widget.isLight
-                        ? Colors.white
-                        : Theme.of(context).colorScheme.onSurface),
-            onPressed: onPressed,
-          ),
-          if (badgeCount > 0)
-            Positioned(
-              right: isSmall ? 0 : 6,
-              top: isSmall ? 0 : 6,
-              child: Container(
-                padding: EdgeInsets.all(isSmall ? 2 : 4),
-                decoration: const BoxDecoration(
-                    color: Colors.redAccent, shape: BoxShape.circle),
-                constraints: BoxConstraints(
-                    minWidth: isSmall ? 12 : 16, minHeight: isSmall ? 12 : 16),
-                child: Text(
-                  badgeCount > 9 ? '9+' : badgeCount.toString(),
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: isSmall ? 7 : 8,
-                      fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-          if (showAlertDot && badgeCount <= 0)
-            Positioned(
-              right: isSmall ? 2 : 7,
-              top: isSmall ? 2 : 7,
-              child: Container(
-                width: isSmall ? 8 : 10,
-                height: isSmall ? 8 : 10,
-                decoration: BoxDecoration(
-                  color: Colors.redAccent,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: widget.isLight
-                        ? Colors.white.withValues(alpha: 0.85)
-                        : Theme.of(context).colorScheme.surface,
-                    width: 1.2,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+      child: content,
+    );
+
+    return OptionalLiquidGlassPanel(
+      key: buttonKey,
+      width: containerSize,
+      height: containerSize,
+      margin: margin ?? const EdgeInsets.only(right: 8, top: 4, bottom: 4),
+      circular: true,
+      isDark: useDarkGlass,
+      tint: widget.isLight ? colorScheme.scrim.withValues(alpha: 0.24) : null,
+      fallback: fallback,
+      child: content,
     );
   }
 
@@ -334,6 +351,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       icon: Icons.cloud_sync_rounded,
       isLoading: widget.isSyncing,
       onPressed: widget.onSync,
+      buttonKey: widget.syncKey,
       isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );

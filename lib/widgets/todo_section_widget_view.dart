@@ -232,9 +232,16 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                     child: AiGeneratedTodoWaterBorder(
                       enabled: _isAiGeneratedTodo(todo),
                       isLight: isLight,
-                      child: Container(
+                      child: OptionalLiquidGlassCard(
                         clipBehavior: Clip.antiAlias,
-                        decoration: BoxDecoration(
+                        borderRadius: 14,
+                        tint: (todo.teamUuid != null
+                                ? colorScheme.primary
+                                : (isPast && !todo.isDone
+                                    ? colorScheme.error
+                                    : colorScheme.primary))
+                            .withValues(alpha: 0.16),
+                        fallbackDecoration: BoxDecoration(
                           color: todo.teamUuid != null
                               ? (isLight
                                   ? colorScheme.surface.withValues(alpha: 0.92)

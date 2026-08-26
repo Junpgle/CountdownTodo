@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'dart:math' as math;
 import 'package:intl/intl.dart' hide TextDirection;
+import '../services/liquid_glass_effect_service.dart';
 import '../utils/time_utils.dart';
 import '../utils/app_platform.dart';
+import 'optional_liquid_glass_surface.dart';
 
 /// 通用的板块标题
 class SectionHeader extends StatelessWidget {
@@ -159,6 +161,7 @@ class _ShimmerPlaceholderState extends State<_ShimmerPlaceholder>
 /// 屏幕时间统计卡片
 class ScreenTimeCard extends StatefulWidget {
   final List<dynamic> stats;
+  final bool isLight;
   final bool hasPermission;
   final bool isLoading;
   final DateTime? lastSyncTime;
@@ -168,6 +171,7 @@ class ScreenTimeCard extends StatefulWidget {
   const ScreenTimeCard({
     super.key,
     required this.stats,
+    this.isLight = false,
     required this.hasPermission,
     this.isLoading = false,
     this.lastSyncTime,
@@ -215,9 +219,16 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
       formatDurationEnglish(totalSeconds);
 
   Widget _buildShimmerLoading(bool isTablet) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+    final colorScheme = Theme.of(context).colorScheme;
+    final useDarkGlass =
+        widget.isLight || colorScheme.brightness == Brightness.dark;
+    return OptionalLiquidGlassCard(
+      borderRadius: 24,
+      tint: (widget.isLight ? colorScheme.scrim : colorScheme.primary)
+          .withValues(alpha: 0.16),
+      isDark: useDarkGlass,
+      fallbackDecoration: BoxDecoration(
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
@@ -278,13 +289,32 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
       final bool isTablet = constraints.maxWidth >= 600;
+      final colorScheme = Theme.of(context).colorScheme;
+      final useDarkGlass =
+          widget.isLight || colorScheme.brightness == Brightness.dark;
+      final useWallpaperGlass =
+          widget.isLight && LiquidGlassEffectService.configuration.enabled;
+      final foregroundColor =
+          useWallpaperGlass ? colorScheme.onPrimary : colorScheme.onSurface;
+      final secondaryColor = useWallpaperGlass
+          ? colorScheme.onPrimary.withValues(alpha: 0.7)
+          : colorScheme.onSurfaceVariant;
+      final permissionForegroundColor =
+          widget.isLight ? colorScheme.onPrimary : foregroundColor;
+      final permissionSecondaryColor = widget.isLight
+          ? colorScheme.onPrimary.withValues(alpha: 0.7)
+          : secondaryColor;
 
       if (!widget.hasPermission) {
-        return Container(
+        return OptionalLiquidGlassCard(
           margin: const EdgeInsets.only(bottom: 24),
-          decoration: BoxDecoration(
+          borderRadius: 24,
+          tint: (widget.isLight ? colorScheme.scrim : colorScheme.tertiary)
+              .withValues(alpha: 0.16),
+          isDark: useDarkGlass,
+          fallbackDecoration: BoxDecoration(
             color: Colors.amber.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(24),
             border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
           ),
           child: Material(
@@ -293,9 +323,17 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
               contentPadding: EdgeInsets.symmetric(
                   horizontal: isTablet ? 24 : 16, vertical: isTablet ? 8 : 4),
               leading: const Icon(Icons.lock_clock, color: Colors.orange),
-              title: const Text("未开启屏幕时间统计",
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: const Text("点击前往开启权限以同步手机使用时长"),
+              title: Text(
+                "未开启屏幕时间统计",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: permissionForegroundColor,
+                ),
+              ),
+              subtitle: Text(
+                "点击前往开启权限以同步手机使用时长",
+                style: TextStyle(color: permissionSecondaryColor),
+              ),
               onTap: widget.onOpenSettings,
             ),
           ),
@@ -307,9 +345,13 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
       }
 
       if (widget.stats.isEmpty) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
+        return OptionalLiquidGlassCard(
+          borderRadius: 24,
+          tint: (widget.isLight ? colorScheme.scrim : colorScheme.primary)
+              .withValues(alpha: 0.16),
+          isDark: useDarkGlass,
+          fallbackDecoration: BoxDecoration(
+            color: colorScheme.surface,
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
@@ -320,9 +362,12 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
           ),
           child: Padding(
             padding: EdgeInsets.all(isTablet ? 50 : 30),
-            child: const Center(
-                child:
-                    Text("今日暂无屏幕使用数据", style: TextStyle(color: Colors.grey))),
+            child: Center(
+              child: Text(
+                "今日暂无屏幕使用数据",
+                style: TextStyle(color: secondaryColor),
+              ),
+            ),
           ),
         );
       }
@@ -365,10 +410,14 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
         appMap["其他"] = totalTime - topSum;
       }
 
-      return Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(20),
+      return OptionalLiquidGlassCard(
+        borderRadius: 24,
+        tint: (widget.isLight ? colorScheme.scrim : colorScheme.primary)
+            .withValues(alpha: 0.16),
+        isDark: useDarkGlass,
+        fallbackDecoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
                 color: Colors.black.withValues(alpha: 0.04),
@@ -380,7 +429,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
           color: Colors.transparent,
           child: InkWell(
             onTap: widget.onViewDetail,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(24),
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1000),
@@ -398,8 +447,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                             children: [
                               Text("今日总计",
                                   style: TextStyle(
-                                      color:
-                                          Theme.of(context).colorScheme.outline,
+                                      color: secondaryColor,
                                       fontSize: isTablet ? 15 : 13,
                                       fontWeight: FontWeight.w600)),
                               if (widget.lastSyncTime != null)
@@ -407,20 +455,24 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                                     "更新: ${DateFormat('HH:mm').format(widget.lastSyncTime!)}",
                                     style: TextStyle(
                                         fontSize: isTablet ? 11 : 10,
-                                        color: Colors.blueGrey
-                                            .withValues(alpha: 0.7))),
+                                        color: secondaryColor.withValues(
+                                            alpha: 0.7))),
                             ],
                           ),
                           Text(_formatSeconds(totalTime),
                               style: TextStyle(
                                   fontSize: isTablet ? 28 : 22,
                                   fontWeight: FontWeight.bold,
-                                  color:
-                                      Theme.of(context).colorScheme.primary)),
+                                  color: useWallpaperGlass
+                                      ? foregroundColor
+                                      : colorScheme.primary)),
                         ],
                       ),
                       const SizedBox(height: 12),
-                      const Divider(height: 1),
+                      Divider(
+                        height: 1,
+                        color: secondaryColor.withValues(alpha: 0.28),
+                      ),
                       const SizedBox(height: 16),
                       Row(
                         children: [
@@ -450,9 +502,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                                     style: TextStyle(
                                         fontSize: isTablet ? 13 : 11,
                                         fontWeight: FontWeight.w600,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurface)),
+                                        color: foregroundColor)),
                               ],
                             ),
                           ),
@@ -483,9 +533,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                                     style: TextStyle(
                                         fontSize: isTablet ? 13 : 11,
                                         fontWeight: FontWeight.w600,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurface)),
+                                        color: foregroundColor)),
                               ],
                             ),
                           ),
@@ -696,8 +744,14 @@ class EmptyState extends StatelessWidget {
 /// 数学统计卡片
 class MathStatsCard extends StatelessWidget {
   final Map<String, dynamic> stats;
+  final bool isLight;
   final VoidCallback onTap;
-  const MathStatsCard({super.key, required this.stats, required this.onTap});
+  const MathStatsCard({
+    super.key,
+    required this.stats,
+    this.isLight = false,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -712,11 +766,29 @@ class MathStatsCard extends StatelessWidget {
 
     return LayoutBuilder(builder: (context, constraints) {
       final bool isTablet = constraints.maxWidth >= 600;
+      final colorScheme = Theme.of(context).colorScheme;
+      final useDarkGlass = isLight || colorScheme.brightness == Brightness.dark;
+      final useWallpaperGlass =
+          isLight && LiquidGlassEffectService.configuration.enabled;
+      final foregroundColor =
+          useWallpaperGlass ? colorScheme.onPrimary : colorScheme.onSurface;
+      final secondaryColor = useWallpaperGlass
+          ? colorScheme.onPrimary.withValues(alpha: 0.7)
+          : colorScheme.onSurfaceVariant;
 
-      return Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
+      return OptionalLiquidGlassCard(
+        borderRadius: 24,
+        tint: (isLight ? colorScheme.scrim : colorScheme.tertiary)
+            .withValues(alpha: 0.16),
+        isDark: useDarkGlass,
+        fallbackDecoration: BoxDecoration(
+          color: colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isLight
+                ? Colors.white.withValues(alpha: 0.2)
+                : Theme.of(context).dividerColor.withValues(alpha: 0.5),
+          ),
           boxShadow: [
             BoxShadow(
                 color: Colors.black.withValues(alpha: 0.05),
@@ -768,17 +840,16 @@ class MathStatsCard extends StatelessWidget {
                                     : "今日还未完成测验",
                                 style: TextStyle(
                                     fontSize: isTablet ? 16 : 14,
-                                    fontWeight: FontWeight.bold));
+                                    fontWeight: FontWeight.bold,
+                                    color: foregroundColor));
                           },
                         )),
                         Icon(Icons.arrow_forward_ios,
-                            size: isTablet ? 14 : 12, color: Colors.grey)
+                            size: isTablet ? 14 : 12, color: secondaryColor)
                       ]),
                       Divider(
                           height: isTablet ? 32 : 24,
-                          color: Theme.of(context)
-                              .dividerColor
-                              .withValues(alpha: 0.4)),
+                          color: secondaryColor.withValues(alpha: 0.28)),
                       Row(children: [
                         Expanded(
                             child: Column(
@@ -786,8 +857,7 @@ class MathStatsCard extends StatelessWidget {
                                 children: [
                               Text("最佳战绩",
                                   style: TextStyle(
-                                      color:
-                                          Theme.of(context).colorScheme.outline,
+                                      color: secondaryColor,
                                       fontSize: isTablet ? 13 : 12)),
                               const SizedBox(height: 4),
                               TweenAnimationBuilder<int>(
@@ -800,9 +870,9 @@ class MathStatsCard extends StatelessWidget {
                                       style: TextStyle(
                                           fontSize: isTablet ? 26 : 20,
                                           fontWeight: FontWeight.w900,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary));
+                                          color: useWallpaperGlass
+                                              ? foregroundColor
+                                              : colorScheme.primary));
                                 },
                               )
                             ])),
@@ -812,8 +882,7 @@ class MathStatsCard extends StatelessWidget {
                                 children: [
                               Text("总正确率",
                                   style: TextStyle(
-                                      color:
-                                          Theme.of(context).colorScheme.outline,
+                                      color: secondaryColor,
                                       fontSize: isTablet ? 13 : 12)),
                               const SizedBox(height: 4),
                               TweenAnimationBuilder<int>(
@@ -824,7 +893,8 @@ class MathStatsCard extends StatelessWidget {
                                   return Text("$value.0%",
                                       style: TextStyle(
                                           fontSize: isTablet ? 26 : 20,
-                                          fontWeight: FontWeight.w900));
+                                          fontWeight: FontWeight.w900,
+                                          color: foregroundColor));
                                 },
                               ),
                               const SizedBox(height: 6),
@@ -833,11 +903,12 @@ class MathStatsCard extends StatelessWidget {
                                 child: LinearProgressIndicator(
                                   value: accuracy,
                                   minHeight: 4,
-                                  backgroundColor: Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withValues(alpha: 0.1),
-                                  color: Theme.of(context).colorScheme.primary,
+                                  backgroundColor: secondaryColor.withValues(
+                                    alpha: 0.18,
+                                  ),
+                                  color: useWallpaperGlass
+                                      ? foregroundColor
+                                      : colorScheme.primary,
                                 ),
                               )
                             ]))

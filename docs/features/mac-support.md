@@ -1,6 +1,6 @@
 # macOS support
 
-Last reviewed against version 5.4.22: 2026-07-20.
+Last reviewed against version 5.8.3: 2026-08-25.
 
 ## Implemented integrations
 
@@ -11,7 +11,8 @@ Last reviewed against version 5.4.22: 2026-07-20.
   services.
 - Native island/status display through `MacPomodoroStatusBarController.swift`.
   It can surface focus state, reminders, clipboard links, ongoing activity and
-  media information, including the available NetEase lyric fallback.
+  media information — Apple Music playback state via MediaRemote plus the
+  AppleScript interface, with the NetEase lyric fallback still available.
 
 Island preferences include enablement, reminders, clipboard links, display on
 devices without a notch, and shortcut behavior. Flutter configures the native

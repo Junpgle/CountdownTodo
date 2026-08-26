@@ -5,6 +5,7 @@ import 'dart:async';
 import '../models.dart';
 import '../services/api_service.dart';
 import '../services/pomodoro_sync_service.dart';
+import '../utils/app_dialogs.dart';
 import 'package:intl/intl.dart';
 import './unified_waterfall_screen.dart';
 import './conflict_inbox_screen.dart';
@@ -976,7 +977,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   }
 
   void _showSpeedDialMenu() {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => _buildSpeedDial(
@@ -1566,7 +1567,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
 
   // 🚀 新增：邀请选项弹窗
   void _showInviteOptionsSheet(Team team) {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
@@ -1711,7 +1712,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   }
 
   void _showMembersSheet(Team team) async {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -1803,7 +1804,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     return FloatingActionButton(
       backgroundColor: Theme.of(context).colorScheme.secondary,
       onPressed: () {
-        showModalBottomSheet(
+        showAppModalBottomSheet(
           context: context,
           backgroundColor: Colors.transparent,
           builder: (context) => Container(

@@ -1,6 +1,6 @@
 # Turnstile verification
 
-Last verified: 2026-07-20.
+Last verified: 2026-08-25.
 
 ## Current paths
 

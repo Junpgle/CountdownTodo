@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 
 class HistoricalTodosScreen extends StatefulWidget {
   final String username;
@@ -314,31 +315,37 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                 _buildGroupedTodoList(
                   items: _history,
                   emptyText: "没有历史待办",
-                  itemBuilder: (todo) => Card(
-                    elevation: 0,
-                    color: colorScheme.surfaceContainerHighest
-                        .withValues(alpha: 0.3),
+                  itemBuilder: (todo) => OptionalLiquidGlassCard(
+                    borderRadius: 12,
                     margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      leading: Checkbox(
-                        value: todo.isDone,
-                        onChanged: (val) => _uncheckItem(todo),
-                      ),
-                      title: Text(
-                        todo.title,
-                        style: TextStyle(
-                          decoration: TextDecoration.lineThrough,
-                          color: colorScheme.onSurface.withValues(alpha: 0.5),
+                    fallbackDecoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest
+                          .withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: ListTile(
+                        leading: Checkbox(
+                          value: todo.isDone,
+                          onChanged: (val) => _uncheckItem(todo),
                         ),
-                      ),
-                      subtitle: Text(
-                        "完成于: ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt, isUtc: true).toLocal())}",
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline,
-                            color: Colors.redAccent, size: 20),
-                        onPressed: () => _deleteItem(todo),
+                        title: Text(
+                          todo.title,
+                          style: TextStyle(
+                            decoration: TextDecoration.lineThrough,
+                            color: colorScheme.onSurface.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        subtitle: Text(
+                          "完成于: ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt, isUtc: true).toLocal())}",
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline,
+                              color: Colors.redAccent, size: 20),
+                          onPressed: () => _deleteItem(todo),
+                        ),
                       ),
                     ),
                   ),
@@ -366,33 +373,39 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                       ],
                     ),
                   ),
-                  itemBuilder: (todo) => Card(
-                    elevation: 0,
-                    color: colorScheme.errorContainer.withValues(alpha: 0.2),
+                  itemBuilder: (todo) => OptionalLiquidGlassCard(
+                    borderRadius: 12,
                     margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      title: Text(todo.title,
-                          style: TextStyle(color: colorScheme.onSurface)),
-                      subtitle: Text(
-                        "删除于: ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt, isUtc: true).toLocal())}",
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            tooltip: "恢复",
-                            icon: const Icon(Icons.restore,
-                                color: Colors.green, size: 20),
-                            onPressed: () => _restoreDeletedItem(todo),
-                          ),
-                          IconButton(
-                            tooltip: "彻底删除",
-                            icon: const Icon(Icons.close,
-                                color: Colors.redAccent, size: 20),
-                            onPressed: () => _permanentlyDeleteItem(todo),
-                          ),
-                        ],
+                    fallbackDecoration: BoxDecoration(
+                      color: colorScheme.errorContainer.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: ListTile(
+                        title: Text(todo.title,
+                            style: TextStyle(color: colorScheme.onSurface)),
+                        subtitle: Text(
+                          "删除于: ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt, isUtc: true).toLocal())}",
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: "恢复",
+                              icon: const Icon(Icons.restore,
+                                  color: Colors.green, size: 20),
+                              onPressed: () => _restoreDeletedItem(todo),
+                            ),
+                            IconButton(
+                              tooltip: "彻底删除",
+                              icon: const Icon(Icons.close,
+                                  color: Colors.redAccent, size: 20),
+                              onPressed: () => _permanentlyDeleteItem(todo),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -426,23 +439,30 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                       ],
                     ),
                   ),
-                  itemBuilder: (todo) => Card(
-                    elevation: 0,
-                    color: Colors.orange.withValues(alpha: 0.05),
+                  itemBuilder: (todo) => OptionalLiquidGlassCard(
+                    borderRadius: 12,
                     margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      title: Text(todo.title,
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text("所属无效ID: ${todo.groupId}",
-                          style: const TextStyle(fontSize: 10)),
-                      trailing: FilledButton.icon(
-                        onPressed: () => _fixOrphan(todo),
-                        icon: const Icon(Icons.auto_fix_high, size: 16),
-                        label:
-                            const Text("一键归队", style: TextStyle(fontSize: 12)),
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          backgroundColor: Colors.orange,
+                    fallbackDecoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: ListTile(
+                        title: Text(todo.title,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text("所属无效ID: ${todo.groupId}",
+                            style: const TextStyle(fontSize: 10)),
+                        trailing: FilledButton.icon(
+                          onPressed: () => _fixOrphan(todo),
+                          icon: const Icon(Icons.auto_fix_high, size: 16),
+                          label: const Text("一键归队",
+                              style: TextStyle(fontSize: 12)),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            backgroundColor: Colors.orange,
+                          ),
                         ),
                       ),
                     ),

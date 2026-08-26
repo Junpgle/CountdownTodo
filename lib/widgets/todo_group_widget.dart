@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../models.dart';
+import '../utils/app_dialogs.dart';
 import 'ai_water_border.dart';
+import 'optional_liquid_glass_surface.dart';
 
 class TodoGroupWidget extends StatefulWidget {
   final TodoGroup group;
@@ -125,7 +127,6 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
   Widget build(BuildContext context) {
     final group = widget.group;
     final groupTodos = widget.groupTodos;
-    final isLight = widget.isLight;
     final isExpanded = group.isExpanded;
     // Sort by deadline
     final sortedTodos = List<TodoItem>.from(groupTodos)
@@ -162,6 +163,8 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     final urgencyColor =
         allDone ? Colors.green : _getGroupUrgencyColor(groupTodos);
     final groupFillProgress = allDone ? 1.0 : _getGroupProgress(groupTodos);
+    final statusColor = allDone ? Colors.green : urgencyColor;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return DragTarget<String>(
       onWillAcceptWithDetails: (_) => true,
@@ -181,73 +184,101 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
             duration: const Duration(milliseconds: 400),
             curve: Curves.fastOutSlowIn,
             alignment: Alignment.topCenter,
-            child: Container(
-              decoration: BoxDecoration(
-                color: isExpanded
-                    ? (isLight
-                        ? Colors.white.withValues(alpha: 0.5)
-                        : Colors.grey[900]?.withValues(alpha: 0.5))
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Column(
-                children: [
-                  _buildGroupHeader(
-                      context,
-                      progress,
-                      doneCount,
-                      totalCount,
-                      nearestDeadline,
-                      allDone,
-                      isHovering,
-                      urgencyColor,
-                      groupFillProgress,
-                      isExpanded),
-                  if (isExpanded)
-                    Container(
-                      padding: const EdgeInsets.only(
-                          left: 12, right: 12, bottom: 20, top: 8),
-                      decoration: BoxDecoration(
-                        color: isLight
-                            ? Colors.white.withValues(alpha: 0.9)
-                            : Colors.grey[850]!.withValues(alpha: 0.95),
-                        border: Border(
-                          left: BorderSide(
-                              color: isLight
-                                  ? Colors.grey.withValues(alpha: 0.15)
-                                  : Colors.white.withValues(alpha: 0.08)),
-                          right: BorderSide(
-                              color: isLight
-                                  ? Colors.grey.withValues(alpha: 0.15)
-                                  : Colors.white.withValues(alpha: 0.08)),
-                          bottom: BorderSide(
-                              color: isLight
-                                  ? Colors.grey.withValues(alpha: 0.15)
-                                  : Colors.white.withValues(alpha: 0.08)),
-                        ),
-                        borderRadius: const BorderRadius.vertical(
-                            bottom: Radius.circular(24)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black
-                                .withValues(alpha: isLight ? 0.03 : 0.15),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          ...visibleTodos
-                              .map((todo) => _buildTodoItem(context, todo)),
-                          if (widget.onlyShowMostUrgentTodo &&
-                              sortedTodos.length > 1)
-                            _buildFoldedTodosToggle(context, foldedTodoCount),
-                        ],
-                      ),
+            child: Column(
+              children: [
+                // Collapsed stacked-papers effect stays outside the glass
+                // shell — it simulates cards peeking out from behind.
+                if (totalCount > 1 && !isExpanded)
+                  AnimatedOpacity(
+                    duration: const Duration(milliseconds: 300),
+                    opacity: 1.0,
+                    child: Column(
+                      children: [
+                        _buildStackLayerInline(context, 0.94, 0.3),
+                        const SizedBox(height: 2),
+                        _buildStackLayerInline(context, 0.97, 0.6),
+                        const SizedBox(height: 2),
+                      ],
                     ),
-                ],
-              ),
+                  ),
+                // One continuous glass surface for the whole folder: the
+                // header and the expanded todo list share the same treatment,
+                // so expanding never swaps into an opaque panel. High-contrast
+                // keeps the dense text legible while staying glassy.
+                OptionalLiquidGlassCard(
+                  clipBehavior: Clip.antiAlias,
+                  highContrast: true,
+                  borderRadiusGeometry: isExpanded
+                      ? const BorderRadius.only(
+                          topLeft: Radius.circular(20),
+                          topRight: Radius.circular(20),
+                          bottomLeft: Radius.circular(24),
+                          bottomRight: Radius.circular(24),
+                        )
+                      : BorderRadius.circular(20),
+                  tint: statusColor.withValues(alpha: 0.16),
+                  fallbackDecoration: BoxDecoration(
+                    color: isHovering
+                        ? statusColor.withValues(alpha: 0.08)
+                        : (widget.isLight ? Colors.white : Colors.grey[900]),
+                    borderRadius: isExpanded
+                        ? const BorderRadius.only(
+                            topLeft: Radius.circular(20),
+                            topRight: Radius.circular(20),
+                            bottomLeft: Radius.circular(24),
+                            bottomRight: Radius.circular(24),
+                          )
+                        : BorderRadius.circular(20),
+                    border: Border.all(
+                        color: allDone
+                            ? Colors.green
+                                .withValues(alpha: isDark ? 0.25 : 0.15)
+                            : isHovering
+                                ? statusColor
+                                : (widget.isLight
+                                    ? Colors.grey.withValues(alpha: 0.12)
+                                    : Colors.white.withValues(alpha: 0.06)),
+                        width: allDone || isHovering ? 1.2 : 1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      _buildGroupHeader(
+                          context,
+                          progress,
+                          doneCount,
+                          totalCount,
+                          nearestDeadline,
+                          allDone,
+                          isHovering,
+                          urgencyColor,
+                          groupFillProgress,
+                          isExpanded),
+                      if (isExpanded)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                              left: 12, right: 12, bottom: 20, top: 8),
+                          child: Column(
+                            children: [
+                              ...visibleTodos
+                                  .map((todo) => _buildTodoItem(context, todo)),
+                              if (widget.onlyShowMostUrgentTodo &&
+                                  sortedTodos.length > 1)
+                                _buildFoldedTodosToggle(
+                                    context, foldedTodoCount),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         );
@@ -272,205 +303,161 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     // Icon and accent color syncs with urgency
     final statusColor = allDone ? Colors.green : urgencyColor;
 
-    return Column(
-      children: [
-        // Stack layers for collapsed effect
-        if (totalCount > 1 && !isExpanded)
-          AnimatedOpacity(
-            duration: const Duration(milliseconds: 300),
-            opacity: 1.0,
-            child: Column(
-              children: [
-                _buildStackLayerInline(context, 0.94, 0.3),
-                const SizedBox(height: 2),
-                _buildStackLayerInline(context, 0.97, 0.6),
-                const SizedBox(height: 2),
-              ],
+    // Main card row; the whole folder shares one glass surface above.
+    return GestureDetector(
+      onTap: widget.onToggle,
+      onLongPress: () => _showGroupMenu(context),
+      child: Stack(
+        children: [
+          // Hover feedback lives inside the glass surface so it stays
+          // visible when the shell replaces the solid fallback.
+          if (isHovering)
+            Positioned.fill(
+              child: ColoredBox(
+                color: statusColor.withValues(alpha: 0.08),
+              ),
             ),
-          ),
+          // Background progress fill
+          if (!allDone)
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: _progressController,
+                builder: (context, child) {
+                  // 如果紧急度(时间进度)为0，则显示一点点完成度进度，确保用户能看到动画效果
+                  double effectiveProgress = groupFillProgress;
+                  if (effectiveProgress < 0.1 && progress > 0) {
+                    effectiveProgress = progress * 0.4; // 弱化显示的完成进度
+                  }
 
-        // Main card with background fill
-        GestureDetector(
-          onTap: widget.onToggle,
-          onLongPress: () => _showGroupMenu(context),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: isHovering
-                  ? statusColor.withValues(alpha: 0.08)
-                  : (widget.isLight ? Colors.white : Colors.grey[900]),
-              borderRadius: isExpanded
-                  ? const BorderRadius.vertical(top: Radius.circular(20))
-                  : BorderRadius.circular(20),
-              border: Border.all(
-                  color: allDone
-                      ? Colors.green.withValues(alpha: isDark ? 0.25 : 0.15)
-                      : isHovering
-                          ? statusColor
-                          : (widget.isLight
-                              ? Colors.grey.withValues(alpha: 0.12)
-                              : Colors.white.withValues(alpha: 0.06)),
-                  width: allDone || isHovering ? 1.2 : 1),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Stack(
-              children: [
-                // Background progress fill
-                if (!allDone)
-                  Positioned.fill(
-                    child: AnimatedBuilder(
-                      animation: _progressController,
-                      builder: (context, child) {
-                        // 如果紧急度(时间进度)为0，则显示一点点完成度进度，确保用户能看到动画效果
-                        double effectiveProgress = groupFillProgress;
-                        if (effectiveProgress < 0.1 && progress > 0) {
-                          effectiveProgress = progress * 0.4; // 弱化显示的完成进度
-                        }
-
-                        final curveValue = Curves.easeOutQuart
-                            .transform(_progressController.value);
-                        return FractionallySizedBox(
-                          alignment: Alignment.centerLeft,
-                          widthFactor:
-                              (effectiveProgress * curveValue).clamp(0.0, 1.0),
-                          child: child,
-                        );
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              urgencyColor.withValues(
-                                  alpha: widget.isLight ? 0.32 : 0.18),
-                              urgencyColor.withValues(
-                                  alpha: widget.isLight ? 0.15 : 0.07),
-                            ],
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                // All-done gradient overlay
-                if (allDone)
-                  Positioned.fill(
-                    child: AnimatedBuilder(
-                      animation: _progressController,
-                      builder: (context, child) {
-                        final animValue = Curves.easeOutQuart
-                            .transform(_progressController.value);
-                        return Opacity(
-                          opacity: animValue,
-                          child: child,
-                        );
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: isDark
-                                ? [
-                                    Colors.green.withValues(alpha: 0.12),
-                                    Colors.green.withValues(alpha: 0.04)
-                                  ]
-                                : [
-                                    Colors.green.withValues(alpha: 0.06),
-                                    Colors.green.withValues(alpha: 0.01)
-                                  ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                // Actual content
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: statusColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          allDone
-                              ? Icons.task_alt_rounded
-                              : (isExpanded
-                                  ? Icons.folder_open_rounded
-                                  : Icons.folder_rounded),
-                          color: statusColor,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.group.name,
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.bold,
-                                color: allDone
-                                    ? (isDark
-                                        ? Colors.green.shade200
-                                        : Colors.green.shade800)
-                                    : (widget.isLight
-                                        ? Colors.black87
-                                        : Colors.white),
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                            const SizedBox(height: 1),
-                            Text(
-                              allDone
-                                  ? "全部任务已完成 ✨"
-                                  : "$doneCount/$totalCount 已完成",
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: allDone
-                                    ? (isDark
-                                        ? Colors.green.withValues(alpha: 0.5)
-                                        : Colors.green.withValues(alpha: 0.6))
-                                    : Colors.grey[500],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (nearestDeadline != null &&
-                          !isExpanded &&
-                          !allDone) ...[
-                        _buildDeadlineTag(context, nearestDeadline),
-                        const SizedBox(width: 8),
+                  final curveValue =
+                      Curves.easeOutQuart.transform(_progressController.value);
+                  return FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor:
+                        (effectiveProgress * curveValue).clamp(0.0, 1.0),
+                    child: child,
+                  );
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        urgencyColor.withValues(
+                            alpha: widget.isLight ? 0.32 : 0.18),
+                        urgencyColor.withValues(
+                            alpha: widget.isLight ? 0.15 : 0.07),
                       ],
-                      Icon(
-                        isExpanded
-                            ? Icons.keyboard_arrow_up_rounded
-                            : Icons.keyboard_arrow_down_rounded,
-                        color: Colors.grey.withValues(alpha: 0.4),
-                        size: 20,
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          // All-done gradient overlay
+          if (allDone)
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: _progressController,
+                builder: (context, child) {
+                  final animValue =
+                      Curves.easeOutQuart.transform(_progressController.value);
+                  return Opacity(
+                    opacity: animValue,
+                    child: child,
+                  );
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isDark
+                          ? [
+                              Colors.green.withValues(alpha: 0.12),
+                              Colors.green.withValues(alpha: 0.04)
+                            ]
+                          : [
+                              Colors.green.withValues(alpha: 0.06),
+                              Colors.green.withValues(alpha: 0.01)
+                            ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          // Actual content
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    allDone
+                        ? Icons.task_alt_rounded
+                        : (isExpanded
+                            ? Icons.folder_open_rounded
+                            : Icons.folder_rounded),
+                    color: statusColor,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.group.name,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: allDone
+                              ? (isDark
+                                  ? Colors.green.shade200
+                                  : Colors.green.shade800)
+                              : (widget.isLight
+                                  ? Colors.black87
+                                  : Colors.white),
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        allDone ? "全部任务已完成 ✨" : "$doneCount/$totalCount 已完成",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: allDone
+                              ? (isDark
+                                  ? Colors.green.withValues(alpha: 0.5)
+                                  : Colors.green.withValues(alpha: 0.6))
+                              : Colors.grey[500],
+                        ),
                       ),
                     ],
                   ),
                 ),
+                if (nearestDeadline != null && !isExpanded && !allDone) ...[
+                  _buildDeadlineTag(context, nearestDeadline),
+                  const SizedBox(width: 8),
+                ],
+                Icon(
+                  isExpanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  color: Colors.grey.withValues(alpha: 0.4),
+                  size: 20,
+                ),
               ],
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1030,7 +1017,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
   }
 
   void _showGroupMenu(BuildContext context) {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),

@@ -4,6 +4,8 @@ import '../models.dart';
 import 'package:intl/intl.dart';
 import 'add_todo_screen.dart';
 import '../utils/page_transitions.dart';
+import '../utils/app_dialogs.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 
 class FolderManageScreen extends StatefulWidget {
   final String username;
@@ -215,103 +217,114 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
       return 0;
     });
 
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
-        return Container(
+        return SizedBox(
           height: MediaQuery.of(context).size.height * 0.75,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: Colors.grey.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(2))),
-              const Padding(
-                padding: EdgeInsets.all(20.0),
-                child: Text('移动至此文件夹',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              ),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: unassigned.length,
-                  itemBuilder: (context, index) {
-                    final t = unassigned[index];
-                    final startStr = t.createdDate != null
-                        ? DateFormat('MM-dd HH:mm').format(
-                            DateTime.fromMillisecondsSinceEpoch(t.createdDate!))
-                        : null;
-                    final dueStr = t.dueDate != null
-                        ? DateFormat('MM-dd HH:mm').format(t.dueDate!)
-                        : null;
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.05)
-                            : Colors.black.withValues(alpha: 0.03),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 4),
-                        leading: Icon(
-                            t.isDone
-                                ? Icons.check_circle
-                                : Icons.circle_outlined,
-                            color: t.isDone
-                                ? Colors.green
-                                : Theme.of(context)
-                                    .colorScheme
-                                    .primary
-                                    .withValues(alpha: 0.5)),
-                        title: Text(t.title,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: t.isDone ? Colors.grey : null,
-                              decoration:
-                                  t.isDone ? TextDecoration.lineThrough : null,
-                            )),
-                        subtitle: (startStr != null || dueStr != null)
-                            ? Padding(
-                                padding: const EdgeInsets.only(top: 4.0),
-                                child: Text(
-                                  "${startStr ?? '开始?'} → ${dueStr ?? '截止?'}",
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: t.isDone
-                                          ? Colors.grey
-                                          : Colors.blueGrey),
-                                ),
-                              )
-                            : null,
-                        onTap: () {
-                          setState(() {
-                            t.groupId = g.id;
-                            t.version += 10;
-                            t.updatedAt = DateTime.now().millisecondsSinceEpoch;
-                          });
-                          widget.onTodosChanged(_todos);
-                          Navigator.pop(ctx);
-                        },
-                      ),
-                    );
-                  },
+          child: OptionalLiquidGlassSheet(
+            topRadius: 24,
+            fallbackDecoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              children: [
+                const SizedBox(height: 12),
+                Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: Colors.grey.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(2))),
+                const Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: Text('移动至此文件夹',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                 ),
-              ),
-            ],
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: unassigned.length,
+                    itemBuilder: (context, index) {
+                      final t = unassigned[index];
+                      final startStr = t.createdDate != null
+                          ? DateFormat('MM-dd HH:mm').format(
+                              DateTime.fromMillisecondsSinceEpoch(
+                                  t.createdDate!))
+                          : null;
+                      final dueStr = t.dueDate != null
+                          ? DateFormat('MM-dd HH:mm').format(t.dueDate!)
+                          : null;
+
+                      return OptionalLiquidGlassCard(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        borderRadius: 16,
+                        fallbackDecoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.05)
+                              : Colors.black.withValues(alpha: 0.03),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Material(
+                          type: MaterialType.transparency,
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 4),
+                            leading: Icon(
+                                t.isDone
+                                    ? Icons.check_circle
+                                    : Icons.circle_outlined,
+                                color: t.isDone
+                                    ? Colors.green
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .primary
+                                        .withValues(alpha: 0.5)),
+                            title: Text(t.title,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: t.isDone ? Colors.grey : null,
+                                  decoration: t.isDone
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                )),
+                            subtitle: (startStr != null || dueStr != null)
+                                ? Padding(
+                                    padding: const EdgeInsets.only(top: 4.0),
+                                    child: Text(
+                                      "${startStr ?? '开始?'} → ${dueStr ?? '截止?'}",
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          color: t.isDone
+                                              ? Colors.grey
+                                              : Colors.blueGrey),
+                                    ),
+                                  )
+                                : null,
+                            onTap: () {
+                              setState(() {
+                                t.groupId = g.id;
+                                t.version += 10;
+                                t.updatedAt =
+                                    DateTime.now().millisecondsSinceEpoch;
+                              });
+                              widget.onTodosChanged(_todos);
+                              Navigator.pop(ctx);
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },

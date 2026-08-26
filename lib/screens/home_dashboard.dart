@@ -48,6 +48,7 @@ import '../services/ai_todo_chat_launcher.dart';
 import '../utils/app_platform.dart';
 import '../utils/json_value_parser.dart';
 import '../utils/local_image_provider.dart';
+import '../utils/system_ui_style.dart';
 
 // 引入其他页面
 import 'screen_time_detail_screen.dart';
@@ -64,6 +65,7 @@ import 'band_sync_screen.dart';
 import 'conflict_inbox_screen.dart';
 import 'team_management_screen.dart';
 import 'personal_timeline_screen.dart';
+import '../features/journal/screens/journal_home_screen.dart';
 // 引入拆分后的组件
 import '../widgets/home_sections.dart';
 import '../widgets/home_app_bar.dart';
@@ -90,8 +92,12 @@ import 'todo_plan_screen.dart';
 import '../widgets/global_search_overlay.dart';
 import '../widgets/personal_timeline_section.dart';
 import '../widgets/coach_mark_overlay.dart';
+import '../widgets/home_bottom_navigation_content.dart';
+import '../widgets/home_quick_action_button.dart';
+import '../widgets/app_status_toast.dart';
 import '../services/feature_tip_service.dart';
 import '../services/home_layout_service.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 
 part 'home_dashboard_ai.dart';
 part 'home_dashboard_contract.dart';
@@ -190,6 +196,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   List<TodoItem>? _persistingTodosSnapshot;
   final GlobalKey<TodoSectionWidgetState> _todoSectionKey = GlobalKey();
   final GlobalKey _settingsButtonKey = GlobalKey();
+  final GlobalKey _syncButtonKey = GlobalKey();
   final GlobalKey _pomodoroCardKey = GlobalKey(); // 恢复：用于卡片动画源
   final GlobalKey _addCountdownKey = GlobalKey(); // 🚀 新增：倒数日添加按钮
   final GlobalKey _timelineCardKey = GlobalKey(); // 🚀 新增：专注Tab时间轴

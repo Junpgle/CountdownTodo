@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../models.dart';
 import '../../../storage_service.dart';
+import '../../../utils/app_dialogs.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../services/pomodoro_control_service.dart';
 import '../../../services/notification_service.dart';
@@ -110,12 +111,39 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   CrossDevicePomodoroState? _remoteState;
 
   // ── Coach Mark Keys ──
-  final GlobalKey settingsKey = GlobalKey();
-  final GlobalKey tagsManagerKey = GlobalKey();
-  final GlobalKey serverConnKey = GlobalKey();
-  final GlobalKey modeSwitchKey = GlobalKey();
-  final GlobalKey focusTagsKey = GlobalKey();
-  final GlobalKey bindTodoKey = GlobalKey();
+  // 竖屏与横屏布局会在方向切换的 AnimatedSwitcher 渐变期间短暂共存，
+  // 因此每个方向各持有一套 Key 实例，getters 暴露当前挂载布局的那一套。
+  final GlobalKey _portraitSettingsKey = GlobalKey();
+  final GlobalKey _portraitTagsManagerKey = GlobalKey();
+  final GlobalKey _portraitServerConnKey = GlobalKey();
+  final GlobalKey _portraitModeSwitchKey = GlobalKey();
+  final GlobalKey _portraitFocusTagsKey = GlobalKey();
+  final GlobalKey _portraitBindTodoKey = GlobalKey();
+  final GlobalKey _landscapeSettingsKey = GlobalKey();
+  final GlobalKey _landscapeTagsManagerKey = GlobalKey();
+  final GlobalKey _landscapeServerConnKey = GlobalKey();
+  final GlobalKey _landscapeModeSwitchKey = GlobalKey();
+  final GlobalKey _landscapeFocusTagsKey = GlobalKey();
+  final GlobalKey _landscapeBindTodoKey = GlobalKey();
+  bool _landscapeLayoutMounted = false;
+
+  GlobalKey get settingsKey => _landscapeLayoutMounted
+      ? _landscapeSettingsKey
+      : _portraitSettingsKey;
+  GlobalKey get tagsManagerKey => _landscapeLayoutMounted
+      ? _landscapeTagsManagerKey
+      : _portraitTagsManagerKey;
+  GlobalKey get serverConnKey => _landscapeLayoutMounted
+      ? _landscapeServerConnKey
+      : _portraitServerConnKey;
+  GlobalKey get modeSwitchKey => _landscapeLayoutMounted
+      ? _landscapeModeSwitchKey
+      : _portraitModeSwitchKey;
+  GlobalKey get focusTagsKey => _landscapeLayoutMounted
+      ? _landscapeFocusTagsKey
+      : _portraitFocusTagsKey;
+  GlobalKey get bindTodoKey =>
+      _landscapeLayoutMounted ? _landscapeBindTodoKey : _portraitBindTodoKey;
 
   Timer? _remoteTicker;
   List<String> _remoteTagNames = [];
@@ -2288,7 +2316,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   void _showBindTodoDialog({bool isSwitching = false}) {
     final pickerTodos = collapseRecurrenceSeriesForTodoPicker(_todos);
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -2586,6 +2614,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               child: OrientationBuilder(
                 builder: (context, orientation) {
                   final isLandscape = orientation == Orientation.landscape;
+                  _landscapeLayoutMounted = isLandscape;
 
                   return Padding(
                     padding:
@@ -2732,7 +2761,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               // Move mode toggle below the timer in landscape when idle
               if (isIdle) ...[
                 const SizedBox(height: 18),
-                _buildModeToggle(),
+                _buildModeToggle(modeSwitchKey: _landscapeModeSwitchKey),
                 const SizedBox(height: 8),
               ],
             ],
@@ -2752,26 +2781,28 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           IconButton(
-                              key: settingsKey,
+                              key: _landscapeSettingsKey,
                               visualDensity: VisualDensity.compact,
                               icon: const Icon(Icons.settings_outlined),
                               tooltip: '设置',
                               onPressed: _showSettingsDialog),
                           IconButton(
-                              key: tagsManagerKey,
+                              key: _landscapeTagsManagerKey,
                               visualDensity: VisualDensity.compact,
                               icon: const Icon(Icons.label_outline),
                               tooltip: '标签',
                               onPressed: _showTagsDialog),
-                          _buildSyncLinkButton(),
+                          _buildSyncLinkButton(
+                              serverConnKey: _landscapeServerConnKey),
                         ],
                       ),
                     ),
                     const Spacer(),
-                    _buildIdleMiddle(),
+                    _buildIdleMiddle(focusTagsKey: _landscapeFocusTagsKey),
                     const SizedBox(height: 32),
-                    _buildActions(
-                        isIdle, isFocusing, isRemoteWatching, contentColor),
+                    _buildActions(isIdle, isFocusing, isRemoteWatching,
+                        contentColor,
+                        bindTodoKey: _landscapeBindTodoKey),
                     const Spacer(),
                   ],
                 )
@@ -2788,15 +2819,16 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                         isRemoteWatching: isRemoteWatching,
                         boundTodo: _boundTodo,
                         contentColor: contentColor,
-                        bindKey: bindTodoKey,
+                        bindKey: _landscapeBindTodoKey,
                         onTap: () => _showBindTodoDialog(
                             isSwitching: _boundTodo != null),
                       ),
                       const SizedBox(height: 12),
                       _buildNoteButton(contentColor),
                       const SizedBox(height: 32),
-                      _buildActions(
-                          isIdle, isFocusing, isRemoteWatching, contentColor),
+                      _buildActions(isIdle, isFocusing, isRemoteWatching,
+                          contentColor,
+                          bindTodoKey: _landscapeBindTodoKey),
                     ],
                   ),
                 ),
@@ -2835,36 +2867,37 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 ignoring: !isIdle,
                 child: Row(children: [
                   IconButton(
-                      key: settingsKey,
+                      key: _portraitSettingsKey,
                       icon: const Icon(Icons.settings_outlined),
                       tooltip: '设置',
                       onPressed: _showSettingsDialog),
                   IconButton(
-                      key: tagsManagerKey,
+                      key: _portraitTagsManagerKey,
                       icon: const Icon(Icons.label_outline),
                       tooltip: '标签',
                       onPressed: _showTagsDialog),
                 ]),
               ),
             ),
-            _buildWSStatusIndicator(),
+            _buildWSStatusIndicator(
+                serverConnKey: _portraitServerConnKey),
           ],
         ],
       ),
     );
   }
 
-  Widget _buildWSStatusIndicator() {
+  Widget _buildWSStatusIndicator({required GlobalKey serverConnKey}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         // Mode toggle is intentionally moved below the timer; keep only the sync indicator here
-        _buildSyncLinkButton(),
+        _buildSyncLinkButton(serverConnKey: serverConnKey),
       ],
     );
   }
 
-  Widget _buildModeToggle() {
+  Widget _buildModeToggle({required GlobalKey modeSwitchKey}) {
     if (_phase != PomodoroPhase.idle) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(right: 8),
@@ -2933,7 +2966,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     );
   }
 
-  Widget _buildSyncLinkButton() {
+  Widget _buildSyncLinkButton({required GlobalKey serverConnKey}) {
     IconData icon;
     Color color;
     String message;
@@ -3020,11 +3053,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       _buildImmersiveTimerWidget(),
       // Place mode toggle under the timer in idle state (portrait)
       const SizedBox(height: 12),
-      _buildModeToggle(),
+      _buildModeToggle(modeSwitchKey: _portraitModeSwitchKey),
       const SizedBox(height: 8),
-      _buildIdleMiddle(),
+      _buildIdleMiddle(focusTagsKey: _portraitFocusTagsKey),
       const Spacer(flex: 3),
-      _buildActions(true, false, false, contentColor),
+      _buildActions(true, false, false, contentColor,
+          bindTodoKey: _portraitBindTodoKey),
     ]);
   }
 
@@ -3041,12 +3075,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           isRemoteWatching: isRemoteWatching,
           boundTodo: _boundTodo,
           contentColor: contentColor,
-          bindKey: bindTodoKey,
+          bindKey: _portraitBindTodoKey,
           onTap: () => _showBindTodoDialog(isSwitching: _boundTodo != null)),
       const SizedBox(height: 16),
       _buildNoteButton(contentColor),
       const SizedBox(height: 16),
-      _buildActions(false, isFocusing, isRemoteWatching, contentColor),
+      _buildActions(false, isFocusing, isRemoteWatching, contentColor,
+          bindTodoKey: _portraitBindTodoKey),
     ]);
   }
 
@@ -3135,7 +3170,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             .toList());
   }
 
-  Widget _buildIdleMiddle() {
+  Widget _buildIdleMiddle({required GlobalKey focusTagsKey}) {
     if (_tags.isEmpty) return const SizedBox.shrink();
     return ConstrainedBox(
       constraints: const BoxConstraints(maxHeight: 148),
@@ -3180,7 +3215,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Widget _buildActions(
-      bool isIdle, bool isFocusing, bool isRemoteWatching, Color contentColor) {
+      bool isIdle, bool isFocusing, bool isRemoteWatching, Color contentColor,
+      {required GlobalKey bindTodoKey}) {
     final bool isPaused = _isPaused && _phase == PomodoroPhase.focusing;
     // debugPrint(
     //     '[BuildActions] _isPaused: $_isPaused, _phase: $_phase, isPaused: $isPaused, isFocusing: $isFocusing');

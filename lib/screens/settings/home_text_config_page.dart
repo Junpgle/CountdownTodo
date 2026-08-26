@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../storage_service.dart';
+import '../../widgets/optional_liquid_glass_surface.dart';
 
 class GreetingTimeSlot {
   String id;
@@ -635,10 +636,16 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
         ? '小明'
         : _usernameFormatController.text.replaceAll('{name}', '小明');
 
-    return Card(
-      color:
-          Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
-      elevation: 0,
+    return OptionalLiquidGlassCard(
+      borderRadius: 12,
+      tint: Theme.of(context).colorScheme.primaryContainer,
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .primaryContainer
+            .withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -672,7 +679,12 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
   }
 
   Widget _buildDateFormatCard() {
-    return Card(
+    return OptionalLiquidGlassCard(
+      borderRadius: 12,
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -740,7 +752,12 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
   }
 
   Widget _buildUsernameFormatCard() {
-    return Card(
+    return OptionalLiquidGlassCard(
+      borderRadius: 12,
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -800,7 +817,12 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
   }
 
   Widget _buildSalutationModeCard() {
-    return Card(
+    return OptionalLiquidGlassCard(
+      borderRadius: 12,
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -846,7 +868,12 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
   }
 
   Widget _buildFixedSalutationCard() {
-    return Card(
+    return OptionalLiquidGlassCard(
+      borderRadius: 12,
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -879,7 +906,13 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
   }
 
   Widget _buildSalutationSlotsCard() {
-    return Card(
+    return OptionalLiquidGlassCard(
+      borderRadius: 12,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -932,43 +965,46 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                 },
                 itemBuilder: (context, index) {
                   final slot = _salutationSlots[index];
-                  return ListTile(
-                    key: ValueKey(slot.id),
-                    leading: Icon(
-                      _getSlotIcon(slot.startHour),
-                      color: slot.text.isNotEmpty
-                          ? Theme.of(context).colorScheme.primary
-                          : Colors.grey,
-                    ),
-                    title: Text(
-                      slot.timeRange,
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    subtitle: Text(
-                      slot.text.isNotEmpty ? slot.text : '未设置',
-                      style: TextStyle(
-                        fontSize: 12,
+                  return Material(
+                    type: MaterialType.transparency,
+                    child: ListTile(
+                      key: ValueKey(slot.id),
+                      leading: Icon(
+                        _getSlotIcon(slot.startHour),
                         color: slot.text.isNotEmpty
                             ? Theme.of(context).colorScheme.primary
-                            : Colors.orange,
+                            : Colors.grey,
                       ),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit, size: 20),
-                          onPressed: () => _editSalutationSlot(index),
+                      title: Text(
+                        slot.timeRange,
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      subtitle: Text(
+                        slot.text.isNotEmpty ? slot.text : '未设置',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: slot.text.isNotEmpty
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.orange,
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline,
-                              size: 20, color: Colors.red),
-                          onPressed: () => _removeSalutationSlot(index),
-                        ),
-                        const Icon(Icons.drag_handle),
-                      ],
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, size: 20),
+                            onPressed: () => _editSalutationSlot(index),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline,
+                                size: 20, color: Colors.red),
+                            onPressed: () => _removeSalutationSlot(index),
+                          ),
+                          const Icon(Icons.drag_handle),
+                        ],
+                      ),
+                      onTap: () => _editSalutationSlot(index),
                     ),
-                    onTap: () => _editSalutationSlot(index),
                   );
                 },
               ),
@@ -979,7 +1015,12 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
   }
 
   Widget _buildGreetingModeCard() {
-    return Card(
+    return OptionalLiquidGlassCard(
+      borderRadius: 12,
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -1025,7 +1066,12 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
   }
 
   Widget _buildFixedGreetingCard() {
-    return Card(
+    return OptionalLiquidGlassCard(
+      borderRadius: 12,
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -1060,7 +1106,13 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
   }
 
   Widget _buildTimeSlotsCard() {
-    return Card(
+    return OptionalLiquidGlassCard(
+      borderRadius: 12,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -1113,45 +1165,48 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                 },
                 itemBuilder: (context, index) {
                   final slot = _timeSlots[index];
-                  return ListTile(
-                    key: ValueKey(slot.id),
-                    leading: Icon(
-                      _getSlotIcon(slot.startHour),
-                      color: slot.greetings.isNotEmpty
-                          ? Theme.of(context).colorScheme.primary
-                          : Colors.grey,
-                    ),
-                    title: Text(
-                      slot.timeRange,
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    subtitle: Text(
-                      slot.greetings.isNotEmpty
-                          ? '${slot.greetings.length} 条问候语'
-                          : '未设置问候语',
-                      style: TextStyle(
-                        fontSize: 12,
+                  return Material(
+                    type: MaterialType.transparency,
+                    child: ListTile(
+                      key: ValueKey(slot.id),
+                      leading: Icon(
+                        _getSlotIcon(slot.startHour),
                         color: slot.greetings.isNotEmpty
                             ? Theme.of(context).colorScheme.primary
-                            : Colors.orange,
+                            : Colors.grey,
                       ),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit, size: 20),
-                          onPressed: () => _editTimeSlot(index),
+                      title: Text(
+                        slot.timeRange,
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      subtitle: Text(
+                        slot.greetings.isNotEmpty
+                            ? '${slot.greetings.length} 条问候语'
+                            : '未设置问候语',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: slot.greetings.isNotEmpty
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.orange,
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline,
-                              size: 20, color: Colors.red),
-                          onPressed: () => _removeTimeSlot(index),
-                        ),
-                        const Icon(Icons.drag_handle),
-                      ],
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, size: 20),
+                            onPressed: () => _editTimeSlot(index),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline,
+                                size: 20, color: Colors.red),
+                            onPressed: () => _removeTimeSlot(index),
+                          ),
+                          const Icon(Icons.drag_handle),
+                        ],
+                      ),
+                      onTap: () => _editTimeSlot(index),
                     ),
-                    onTap: () => _editTimeSlot(index),
                   );
                 },
               ),

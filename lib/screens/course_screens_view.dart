@@ -676,7 +676,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
   }
 
   void _showDayDetailSheet(DateTime day) {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

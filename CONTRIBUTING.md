@@ -1,7 +1,7 @@
 # Contributing to Countdown Todo
 
 Thanks for improving the project. This guide reflects the repository on
-2026-07-20.
+2026-08-25.
 
 ## Before changing code
 
@@ -66,6 +66,6 @@ Trust proxy, and WebSocket behavior compatible. Changes under this repository's
 - Explain skipped tests and platform limitations in the PR.
 
 Release commits use Chinese, version-prefixed summaries such as
-`v5.5 【修复】循环待办同步问题`. A PR should include its scope, tests, issue
+`v5.8 【修复】循环待办同步问题`. A PR should include its scope, tests, issue
 links, UI screenshots/recordings when relevant, and notes about version,
 permissions, assets, backend, migration, and platform risk.

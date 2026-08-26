@@ -6,11 +6,13 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../services/minor_mode_policy.dart';
+import '../../../utils/app_dialogs.dart';
 import '../../../services/minor_mode_service.dart';
 import '../../../update_service.dart';
 import '../../../utils/app_platform.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/app_state_views.dart';
+import '../../../widgets/optional_liquid_glass_surface.dart';
 
 /// Settings block for the installed version, release notes and update flow.
 class UpdateSettingsSection extends StatefulWidget {
@@ -422,7 +424,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
   Future<void> _showCurrentChangelog() async {
     final entry = _currentChangelog;
     var isExpanded = false;
-    await showModalBottomSheet<void>(
+    await showAppModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -625,10 +627,13 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         ? notes.take(5).toList(growable: false)
         : notes;
 
-    return Container(
+    return OptionalLiquidGlassCard(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      borderRadius: 14,
+      highContrast: true,
+      tint: colorScheme.primaryContainer,
+      fallbackDecoration: BoxDecoration(
         color: colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: colorScheme.primary.withValues(alpha: 0.35)),
@@ -707,32 +712,29 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ...visibleNotes
-                            .map(
-                              (note) => Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 6),
-                                      child: Icon(Icons.circle,
-                                          size: 5,
-                                          color:
-                                              colorScheme.onPrimaryContainer),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(note,
-                                          style: TextStyle(
-                                              color: colorScheme
-                                                  .onPrimaryContainer)),
-                                    ),
-                                  ],
+                        ...visibleNotes.map(
+                          (note) => Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  child: Icon(Icons.circle,
+                                      size: 5,
+                                      color: colorScheme.onPrimaryContainer),
                                 ),
-                              ),
-                            )
-                            .toList(),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(note,
+                                      style: TextStyle(
+                                          color:
+                                              colorScheme.onPrimaryContainer)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                         if (hasMoreNotes)
                           Align(
                             alignment: Alignment.centerLeft,
@@ -864,40 +866,38 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
               style:
                   TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
           const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color:
-                    colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                border: Border.all(color: colorScheme.outlineVariant),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(6),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildUpdateSourceChoice(
-                        context,
-                        value: UpdateService.updateSourceGithub,
-                        title: 'GitHub 官方',
-                        subtitle: '信息更新更及时',
-                        icon: Icons.code_rounded,
-                      ),
+          OptionalLiquidGlassCard(
+            borderRadius: 16,
+            fallbackDecoration: BoxDecoration(
+              color:
+                  colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+              border: Border.all(color: colorScheme.outlineVariant),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildUpdateSourceChoice(
+                      context,
+                      value: UpdateService.updateSourceGithub,
+                      title: 'GitHub 官方',
+                      subtitle: '更新更及时',
+                      icon: Icons.code_rounded,
                     ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: _buildUpdateSourceChoice(
-                        context,
-                        value: UpdateService.updateSourceServer,
-                        title: '阿里云加速',
-                        subtitle: '国内访问更快',
-                        icon: Icons.cloud_outlined,
-                      ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: _buildUpdateSourceChoice(
+                      context,
+                      value: UpdateService.updateSourceServer,
+                      title: '阿里云加速',
+                      subtitle: '国内访问更快',
+                      icon: Icons.cloud_outlined,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -1087,25 +1087,24 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-            border: Border.all(color: colorScheme.outlineVariant),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            children: [
-              _buildBetaReleaseTile(),
-              Divider(
-                height: 1,
-                indent: 62,
-                color: colorScheme.outlineVariant,
-              ),
-              _buildForceDownloadTile(),
-            ],
-          ),
+      child: OptionalLiquidGlassCard(
+        borderRadius: 16,
+        highContrast: true,
+        fallbackDecoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          border: Border.all(color: colorScheme.outlineVariant),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            _buildBetaReleaseTile(),
+            Divider(
+              height: 1,
+              indent: 62,
+              color: colorScheme.outlineVariant,
+            ),
+            _buildForceDownloadTile(),
+          ],
         ),
       ),
     );
@@ -1115,44 +1114,43 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-            border: Border.all(color: colorScheme.outlineVariant),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: SwitchListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-              secondary: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.wifi_rounded,
-                  color: colorScheme.onPrimaryContainer,
-                ),
+      child: OptionalLiquidGlassCard(
+        borderRadius: 16,
+        highContrast: true,
+        fallbackDecoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          border: Border.all(color: colorScheme.outlineVariant),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: SwitchListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+            secondary: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
               ),
-              title: const Text('Wi-Fi 自动下载更新包'),
-              subtitle: Text(
-                _isAutoDownloadOnWifi
-                    ? '发现新版本时，仅在 Wi-Fi 下自动下载'
-                    : '已关闭，发现新版本后需要手动下载',
-                style: TextStyle(
-                  color: colorScheme.onSurfaceVariant,
-                  fontSize: 12,
-                ),
+              child: Icon(
+                Icons.wifi_rounded,
+                color: colorScheme.onPrimaryContainer,
               ),
-              value: _isAutoDownloadOnWifi,
-              onChanged: _setAutoDownloadOnWifi,
             ),
+            title: const Text('Wi-Fi 自动下载更新包'),
+            subtitle: Text(
+              _isAutoDownloadOnWifi
+                  ? '发现新版本时，仅在 Wi-Fi 下自动下载'
+                  : '已关闭，发现新版本后需要手动下载',
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
+            ),
+            value: _isAutoDownloadOnWifi,
+            onChanged: _setAutoDownloadOnWifi,
           ),
         ),
       ),

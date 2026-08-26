@@ -11,6 +11,7 @@ import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
 import '../../../storage_service.dart';
 import '../../../utils/text_file_reader.dart';
+import '../../../widgets/optional_liquid_glass_surface.dart';
 
 class DataImportPage extends StatefulWidget {
   final bool isEmbedded;
@@ -471,8 +472,14 @@ class _DataImportPageState extends State<DataImportPage> {
   }
 
   Widget _buildMergeInfoCard(ColorScheme colorScheme) {
-    return Card(
-      color: colorScheme.primaryContainer,
+    return OptionalLiquidGlassCard(
+      borderRadius: 12,
+      highContrast: true,
+      tint: colorScheme.primaryContainer.withValues(alpha: 0.16),
+      fallbackDecoration: BoxDecoration(
+        color: colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -632,10 +639,19 @@ class _DataImportPageState extends State<DataImportPage> {
   Widget _buildResultCard(ColorScheme colorScheme) {
     final result = _result!;
 
-    return Card(
-      color: result.success
-          ? colorScheme.tertiaryContainer
-          : colorScheme.errorContainer,
+    return OptionalLiquidGlassCard(
+      borderRadius: 12,
+      highContrast: true,
+      tint: (result.success
+              ? colorScheme.tertiaryContainer
+              : colorScheme.errorContainer)
+          .withValues(alpha: 0.16),
+      fallbackDecoration: BoxDecoration(
+        color: result.success
+            ? colorScheme.tertiaryContainer
+            : colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

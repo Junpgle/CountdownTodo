@@ -7,6 +7,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     bool showWallpaper = !isDarkMode && _wallpaperShow && _wallpaperUrl != null;
     bool isLight = showWallpaper;
     final bool isTablet = MediaQuery.of(context).size.width >= 768;
+    final double bottomSystemInset = MediaQuery.viewPaddingOf(context).bottom;
+    final Brightness cardBackgroundBrightness =
+        isDarkMode ? Brightness.dark : Brightness.light;
 
     final mainScreen = Scaffold(
       extendBody: true,
@@ -68,6 +71,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             Positioned.fill(
                 child: Container(color: Colors.black.withValues(alpha: 0.4))),
           SafeArea(
+            // 仅避让顶部状态栏。列表需要继续绘制到 Android 手势导航区
+            // 后方，末尾的滚动余量再保证卡片操作不会被底栏遮挡。
+            bottom: false,
             child: Column(
               children: [
                 _buildSemesterProgressBar(isLight),
@@ -90,6 +96,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                     onSearch: _showGlobalSearch,
                     onAiAssistant: _openAiAssistantFromAppBar,
                     searchKey: _searchButtonKey,
+                    syncKey: _syncButtonKey,
                     teamsKey: _teamsButtonKey,
                     aiKey: _aiButtonKey,
                     settingsKey: _settingsButtonKey,
@@ -304,6 +311,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                 isLight: isLight),
                                             ScreenTimeCard(
                                               stats: _screenTimeStats,
+                                              isLight: isLight,
                                               hasPermission:
                                                   _hasUsagePermission,
                                               isLoading: _isLoadingScreenTime,
@@ -329,6 +337,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                       todayStats:
                                                           _screenTimeStats),
                                                   sourceKey: _screenTimeCardKey,
+                                                  placeholderIcon:
+                                                      Icons.timer_outlined,
                                                 );
                                               },
                                             ),
@@ -353,6 +363,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                   isLight: isLight),
                                               MathStatsCard(
                                                   stats: stats,
+                                                  isLight: isLight,
                                                   onTap: () async {
                                                     await PageTransitions
                                                         .pushFromRect(
@@ -361,6 +372,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                           username:
                                                               widget.username),
                                                       sourceKey: _mathCardKey,
+                                                      placeholderIcon:
+                                                          Icons.functions,
                                                     );
                                                     _loadAllData(
                                                       deferred: true,
@@ -408,6 +421,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                     initialTab: 1,
                                                   ),
                                                   sourceKey: _pomodoroCardKey,
+                                                  placeholderIcon:
+                                                      Icons.bar_chart_rounded,
                                                 );
                                                 _pomodoroRevision.value++;
                                               },
@@ -491,6 +506,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                       username: widget.username,
                                                     ),
                                                     sourceKey: _habitsCardKey,
+                                                    placeholderIcon:
+                                                        Icons.repeat_rounded,
                                                     sourceBorderRadius:
                                                         BorderRadius.circular(
                                                             24),
@@ -565,15 +582,25 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                         }
                                       }
 
+                                      Widget buildScrollableSection(
+                                          String key) {
+                                        return AppSystemUiRegion(
+                                          backgroundBrightness:
+                                              cardBackgroundBrightness,
+                                          child: Padding(
+                                            padding: const EdgeInsets.only(
+                                                bottom: 24.0),
+                                            child: sectionsMap[key]!,
+                                          ),
+                                        );
+                                      }
+
                                       List<Widget> tab1Widgets = tab1Order
                                           .where((key) =>
                                               (_sectionVisibility[key] ??
                                                   true) &&
                                               sectionsMap.containsKey(key))
-                                          .map((key) => Padding(
-                                              padding: const EdgeInsets.only(
-                                                  bottom: 24.0),
-                                              child: sectionsMap[key]!))
+                                          .map(buildScrollableSection)
                                           .toList();
 
                                       List<String> tab3WidgetsConfig =
@@ -586,11 +613,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                   (_sectionVisibility[key] ??
                                                       true) &&
                                                   sectionsMap.containsKey(key))
-                                              .map((key) => Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                          bottom: 24.0),
-                                                  child: sectionsMap[key]!))
+                                              .map(buildScrollableSection)
                                               .toList();
 
                                       final showFocusTab =
@@ -601,31 +624,81 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       final hasCopyright =
                                           _wallpaperCopyright?.isNotEmpty ??
                                               false;
-                                      return RepaintBoundary(
-                                        child: ListView.builder(
-                                          key: PageStorageKey<String>(
-                                            showFocusTab
-                                                ? 'home-focus-sections'
-                                                : 'home-main-sections',
+                                      return AnimatedSwitcher(
+                                        duration:
+                                            const Duration(milliseconds: 280),
+                                        reverseDuration:
+                                            const Duration(milliseconds: 240),
+                                        switchInCurve: Curves.easeOutCubic,
+                                        switchOutCurve: Curves.easeInCubic,
+                                        layoutBuilder:
+                                            (currentChild, previousChildren) {
+                                          return Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              ...previousChildren,
+                                              if (currentChild != null)
+                                                currentChild,
+                                            ],
+                                          );
+                                        },
+                                        transitionBuilder: (child, animation) {
+                                          final focusPage = child.key ==
+                                              const ValueKey<String>(
+                                                  'home-focus-tab-content');
+                                          return FadeTransition(
+                                            opacity: animation,
+                                            child: SlideTransition(
+                                              position: Tween<Offset>(
+                                                begin: Offset(
+                                                    focusPage ? 0.035 : -0.035,
+                                                    0),
+                                                end: Offset.zero,
+                                              ).animate(animation),
+                                              child: child,
+                                            ),
+                                          );
+                                        },
+                                        child: RepaintBoundary(
+                                          key: ValueKey<String>(showFocusTab
+                                              ? 'home-focus-tab-content'
+                                              : 'home-main-tab-content'),
+                                          child:
+                                              OptionalLiquidGlassScrollOptimizer(
+                                            child: ListView.builder(
+                                              key: PageStorageKey<String>(
+                                                showFocusTab
+                                                    ? 'home-focus-sections'
+                                                    : 'home-main-sections',
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 16,
+                                                vertical: 16,
+                                              ),
+                                              itemCount: activeWidgets.length +
+                                                  (hasCopyright ? 1 : 0) +
+                                                  1,
+                                              itemBuilder: (context, index) {
+                                                if (index <
+                                                    activeWidgets.length) {
+                                                  return activeWidgets[index];
+                                                }
+                                                if (hasCopyright &&
+                                                    index ==
+                                                        activeWidgets.length) {
+                                                  return _buildWallpaperCopyright(
+                                                      isLight);
+                                                }
+                                                return SizedBox(
+                                                  // 浮动底栏原有 100dp 余量之外，再补上
+                                                  // 系统手势区，使最后一张卡片能完整滚出遮挡。
+                                                  height:
+                                                      100 + bottomSystemInset,
+                                                );
+                                              },
+                                            ),
                                           ),
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 16,
-                                          ),
-                                          itemCount: activeWidgets.length +
-                                              (hasCopyright ? 1 : 0) +
-                                              1,
-                                          itemBuilder: (context, index) {
-                                            if (index < activeWidgets.length) {
-                                              return activeWidgets[index];
-                                            }
-                                            if (hasCopyright &&
-                                                index == activeWidgets.length) {
-                                              return _buildWallpaperCopyright(
-                                                  isLight);
-                                            }
-                                            return const SizedBox(height: 100);
-                                          },
                                         ),
                                       );
                                     }
@@ -660,10 +733,16 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               (_sectionVisibility[key] ??
                                                   true) &&
                                               sectionsMap.containsKey(key))
-                                          .map((key) => Padding(
-                                              padding: const EdgeInsets.only(
-                                                  bottom: 24.0),
-                                              child: sectionsMap[key]!))
+                                          .map((key) => AppSystemUiRegion(
+                                                backgroundBrightness:
+                                                    cardBackgroundBrightness,
+                                                child: Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                          bottom: 24.0),
+                                                  child: sectionsMap[key]!,
+                                                ),
+                                              ))
                                           .toList();
                                     }
 
@@ -672,63 +751,69 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                     List<Widget> rightWidgets =
                                         buildColumnWidgets(currentRight);
 
-                                    return SingleChildScrollView(
-                                      padding: EdgeInsets.symmetric(
-                                          horizontal: isTablet ? 32 : 16,
-                                          vertical: 16),
-                                      child: Align(
-                                        alignment: Alignment.topCenter,
-                                        child: ConstrainedBox(
-                                          constraints: const BoxConstraints(
-                                              maxWidth: 1400),
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              isTablet
-                                                  ? Row(
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment
-                                                              .start,
-                                                      children: [
-                                                        Expanded(
-                                                            flex: 10,
-                                                            child: Column(
-                                                                crossAxisAlignment:
-                                                                    CrossAxisAlignment
-                                                                        .start,
-                                                                children:
-                                                                    leftWidgets)),
-                                                        if (rightWidgets
-                                                            .isNotEmpty)
-                                                          const SizedBox(
-                                                              width: 40),
-                                                        if (rightWidgets
-                                                            .isNotEmpty)
+                                    return OptionalLiquidGlassScrollOptimizer(
+                                      child: SingleChildScrollView(
+                                        padding: EdgeInsets.fromLTRB(
+                                          isTablet ? 32 : 16,
+                                          16,
+                                          isTablet ? 32 : 16,
+                                          16 + bottomSystemInset,
+                                        ),
+                                        child: Align(
+                                          alignment: Alignment.topCenter,
+                                          child: ConstrainedBox(
+                                            constraints: const BoxConstraints(
+                                                maxWidth: 1400),
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                isTablet
+                                                    ? Row(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        children: [
                                                           Expanded(
-                                                              flex: 11,
+                                                              flex: 10,
                                                               child: Column(
                                                                   crossAxisAlignment:
                                                                       CrossAxisAlignment
                                                                           .start,
                                                                   children:
-                                                                      rightWidgets)),
-                                                      ],
-                                                    )
-                                                  : Column(
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment
-                                                              .start,
-                                                      children: [
-                                                        ...leftWidgets,
-                                                        ...rightWidgets,
-                                                      ],
-                                                    ),
-                                              if (_wallpaperCopyright != null &&
-                                                  _wallpaperCopyright!
-                                                      .isNotEmpty)
-                                                _buildWallpaperCopyright(
-                                                    isLight),
-                                            ],
+                                                                      leftWidgets)),
+                                                          if (rightWidgets
+                                                              .isNotEmpty)
+                                                            const SizedBox(
+                                                                width: 40),
+                                                          if (rightWidgets
+                                                              .isNotEmpty)
+                                                            Expanded(
+                                                                flex: 11,
+                                                                child: Column(
+                                                                    crossAxisAlignment:
+                                                                        CrossAxisAlignment
+                                                                            .start,
+                                                                    children:
+                                                                        rightWidgets)),
+                                                        ],
+                                                      )
+                                                    : Column(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        children: [
+                                                          ...leftWidgets,
+                                                          ...rightWidgets,
+                                                        ],
+                                                      ),
+                                                if (_wallpaperCopyright !=
+                                                        null &&
+                                                    _wallpaperCopyright!
+                                                        .isNotEmpty)
+                                                  _buildWallpaperCopyright(
+                                                      isLight),
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -762,7 +847,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                FloatingActionButton.small(
+                HomeQuickActionButton.compact(
                   key: _fabPomodoroKey,
                   heroTag: 'fab_pomodoro',
                   onPressed: () async {
@@ -770,6 +855,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                       context: context,
                       page: PomodoroScreen(username: widget.username),
                       sourceKey: _fabPomodoroKey,
+                      placeholderBuilder: (_) => const Text(
+                        '🍅',
+                        style: TextStyle(fontSize: 30),
+                      ),
                       sourceBorderRadius:
                           const BorderRadius.all(Radius.circular(16)),
                     );
@@ -779,10 +868,13 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                     }
                   },
                   tooltip: '番茄钟',
+                  tint: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.primary,
+                  isDark: isDarkMode,
                   child: const Text('🍅', style: TextStyle(fontSize: 18)),
                 ),
                 const SizedBox(height: 8),
-                FloatingActionButton.extended(
+                HomeQuickActionButton.extended(
                   key: _fabTodoKey,
                   heroTag: 'fab_todo',
                   onPressed: () => PageTransitions.pushFromRect(
@@ -866,6 +958,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                     sourceBorderRadius:
                         const BorderRadius.all(Radius.circular(16)),
                   ),
+                  tooltip: '记待办',
+                  tint: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.primary,
+                  isDark: isDarkMode,
                   icon: const Icon(Icons.add_task),
                   label: const Text("记待办"),
                 ),
@@ -875,7 +971,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     );
 
     if (isTablet) {
-      return mainScreen;
+      return AppSystemUiRegion(
+        backgroundBrightness:
+            showWallpaper || isDarkMode ? Brightness.dark : Brightness.light,
+        child: mainScreen,
+      );
     }
 
     return ZoomDrawer(
@@ -950,6 +1050,17 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             await PageTransitions.pushFromRect(
               context: context,
               page: PersonalTimelineScreen(username: widget.username),
+              sourceKey: _timelineCardKey,
+              placeholderIcon: Icons.timeline_rounded,
+            );
+          });
+        },
+        onJournal: () {
+          Future.delayed(const Duration(milliseconds: 300), () async {
+            if (!context.mounted) return;
+            await PageTransitions.pushFromRect(
+              context: context,
+              page: JournalHomeScreen(username: widget.username),
               sourceKey: GlobalKey(),
             );
           });
@@ -960,7 +1071,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             await PageTransitions.pushFromRect(
               context: context,
               page: TimeLogScreen(username: widget.username),
-              sourceKey: GlobalKey(),
+              sourceKey: _screenTimeCardKey,
+              placeholderIcon: Icons.timer_outlined,
             );
           });
         },
@@ -990,6 +1102,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
               context: context,
               page: HabitCenterScreen(username: widget.username),
               sourceKey: _habitsCardKey,
+              placeholderIcon: Icons.repeat_rounded,
             );
             _habitsRevision.value++;
           });
@@ -1025,7 +1138,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
           });
         },
       ),
-      mainScreen: mainScreen,
+      mainScreen: AppSystemUiRegion(
+        backgroundBrightness:
+            showWallpaper || isDarkMode ? Brightness.dark : Brightness.light,
+        child: mainScreen,
+      ),
       borderRadius: 24.0,
       showShadow: true,
       angle: 0.0,
@@ -1133,55 +1250,74 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
   }
 
   Widget _buildCustomBottomBar(bool isDarkMode, bool isLight) {
-    final Color primaryColor =
-        _wallpaperDominantColor ?? Theme.of(context).colorScheme.primary;
-    final Color inactiveColor =
-        (isLight || !isDarkMode) ? Colors.black87 : Colors.white70;
-    final double bottomPadding = MediaQuery.of(context).padding.bottom;
-    final navContent = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildTabItem(
-                0, Icons.dashboard_rounded, '首页', primaryColor, inactiveColor),
-          ),
-          SizedBox(
-            width: 64,
-            child: Center(child: _buildCourseCenterButton(primaryColor)),
-          ),
-          Expanded(
-            child: _buildTabItem(
-                2, Icons.adjust_rounded, '专注', primaryColor, inactiveColor),
-          ),
-        ],
-      ),
+    final colorScheme = Theme.of(context).colorScheme;
+    final Color primaryColor = homeBottomBarPrimaryColor(
+      colorScheme: colorScheme,
+      hasWallpaper: isLight,
+      wallpaperDominantColor: _wallpaperDominantColor,
+    );
+    final Color inactiveColor = isLight
+        ? colorScheme.scrim.withValues(alpha: 0.86)
+        : colorScheme.onSurfaceVariant;
+    final double bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
+    final selectedBackgroundColor = colorScheme.surfaceContainerHighest
+        .withValues(alpha: isDarkMode ? 0.62 : 0.72);
+    final navContent = HomeBottomNavigationContent(
+      selectedIndex: _selectedTabIndex,
+      primaryColor: primaryColor,
+      inactiveColor: inactiveColor,
+      selectedBackgroundColor: selectedBackgroundColor,
+      calendarButtonKey: _courseCenterKey,
+      onTabSelected: (index) {
+        setState(() => _selectedTabIndex = index);
+        if (index == 2) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _checkFocusTabCoachMarks();
+          });
+        }
+      },
+      onCalendarPressed: () {
+        PageTransitions.pushFromRect(
+          context: context,
+          page: WeeklyCourseScreen(username: widget.username),
+          sourceKey: _courseCenterKey,
+        );
+      },
     );
 
-    return Container(
-      height: 60 + (bottomPadding > 0 ? bottomPadding * 0.5 : 6),
-      margin: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+    final double height =
+        60.0 + (bottomPadding > 0 ? bottomPadding * 0.5 : 6.0);
+    final horizontalMargin =
+        homeBottomBarHorizontalMarginFor(MediaQuery.sizeOf(context).width);
+    final margin = EdgeInsets.fromLTRB(
+      horizontalMargin,
+      0,
+      horizontalMargin,
+      24,
+    );
+    final fallback = Container(
+      height: height,
+      margin: margin,
       decoration: BoxDecoration(
         color: isDarkMode
-            ? Colors.white.withValues(alpha: 0.18)
-            : Colors.white.withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(40),
+            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.78)
+            : colorScheme.surface.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(34),
         border: Border.all(
-          color: isDarkMode
-              ? Colors.white.withValues(alpha: 0.08)
-              : Colors.black.withValues(alpha: 0.05),
-          width: 0.5,
+          color: colorScheme.outlineVariant
+              .withValues(alpha: isDarkMode ? 0.42 : 0.54),
+          width: 0.8,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
+            color: colorScheme.shadow.withValues(alpha: 0.12),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(40),
+        borderRadius: BorderRadius.circular(34),
         // BackdropFilter 会让整块壁纸进入离屏模糊，在 Android 上很容易造成
         // Raster Jank。Android 保留半透明底色，其他平台继续使用毛玻璃效果。
         child: AppPlatform.isAndroid
@@ -1192,81 +1328,20 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
               ),
       ),
     );
-  }
 
-  Widget _buildTabItem(
-      int index, IconData icon, String label, Color primary, Color inactive) {
-    bool isSelected = _selectedTabIndex == index;
-    return InkWell(
-      onTap: () {
-        setState(() => _selectedTabIndex = index);
-        if (index == 2) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _checkFocusTabCoachMarks();
-          });
-        }
-      },
-      splashColor: Colors.transparent,
-      highlightColor: Colors.transparent,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? primary : inactive,
-              size: 24,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? primary : inactive,
-                fontSize: 10,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+    final glassTint = Color.alphaBlend(
+      primaryColor.withValues(alpha: 0.08),
+      colorScheme.surface,
+    ).withValues(alpha: isDarkMode ? 0.24 : 0.32);
 
-  Widget _buildCourseCenterButton(Color primary) {
-    return SizedBox(
-      width: 48,
-      height: 48,
-      child: InkWell(
-        onTap: () {
-          PageTransitions.pushFromRect(
-            context: context,
-            page: WeeklyCourseScreen(username: widget.username),
-            sourceKey: _courseCenterKey,
-          );
-        },
-        borderRadius: BorderRadius.circular(24),
-        child: Container(
-          key: _courseCenterKey,
-          decoration: BoxDecoration(
-            color: primary,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: primary.withValues(alpha: 0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.calendar_today_rounded,
-            color: Colors.white,
-            size: 22,
-          ),
-        ),
-      ),
+    return OptionalLiquidGlassSurface(
+      height: height,
+      margin: margin,
+      borderRadius: 34,
+      tint: glassTint,
+      isDark: isDarkMode,
+      fallback: fallback,
+      child: navContent,
     );
   }
 

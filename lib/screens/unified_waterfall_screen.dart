@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/time_utils.dart';
+import '../utils/app_dialogs.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 import '../widgets/team_heatmap_widget.dart';
 import '../widgets/team_gantt_widget.dart';
 
@@ -85,14 +87,15 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
   void _showTodoDetails(TodoItem todo) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
+      builder: (context) => OptionalLiquidGlassSheet(
         padding:
             const EdgeInsets.only(left: 24, right: 24, bottom: 40, top: 12),
-        decoration: BoxDecoration(
+        topRadius: 32,
+        fallbackDecoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
           boxShadow: [
@@ -211,9 +214,10 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
   Widget _buildDetailCard(
       IconData icon, String label, String value, Color color) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
+    return OptionalLiquidGlassCard(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      borderRadius: 20,
+      fallbackDecoration: BoxDecoration(
         color: color.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withValues(alpha: 0.1)),
@@ -302,11 +306,13 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
 
                   // 🚀 看板功能区 (热力图 & 甘特图)
                   SliverToBoxAdapter(
-                    child: Container(
+                    child: OptionalLiquidGlassCard(
                       margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                       padding: const EdgeInsets.symmetric(
                           vertical: 24, horizontal: 16),
-                      decoration: BoxDecoration(
+                      borderRadius: 28,
+                      highContrast: true,
+                      fallbackDecoration: BoxDecoration(
                         color: Theme.of(context).cardColor,
                         borderRadius: BorderRadius.circular(28),
                         border: Border.all(
@@ -503,10 +509,11 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
           const SizedBox(width: 12),
           // 右侧卡片内容
           Expanded(
-            child: Container(
+            child: OptionalLiquidGlassCard(
               margin: const EdgeInsets.only(bottom: 16),
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
+              borderRadius: 20,
+              fallbackDecoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(

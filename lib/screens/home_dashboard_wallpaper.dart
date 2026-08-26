@@ -316,6 +316,7 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
       context: context,
       page: const GlobalSearchOverlay(),
       sourceKey: _searchButtonKey,
+      placeholderIcon: Icons.search_rounded,
     ).then((_) async {
       // 🚀 延迟 200ms 恢复，确保键盘收起后再允许背景重排，彻底消除跳变
       await Future.delayed(const Duration(milliseconds: 200));

@@ -513,6 +513,10 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
               username: widget.username,
             ),
             sourceKey: _cardKeys[goal.uuid]!,
+            placeholderBuilder: (_) => Text(
+              goal.icon.isNotEmpty ? goal.icon : '🎯',
+              style: const TextStyle(fontSize: 30),
+            ),
             sourceBorderRadius: BorderRadius.circular(16),
           );
           if (changed == true && mounted) _loadData();

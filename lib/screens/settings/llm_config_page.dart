@@ -5,6 +5,7 @@ import '../../services/ai_chat_service.dart';
 import '../../services/llm_service.dart';
 import '../../services/minor_mode_policy.dart';
 import '../../services/minor_mode_service.dart';
+import '../../widgets/optional_liquid_glass_surface.dart';
 
 class TextModelInfo {
   final String id;
@@ -850,9 +851,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     required Color color,
     required IconData icon,
   }) {
-    return Container(
+    return OptionalLiquidGlassCard(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      borderRadius: 12,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
         border: Border.all(color: Colors.grey[300]!),
         borderRadius: BorderRadius.circular(12),
       ),
@@ -1039,9 +1042,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     required String url,
     required String linkLabel,
   }) {
-    return Container(
+    return OptionalLiquidGlassCard(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
+      borderRadius: 12,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
         border: Border.all(color: color.withValues(alpha: 0.25)),
         borderRadius: BorderRadius.circular(12),
         color: color.withValues(alpha: 0.03),
@@ -1117,9 +1122,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
 
   Widget _buildNvidiaNimKeyField() {
     final color = Colors.cyan;
-    return Container(
+    return OptionalLiquidGlassCard(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
+      borderRadius: 12,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
         border: Border.all(color: color.withValues(alpha: 0.25)),
         borderRadius: BorderRadius.circular(12),
         color: color.withValues(alpha: 0.03),

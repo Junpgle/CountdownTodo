@@ -66,7 +66,10 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
   Future<void> _loadData() async {
     if (!mounted) return;
     setState(() => _loading = true);
-    final snapshot = await HabitDayLoader.loadForDate(DateTime.now());
+    final snapshot = await HabitDayLoader.loadForDate(
+      DateTime.now(),
+      username: widget.username,
+    );
     if (mounted) {
       setState(() {
         _snapshot = snapshot;
@@ -100,6 +103,10 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
             context: context,
             page: page,
             sourceKey: sourceKey,
+            placeholderBuilder: (_) => Text(
+              goal.icon.isNotEmpty ? goal.icon : '🎯',
+              style: const TextStyle(fontSize: 30),
+            ),
             sourceBorderRadius: BorderRadius.circular(24),
           );
     if (changed == true && mounted) _handleChanged();
@@ -267,6 +274,8 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
                           goal: goal,
                           rule: snapshot.ruleOf(goal),
                           dayProgress: _dayProgress(snapshot, goal),
+                          sleepCoachingMetric:
+                              snapshot.sleepCoachingMetricFor(goal),
                           username: widget.username,
                           onChanged: _handleChanged,
                           onStartFocus: _startFocus,

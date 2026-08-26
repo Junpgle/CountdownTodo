@@ -6,6 +6,7 @@ import '../../services/calendar_sync_service.dart';
 import '../../services/permission_request_coordinator.dart';
 import '../../storage_service.dart';
 import '../../utils/app_platform.dart';
+import '../../utils/app_dialogs.dart';
 
 class CalendarSyncPage extends StatefulWidget {
   final bool isEmbedded;
@@ -209,7 +210,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
       return;
     }
 
-    await showModalBottomSheet<void>(
+    await showAppModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,

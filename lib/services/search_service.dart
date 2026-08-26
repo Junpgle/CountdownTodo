@@ -437,6 +437,15 @@ class SearchService {
       extraData: {'route': '/settings', 'target': 'home_layout'},
     ),
     SearchResult(
+      id: 'setting_sidebar_menu',
+      title: '侧边栏菜单 / 侧边栏排序',
+      subtitle: '隐藏不常用功能并调整侧边栏入口顺序',
+      icon: Icons.tune_rounded,
+      type: SearchResultType.setting,
+      breadcrumb: '设置 > 系统与外观',
+      extraData: {'route': '/settings', 'target': 'sidebar_menu'},
+    ),
+    SearchResult(
       id: 'setting_home_text',
       title: '首页文字自定义 / 问候语',
       subtitle: '自定义首页问候语、日期格式和用户名显示',

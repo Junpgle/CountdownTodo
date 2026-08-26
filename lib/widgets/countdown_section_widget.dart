@@ -11,6 +11,7 @@ import '../services/pomodoro_sync_service.dart';
 import '../widgets/home_sections.dart';
 import '../utils/page_transitions.dart';
 import 'platform_backdrop_filter.dart';
+import 'optional_liquid_glass_surface.dart';
 import 'version_history_sheet.dart';
 
 class CountdownSectionWidget extends StatefulWidget {
@@ -525,11 +526,15 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                     borderRadius: BorderRadius.circular(20),
                     child: PlatformBackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Container(
+                      bypassWhenLiquidGlassEnabled: true,
+                      child: OptionalLiquidGlassCard(
                         width: 130,
                         margin: const EdgeInsets.only(right: 12, bottom: 8),
+                        borderRadius: 20,
+                        tint: accentColor.withValues(alpha: 0.18),
+                        isDark: useDarkUI,
                         // 🚀 微调边距
-                        decoration: BoxDecoration(
+                        fallbackDecoration: BoxDecoration(
                           color: bgColor,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(color: borderColor),

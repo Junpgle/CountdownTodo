@@ -1,10 +1,10 @@
 {
-  "version_code": 5756,
-  "version_name": "5.7.56",
+  "version_code": 50809,
+  "version_name": "5.8.9",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 5.7.56",
-    "description": "【新增】设置页新增独立版本更新中心，支持查看当前版本、发布日期和更新日志\n【优化】优化更新中心的展开/折叠动画、版本定位、提示去重和更新渠道卡片\n【新增】支持切换 GitHub 官方源或阿里云加速源，并支持 Wi-Fi 自动下载更新包\n【新增】显示当前应用架构，Android 支持按 ABI 下载全量包和 arm64-v8a 增量包\n【优化】增量安装失败自动回退全量安装包\n【新增】未成年人模式支持年龄权限矩阵，完善引导页、侧边栏状态和 Android 多品牌策略适配\n【修复】循环待办截止日期同步避免旧实例复活，修复单条更新丢失全天/冲突字段\n【优化】统一同步链路与分域刷新，增强网络超时和异步生命周期稳定性\n【优化】提升数据库查询、搜索和首页渲染性能，降低 Android 首页 Raster 绘制开销\n【修复】修复 Android 小组件和待办卡片在部分布局/约束下的显示问题\n【新增】睡眠作息渐进训练，完善睡眠目标、重复导入、迁移和多端同步兼容\n【新增】macOS 灵动岛适配 Apple Music，并支持选择浏览器打开复制的网址\n【新增】严格自由专注模式传感器与状态协调，优化横竖屏布局\n【优化】课表宽屏导航居中，统一待办与固定日程新增入口\n【优化】首页专注页入口和动画设置页宽屏布局\n【优化】时间日志功能入口与未成年人模式说明",
+    "title": "版本更新 5.8.9",
+    "description": "【新增】全局可选的 Liquid Glass 视觉效果，支持标准/增强模式，并覆盖首页、待办、课程、时间线、统计、设置和挑战等主要界面\n【优化】统一玻璃材质与滚动优化策略，在保留折射层次的同时提升可读性和滚动流畅度\n【新增】动画设置新增性能预设和动画速度预设，速度分为优雅、均衡、快速，并支持手动微调\n【新增】页面转场新增懒加载占位遮罩，先完成目标页面构建后平滑揭示内容\n【修复】修复预测式返回手势拖动与提交阶段的圆角表现，跟随屏幕实际圆角和设置开关\n【适配】优化 Android 沉浸式系统栏、底部弹层手势安全区，并在启动时请求最高刷新率\n【新增】支持自定义侧边栏功能的显示与排序\n【优化】首页底部导航组件化，主页与专注页签切换增加淡入过渡\n【新增】提供统一的操作状态轻提示 Toast",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "mac_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
@@ -16,14 +16,15 @@
     "android_delta_packages": {
       "arm64-v8a": [
         {
-          "from_version": "5.6.18",
-          "from_sha256": "159be8c6ed431f47a27988072aa94f2d00385173dade794cbd247dbdbfa1af72",
-          "to_version": "5.7.56",
-          "to_sha256": "d7df94198a46732017e80988aa1a0fd66b87fdcea044ceeef3de8c2076ee6eec",
-          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-5.6.18_to_5.7.56.patch",
-          "patch_size": 22656142,
-          "copied_bytes": 16046859,
-          "embedded_bytes": 22655040,
+          "from_version": "5.7.56",
+          "from_sha256": "d7df94198a46732017e80988aa1a0fd66b87fdcea044ceeef3de8c2076ee6eec",
+          "to_version": "5.8.9",
+          "to_sha256": "b5a4aede8fbfd803ee0eddb79712dc047e9b1adffd2b84ef42c33a74fa995724",
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-5.7.56_to_5.8.9.patch",
+          "patch_size": 23278599,
+          "operation_count": 22,
+          "copied_bytes": 16055633,
+          "embedded_bytes": 23278277,
           "algorithm": "apk-zip-local-spans",
           "recommended": true
         }
@@ -53,6 +54,21 @@
     "image_url": "https://gitee.com/Junpgle/CountdownTodo/raw/master/wallpapergitee/15.jpg"
   },
   "changelog_history": [
+    {
+      "version_name": "5.8.9",
+      "date": "2026-08-26",
+      "items": [
+        "【新增】全局可选的 Liquid Glass 视觉效果，支持标准/增强模式，并覆盖首页、待办、课程、时间线、统计、设置和挑战等主要界面",
+        "【优化】统一玻璃材质与滚动优化策略，在保留折射层次的同时提升可读性和滚动流畅度",
+        "【新增】动画设置新增性能预设和动画速度预设，速度分为优雅、均衡、快速，并支持手动微调",
+        "【新增】页面转场新增懒加载占位遮罩，先完成目标页面构建后平滑揭示内容",
+        "【修复】修复预测式返回手势拖动与提交阶段的圆角表现，跟随屏幕实际圆角和设置开关",
+        "【适配】优化 Android 沉浸式系统栏、底部弹层手势安全区，并在启动时请求最高刷新率",
+        "【新增】支持自定义侧边栏功能的显示与排序",
+        "【优化】首页底部导航组件化，主页与专注页签切换增加淡入过渡",
+        "【新增】提供统一的操作状态轻提示 Toast"
+      ]
+    },
     {
       "version_name": "5.7.56",
       "date": "2026-08-11",

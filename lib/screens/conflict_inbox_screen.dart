@@ -6,12 +6,14 @@ import '../storage_service.dart';
 import '../services/api_service.dart';
 import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
+import '../utils/app_dialogs.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/pomodoro_service.dart';
 import '../services/conflict_visibility_service.dart';
 import '../utils/page_transitions.dart';
 import 'package:intl/intl.dart';
 import '../widgets/todo_section_widget.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 import '../features/habits/models/habit_goal.dart';
 import '../features/habits/models/habit_goal_rule.dart';
 import '../services/storage/habit_storage.dart';
@@ -987,10 +989,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final itemId = _getConflictId(item);
     final isBatchSelected = _selectedConflictIds.contains(itemId);
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeInOut,
-      decoration: BoxDecoration(
+    return OptionalLiquidGlassCard(
+      borderRadius: 12,
+      clipBehavior: Clip.antiAlias,
+      highContrast: true,
+      tint: isSelected || isBatchSelected
+          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.16)
+          : null,
+      fallbackDecoration: BoxDecoration(
         color: isSelected || isBatchSelected
             ? (isDark
                 ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
@@ -1624,8 +1630,12 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final conflictWith = _conflictData(item)?['conflict_with'];
     final peers = conflictWith is List ? conflictWith : [];
 
-    return Container(
-      decoration: BoxDecoration(
+    return OptionalLiquidGlassCard(
+      borderRadius: 24,
+      padding: const EdgeInsets.all(24),
+      highContrast: true,
+      tint: Colors.orangeAccent.withValues(alpha: 0.16),
+      fallbackDecoration: BoxDecoration(
         color: isDark
             ? Colors.white.withValues(alpha: 0.03)
             : Colors.white.withValues(alpha: 0.6),
@@ -1634,7 +1644,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             color:
                 isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
       ),
-      padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1721,15 +1730,16 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   void _showConflictHelp() {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
+      builder: (context) => OptionalLiquidGlassSheet(
+        topRadius: 20,
+        padding: const EdgeInsets.all(24),
+        fallbackDecoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1824,7 +1834,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final localJson = _itemToJson(item);
     final table = _resolveTable(item);
 
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -1841,12 +1851,13 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   void _showMissingServerSnapshot(dynamic item) {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
+      builder: (context) => OptionalLiquidGlassSheet(
+        topRadius: 20,
+        padding: const EdgeInsets.all(24),
+        fallbackDecoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
@@ -2073,16 +2084,17 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   void _showBatchResolutionDialog() {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
+      builder: (context) => OptionalLiquidGlassSheet(
+        topRadius: 20,
+        padding: const EdgeInsets.all(24),
+        fallbackDecoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2322,7 +2334,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         : _ScheduleResolutionMode.manual;
     var selectedIdToEdit = _itemId(item);
 
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
@@ -2337,184 +2349,187 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           return Container(
             constraints: BoxConstraints(
                 maxHeight: MediaQuery.of(sheetContext).size.height * 0.88),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Theme.of(sheetContext).scaffoldBackgroundColor,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(2)),
+            child: OptionalLiquidGlassSheet(
+              topRadius: 20,
+              padding: const EdgeInsets.all(20),
+              fallbackDecoration: BoxDecoration(
+                color: Theme.of(sheetContext).scaffoldBackgroundColor,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(2)),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('时间重叠',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Text(_relationLabel(item),
-                      style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.orangeAccent,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  Text(
-                      selectedMode == _ScheduleResolutionMode.manual
-                          ? '手动模式：点击上方卡片可选中任一冲突任务进行编辑。'
-                          : '先横向查看当前任务和冲突任务，再选择处理方式。执行前会先给出预览。',
-                      style:
-                          TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-                  if (recommendedLabel != null) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.green.withValues(alpha: 0.18),
+                    const SizedBox(height: 16),
+                    const Text('时间重叠',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text(_relationLabel(item),
+                        style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.orangeAccent,
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    Text(
+                        selectedMode == _ScheduleResolutionMode.manual
+                            ? '手动模式：点击上方卡片可选中任一冲突任务进行编辑。'
+                            : '先横向查看当前任务和冲突任务，再选择处理方式。执行前会先给出预览。',
+                        style: TextStyle(
+                            fontSize: 13, color: Colors.grey.shade600)),
+                    if (recommendedLabel != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.green.withValues(alpha: 0.18),
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.auto_fix_high_rounded,
+                                size: 18, color: Colors.green),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                recommendedLabel,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.green.shade800,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    ],
+                    const SizedBox(height: 16),
+                    _buildHorizontalConflictGallery(
+                      data,
+                      peers,
+                      selectedUpdates,
+                      mode: selectedMode,
+                      selectedIdToEdit: selectedIdToEdit,
+                      onSelect: (id) =>
+                          setSheetState(() => selectedIdToEdit = id),
+                    ),
+                    const SizedBox(height: 16),
+                    if (item is TodoItem) ...[
+                      _buildResolutionModeSelector(
+                        selectedMode: selectedMode,
+                        recommendedEnabled: recommendedUpdates.isNotEmpty,
+                        groupEnabled: groupUpdates.isNotEmpty,
+                        onChanged: (mode) =>
+                            setSheetState(() => selectedMode = mode),
+                      ),
+                      if (_isApplyingScheduleFix) ...[
+                        const SizedBox(height: 12),
+                        const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2)),
+                      ],
+                      const SizedBox(height: 16),
+                      Row(
                         children: [
-                          const Icon(Icons.auto_fix_high_rounded,
-                              size: 18, color: Colors.green),
-                          const SizedBox(width: 10),
                           Expanded(
-                            child: Text(
-                              recommendedLabel,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.green.shade800,
-                                fontWeight: FontWeight.w600,
-                                height: 1.35,
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(sheetContext),
+                              child: const Text('取消'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _isApplyingScheduleFix
+                                  ? null
+                                  : () async {
+                                      final messenger =
+                                          ScaffoldMessenger.of(context);
+                                      Navigator.pop(sheetContext);
+                                      await StorageService
+                                          .ignoreLocalScheduleConflict(
+                                              widget.username, item);
+                                      await _loadConflicts();
+                                      if (!mounted) return;
+                                      messenger.showSnackBar(
+                                        const SnackBar(
+                                          content: Text('已保留现有时间安排，不再提示这组冲突'),
+                                        ),
+                                      );
+                                    },
+                              child: const Text('保留现状'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: _isApplyingScheduleFix ||
+                                      (selectedMode !=
+                                              _ScheduleResolutionMode.manual &&
+                                          selectedUpdates.isEmpty)
+                                  ? null
+                                  : () async {
+                                      if (selectedMode ==
+                                          _ScheduleResolutionMode.manual) {
+                                        final target = allTodos
+                                            .cast<TodoItem?>()
+                                            .firstWhere(
+                                              (todo) =>
+                                                  todo?.id == selectedIdToEdit,
+                                              orElse: () => null,
+                                            );
+                                        if (target != null) {
+                                          Navigator.pop(sheetContext);
+                                          await _openTodoEditor(target);
+                                        }
+                                        return;
+                                      }
+                                      if (selectedUpdates.isEmpty) return;
+                                      final successMessage = selectedMode ==
+                                              _ScheduleResolutionMode.recommend
+                                          ? '已按预览结果调整当前任务'
+                                          : '已按预览结果顺排冲突链';
+                                      await _persistResolvedTodos(
+                                        selectedUpdates,
+                                        successMessage: successMessage,
+                                        popContext: sheetContext,
+                                      );
+                                    },
+                              child: Text(
+                                selectedMode == _ScheduleResolutionMode.manual
+                                    ? '进入编辑'
+                                    : '确认应用',
                               ),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  _buildHorizontalConflictGallery(
-                    data,
-                    peers,
-                    selectedUpdates,
-                    mode: selectedMode,
-                    selectedIdToEdit: selectedIdToEdit,
-                    onSelect: (id) =>
-                        setSheetState(() => selectedIdToEdit = id),
-                  ),
-                  const SizedBox(height: 16),
-                  if (item is TodoItem) ...[
-                    _buildResolutionModeSelector(
-                      selectedMode: selectedMode,
-                      recommendedEnabled: recommendedUpdates.isNotEmpty,
-                      groupEnabled: groupUpdates.isNotEmpty,
-                      onChanged: (mode) =>
-                          setSheetState(() => selectedMode = mode),
-                    ),
-                    if (_isApplyingScheduleFix) ...[
-                      const SizedBox(height: 12),
-                      const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2)),
-                    ],
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.pop(sheetContext),
-                            child: const Text('取消'),
-                          ),
+                    ] else
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () => Navigator.pop(sheetContext),
+                          child: const Text('知道了'),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _isApplyingScheduleFix
-                                ? null
-                                : () async {
-                                    final messenger =
-                                        ScaffoldMessenger.of(context);
-                                    Navigator.pop(sheetContext);
-                                    await StorageService
-                                        .ignoreLocalScheduleConflict(
-                                            widget.username, item);
-                                    await _loadConflicts();
-                                    if (!mounted) return;
-                                    messenger.showSnackBar(
-                                      const SnackBar(
-                                        content: Text('已保留现有时间安排，不再提示这组冲突'),
-                                      ),
-                                    );
-                                  },
-                            child: const Text('保留现状'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton(
-                            onPressed: _isApplyingScheduleFix ||
-                                    (selectedMode !=
-                                            _ScheduleResolutionMode.manual &&
-                                        selectedUpdates.isEmpty)
-                                ? null
-                                : () async {
-                                    if (selectedMode ==
-                                        _ScheduleResolutionMode.manual) {
-                                      final target = allTodos
-                                          .cast<TodoItem?>()
-                                          .firstWhere(
-                                            (todo) =>
-                                                todo?.id == selectedIdToEdit,
-                                            orElse: () => null,
-                                          );
-                                      if (target != null) {
-                                        Navigator.pop(sheetContext);
-                                        await _openTodoEditor(target);
-                                      }
-                                      return;
-                                    }
-                                    if (selectedUpdates.isEmpty) return;
-                                    final successMessage = selectedMode ==
-                                            _ScheduleResolutionMode.recommend
-                                        ? '已按预览结果调整当前任务'
-                                        : '已按预览结果顺排冲突链';
-                                    await _persistResolvedTodos(
-                                      selectedUpdates,
-                                      successMessage: successMessage,
-                                      popContext: sheetContext,
-                                    );
-                                  },
-                            child: Text(
-                              selectedMode == _ScheduleResolutionMode.manual
-                                  ? '进入编辑'
-                                  : '确认应用',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ] else
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: () => Navigator.pop(sheetContext),
-                        child: const Text('知道了'),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           );
@@ -2618,16 +2633,22 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
     return GestureDetector(
       onTap: isManualMode && id != null ? () => onSelect(id) : null,
-      child: Container(
+      child: OptionalLiquidGlassCard(
         width: 190,
         margin: const EdgeInsets.only(right: 10),
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
+        borderRadius: 14,
+        highContrast: true,
+        tint: isSelectedForEdit
+            ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.16)
+            : (isPrimary ? Colors.orangeAccent.withValues(alpha: 0.16) : null),
+        fallbackDecoration: BoxDecoration(
+          // 主题化取色，修复暗色模式下普通日程卡仍为纯白的问题。
           color: isSelectedForEdit
               ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
               : (isPrimary
                   ? Colors.orangeAccent.withValues(alpha: 0.08)
-                  : Colors.white),
+                  : Theme.of(context).colorScheme.surface),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isSelectedForEdit
@@ -3180,29 +3201,32 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
     return Container(
       constraints:
           BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Drag handle
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2)),
+      child: OptionalLiquidGlassSheet(
+        topRadius: 20,
+        padding: const EdgeInsets.all(20),
+        fallbackDecoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Drag handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2)),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            ..._buildContent(context),
-          ],
+              const SizedBox(height: 16),
+              ..._buildContent(context),
+            ],
+          ),
         ),
       ),
     );
