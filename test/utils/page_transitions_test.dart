@@ -23,10 +23,16 @@ Future<void> _sendBackGesture(
   );
 }
 
-Iterable<double> _clipRadii(WidgetTester tester) {
+Iterable<double> _clipRadii(
+  WidgetTester tester, {
+  bool skipOffstage = true,
+}) {
   return tester
-      .widgetList<ClipRRect>(find.byType(ClipRRect))
-      .map((ClipRRect clip) => clip.borderRadius.resolve(TextDirection.ltr).topLeft.x);
+      .widgetList<ClipRRect>(
+        find.byType(ClipRRect, skipOffstage: skipOffstage),
+      )
+      .map((ClipRRect clip) =>
+          clip.borderRadius.resolve(TextDirection.ltr).topLeft.x);
 }
 
 bool _hasRadius(WidgetTester tester, double value) {
@@ -38,11 +44,20 @@ void main() {
 
   late GlobalKey<NavigatorState> navigatorKey;
 
-  Future<void> pumpApp(WidgetTester tester) async {
+  Future<void> pumpApp(
+    WidgetTester tester, {
+    BorderRadius? displayCornerRadii,
+  }) async {
     navigatorKey = GlobalKey<NavigatorState>();
     await tester.pumpWidget(
       MaterialApp(
         navigatorKey: navigatorKey,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).applyDisplayCornerRadii(
+            displayCornerRadii,
+          ),
+          child: child!,
+        ),
         theme: ThemeData(
           pageTransitionsTheme: PageTransitions.theme,
         ),
@@ -50,7 +65,8 @@ void main() {
       ),
     );
     navigatorKey.currentState!.push(
-      PageTransitions.material(builder: (_) => const Scaffold(body: Text('page B'))),
+      PageTransitions.material(
+          builder: (_) => const Scaffold(body: Text('page B'))),
     );
     await tester.pumpAndSettle();
   }
@@ -67,12 +83,14 @@ void main() {
 
       // Raw gesture progress 0.3 -> corner factor 0.6 (12 * 0.6 = 7.2).
       await _sendBackGesture(tester, 'startBackGesture', progress: 0.3);
-      await _sendBackGesture(tester, 'updateBackGestureProgress', progress: 0.3);
+      await _sendBackGesture(tester, 'updateBackGestureProgress',
+          progress: 0.3);
       await tester.pump();
       expect(_hasRadius(tester, 7.2), isTrue);
 
       // Half drag already reaches the full screen radius.
-      await _sendBackGesture(tester, 'updateBackGestureProgress', progress: 0.5);
+      await _sendBackGesture(tester, 'updateBackGestureProgress',
+          progress: 0.5);
       await tester.pump();
       expect(_hasRadius(tester, 12.0), isTrue);
     });
@@ -82,7 +100,8 @@ void main() {
       await pumpApp(tester);
 
       await _sendBackGesture(tester, 'startBackGesture', progress: 1.0);
-      await _sendBackGesture(tester, 'updateBackGestureProgress', progress: 1.0);
+      await _sendBackGesture(tester, 'updateBackGestureProgress',
+          progress: 1.0);
       await tester.pump();
       expect(_clipRadii(tester), isNotEmpty);
 
@@ -104,7 +123,8 @@ void main() {
       await pumpApp(tester);
 
       await _sendBackGesture(tester, 'startBackGesture', progress: 0.8);
-      await _sendBackGesture(tester, 'updateBackGestureProgress', progress: 0.8);
+      await _sendBackGesture(tester, 'updateBackGestureProgress',
+          progress: 0.8);
       await tester.pump();
       expect(_clipRadii(tester), isNotEmpty);
 
@@ -124,7 +144,8 @@ void main() {
       await pumpApp(tester);
 
       await _sendBackGesture(tester, 'startBackGesture', progress: 1.0);
-      await _sendBackGesture(tester, 'updateBackGestureProgress', progress: 1.0);
+      await _sendBackGesture(tester, 'updateBackGestureProgress',
+          progress: 1.0);
       await tester.pump();
       expect(_clipRadii(tester), isEmpty);
 
@@ -134,6 +155,112 @@ void main() {
 
       await tester.pumpAndSettle();
       expect(find.text('page B'), findsNothing);
+    });
+
+    testWidgets('uses the reported display corner radii',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      await PageTransitions.init();
+
+      await pumpApp(
+        tester,
+        displayCornerRadii: const BorderRadius.only(
+          topLeft: Radius.circular(28),
+          topRight: Radius.circular(24),
+          bottomRight: Radius.circular(22),
+          bottomLeft: Radius.circular(20),
+        ),
+      );
+
+      await _sendBackGesture(tester, 'startBackGesture', progress: 0.5);
+      await _sendBackGesture(tester, 'updateBackGestureProgress',
+          progress: 0.5);
+      await tester.pump();
+
+      expect(_hasRadius(tester, 28.0), isTrue);
+    });
+
+    testWidgets('container transform adopts the display corner radii',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'enable_lazy_load': false,
+      });
+      await PageTransitions.init();
+      const displayCornerRadii = BorderRadius.only(
+        topLeft: Radius.circular(28),
+        topRight: Radius.circular(24),
+        bottomRight: Radius.circular(22),
+        bottomLeft: Radius.circular(20),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).applyDisplayCornerRadii(
+              displayCornerRadii,
+            ),
+            child: child!,
+          ),
+          home: Builder(
+            builder: (context) => Center(
+              child: TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  ContainerTransformRoute<void>(
+                    page: const SizedBox.expand(),
+                    sourceRect: const Rect.fromLTWH(40, 40, 120, 80),
+                    sourceColor: Colors.blue,
+                  ),
+                ),
+                child: const Text('go'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('go'));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(
+        _clipRadii(tester, skipOffstage: false),
+        contains(28.0),
+      );
+    });
+
+    testWidgets('container transform renders a source-specific placeholder',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'enable_lazy_load': true,
+      });
+      await PageTransitions.init();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(pageTransitionsTheme: PageTransitions.theme),
+          home: Builder(
+            builder: (context) => Center(
+              child: TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  ContainerTransformRoute<void>(
+                    page: const SizedBox.expand(),
+                    sourceRect: const Rect.fromLTWH(40, 40, 120, 80),
+                    sourceColor: Colors.blue,
+                    placeholderBuilder: (_) => const Text('📖'),
+                  ),
+                ),
+                child: const Text('go'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('go'));
+      await tester.pump();
+
+      expect(find.text('📖', skipOffstage: false), findsOneWidget);
     });
   });
 }

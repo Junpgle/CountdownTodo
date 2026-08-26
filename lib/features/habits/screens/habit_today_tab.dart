@@ -103,6 +103,10 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
             context: context,
             page: page,
             sourceKey: sourceKey,
+            placeholderBuilder: (_) => Text(
+              goal.icon.isNotEmpty ? goal.icon : '🎯',
+              style: const TextStyle(fontSize: 30),
+            ),
             sourceBorderRadius: BorderRadius.circular(24),
           );
     if (changed == true && mounted) _handleChanged();

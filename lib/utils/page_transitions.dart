@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui show ImageFilter, lerpDouble;
 
 import 'package:flutter/foundation.dart';
@@ -15,6 +16,34 @@ const _epsilon = 0.001;
 // Limit the maximum interactive progress for the predictive back gesture.
 // 0.15 means the route progress drops from 1.0 to 0.85 (shrinks to 85%).
 const _predictiveBackMaxInteractiveProgress = 0.50;
+
+BorderRadius _screenCornerRadiiForContext(BuildContext context) {
+  final mediaQuery = MediaQuery.maybeOf(context);
+  final reportedRadii = mediaQuery?.displayCornerRadii;
+  if (reportedRadii != null) {
+    return reportedRadii;
+  }
+
+  // displayCornerRadii is currently unavailable on iOS, desktop and Android
+  // versions before API 31. Keep the old heuristic as a fallback, but use
+  // logical pixels here; FlutterView.padding is in physical pixels.
+  final view = WidgetsBinding.instance.platformDispatcher.views.first;
+  final topPadding =
+      mediaQuery?.padding.top ?? view.padding.top / view.devicePixelRatio;
+  final fallbackRadius = topPadding > 30
+      ? 24.0
+      : topPadding > 20
+          ? 16.0
+          : 12.0;
+  return BorderRadius.circular(fallbackRadius);
+}
+
+bool _hasVisibleCornerRadius(BorderRadius radius) {
+  return radius.topLeft.x > 0.5 ||
+      radius.topRight.x > 0.5 ||
+      radius.bottomRight.x > 0.5 ||
+      radius.bottomLeft.x > 0.5;
+}
 
 /// Raw progress of the predictive back gesture currently driving the
 /// top-most route (0.0–1.0, 0.0 when idle). Only one gesture runs at a time,
@@ -54,7 +83,7 @@ class _AnimSettings {
       // Android defaults to the performance-first profile. It keeps short,
       // useful transitions but avoids spending the first frames on expensive
       // layer composition on lower-end devices.
-      duration = prefs.getInt('animation_duration') ?? (isAndroid ? 220 : 500);
+      duration = prefs.getInt('animation_duration') ?? 500;
       pageLayerDepth =
           prefs.getInt('page_layer_depth') ?? (isAndroid ? 18 : 60);
       containerContentStart =
@@ -96,6 +125,93 @@ class _AnimSettings {
 class PageTransitions {
   static Future<void> init() => _AnimSettings.load();
 
+  /// 原始目标页面类型名（子串匹配）到遮罩图标的映射。
+  ///
+  /// 越具体的条目放越前面；未命中的页面回退到通用玻璃图标。
+  static const List<(String, IconData)> _placeholderIcons = [
+    // ── 课程 / 日历 ──
+    ('WeeklyCourseScreen', Icons.calendar_month_rounded),
+    ('CourseScreensGrid', Icons.calendar_month_rounded),
+    ('CourseDetailScreen', Icons.calendar_month_rounded),
+    ('CourseSettingsPage', Icons.calendar_month_rounded),
+    ('FixedScheduleEditorScreen', Icons.calendar_month_rounded),
+    // ── 待办 ──
+    ('AddTodoScreen', Icons.add_task_rounded),
+    ('TodoConfirmScreen', Icons.add_task_rounded),
+    ('TodoEditScreen', Icons.edit_note_rounded),
+    ('TodoDetailScreen', Icons.task_alt_rounded),
+    ('RecurrenceSeriesMergePage', Icons.event_repeat_rounded),
+    ('TodoPlanScreen', Icons.event_note_rounded),
+    ('HistoricalTodosScreen', Icons.history_rounded),
+    ('FolderManageScreen', Icons.folder_open_rounded),
+    // ── 番茄钟 ──
+    ('PomodoroTagDetailScreen', Icons.label_rounded),
+    ('PomodoroDetailScreen', Icons.timer_outlined),
+    ('PomodoroScreen', Icons.timer_outlined),
+    ('PlanBlockStatsScreen', Icons.donut_large_rounded),
+    ('MathMenuScreen', Icons.functions),
+    // ── 习惯 ──
+    ('HabitCenterScreen', Icons.repeat_rounded),
+    ('HabitEditScreen', Icons.edit_calendar_rounded),
+    ('HabitDetailScreen', Icons.replay_circle_filled_rounded),
+    // ── 团队 ──
+    ('TeamManagementScreen', Icons.groups_rounded),
+    ('TeamMessageCenterScreen', Icons.forum_rounded),
+    ('TeamAnnouncementScreen', Icons.campaign_rounded),
+    ('TeamInvitationScreen', Icons.person_add_alt_1_rounded),
+    // ── 时间线 / 看板 ──
+    ('PersonalTimelineScreen', Icons.timeline_rounded),
+    ('UnifiedWaterfallScreen', Icons.space_dashboard_outlined),
+    ('TimeLogDetailScreen', Icons.receipt_long_rounded),
+    ('TimeLogScreen', Icons.receipt_long_rounded),
+    ('AppBoardScreen', Icons.grid_view_outlined),
+    // ── 成就 / 挑战 ──
+    ('MedalWallPage', Icons.military_tech_rounded),
+    ('MedalRecommendationCard', Icons.military_tech_rounded),
+    ('ThirtyDayChallengeScreen', Icons.local_fire_department_rounded),
+    // ── 数据 / 同步 ──
+    ('ConflictInboxScreen', Icons.rule_rounded),
+    ('DataExportPage', Icons.ios_share_rounded),
+    ('DataImportPage', Icons.download_for_offline_rounded),
+    ('BandSyncScreen', Icons.watch_rounded),
+    ('ServerChoicePage', Icons.dns_rounded),
+    ('DeviceVersionDetailPage', Icons.smartphone_rounded),
+    ('ScreenTimeDetailScreen', Icons.hourglass_top_rounded),
+    ('GlobalSearchOverlay', Icons.search_rounded),
+    // ── 设置族（具体页在前，通用 SettingsPage 在后）──
+    ('AnimationSettingsPage', Icons.animation_rounded),
+    ('NotificationSettingsPage', Icons.notifications_active_rounded),
+    ('PreferenceSettingsPage', Icons.tune_rounded),
+    ('HomeTextConfigPage', Icons.text_fields_rounded),
+    ('HomeLayoutSettingsPage', Icons.dashboard_customize_rounded),
+    ('SidebarMenuSettingsPage', Icons.menu_rounded),
+    ('WallpaperSettingsPage', Icons.wallpaper_rounded),
+    ('LlmConfigPage', Icons.smart_toy_outlined),
+    ('McpIntroductionPage', Icons.cable_rounded),
+    ('PrivacyPolicyPage', Icons.privacy_tip_outlined),
+    ('AboutScreen', Icons.info_outline_rounded),
+    ('HelpCenterScreen', Icons.help_center_rounded),
+    ('FeatureGuideScreen', Icons.menu_book_rounded),
+    ('AiAssistantTutorialScreen', Icons.auto_awesome_outlined),
+    ('TodoChatScreen', Icons.chat_bubble_outline_rounded),
+    ('LoginScreen', Icons.person_outline_rounded),
+    ('ShareViewScreen', Icons.share_outlined),
+    ('SettingsScreen', Icons.settings_outlined),
+    ('SettingsPage', Icons.settings_outlined),
+    ('PreferenceSettingsPage', Icons.settings_outlined),
+  ];
+
+  /// 按原始目标页面类型返回懒加载占位遮罩的语义图标；未登记页面回退
+  /// 到通用图标。不要把 PageRoute.buildTransitions 收到的 child 传进来，
+  /// 因为 Flutter 会先用路由内部组件包装它。
+  static IconData placeholderIconFor(Widget widget) {
+    final typeName = widget.runtimeType.toString();
+    for (final (needle, icon) in _placeholderIcons) {
+      if (typeName.contains(needle)) return icon;
+    }
+    return Icons.blur_on_rounded;
+  }
+
   static const PageTransitionsTheme theme = PageTransitionsTheme(
     builders: <TargetPlatform, PageTransitionsBuilder>{
       TargetPlatform.android: _PageLayerMaterialPageTransitionsBuilder(),
@@ -112,8 +228,10 @@ class PageTransitions {
     required Widget page,
     required GlobalKey sourceKey,
     Rect? targetRect,
-    BorderRadius targetBorderRadius = BorderRadius.zero,
+    BorderRadius? targetBorderRadius,
     Color? sourceColor,
+    IconData? placeholderIcon,
+    WidgetBuilder? placeholderBuilder,
     BorderRadius sourceBorderRadius =
         const BorderRadius.all(Radius.circular(16)),
   }) async {
@@ -152,7 +270,9 @@ class PageTransitions {
         targetRect: targetRect,
         targetBorderRadius: targetBorderRadius,
         sourceColor: color,
+        placeholderIcon: placeholderIcon,
         sourceBorderRadius: sourceBorderRadius,
+        placeholderBuilder: placeholderBuilder,
       ),
     );
   }
@@ -318,8 +438,7 @@ class _PredictiveBackGestureBridgeState<T>
   }
 
   void _setGestureProgress(PredictiveBackEvent backEvent) {
-    _predictiveBackGestureProgress.value =
-        backEvent.progress.clamp(0.0, 1.0);
+    _predictiveBackGestureProgress.value = backEvent.progress.clamp(0.0, 1.0);
   }
 
   @override
@@ -406,7 +525,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
   late Listenable _mergedAnimation;
 
   // Cached MediaQuery values — avoid calling MediaQuery.of(context) every frame.
-  double _cachedScreenRadius = 12.0;
+  BorderRadius _cachedScreenCornerRadii = BorderRadius.circular(12.0);
 
   // Cached _AnimSettings values.
   late double _bgScale;
@@ -414,11 +533,6 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
   late double _bgMask;
   late bool _useScreenRadius;
   late bool _useMotionBlur;
-
-  /// 懒加载揭示闩锁：转场期间显示占位遮罩，入场动画完成（页面已完成构建
-  /// 与首帧挂载）后揭示真实内容。一旦揭示不再回退——预测返回手势会让
-  /// 动画短暂回到 forward 状态，不能因此重新遮住页面。
-  bool _revealed = false;
 
   // Frame-skip cache.
   double _lastRoute = -1;
@@ -431,16 +545,18 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
     super.initState();
     _initAnimations();
     _cacheSettings();
-    _cacheMediaQuery();
-    // 懒加载开启时，入场转场先用占位遮罩；动画已完成（例如从后台恢复的
-    // 页面）则直接揭示。
-    _revealed =
-        !_AnimSettings.lazyLoad || _isEntranceAlreadyComplete;
     WidgetsBinding.instance.addObserver(this);
   }
 
-  bool get _isEntranceAlreadyComplete =>
-      widget.animation.status == AnimationStatus.completed;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _cacheMediaQuery();
+    _lastRoute = -1;
+    _lastBg = -1;
+    _lastGestureProgress = -1;
+    _cachedFrame = null;
+  }
 
   void _cacheSettings() {
     _bgScale = _AnimSettings.backgroundScale;
@@ -452,7 +568,6 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
 
   @override
   void didChangeMetrics() {
-    _cacheMediaQuery();
     _lastRoute = -1;
     _lastBg = -1;
     _lastGestureProgress = -1;
@@ -460,13 +575,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
   }
 
   void _cacheMediaQuery() {
-    final padding =
-        WidgetsBinding.instance.platformDispatcher.views.first.padding;
-    _cachedScreenRadius = padding.top > 30
-        ? 24.0
-        : padding.top > 20
-            ? 16.0
-            : 12.0;
+    _cachedScreenCornerRadii = _screenCornerRadiiForContext(context);
   }
 
   @override
@@ -523,21 +632,6 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
 
   @override
   Widget build(BuildContext context) {
-    // 懒加载：入场转场未完成前，先渲染占位遮罩层（类似原生启动页），
-    // 页面内容在遮罩下完成构建与首帧挂载，动画结束后整体揭示。
-    if (!_revealed) {
-      return AnimatedBuilder(
-        animation: widget.animation,
-        builder: (context, _) {
-          if (_isEntranceAlreadyComplete) {
-            _revealed = true;
-          }
-          return _revealed
-              ? _buildRevealedBody()
-              : _buildLazyPlaceholder(context);
-        },
-      );
-    }
     return _buildRevealedBody();
   }
 
@@ -605,11 +699,15 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
 
     // Skip expensive ClipRRect + blur during reverse (pop) animation.
     if (!isReverse) {
-      final clip = _cachedScreenRadius * progress;
-      if (_useScreenRadius && clip > 0.5) {
+      final clip = BorderRadius.lerp(
+        BorderRadius.zero,
+        _cachedScreenCornerRadii,
+        progress,
+      )!;
+      if (_useScreenRadius && _hasVisibleCornerRadius(clip)) {
         current = ClipRRect(
           clipBehavior: Clip.hardEdge,
-          borderRadius: BorderRadius.circular(clip),
+          borderRadius: clip,
           child: current,
         );
       }
@@ -660,11 +758,15 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
       } else {
         cornerFactor = (1.0 - eased).clamp(0.0, 1.0);
       }
-      final corner = _cachedScreenRadius * cornerFactor;
-      if (corner > 0.5) {
+      final corner = BorderRadius.lerp(
+        BorderRadius.zero,
+        _cachedScreenCornerRadii,
+        cornerFactor,
+      )!;
+      if (_hasVisibleCornerRadius(corner)) {
         current = ClipRRect(
           clipBehavior: Clip.hardEdge,
-          borderRadius: BorderRadius.circular(corner),
+          borderRadius: corner,
           child: current,
         );
       }
@@ -728,50 +830,26 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
       child: child,
     );
   }
-
-  /// 占位遮罩层：类似原生启动页，转场期间先绘制一层主题化底色与图标，
-  /// 避免在动画最重的阶段同步构建整个目标页面。
-  Widget _buildLazyPlaceholder(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return ColoredBox(
-      key: const ValueKey('page-lazy-placeholder'),
-      color: scheme.surface,
-      child: Center(
-        child: SizedBox(
-          width: 64,
-          height: 64,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: scheme.primary.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: scheme.primary.withValues(alpha: 0.16)),
-            ),
-            child: Icon(
-              Icons.blur_on_rounded,
-              size: 30,
-              color: scheme.primary.withValues(alpha: 0.45),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class ContainerTransformRoute<T> extends PageRouteBuilder<T> {
   final Widget page;
+  final IconData? placeholderIcon;
+  final WidgetBuilder? placeholderBuilder;
   final Rect sourceRect;
   final Rect? targetRect;
-  final BorderRadius targetBorderRadius;
+  final BorderRadius? targetBorderRadius;
   final Color sourceColor;
   final BorderRadius sourceBorderRadius;
 
   ContainerTransformRoute({
     required this.page,
+    this.placeholderIcon,
+    this.placeholderBuilder,
     required this.sourceRect,
     required this.sourceColor,
     this.targetRect,
-    this.targetBorderRadius = BorderRadius.zero,
+    this.targetBorderRadius,
     this.sourceBorderRadius = const BorderRadius.all(Radius.circular(16)),
   }) : super(
           pageBuilder: (context, animation, secondaryAnimation) => page,
@@ -801,6 +879,9 @@ class ContainerTransformRoute<T> extends PageRouteBuilder<T> {
       targetBorderRadius: targetBorderRadius,
       sourceColor: sourceColor,
       sourceBorderRadius: sourceBorderRadius,
+      placeholderIcon:
+          placeholderIcon ?? PageTransitions.placeholderIconFor(page),
+      placeholderBuilder: placeholderBuilder,
       child: child,
     );
     if (!_AnimSettings.usePredictiveBack) {
@@ -816,9 +897,11 @@ class ContainerTransformRoute<T> extends PageRouteBuilder<T> {
 class _ContainerTransformWidget extends StatefulWidget {
   final Animation<double> animation;
   final Animation<double> secondaryAnimation;
+  final IconData placeholderIcon;
+  final WidgetBuilder? placeholderBuilder;
   final Rect sourceRect;
   final Rect? targetRect;
-  final BorderRadius targetBorderRadius;
+  final BorderRadius? targetBorderRadius;
   final Color sourceColor;
   final BorderRadius sourceBorderRadius;
   final Widget child;
@@ -826,9 +909,11 @@ class _ContainerTransformWidget extends StatefulWidget {
   const _ContainerTransformWidget({
     required this.animation,
     required this.secondaryAnimation,
+    required this.placeholderIcon,
+    this.placeholderBuilder,
     required this.sourceRect,
     this.targetRect,
-    this.targetBorderRadius = BorderRadius.zero,
+    this.targetBorderRadius,
     required this.sourceColor,
     required this.sourceBorderRadius,
     required this.child,
@@ -841,6 +926,7 @@ class _ContainerTransformWidget extends StatefulWidget {
 
 class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
   bool _contentVisible = false;
+  BorderRadius _screenCornerRadii = BorderRadius.zero;
   late final CurvedAnimation _forwardCurve;
   late final CurvedAnimation _backgroundCurve;
 
@@ -865,6 +951,14 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
     } else {
       _contentVisible = true;
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _screenCornerRadii = _AnimSettings.screenRadius
+        ? _screenCornerRadiiForContext(context)
+        : BorderRadius.zero;
   }
 
   void _revealOnEntranceCompleted(AnimationStatus status) {
@@ -903,7 +997,10 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
         final height = ui.lerpDouble(begin.height, end.height, t)!;
 
         final beginR = widget.sourceBorderRadius;
-        final endR = widget.targetBorderRadius;
+        final endR = widget.targetBorderRadius ??
+            (widget.targetRect == null
+                ? _screenCornerRadii
+                : BorderRadius.zero);
         final borderRadius = BorderRadius.only(
           topLeft: Radius.lerp(beginR.topLeft, endR.topLeft, t)!,
           topRight: Radius.lerp(beginR.topRight, endR.topRight, t)!,
@@ -954,16 +1051,17 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
                 borderRadius: borderRadius,
                 child: ColoredBox(
                   color: widget.sourceColor,
-                  child: _contentVisible
-                      ? IgnorePointer(
+                  // 懒加载遮罩阶段：中央显示目标页面语义图标。
+                  child: !_contentVisible
+                      ? Center(child: _buildPlaceholder(context))
+                      : IgnorePointer(
                           ignoring: fadeIn < 1.0,
                           child: SizedBox(
                             width: screenSize.width,
                             height: screenSize.height,
                             child: content,
                           ),
-                        )
-                      : null,
+                        ),
                 ),
               ),
             ),
@@ -971,6 +1069,15 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
         );
       },
     );
+  }
+
+  Widget _buildPlaceholder(BuildContext context) {
+    return widget.placeholderBuilder?.call(context) ??
+        Icon(
+          widget.placeholderIcon,
+          size: 30,
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.45),
+        );
   }
 }
 
@@ -1036,6 +1143,11 @@ class _SlideWidget extends StatefulWidget {
 
 class _SlideWidgetState extends State<_SlideWidget> {
   @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
   Widget build(BuildContext context) {
     // 懒加载的占位与揭示由 _PageLayerTransition 统一处理。
     return _PageLayerTransition(
@@ -1085,6 +1197,127 @@ class _FadeRoute<T> extends PageRouteBuilder<T> {
     return _PredictiveBackGestureBridge<T>(
       route: this,
       child: transition,
+    );
+  }
+}
+
+/// 懒加载揭示门控：入场动画进行期间显示占位遮罩层（类似原生启动页的
+/// 图标遮罩），目标页面在遮罩下完成构建与首帧挂载；入场动画结束后
+/// 内容从中心缩放展开，遮罩同步淡出。
+///
+/// 揭示一旦发生不再回退——预测返回手势会让动画短暂回到 forward 状态，
+/// 不能因此重新遮住已可见的页面。兜底定时器保证遮罩最多持续一个
+/// 转场时长，绝不卡在遮罩上。
+class LazyPageReveal extends StatefulWidget {
+  const LazyPageReveal({
+    super.key,
+    required this.animation,
+    required this.child,
+    this.icon = Icons.blur_on_rounded,
+  });
+
+  final Animation<double> animation;
+  final Widget child;
+
+  /// 占位遮罩中央展示的语义图标（通常为目标页面的代表性图标）。
+  final IconData icon;
+
+  @override
+  State<LazyPageReveal> createState() => _LazyPageRevealState();
+}
+
+class _LazyPageRevealState extends State<LazyPageReveal> {
+  bool _revealed = false;
+  Timer? _fallbackTimer;
+
+  bool get _isEntranceComplete =>
+      widget.animation.value >= 1.0 - _epsilon ||
+      widget.animation.status == AnimationStatus.completed;
+
+  @override
+  void initState() {
+    super.initState();
+    // 挂载时入场动画已经结束（例如页面子树晚一帧才挂载、或从后台恢复），
+    // 直接显示内容；只有"转场确实在进行中"才需要占位遮罩。
+    if (!_AnimSettings.lazyLoad || _isEntranceComplete) {
+      _revealed = true;
+    } else {
+      // 入场动画自然完成时提前揭示。
+      widget.animation.addStatusListener(_revealOnCompleted);
+      // 兜底：无论如何，占位遮罩最多持续一个转场时长。
+      _fallbackTimer = Timer(
+        Duration(milliseconds: _AnimSettings.duration),
+        () {
+          if (mounted) _reveal();
+        },
+      );
+    }
+  }
+
+  void _revealOnCompleted(AnimationStatus status) {
+    if (status != AnimationStatus.completed) return;
+    _reveal();
+  }
+
+  void _reveal() {
+    _fallbackTimer?.cancel();
+    _fallbackTimer = null;
+    widget.animation.removeStatusListener(_revealOnCompleted);
+    if (mounted && !_revealed) setState(() => _revealed = true);
+  }
+
+  @override
+  void didUpdateWidget(covariant LazyPageReveal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.animation != oldWidget.animation && !_revealed) {
+      oldWidget.animation.removeStatusListener(_revealOnCompleted);
+      widget.animation.addStatusListener(_revealOnCompleted);
+    }
+  }
+
+  @override
+  void dispose() {
+    _fallbackTimer?.cancel();
+    widget.animation.removeStatusListener(_revealOnCompleted);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_revealed) return widget.child;
+    // 动画已推进到结尾但状态回调尚未触发时，直接揭示，避免卡在遮罩上。
+    // 揭示本身推迟到帧末执行，避免在构建期调用 setState。
+    if (_isEntranceComplete) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _reveal());
+      return widget.child;
+    }
+    return _buildPlaceholder(context);
+  }
+
+  /// 占位遮罩层：主题化底色 + 居中语义图标，呼应全局液态玻璃品牌。
+  Widget _buildPlaceholder(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ColoredBox(
+      key: const ValueKey('page-lazy-placeholder'),
+      color: scheme.surface,
+      child: Center(
+        child: SizedBox(
+          width: 64,
+          height: 64,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: scheme.primary.withValues(alpha: 0.16)),
+            ),
+            child: Icon(
+              widget.icon,
+              size: 30,
+              color: scheme.primary.withValues(alpha: 0.45),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

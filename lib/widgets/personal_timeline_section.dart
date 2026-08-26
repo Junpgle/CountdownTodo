@@ -68,6 +68,7 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       sourceColor: widget.isLight
           ? Colors.white.withValues(alpha: 0.15)
           : Theme.of(context).colorScheme.surface,
+      placeholderIcon: Icons.timeline_rounded,
       sourceBorderRadius: BorderRadius.circular(24),
     ).then((_) => _loadData());
   }

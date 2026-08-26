@@ -337,6 +337,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                       todayStats:
                                                           _screenTimeStats),
                                                   sourceKey: _screenTimeCardKey,
+                                                  placeholderIcon:
+                                                      Icons.timer_outlined,
                                                 );
                                               },
                                             ),
@@ -370,6 +372,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                           username:
                                                               widget.username),
                                                       sourceKey: _mathCardKey,
+                                                      placeholderIcon:
+                                                          Icons.functions,
                                                     );
                                                     _loadAllData(
                                                       deferred: true,
@@ -417,6 +421,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                     initialTab: 1,
                                                   ),
                                                   sourceKey: _pomodoroCardKey,
+                                                  placeholderIcon:
+                                                      Icons.bar_chart_rounded,
                                                 );
                                                 _pomodoroRevision.value++;
                                               },
@@ -500,6 +506,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                       username: widget.username,
                                                     ),
                                                     sourceKey: _habitsCardKey,
+                                                    placeholderIcon:
+                                                        Icons.repeat_rounded,
                                                     sourceBorderRadius:
                                                         BorderRadius.circular(
                                                             24),
@@ -847,6 +855,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                       context: context,
                       page: PomodoroScreen(username: widget.username),
                       sourceKey: _fabPomodoroKey,
+                      placeholderBuilder: (_) => const Text(
+                        '🍅',
+                        style: TextStyle(fontSize: 30),
+                      ),
                       sourceBorderRadius:
                           const BorderRadius.all(Radius.circular(16)),
                     );
@@ -1038,7 +1050,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             await PageTransitions.pushFromRect(
               context: context,
               page: PersonalTimelineScreen(username: widget.username),
-              sourceKey: GlobalKey(),
+              sourceKey: _timelineCardKey,
+              placeholderIcon: Icons.timeline_rounded,
             );
           });
         },
@@ -1058,7 +1071,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             await PageTransitions.pushFromRect(
               context: context,
               page: TimeLogScreen(username: widget.username),
-              sourceKey: GlobalKey(),
+              sourceKey: _screenTimeCardKey,
+              placeholderIcon: Icons.timer_outlined,
             );
           });
         },
@@ -1088,6 +1102,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
               context: context,
               page: HabitCenterScreen(username: widget.username),
               sourceKey: _habitsCardKey,
+              placeholderIcon: Icons.repeat_rounded,
             );
             _habitsRevision.value++;
           });
