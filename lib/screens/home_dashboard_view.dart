@@ -855,10 +855,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                       context: context,
                       page: PomodoroScreen(username: widget.username),
                       sourceKey: _fabPomodoroKey,
-                      placeholderBuilder: (_) => const Text(
-                        '🍅',
-                        style: TextStyle(fontSize: 30),
-                      ),
+                      placeholderIcon: Icons.timer_outlined,
                       sourceBorderRadius:
                           const BorderRadius.all(Radius.circular(16)),
                     );
