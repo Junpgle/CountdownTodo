@@ -54,6 +54,7 @@ class HomeBottomNavigationContent extends StatefulWidget {
     required this.calendarButtonKey,
     required this.onTabSelected,
     required this.onCalendarPressed,
+    this.onDragStretchChanged,
   }) : assert(
           selectedIndex == 0 || selectedIndex == 2,
           'The home bottom bar only supports the home and focus tabs.',
@@ -66,6 +67,7 @@ class HomeBottomNavigationContent extends StatefulWidget {
   final Key calendarButtonKey;
   final ValueChanged<int> onTabSelected;
   final VoidCallback onCalendarPressed;
+  final ValueChanged<double>? onDragStretchChanged;
 
   @override
   State<HomeBottomNavigationContent> createState() =>
@@ -77,10 +79,11 @@ class _HomeBottomNavigationContentState
   static const int _slotCount = 3;
   static const Duration _snapDuration = Duration(milliseconds: 220);
   static const Duration _interactionDuration = Duration(milliseconds: 150);
+  static const Duration _stretchDuration = Duration(milliseconds: 240);
   static const EdgeInsets _indicatorPadding = EdgeInsets.all(4);
   static const EdgeInsets _indicatorExpansion = EdgeInsets.symmetric(
-    horizontal: 30,
-    vertical: 11,
+    horizontal: 6,
+    vertical: 6,
   );
   // Keep the resting lens compact horizontally, while a restrained vertical
   // scale lets its rim cross the bar by only a pixel or two. The content stays
@@ -104,6 +107,7 @@ class _HomeBottomNavigationContentState
 
   late final SingleSpringController _positionSpring;
   late final SingleSpringController _interactionSpring;
+  late final SingleSpringController _stretchSpring;
   bool _draggingSelection = false;
   double _directDragVelocity = 0;
   double? _lastDragAlignment;
@@ -137,11 +141,23 @@ class _HomeBottomNavigationContentState
       lowerBound: 0,
       upperBound: 1,
     )..addListener(_handleSpringTick);
+    _stretchSpring = SingleSpringController(
+      vsync: this,
+      spring: GlassSpring.interactive(
+        duration: _stretchDuration,
+        extraBounce: 0.08,
+      ),
+      lowerBound: 0,
+      upperBound: 1.2,
+    )..addListener(_handleStretchTick);
   }
 
   @override
   void didUpdateWidget(covariant HomeBottomNavigationContent oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.onDragStretchChanged != widget.onDragStretchChanged) {
+      widget.onDragStretchChanged?.call(_stretchSpring.value);
+    }
     if (oldWidget.selectedIndex != widget.selectedIndex) {
       if (_awaitingWidgetIndex == widget.selectedIndex) {
         _awaitingWidgetIndex = null;
@@ -159,7 +175,15 @@ class _HomeBottomNavigationContentState
     _interactionSpring
       ..removeListener(_handleSpringTick)
       ..dispose();
+    _stretchSpring
+      ..removeListener(_handleStretchTick)
+      ..dispose();
     super.dispose();
+  }
+
+  void _handleStretchTick() {
+    if (!mounted) return;
+    widget.onDragStretchChanged?.call(_stretchSpring.value);
   }
 
   void _handleSpringTick() {
@@ -274,6 +298,7 @@ class _HomeBottomNavigationContentState
     _draggingSelection = true;
     _directDragVelocity = 0;
     _interactionSpring.animateTo(1);
+    _stretchSpring.animateTo(1);
 
     final alignment = _alignmentForLocalX(details.localPosition.dx, width);
     _lastDragAlignment = alignment;
@@ -310,6 +335,7 @@ class _HomeBottomNavigationContentState
 
   void _finishSelectionDrag(DragEndDetails details, double width) {
     if (!_draggingSelection) return;
+    _stretchSpring.animateTo(0);
 
     final travelWidth = width * (1 - 1 / _slotCount);
     final releaseVelocity = travelWidth <= 0
@@ -330,6 +356,7 @@ class _HomeBottomNavigationContentState
 
   void _cancelSelectionDrag() {
     if (!_draggingSelection) return;
+    _stretchSpring.animateTo(0);
     _animateToTab(widget.selectedIndex, notifyOnSettle: false);
   }
 

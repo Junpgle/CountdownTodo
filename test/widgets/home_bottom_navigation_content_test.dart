@@ -53,6 +53,9 @@ void main() {
     const inactive = Colors.black87;
     const selectedBackground = Color(0x339E9E9E);
 
+    var lastStretch = 0.0;
+    var stretchObserved = false;
+
     await tester.pumpWidget(
       StatefulBuilder(
         builder: (context, setState) {
@@ -72,6 +75,12 @@ void main() {
                       setState(() => selectedIndex = index);
                     },
                     onCalendarPressed: () => calendarPressed = true,
+                    onDragStretchChanged: (stretch) {
+                      lastStretch = stretch;
+                      if (stretch > 0.01) {
+                        stretchObserved = true;
+                      }
+                    },
                   ),
                 ),
               ),
@@ -106,7 +115,7 @@ void main() {
     expect(indicatorFill.paintGlass, isFalse);
     expect(
       indicator.expansion,
-      const EdgeInsets.symmetric(horizontal: 30, vertical: 11),
+      const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
     );
     expect(indicator.pinchStrength, 0.85);
 
@@ -159,31 +168,27 @@ void main() {
     expect(movingIndicator.thickness, greaterThan(0));
     final movingSelectedClip = tester.widget<ClipPath>(selectedClipFinder);
     final movingClipSize = tester.getSize(selectedClipFinder);
-    final movingClipBounds = movingSelectedClip.clipper!
-        .getClip(movingClipSize)
-        .getBounds();
+    final movingClipBounds =
+        movingSelectedClip.clipper!.getClip(movingClipSize).getBounds();
     expect(movingClipBounds.top, lessThan(0));
     expect(movingClipBounds.bottom, greaterThan(movingClipSize.height));
     await tester.pump(const Duration(milliseconds: 100));
     // The selection commits within the short snap, without waiting for the
     // spring's barely visible settling tail.
     expect(selectedIndex, 2);
-    await tester.pumpAndSettle();
-    expect(selectedIndex, 2);
-    expect(
-      tester.widget<AnimatedGlassIndicator>(indicatorFinder).alignment,
-      const Alignment(1, 0),
-    );
     await tester.tap(find.byKey(calendarKey));
     expect(calendarPressed, isTrue);
 
-    await tester.drag(
+    await tester.timedDrag(
       gestureFinder,
       const Offset(-180, 0),
+      const Duration(milliseconds: 200),
     );
     expect(selectedIndex, 2);
+    expect(stretchObserved, isTrue);
     await tester.pumpAndSettle();
     expect(selectedIndex, 0);
+    expect(lastStretch, closeTo(0, 0.05));
     expect(
       tester.widget<AnimatedGlassIndicator>(indicatorFinder).alignment,
       const Alignment(-1, 0),

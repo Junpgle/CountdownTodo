@@ -1267,12 +1267,33 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       primaryColor: primaryColor,
       isDark: isDarkMode,
     );
-    final navContent = HomeBottomNavigationContent(
+
+    final double height =
+        60.0 + (bottomPadding > 0 ? bottomPadding * 0.5 : 6.0);
+    final horizontalMargin =
+        homeBottomBarHorizontalMarginFor(MediaQuery.sizeOf(context).width);
+    final margin = EdgeInsets.fromLTRB(
+      horizontalMargin,
+      0,
+      horizontalMargin,
+      24,
+    );
+
+    final glassTint = Color.alphaBlend(
+      primaryColor.withValues(alpha: 0.08),
+      colorScheme.surface,
+    ).withValues(alpha: isDarkMode ? 0.24 : 0.32);
+
+    return _HomeDashboardBottomBar(
       selectedIndex: _selectedTabIndex,
       primaryColor: primaryColor,
       inactiveColor: inactiveColor,
       selectedBackgroundColor: selectedBackgroundColor,
       calendarButtonKey: _courseCenterKey,
+      height: height,
+      margin: margin,
+      isDarkMode: isDarkMode,
+      glassTint: glassTint,
       onTabSelected: (index) {
         setState(() => _selectedTabIndex = index);
         if (index == 2) {
@@ -1288,79 +1309,6 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
           sourceKey: _courseCenterKey,
         );
       },
-    );
-
-    final double height =
-        60.0 + (bottomPadding > 0 ? bottomPadding * 0.5 : 6.0);
-    final horizontalMargin =
-        homeBottomBarHorizontalMarginFor(MediaQuery.sizeOf(context).width);
-    final margin = EdgeInsets.fromLTRB(
-      horizontalMargin,
-      0,
-      horizontalMargin,
-      24,
-    );
-    final fallback = Container(
-      height: height,
-      margin: margin,
-      decoration: BoxDecoration(
-        color: isDarkMode
-            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.78)
-            : colorScheme.surface.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(34),
-        border: Border.all(
-          color: colorScheme.outlineVariant
-              .withValues(alpha: isDarkMode ? 0.42 : 0.54),
-          width: 0.8,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: primaryColor.withValues(alpha: isDarkMode ? 0.12 : 0.2),
-            blurRadius: 26,
-            spreadRadius: 1,
-            offset: const Offset(0, 4),
-          ),
-          BoxShadow(
-            color: colorScheme.shadow.withValues(alpha: 0.12),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        clipBehavior: Clip.none,
-        children: [
-          // BackdropFilter 会让整块壁纸进入离屏模糊，在 Android 上很容易造成
-          // Raster Jank。Android 保留半透明底色，其他平台继续使用毛玻璃效果。
-          if (!AppPlatform.isAndroid)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(34),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                child: const SizedBox.expand(),
-              ),
-            ),
-          navContent,
-        ],
-      ),
-    );
-
-    final glassTint = Color.alphaBlend(
-      primaryColor.withValues(alpha: 0.08),
-      colorScheme.surface,
-    ).withValues(alpha: isDarkMode ? 0.24 : 0.32);
-
-    return OptionalLiquidGlassSurface(
-      height: height,
-      margin: margin,
-      borderRadius: 34,
-      tint: glassTint,
-      haloColor: primaryColor,
-      isDark: isDarkMode,
-      allowChildOverflow: true,
-      fallback: fallback,
-      child: navContent,
     );
   }
 
@@ -1470,6 +1418,137 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         color: color,
         borderRadius: BorderRadius.circular(16),
       ),
+    );
+  }
+}
+
+class _HomeDashboardBottomBar extends StatefulWidget {
+  const _HomeDashboardBottomBar({
+    required this.selectedIndex,
+    required this.primaryColor,
+    required this.inactiveColor,
+    required this.selectedBackgroundColor,
+    required this.calendarButtonKey,
+    required this.onTabSelected,
+    required this.onCalendarPressed,
+    required this.height,
+    required this.margin,
+    required this.isDarkMode,
+    required this.glassTint,
+  });
+
+  final int selectedIndex;
+  final Color primaryColor;
+  final Color inactiveColor;
+  final Color selectedBackgroundColor;
+  final Key calendarButtonKey;
+  final ValueChanged<int> onTabSelected;
+  final VoidCallback onCalendarPressed;
+  final double height;
+  final EdgeInsets margin;
+  final bool isDarkMode;
+  final Color glassTint;
+
+  @override
+  State<_HomeDashboardBottomBar> createState() =>
+      _HomeDashboardBottomBarState();
+}
+
+class _HomeDashboardBottomBarState extends State<_HomeDashboardBottomBar> {
+  final ValueNotifier<double> _stretchNotifier = ValueNotifier<double>(0.0);
+
+  @override
+  void dispose() {
+    _stretchNotifier.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final navContent = HomeBottomNavigationContent(
+      selectedIndex: widget.selectedIndex,
+      primaryColor: widget.primaryColor,
+      inactiveColor: widget.inactiveColor,
+      selectedBackgroundColor: widget.selectedBackgroundColor,
+      calendarButtonKey: widget.calendarButtonKey,
+      onTabSelected: widget.onTabSelected,
+      onCalendarPressed: widget.onCalendarPressed,
+      onDragStretchChanged: (stretch) {
+        _stretchNotifier.value = stretch;
+      },
+    );
+
+    final fallback = Container(
+      height: widget.height,
+      margin: widget.margin,
+      decoration: BoxDecoration(
+        color: widget.isDarkMode
+            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.78)
+            : colorScheme.surface.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(34),
+        border: Border.all(
+          color: colorScheme.outlineVariant
+              .withValues(alpha: widget.isDarkMode ? 0.42 : 0.54),
+          width: 0.8,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: widget.primaryColor
+                .withValues(alpha: widget.isDarkMode ? 0.12 : 0.2),
+            blurRadius: 26,
+            spreadRadius: 1,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: colorScheme.shadow.withValues(alpha: 0.12),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        clipBehavior: Clip.none,
+        children: [
+          // BackdropFilter 会让整块壁纸进入离屏模糊，在 Android 上很容易造成
+          // Raster Jank。Android 保留半透明底色，其他平台继续使用毛玻璃效果。
+          if (!AppPlatform.isAndroid)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(34),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                child: const SizedBox.expand(),
+              ),
+            ),
+          navContent,
+        ],
+      ),
+    );
+
+    final surface = OptionalLiquidGlassSurface(
+      height: widget.height,
+      margin: widget.margin,
+      borderRadius: 34,
+      tint: widget.glassTint,
+      haloColor: widget.primaryColor,
+      isDark: widget.isDarkMode,
+      allowChildOverflow: true,
+      fallback: fallback,
+      child: navContent,
+    );
+
+    return ValueListenableBuilder<double>(
+      valueListenable: _stretchNotifier,
+      builder: (context, stretch, child) {
+        final scaleX = 1.0 + stretch * 0.045;
+        return Transform(
+          alignment: Alignment.bottomCenter,
+          transform: Matrix4.diagonal3Values(scaleX, 1.0, 1.0),
+          child: child,
+        );
+      },
+      child: surface,
     );
   }
 }
