@@ -19,6 +19,7 @@ import '../services/timeline_ml_service.dart';
 import '../services/timeline_statistics_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import 'medal_wall_page.dart';
 
@@ -1312,8 +1313,37 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final colorScheme = theme.colorScheme;
 
     final isWide = MediaQuery.of(context).size.width > 900;
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
 
     return Scaffold(
+      extendBody: useFloatingBottomBar,
+      bottomNavigationBar: useFloatingBottomBar
+          ? FloatingBottomNavigationBar(
+              items: const [
+                FloatingBottomNavigationItem(
+                  icon: Icons.today_outlined,
+                  label: '日',
+                ),
+                FloatingBottomNavigationItem(
+                  icon: Icons.date_range_outlined,
+                  label: '周',
+                ),
+                FloatingBottomNavigationItem(
+                  icon: Icons.calendar_month_outlined,
+                  label: '月',
+                ),
+                FloatingBottomNavigationItem(
+                  icon: Icons.event_note_outlined,
+                  label: '年',
+                ),
+              ],
+              selectedIndex: _dimension.index,
+              onTabSelected: (index) {
+                setState(() => _dimension = TimelineDimension.values[index]);
+                _loadData();
+              },
+            )
+          : null,
       body: Stack(
         children: [
           _buildBackground(colorScheme),
@@ -1568,10 +1598,13 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
   Widget _buildAppBar(BuildContext context, ColorScheme cs) {
     final isCompact = MediaQuery.of(context).size.width < 600;
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
     final extraHeight = _dimension != TimelineDimension.daily ? 36.0 : 0.0;
+    final dimensionToggleHeight = useFloatingBottomBar ? 0.0 : 52.0;
 
     return SliverAppBar(
-      expandedHeight: (isCompact ? 280.0 : 240.0) + extraHeight,
+      expandedHeight:
+          (isCompact ? 280.0 : 240.0) + extraHeight - dimensionToggleHeight,
       backgroundColor: Colors.transparent,
       elevation: 0,
       leading: IconButton(
@@ -1623,6 +1656,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   }
 
   Widget _buildGreeting(ColorScheme cs) {
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
     String label;
     String sub;
     switch (_dimension) {
@@ -1694,7 +1728,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                   ),
                 ],
                 const SizedBox(height: 10),
-                _buildDimensionToggle(cs),
+                if (!useFloatingBottomBar) _buildDimensionToggle(cs),
                 const SizedBox(height: 8),
                 Flexible(
                   child: Text(
@@ -1758,11 +1792,13 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     _loadData();
   }
 
-  Widget _buildDimensionToggle(ColorScheme cs) {
+  Widget _buildDimensionToggle(ColorScheme cs, {bool floating = false}) {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.3),
+        color: floating
+            ? cs.surface.withValues(alpha: 0)
+            : cs.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -1774,12 +1810,18 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                 setState(() => _dimension = d);
                 _loadData();
               },
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
-                  color: isSelected ? cs.surface : Colors.transparent,
+                  color: isSelected
+                      ? (floating
+                          ? cs.surfaceContainerHighest.withValues(alpha: 0.72)
+                          : cs.surface)
+                      : cs.surface.withValues(alpha: 0),
                   borderRadius: BorderRadius.circular(12),
-                  boxShadow: isSelected
+                  boxShadow: isSelected && !floating
                       ? [
                           BoxShadow(
                               color: Colors.black.withValues(alpha: 0.05),
