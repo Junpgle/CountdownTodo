@@ -1422,7 +1422,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
   }
 }
 
-class _HomeDashboardBottomBar extends StatefulWidget {
+class _HomeDashboardBottomBar extends StatelessWidget {
   const _HomeDashboardBottomBar({
     required this.selectedIndex,
     required this.primaryColor,
@@ -1450,105 +1450,43 @@ class _HomeDashboardBottomBar extends StatefulWidget {
   final Color glassTint;
 
   @override
-  State<_HomeDashboardBottomBar> createState() =>
-      _HomeDashboardBottomBarState();
-}
-
-class _HomeDashboardBottomBarState extends State<_HomeDashboardBottomBar> {
-  final ValueNotifier<double> _stretchNotifier = ValueNotifier<double>(0.0);
-
-  @override
-  void dispose() {
-    _stretchNotifier.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final navContent = HomeBottomNavigationContent(
-      selectedIndex: widget.selectedIndex,
-      primaryColor: widget.primaryColor,
-      inactiveColor: widget.inactiveColor,
-      selectedBackgroundColor: widget.selectedBackgroundColor,
-      calendarButtonKey: widget.calendarButtonKey,
-      onTabSelected: widget.onTabSelected,
-      onCalendarPressed: widget.onCalendarPressed,
-      onDragStretchChanged: (stretch) {
-        _stretchNotifier.value = stretch;
-      },
-    );
-
-    final fallback = Container(
-      height: widget.height,
-      margin: widget.margin,
-      decoration: BoxDecoration(
-        color: widget.isDarkMode
-            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.78)
-            : colorScheme.surface.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(34),
-        border: Border.all(
-          color: colorScheme.outlineVariant
-              .withValues(alpha: widget.isDarkMode ? 0.42 : 0.54),
-          width: 0.8,
+    return FloatingBottomNavigationBar(
+      items: [
+        const FloatingBottomNavigationItem(
+          icon: Icons.dashboard_rounded,
+          label: '首页',
         ),
-        boxShadow: [
-          BoxShadow(
-            color: widget.primaryColor
-                .withValues(alpha: widget.isDarkMode ? 0.12 : 0.2),
-            blurRadius: 26,
-            spreadRadius: 1,
-            offset: const Offset(0, 4),
-          ),
-          BoxShadow(
-            color: colorScheme.shadow.withValues(alpha: 0.12),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        clipBehavior: Clip.none,
-        children: [
-          // BackdropFilter 会让整块壁纸进入离屏模糊，在 Android 上很容易造成
-          // Raster Jank。Android 保留半透明底色，其他平台继续使用毛玻璃效果。
-          if (!AppPlatform.isAndroid)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(34),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                child: const SizedBox.expand(),
-              ),
+        FloatingBottomNavigationItem(
+          label: '日历',
+          selectable: false,
+          onPressed: onCalendarPressed,
+          builder: (context, selectedLayer, interactive) => Center(
+            child: HomeBottomCalendarButton(
+              buttonKey: selectedLayer ? null : calendarButtonKey,
+              primaryColor: primaryColor,
+              interactive: interactive,
+              onPressed: onCalendarPressed,
             ),
-          navContent,
-        ],
-      ),
-    );
-
-    final surface = OptionalLiquidGlassSurface(
-      height: widget.height,
-      margin: widget.margin,
-      borderRadius: 34,
-      tint: widget.glassTint,
-      haloColor: widget.primaryColor,
-      isDark: widget.isDarkMode,
-      allowChildOverflow: true,
-      fallback: fallback,
-      child: navContent,
-    );
-
-    return ValueListenableBuilder<double>(
-      valueListenable: _stretchNotifier,
-      builder: (context, stretch, child) {
-        final scaleX = 1.0 + stretch * 0.045;
-        return Transform(
-          alignment: Alignment.bottomCenter,
-          transform: Matrix4.diagonal3Values(scaleX, 1.0, 1.0),
-          child: child,
-        );
-      },
-      child: surface,
+          ),
+        ),
+        const FloatingBottomNavigationItem(
+          icon: Icons.adjust_rounded,
+          label: '专注',
+        ),
+      ],
+      selectedIndex: selectedIndex,
+      primaryColor: primaryColor,
+      inactiveColor: inactiveColor,
+      selectedBackgroundColor: selectedBackgroundColor,
+      onTabSelected: onTabSelected,
+      height: height,
+      margin: margin,
+      tint: glassTint,
+      haloColor: primaryColor,
+      isDark: isDarkMode,
+      mobilePortraitOnly: false,
+      keyPrefix: 'home-bottom',
     );
   }
 }

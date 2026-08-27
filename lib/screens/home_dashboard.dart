@@ -97,6 +97,7 @@ import '../widgets/home_quick_action_button.dart';
 import '../widgets/app_status_toast.dart';
 import '../services/feature_tip_service.dart';
 import '../services/home_layout_service.dart';
+import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
 part 'home_dashboard_ai.dart';
