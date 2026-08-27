@@ -19,6 +19,7 @@ import '../services/feature_tip_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../widgets/coach_mark_overlay.dart';
+import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import '../utils/persistent_image_storage.dart';
 import '../utils/page_transitions.dart';
@@ -1147,13 +1148,16 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     required List<String> labels,
     required int selectedIndex,
     required ValueChanged<int> onChanged,
+    bool floating = false,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
       height: 36,
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: colorScheme.onSurface.withValues(alpha: 0.08),
+        color: floating
+            ? colorScheme.surface.withValues(alpha: 0)
+            : colorScheme.onSurface.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -1169,9 +1173,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 curve: Curves.easeOut,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: isSelected ? colorScheme.surface : Colors.transparent,
+                  color: isSelected
+                      ? (floating
+                          ? colorScheme.surfaceContainerHighest
+                              .withValues(alpha: 0.72)
+                          : colorScheme.surface)
+                      : colorScheme.surface.withValues(alpha: 0),
                   borderRadius: BorderRadius.circular(6),
-                  boxShadow: isSelected
+                  boxShadow: isSelected && !floating
                       ? [
                           BoxShadow(
                               color: Colors.black.withValues(alpha: 0.05),
@@ -1586,8 +1595,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final bgColor = theme.brightness == Brightness.light
         ? const Color(0xFFF2F2F7)
         : theme.colorScheme.surface;
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
 
     return Scaffold(
+      extendBody: useFloatingBottomBar,
       backgroundColor: bgColor,
       appBar: AppBar(
         backgroundColor: bgColor,
@@ -1617,6 +1628,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           const SizedBox(width: 8),
         ],
       ),
+      bottomNavigationBar: useFloatingBottomBar && _selectedTabIndex == 0
+          ? _buildManualKindBottomBar()
+          : null,
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
         child: _selectedTabIndex == 0
@@ -1768,6 +1782,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   Widget _buildManualInputTab({Key? key}) {
     final colors = Theme.of(context).colorScheme;
     return LayoutBuilder(builder: (context, constraints) {
+      final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
       return SingleChildScrollView(
         key: key,
         physics: const AlwaysScrollableScrollPhysics(),
@@ -1776,18 +1791,20 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Type Switcher
-            Center(
-              child: SizedBox(
-                width: 200,
-                child: _buildCustomSegmentedControl(
-                  labels: const ["待办", "日程"],
-                  selectedIndex:
-                      _manualCaptureKind == _ManualCaptureKind.todo ? 0 : 1,
-                  onChanged: _selectManualCaptureKind,
+            if (!useFloatingBottomBar) ...[
+              Center(
+                child: SizedBox(
+                  width: 200,
+                  child: _buildCustomSegmentedControl(
+                    labels: const ["待办", "日程"],
+                    selectedIndex:
+                        _manualCaptureKind == _ManualCaptureKind.todo ? 0 : 1,
+                    onChanged: _selectManualCaptureKind,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
+            ],
             // Input Section
             OptionalLiquidGlassCard(
               borderRadius: 16,
@@ -2280,6 +2297,23 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         ),
       );
     });
+  }
+
+  Widget _buildManualKindBottomBar() {
+    return FloatingBottomNavigationBar(
+      items: const [
+        FloatingBottomNavigationItem(
+          icon: Icons.check_circle_outline_rounded,
+          label: '待办',
+        ),
+        FloatingBottomNavigationItem(
+          icon: Icons.event_note_outlined,
+          label: '日程',
+        ),
+      ],
+      selectedIndex: _manualCaptureKind == _ManualCaptureKind.todo ? 0 : 1,
+      onTabSelected: _selectManualCaptureKind,
+    );
   }
 
   // ================= 待确认图片识别事项卡片 =================
