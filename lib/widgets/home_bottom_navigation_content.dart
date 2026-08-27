@@ -41,42 +41,81 @@ Color homeBottomBarSelectedBackgroundColor({
   ).withValues(alpha: isDark ? 0.5 : 0.72);
 }
 
-/// The three-entry content used inside the home screen's floating navigation
-/// capsule. The outer material (Liquid Glass or the platform fallback) is
-/// provided by the home screen so this widget only owns layout and selection.
-class HomeBottomNavigationContent extends StatefulWidget {
-  const HomeBottomNavigationContent({
+/// Builds one destination in [FloatingBottomNavigationContent].
+///
+/// A destination can either use the built-in icon/label presentation or supply
+/// [builder] for a custom action (the home screen's centre calendar button is
+/// one example). Custom actions may set [selectable] to false so they do not
+/// move the selection lens.
+class FloatingBottomNavigationItem {
+  const FloatingBottomNavigationItem({
+    required this.label,
+    this.icon,
+    this.builder,
+    this.selectable = true,
+    this.onPressed,
+    this.semanticsLabel,
+    this.key,
+  })  : assert(
+          builder != null || icon != null,
+          'Provide either an icon or a custom builder.',
+        ),
+        assert(
+          selectable || onPressed != null || builder != null,
+          'A non-selectable item needs an action or a custom builder.',
+        );
+
+  final String label;
+  final IconData? icon;
+  final Widget Function(
+      BuildContext context, bool selectedLayer, bool interactive)? builder;
+  final bool selectable;
+  final VoidCallback? onPressed;
+  final String? semanticsLabel;
+  final Key? key;
+}
+
+/// The animated, liquid-glass navigation content shared by phone bottom bars.
+///
+/// This is the part that owns the homepage interaction: the selection lens,
+/// spring-based snapping, drag velocity, jelly stretch and the duplicated
+/// clipped content layers. [FloatingBottomNavigationBar] supplies the outer
+/// capsule while this widget remains useful in isolation for tests and custom
+/// layouts.
+class FloatingBottomNavigationContent extends StatefulWidget {
+  const FloatingBottomNavigationContent({
     super.key,
+    required this.items,
     required this.selectedIndex,
     required this.primaryColor,
     required this.inactiveColor,
     required this.selectedBackgroundColor,
-    required this.calendarButtonKey,
     required this.onTabSelected,
-    required this.onCalendarPressed,
     this.onDragStretchChanged,
-  }) : assert(
-          selectedIndex == 0 || selectedIndex == 2,
-          'The home bottom bar only supports the home and focus tabs.',
+    this.keyPrefix = 'floating-bottom',
+  })  : assert(items.length > 0, 'At least one bottom-bar item is required.'),
+        assert(
+          selectedIndex >= 0 && selectedIndex < items.length,
+          'selectedIndex must point to an item.',
         );
 
+  final List<FloatingBottomNavigationItem> items;
   final int selectedIndex;
   final Color primaryColor;
   final Color inactiveColor;
   final Color selectedBackgroundColor;
-  final Key calendarButtonKey;
   final ValueChanged<int> onTabSelected;
-  final VoidCallback onCalendarPressed;
   final ValueChanged<double>? onDragStretchChanged;
+  final String keyPrefix;
 
   @override
-  State<HomeBottomNavigationContent> createState() =>
-      _HomeBottomNavigationContentState();
+  State<FloatingBottomNavigationContent> createState() =>
+      _FloatingBottomNavigationContentState();
 }
 
-class _HomeBottomNavigationContentState
-    extends State<HomeBottomNavigationContent> with TickerProviderStateMixin {
-  static const int _slotCount = 3;
+class _FloatingBottomNavigationContentState
+    extends State<FloatingBottomNavigationContent>
+    with TickerProviderStateMixin {
   static const Duration _snapDuration = Duration(milliseconds: 220);
   static const Duration _interactionDuration = Duration(milliseconds: 150);
   static const Duration _stretchDuration = Duration(milliseconds: 240);
@@ -117,7 +156,14 @@ class _HomeBottomNavigationContentState
   bool _notifyTargetWhenReady = false;
   int _motionEpoch = 0;
 
-  double _alignmentForIndex(int index) => index == 2 ? 1 : -1;
+  String _keyName(String suffix) => '${widget.keyPrefix}-$suffix';
+
+  int get _slotCount => widget.items.length;
+
+  double _alignmentForIndex(int index) {
+    if (_slotCount <= 1) return 0;
+    return -1 + (index * 2 / (_slotCount - 1));
+  }
 
   @override
   void initState() {
@@ -153,7 +199,7 @@ class _HomeBottomNavigationContentState
   }
 
   @override
-  void didUpdateWidget(covariant HomeBottomNavigationContent oldWidget) {
+  void didUpdateWidget(covariant FloatingBottomNavigationContent oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.onDragStretchChanged != widget.onDragStretchChanged) {
       widget.onDragStretchChanged?.call(_stretchSpring.value);
@@ -224,6 +270,9 @@ class _HomeBottomNavigationContentState
   }
 
   void _handleTabTap(int index) {
+    if (index < 0 || index >= _slotCount || !widget.items[index].selectable) {
+      return;
+    }
     if (index == widget.selectedIndex && _motionTargetIndex == null) {
       final epoch = ++_motionEpoch;
       _interactionSpring.animateTo(1);
@@ -245,11 +294,12 @@ class _HomeBottomNavigationContentState
     final slot = (details.localPosition.dx / (width / _slotCount))
         .floor()
         .clamp(0, _slotCount - 1);
-    if (slot == 1) {
-      widget.onCalendarPressed();
+    final item = widget.items[slot];
+    if (!item.selectable) {
+      item.onPressed?.call();
       return;
     }
-    _handleTabTap(slot == 0 ? 0 : 2);
+    _handleTabTap(slot);
   }
 
   void _animateToTab(
@@ -345,13 +395,28 @@ class _HomeBottomNavigationContentState
             .toDouble();
     final projectedAlignment =
         (_positionSpring.value + releaseVelocity * 0.065).clamp(-1.0, 1.0);
-    final targetIndex = projectedAlignment >= 0 ? 2 : 0;
+    final targetIndex = _nearestSelectableIndex(projectedAlignment);
 
     _animateToTab(
       targetIndex,
       notifyOnSettle: targetIndex != widget.selectedIndex,
       initialVelocity: releaseVelocity,
     );
+  }
+
+  int _nearestSelectableIndex(double alignment) {
+    var nearestIndex = widget.selectedIndex;
+    var nearestDistance = double.infinity;
+    for (var index = 0; index < _slotCount; index++) {
+      final item = widget.items[index];
+      if (!item.selectable) continue;
+      final distance = (_alignmentForIndex(index) - alignment).abs();
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = index;
+      }
+    }
+    return nearestIndex;
   }
 
   void _cancelSelectionDrag() {
@@ -383,44 +448,35 @@ class _HomeBottomNavigationContentState
     required bool selectedLayer,
   }) {
     return Row(
-      children: [
-        Expanded(
-          child: _HomeBottomTabItem(
-            index: 0,
-            icon: Icons.dashboard_rounded,
-            label: '首页',
-            selected: selectedLayer,
-            semanticsSelected: widget.selectedIndex == 0,
-            interactive: !selectedLayer,
-            primaryColor: widget.primaryColor,
-            inactiveColor: widget.inactiveColor,
-            onTap: () => _handleTabTap(0),
-          ),
-        ),
-        Expanded(
-          child: Center(
-            child: _HomeCalendarButton(
-              buttonKey: selectedLayer ? null : widget.calendarButtonKey,
+      children: List<Widget>.generate(_slotCount, (index) {
+        final item = widget.items[index];
+        final interactive = !selectedLayer;
+        final custom = item.builder?.call(context, selectedLayer, interactive);
+        final content = custom ??
+            _FloatingBottomTabItem(
+              index: index,
+              icon: item.icon!,
+              label: item.label,
+              selected: selectedLayer,
+              semanticsSelected: widget.selectedIndex == index,
+              interactive: interactive,
               primaryColor: widget.primaryColor,
-              interactive: !selectedLayer,
-              onPressed: widget.onCalendarPressed,
-            ),
-          ),
-        ),
-        Expanded(
-          child: _HomeBottomTabItem(
-            index: 2,
-            icon: Icons.adjust_rounded,
-            label: '专注',
-            selected: selectedLayer,
-            semanticsSelected: widget.selectedIndex == 2,
-            interactive: !selectedLayer,
-            primaryColor: widget.primaryColor,
-            inactiveColor: widget.inactiveColor,
-            onTap: () => _handleTabTap(2),
-          ),
-        ),
-      ],
+              inactiveColor: widget.inactiveColor,
+              semanticsLabel: item.semanticsLabel,
+              keyPrefix: widget.keyPrefix,
+              onTap: () {
+                if (item.selectable) {
+                  _handleTabTap(index);
+                } else {
+                  item.onPressed?.call();
+                }
+              },
+            );
+        final keyedContent = item.key == null || selectedLayer
+            ? content
+            : KeyedSubtree(key: item.key, child: content);
+        return Expanded(child: keyedContent);
+      }),
     );
   }
 
@@ -437,9 +493,7 @@ class _HomeBottomNavigationContentState
       child: IgnorePointer(
         child: Transform(
           key: paintGlass
-              ? const ValueKey<String>(
-                  'home-bottom-selection-overflow-layer',
-                )
+              ? ValueKey<String>(_keyName('selection-overflow-layer'))
               : null,
           alignment: Alignment(
             alignment.x * (1 - 1 / _slotCount),
@@ -522,7 +576,7 @@ class _HomeBottomNavigationContentState
       child: LayoutBuilder(
         builder: (context, constraints) {
           return GestureDetector(
-            key: const ValueKey<String>('home-bottom-navigation-gesture-layer'),
+            key: ValueKey<String>(_keyName('navigation-gesture-layer')),
             behavior: HitTestBehavior.translucent,
             onHorizontalDragStart: (details) =>
                 _startSelectionDrag(details, constraints.maxWidth),
@@ -533,6 +587,7 @@ class _HomeBottomNavigationContentState
             onHorizontalDragCancel: _cancelSelectionDrag,
             onTapUp: (details) => _handleBarTap(details, constraints.maxWidth),
             child: Stack(
+              fit: StackFit.expand,
               clipBehavior: Clip.none,
               children: [
                 Positioned.fill(
@@ -560,12 +615,12 @@ class _HomeBottomNavigationContentState
                   alignment: Alignment.center,
                   transform: contentTransform,
                   child: Stack(
+                    fit: StackFit.expand,
                     clipBehavior: Clip.none,
                     children: [
                       _buildIndicator(
-                        key: const ValueKey<String>(
-                          'home-bottom-selection-indicator-fill',
-                        ),
+                        key: ValueKey<String>(
+                            _keyName('selection-indicator-fill')),
                         alignment: alignment,
                         thickness: thickness,
                         velocity: velocity,
@@ -624,9 +679,7 @@ class _HomeBottomNavigationContentState
                         ),
                       ),
                       _buildIndicator(
-                        key: const ValueKey<String>(
-                          'home-bottom-selection-indicator',
-                        ),
+                        key: ValueKey<String>(_keyName('selection-indicator')),
                         alignment: alignment,
                         thickness: thickness,
                         velocity: velocity,
@@ -651,6 +704,70 @@ class _HomeBottomNavigationContentState
       valueListenable: LiquidGlassEffectService.configurationListenable,
       builder: (context, configuration, _) =>
           _buildNavigationContent(context, configuration),
+    );
+  }
+}
+
+/// Backwards-compatible home configuration for callers that still provide the
+/// dedicated calendar action and the original two selectable destinations.
+class HomeBottomNavigationContent extends StatelessWidget {
+  const HomeBottomNavigationContent({
+    super.key,
+    required this.selectedIndex,
+    required this.primaryColor,
+    required this.inactiveColor,
+    required this.selectedBackgroundColor,
+    required this.calendarButtonKey,
+    required this.onTabSelected,
+    required this.onCalendarPressed,
+    this.onDragStretchChanged,
+  }) : assert(
+          selectedIndex == 0 || selectedIndex == 2,
+          'The home bottom bar only supports the home and focus tabs.',
+        );
+
+  final int selectedIndex;
+  final Color primaryColor;
+  final Color inactiveColor;
+  final Color selectedBackgroundColor;
+  final Key calendarButtonKey;
+  final ValueChanged<int> onTabSelected;
+  final VoidCallback onCalendarPressed;
+  final ValueChanged<double>? onDragStretchChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingBottomNavigationContent(
+      items: [
+        FloatingBottomNavigationItem(
+          icon: Icons.dashboard_rounded,
+          label: '首页',
+        ),
+        FloatingBottomNavigationItem(
+          label: '日历',
+          selectable: false,
+          onPressed: onCalendarPressed,
+          builder: (context, selectedLayer, interactive) => Center(
+            child: HomeBottomCalendarButton(
+              buttonKey: selectedLayer ? null : calendarButtonKey,
+              primaryColor: primaryColor,
+              interactive: interactive,
+              onPressed: onCalendarPressed,
+            ),
+          ),
+        ),
+        FloatingBottomNavigationItem(
+          icon: Icons.adjust_rounded,
+          label: '专注',
+        ),
+      ],
+      selectedIndex: selectedIndex,
+      primaryColor: primaryColor,
+      inactiveColor: inactiveColor,
+      selectedBackgroundColor: selectedBackgroundColor,
+      onTabSelected: onTabSelected,
+      onDragStretchChanged: onDragStretchChanged,
+      keyPrefix: 'home-bottom',
     );
   }
 }
@@ -719,8 +836,9 @@ class _OverflowingJellyClipper extends CustomClipper<Path> {
   }
 }
 
-class _HomeCalendarButton extends StatelessWidget {
-  const _HomeCalendarButton({
+class HomeBottomCalendarButton extends StatelessWidget {
+  const HomeBottomCalendarButton({
+    super.key,
     required this.buttonKey,
     required this.primaryColor,
     required this.interactive,
@@ -769,8 +887,8 @@ class _HomeCalendarButton extends StatelessWidget {
   }
 }
 
-class _HomeBottomTabItem extends StatelessWidget {
-  const _HomeBottomTabItem({
+class _FloatingBottomTabItem extends StatelessWidget {
+  const _FloatingBottomTabItem({
     required this.index,
     required this.icon,
     required this.label,
@@ -779,6 +897,8 @@ class _HomeBottomTabItem extends StatelessWidget {
     required this.interactive,
     required this.primaryColor,
     required this.inactiveColor,
+    required this.keyPrefix,
+    this.semanticsLabel,
     required this.onTap,
   });
 
@@ -790,6 +910,8 @@ class _HomeBottomTabItem extends StatelessWidget {
   final bool interactive;
   final Color primaryColor;
   final Color inactiveColor;
+  final String keyPrefix;
+  final String? semanticsLabel;
   final VoidCallback onTap;
 
   @override
@@ -797,7 +919,7 @@ class _HomeBottomTabItem extends StatelessWidget {
     final foregroundColor = selected ? primaryColor : inactiveColor;
     const duration = Duration(milliseconds: 220);
     final visual = AnimatedScale(
-      key: ValueKey<String>('home-bottom-tab-surface-$index'),
+      key: ValueKey<String>('$keyPrefix-tab-surface-$index'),
       scale: selected ? 1.04 : 1,
       duration: duration,
       curve: Curves.easeOutCubic,
@@ -833,7 +955,7 @@ class _HomeBottomTabItem extends StatelessWidget {
     return Semantics(
       button: true,
       selected: semanticsSelected,
-      label: label,
+      label: semanticsLabel ?? label,
       excludeSemantics: true,
       onTap: onTap,
       child: visual,
