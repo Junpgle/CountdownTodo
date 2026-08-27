@@ -21,6 +21,7 @@ import 'screens/splash_screen.dart';
 import 'screens/default_splash_screen.dart';
 import 'screens/share_view_screen.dart';
 import 'services/team_share_link.dart';
+import 'services/api_service.dart';
 import 'widgets/privacy_policy_dialog.dart';
 import 'storage_service.dart';
 import 'models.dart';
@@ -138,6 +139,24 @@ Future<void> _initializePlatformBeforeHome(List<String> args) async {
   ]);
 }
 
+String? _detectInitialShareCode() {
+  if (!kIsWeb) return null;
+
+  final routes = <String>[];
+  try {
+    routes.add(getUrlHash());
+  } catch (_) {}
+  try {
+    routes.add(Uri.base.toString());
+  } catch (_) {}
+
+  for (final route in routes) {
+    final code = TeamShareLink.codeFromRoute(route);
+    if (code != null && code.isNotEmpty) return code;
+  }
+  return null;
+}
+
 void _configureRuntimeCaches() {
   final imageCache = PaintingBinding.instance.imageCache;
   if (AppPlatform.isWeb) {
@@ -198,18 +217,23 @@ Future<void> main(List<String> args) async {
 
   // 立刻运行 App。平台初始化在开屏可见期间并行完成，避免原生启动页
   // 因多个串行 timeout 最坏阻塞数秒。
+  final initialShareCode = _detectInitialShareCode();
   runApp(
     LiquidGlassWidgets.wrap(
-      child: MyApp(platformReady: platformReady),
+      child: MyApp(
+        platformReady: platformReady,
+        initialShareCode: initialShareCode,
+      ),
       brightnessResolver: Theme.maybeBrightnessOf,
     ),
   );
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key, this.platformReady});
+  const MyApp({super.key, this.platformReady, this.initialShareCode});
 
   final Future<void>? platformReady;
+  final String? initialShareCode;
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -233,6 +257,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    _shareCode = widget.initialShareCode;
     // ── 最先检查分享路由，避免启动多余逻辑 ──
     _checkShareRoute();
     _windowReadyForSplashTransition =
@@ -264,10 +289,32 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _checkShareRoute() {
-    if (_shareCode != null) return;
-    try {
-      _shareCode = TeamShareLink.codeFromRoute(getUrlHash());
-    } catch (_) {}
+    if (_shareCode == null) {
+      final routes = <String>[];
+      try {
+        routes.add(getUrlHash());
+      } catch (_) {}
+      if (kIsWeb) {
+        // Some browsers expose the hash late through window.location. Uri.base
+        // gives us a second synchronous source during the first app build.
+        try {
+          routes.add(Uri.base.toString());
+        } catch (_) {}
+      }
+
+      for (final route in routes) {
+        final code = TeamShareLink.codeFromRoute(route);
+        if (code != null && code.isNotEmpty) {
+          _shareCode = code;
+          break;
+        }
+      }
+    }
+
+    // 分享页会跳过常规启动流程，因此需要单独选择 Web API 入口。
+    if (_shareCode != null && kIsWeb) {
+      ApiService.setServerChoice('aliyun');
+    }
   }
 
   Future<void> _startSplashSequence() async {
@@ -876,6 +923,9 @@ class _MyAppState extends State<MyApp> {
                                         TeamShareLink.codeFromRoute(name);
                                     if (code != null && code.isNotEmpty) {
                                       _shareCode = code;
+                                      if (kIsWeb) {
+                                        ApiService.setServerChoice('aliyun');
+                                      }
                                       return MaterialPageRoute(
                                         builder: (_) =>
                                             ShareViewScreen(shareCode: code),

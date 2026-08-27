@@ -1257,8 +1257,12 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         ? colorScheme.scrim.withValues(alpha: 0.86)
         : colorScheme.onSurfaceVariant;
     final double bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
-    final selectedBackgroundColor = colorScheme.surfaceContainerHighest
-        .withValues(alpha: isDarkMode ? 0.62 : 0.72);
+    // Keep the active capsule in the same color family as the center action.
+    // When a wallpaper is visible, [primaryColor] is the sampled wallpaper
+    // color; otherwise it falls back to the app's Material color scheme.
+    final selectedBackgroundColor = primaryColor.withValues(
+      alpha: isDarkMode ? 0.22 : 0.16,
+    );
     final navContent = HomeBottomNavigationContent(
       selectedIndex: _selectedTabIndex,
       primaryColor: primaryColor,
@@ -1307,6 +1311,12 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         ),
         boxShadow: [
           BoxShadow(
+            color: primaryColor.withValues(alpha: isDarkMode ? 0.12 : 0.2),
+            blurRadius: 26,
+            spreadRadius: 1,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
             color: colorScheme.shadow.withValues(alpha: 0.12),
             blurRadius: 15,
             offset: const Offset(0, 5),
@@ -1336,6 +1346,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       margin: margin,
       borderRadius: 34,
       tint: glassTint,
+      haloColor: primaryColor,
       isDark: isDarkMode,
       fallback: fallback,
       child: navContent,

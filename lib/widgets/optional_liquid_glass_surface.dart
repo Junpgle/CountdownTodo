@@ -383,6 +383,7 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
     required this.borderRadius,
     required this.tint,
     required this.isDark,
+    this.haloColor,
   });
 
   final Widget child;
@@ -392,6 +393,7 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
   final double borderRadius;
   final Color tint;
   final bool isDark;
+  final Color? haloColor;
 
   @override
   Widget build(BuildContext context) {
@@ -411,6 +413,7 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
             margin: margin,
             borderRadius: borderRadius,
             tint: tint,
+            haloColor: haloColor,
             isDark: isDark,
             child: child,
           );
@@ -422,34 +425,45 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
         // runtime shader, which trips Impeller's SetInheritedOpacity
         // validation and can render the transition with the wrong alpha.
         return RepaintBoundary(
-          child: GlassContainer(
+          child: Container(
             height: height,
             margin: margin,
-            shape: LiquidRoundedSuperellipse(borderRadius: borderRadius),
-            settings: LiquidGlassSettings(
-              glassColor: tint,
-              thickness: 20,
-              blur: 12,
-              chromaticAberration: 0.006,
-              lightIntensity: isDark ? 0.62 : 0.48,
-              ambientStrength: isDark ? 0.18 : 0.1,
-              fresnelStrength: 0.85,
-              refractiveIndex: 1.14,
-              saturation: 0.95,
-              shadowElevation: 1.0,
-              // Keep the refraction, but place a stronger neutral pad behind
-              // it so busy wallpapers cannot compete with tab labels/icons.
-              backerColor: tint.withValues(
-                alpha: liquidGlassSurfaceBackerOpacityFor(
-                  configuration.mode,
-                  isDark: isDark,
-                ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(borderRadius),
+              boxShadow: _surfaceHaloShadows(
+                haloColor: haloColor ?? tint,
+                shadowColor: Theme.of(context).colorScheme.shadow,
+                isDark: isDark,
               ),
             ),
-            useOwnLayer: true,
-            quality: liquidGlassSurfaceQualityFor(configuration.mode),
-            clipBehavior: Clip.antiAlias,
-            child: child,
+            child: GlassContainer(
+              height: height,
+              shape: LiquidRoundedSuperellipse(borderRadius: borderRadius),
+              settings: LiquidGlassSettings(
+                glassColor: tint,
+                thickness: 20,
+                blur: 12,
+                chromaticAberration: 0.006,
+                lightIntensity: isDark ? 0.62 : 0.48,
+                ambientStrength: isDark ? 0.18 : 0.1,
+                fresnelStrength: 0.85,
+                refractiveIndex: 1.14,
+                saturation: 0.95,
+                shadowElevation: 1.0,
+                // Keep the refraction, but place a stronger neutral pad behind
+                // it so busy wallpapers cannot compete with tab labels/icons.
+                backerColor: tint.withValues(
+                  alpha: liquidGlassSurfaceBackerOpacityFor(
+                    configuration.mode,
+                    isDark: isDark,
+                  ),
+                ),
+              ),
+              useOwnLayer: true,
+              quality: liquidGlassSurfaceQualityFor(configuration.mode),
+              clipBehavior: Clip.antiAlias,
+              child: child,
+            ),
           ),
         );
       },
@@ -468,6 +482,7 @@ class _FrostedGlassSurface extends StatelessWidget {
     required this.margin,
     required this.borderRadius,
     required this.tint,
+    required this.haloColor,
     required this.isDark,
     required this.child,
   });
@@ -476,6 +491,7 @@ class _FrostedGlassSurface extends StatelessWidget {
   final EdgeInsetsGeometry margin;
   final double borderRadius;
   final Color tint;
+  final Color? haloColor;
   final bool isDark;
   final Widget child;
 
@@ -500,30 +516,40 @@ class _FrostedGlassSurface extends StatelessWidget {
         padding: margin,
         child: SizedBox(
           height: height,
-          child: ClipRSuperellipse(
-            borderRadius: BorderRadius.circular(borderRadius),
-            clipBehavior: Clip.antiAlias,
-            child: BackdropFilter.grouped(
-              filter: ui.ImageFilter.blur(
-                sigmaX: 16,
-                sigmaY: 16,
-                tileMode: TileMode.clamp,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(borderRadius),
+              boxShadow: _surfaceHaloShadows(
+                haloColor: haloColor ?? tint,
+                shadowColor: colorScheme.shadow,
+                isDark: isDark,
               ),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: <Color>[highlightColor, baseColor],
-                  ),
-                  border: Border.all(
-                    color: Colors.white.withValues(
-                      alpha: isDark ? 0.4 : 0.62,
-                    ),
-                    width: 1,
-                  ),
+            ),
+            child: ClipRSuperellipse(
+              borderRadius: BorderRadius.circular(borderRadius),
+              clipBehavior: Clip.antiAlias,
+              child: BackdropFilter.grouped(
+                filter: ui.ImageFilter.blur(
+                  sigmaX: 16,
+                  sigmaY: 16,
+                  tileMode: TileMode.clamp,
                 ),
-                child: child,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: <Color>[highlightColor, baseColor],
+                    ),
+                    border: Border.all(
+                      color: Colors.white.withValues(
+                        alpha: isDark ? 0.4 : 0.62,
+                      ),
+                      width: 1,
+                    ),
+                  ),
+                  child: child,
+                ),
               ),
             ),
           ),
@@ -531,6 +557,26 @@ class _FrostedGlassSurface extends StatelessWidget {
       ),
     );
   }
+}
+
+List<BoxShadow> _surfaceHaloShadows({
+  required Color haloColor,
+  required Color shadowColor,
+  required bool isDark,
+}) {
+  return [
+    BoxShadow(
+      color: haloColor.withValues(alpha: isDark ? 0.16 : 0.22),
+      blurRadius: 26,
+      spreadRadius: 1,
+      offset: const Offset(0, 4),
+    ),
+    BoxShadow(
+      color: shadowColor.withValues(alpha: isDark ? 0.2 : 0.08),
+      blurRadius: 14,
+      offset: const Offset(0, 5),
+    ),
+  ];
 }
 
 /// Rounded-top content shell for self-drawn bottom sheets.
