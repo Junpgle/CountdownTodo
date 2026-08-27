@@ -1049,6 +1049,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
               page: PersonalTimelineScreen(username: widget.username),
               sourceKey: _timelineCardKey,
               placeholderIcon: Icons.timeline_rounded,
+              sourceColor: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.black
+                  : Colors.white,
             );
           });
         },
@@ -1257,11 +1260,12 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         ? colorScheme.scrim.withValues(alpha: 0.86)
         : colorScheme.onSurfaceVariant;
     final double bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
-    // Keep the active capsule in the same color family as the center action.
-    // When a wallpaper is visible, [primaryColor] is the sampled wallpaper
-    // color; otherwise it falls back to the app's Material color scheme.
-    final selectedBackgroundColor = primaryColor.withValues(
-      alpha: isDarkMode ? 0.22 : 0.16,
+    // The reference rests as a neutral frosted capsule. Keep only a trace of
+    // the action color here; the icon and label carry the strong selection.
+    final selectedBackgroundColor = homeBottomBarSelectedBackgroundColor(
+      colorScheme: colorScheme,
+      primaryColor: primaryColor,
+      isDark: isDarkMode,
     );
     final navContent = HomeBottomNavigationContent(
       selectedIndex: _selectedTabIndex,
@@ -1323,16 +1327,22 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(34),
-        // BackdropFilter 会让整块壁纸进入离屏模糊，在 Android 上很容易造成
-        // Raster Jank。Android 保留半透明底色，其他平台继续使用毛玻璃效果。
-        child: AppPlatform.isAndroid
-            ? navContent
-            : BackdropFilter(
+      child: Stack(
+        fit: StackFit.expand,
+        clipBehavior: Clip.none,
+        children: [
+          // BackdropFilter 会让整块壁纸进入离屏模糊，在 Android 上很容易造成
+          // Raster Jank。Android 保留半透明底色，其他平台继续使用毛玻璃效果。
+          if (!AppPlatform.isAndroid)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(34),
+              child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                child: navContent,
+                child: const SizedBox.expand(),
               ),
+            ),
+          navContent,
+        ],
       ),
     );
 
@@ -1348,6 +1358,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       tint: glassTint,
       haloColor: primaryColor,
       isDark: isDarkMode,
+      allowChildOverflow: true,
       fallback: fallback,
       child: navContent,
     );

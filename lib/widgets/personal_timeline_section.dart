@@ -61,13 +61,14 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
   }
 
   Future<void> _openTodayReport() {
+    final colorScheme = Theme.of(context).colorScheme;
     return PageTransitions.pushFromRect(
       context: context,
       page: PersonalTimelineScreen(username: widget.username),
       sourceKey: _cardKey,
-      sourceColor: widget.isLight
-          ? Colors.white.withValues(alpha: 0.15)
-          : Theme.of(context).colorScheme.surface,
+      sourceColor: colorScheme.brightness == Brightness.dark
+          ? Colors.black
+          : Colors.white,
       placeholderIcon: Icons.timeline_rounded,
       sourceBorderRadius: BorderRadius.circular(24),
     ).then((_) => _loadData());

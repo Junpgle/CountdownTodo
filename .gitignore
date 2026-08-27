@@ -146,6 +146,7 @@ todo.md
 !/test/widgets/interconnect_settings_page_test.dart
 !/test/widgets/optional_liquid_glass_surface_test.dart
 !/test/widgets/app_status_toast_test.dart
+!/test/widgets/home_bottom_navigation_content_test.dart
 !/test/utils/
 /test/utils/*
 !/test/utils/todo_recurrence_picker_test.dart
@@ -172,3 +173,7 @@ todo.md
 /assets/ChatGPT Image 2026年8月26日 19_22_42 (3).png
 /assets/ChatGPT Image 2026年8月26日 19_22_42 (4).png
 /assets/ChatGPT Image 2026年8月26日 19_22_42 (5).png
+/assets/ChatGPT Image 2026年8月27日 10_48_59 (1).png
+/assets/ChatGPT Image 2026年8月27日 10_49_00 (2).png
+/assets/ChatGPT Image 2026年8月27日 10_49_39.png
+/assets/ChatGPT Image 2026年8月27日 10_50_43.png

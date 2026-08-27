@@ -384,6 +384,7 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
     required this.tint,
     required this.isDark,
     this.haloColor,
+    this.allowChildOverflow = false,
   });
 
   final Widget child;
@@ -394,6 +395,10 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
   final Color tint;
   final bool isDark;
   final Color? haloColor;
+
+  /// Paints [child] above the clipped glass shell so elevated controls can
+  /// extend beyond the surface without losing their shadow or refraction rim.
+  final bool allowChildOverflow;
 
   @override
   Widget build(BuildContext context) {
@@ -415,6 +420,7 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
             tint: tint,
             haloColor: haloColor,
             isDark: isDark,
+            allowChildOverflow: allowChildOverflow,
             child: child,
           );
         }
@@ -424,6 +430,35 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
         // ancestor route FadeTransition cannot distribute opacity into the
         // runtime shader, which trips Impeller's SetInheritedOpacity
         // validation and can render the transition with the wrong alpha.
+        final glassShell = GlassContainer(
+          height: height,
+          shape: LiquidRoundedSuperellipse(borderRadius: borderRadius),
+          settings: LiquidGlassSettings(
+            glassColor: tint,
+            thickness: 20,
+            blur: 12,
+            chromaticAberration: 0.006,
+            lightIntensity: isDark ? 0.62 : 0.48,
+            ambientStrength: isDark ? 0.18 : 0.1,
+            fresnelStrength: 0.85,
+            refractiveIndex: 1.14,
+            saturation: 0.95,
+            shadowElevation: 1.0,
+            // Keep the refraction, but place a stronger neutral pad behind it
+            // so busy wallpapers cannot compete with tab labels/icons.
+            backerColor: tint.withValues(
+              alpha: liquidGlassSurfaceBackerOpacityFor(
+                configuration.mode,
+                isDark: isDark,
+              ),
+            ),
+          ),
+          useOwnLayer: true,
+          quality: liquidGlassSurfaceQualityFor(configuration.mode),
+          clipBehavior: Clip.antiAlias,
+          child: allowChildOverflow ? const SizedBox.expand() : child,
+        );
+
         return RepaintBoundary(
           child: Container(
             height: height,
@@ -436,34 +471,13 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
                 isDark: isDark,
               ),
             ),
-            child: GlassContainer(
-              height: height,
-              shape: LiquidRoundedSuperellipse(borderRadius: borderRadius),
-              settings: LiquidGlassSettings(
-                glassColor: tint,
-                thickness: 20,
-                blur: 12,
-                chromaticAberration: 0.006,
-                lightIntensity: isDark ? 0.62 : 0.48,
-                ambientStrength: isDark ? 0.18 : 0.1,
-                fresnelStrength: 0.85,
-                refractiveIndex: 1.14,
-                saturation: 0.95,
-                shadowElevation: 1.0,
-                // Keep the refraction, but place a stronger neutral pad behind
-                // it so busy wallpapers cannot compete with tab labels/icons.
-                backerColor: tint.withValues(
-                  alpha: liquidGlassSurfaceBackerOpacityFor(
-                    configuration.mode,
-                    isDark: isDark,
-                  ),
-                ),
-              ),
-              useOwnLayer: true,
-              quality: liquidGlassSurfaceQualityFor(configuration.mode),
-              clipBehavior: Clip.antiAlias,
-              child: child,
-            ),
+            child: allowChildOverflow
+                ? Stack(
+                    fit: StackFit.expand,
+                    clipBehavior: Clip.none,
+                    children: <Widget>[glassShell, child],
+                  )
+                : glassShell,
           ),
         );
       },
@@ -484,6 +498,7 @@ class _FrostedGlassSurface extends StatelessWidget {
     required this.tint,
     required this.haloColor,
     required this.isDark,
+    required this.allowChildOverflow,
     required this.child,
   });
 
@@ -493,6 +508,7 @@ class _FrostedGlassSurface extends StatelessWidget {
   final Color tint;
   final Color? haloColor;
   final bool isDark;
+  final bool allowChildOverflow;
   final Widget child;
 
   @override
@@ -511,6 +527,34 @@ class _FrostedGlassSurface extends StatelessWidget {
       baseColor.withValues(alpha: 1),
     ).withValues(alpha: isDark ? 0.4 : 0.52);
 
+    final clippedSurface = ClipRSuperellipse(
+      borderRadius: BorderRadius.circular(borderRadius),
+      clipBehavior: Clip.antiAlias,
+      child: BackdropFilter.grouped(
+        filter: ui.ImageFilter.blur(
+          sigmaX: 16,
+          sigmaY: 16,
+          tileMode: TileMode.clamp,
+        ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[highlightColor, baseColor],
+            ),
+            border: Border.all(
+              color: Colors.white.withValues(
+                alpha: isDark ? 0.4 : 0.62,
+              ),
+              width: 1,
+            ),
+          ),
+          child: allowChildOverflow ? const SizedBox.expand() : child,
+        ),
+      ),
+    );
+
     return RepaintBoundary(
       child: Padding(
         padding: margin,
@@ -525,33 +569,13 @@ class _FrostedGlassSurface extends StatelessWidget {
                 isDark: isDark,
               ),
             ),
-            child: ClipRSuperellipse(
-              borderRadius: BorderRadius.circular(borderRadius),
-              clipBehavior: Clip.antiAlias,
-              child: BackdropFilter.grouped(
-                filter: ui.ImageFilter.blur(
-                  sigmaX: 16,
-                  sigmaY: 16,
-                  tileMode: TileMode.clamp,
-                ),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: <Color>[highlightColor, baseColor],
-                    ),
-                    border: Border.all(
-                      color: Colors.white.withValues(
-                        alpha: isDark ? 0.4 : 0.62,
-                      ),
-                      width: 1,
-                    ),
-                  ),
-                  child: child,
-                ),
-              ),
-            ),
+            child: allowChildOverflow
+                ? Stack(
+                    fit: StackFit.expand,
+                    clipBehavior: Clip.none,
+                    children: <Widget>[clippedSurface, child],
+                  )
+                : clippedSurface,
           ),
         ),
       ),

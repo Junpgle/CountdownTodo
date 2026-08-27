@@ -263,6 +263,45 @@ void main() {
     expect(find.text('Bottom bar'), findsOneWidget);
   });
 
+  testWidgets('bottom bar can paint elevated controls above its glass shell',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+    const elevatedChild = Key('elevated-bottom-bar-child');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: OptionalLiquidGlassSurface(
+            height: 72,
+            margin: EdgeInsets.zero,
+            borderRadius: 34,
+            tint: Colors.blue.withValues(alpha: 0.1),
+            isDark: false,
+            allowChildOverflow: true,
+            fallback: const SizedBox(),
+            child: const SizedBox(key: elevatedChild),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(find.byKey(elevatedChild), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(GlassContainer),
+        matching: find.byKey(elevatedChild),
+      ),
+      findsNothing,
+    );
+    final overflowStack =
+        tester.widgetList<Stack>(find.byType(Stack)).firstWhere(
+              (stack) => stack.clipBehavior == Clip.none,
+            );
+    expect(overflowStack.fit, StackFit.expand);
+  });
+
   testWidgets(
       'wallpaper cards use a translucent dark material in standard mode',
       (tester) async {
