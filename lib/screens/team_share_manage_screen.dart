@@ -235,6 +235,8 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
               children: [
                 if (share.shareTodos)
                   _buildTag('待办事项', Icons.check_circle_outline),
+                if (share.shareSchedules)
+                  _buildTag('日程', Icons.event_available_outlined),
                 if (share.shareCountdowns)
                   _buildTag('倒计时', Icons.timer_outlined),
                 if (share.shareAnnouncements)
@@ -341,6 +343,7 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
   final _descController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _shareTodos = true;
+  bool _shareSchedules = true;
   bool _shareCountdowns = true;
   bool _shareAnnouncements = true;
   bool _usePassword = false;
@@ -366,6 +369,7 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
         description:
             _descController.text.isNotEmpty ? _descController.text : null,
         shareTodos: _shareTodos,
+        shareSchedules: _shareSchedules,
         shareCountdowns: _shareCountdowns,
         shareAnnouncements: _shareAnnouncements,
         password: _usePassword ? _passwordController.text : null,
@@ -488,6 +492,13 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
               controlAffinity: ListTileControlAffinity.leading,
             ),
             CheckboxListTile(
+              title: const Text('日程'),
+              value: _shareSchedules,
+              onChanged: (v) => setState(() => _shareSchedules = v ?? true),
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
+            CheckboxListTile(
               title: const Text('团队公告'),
               value: _shareAnnouncements,
               onChanged: (v) => setState(() => _shareAnnouncements = v ?? true),
@@ -536,11 +547,13 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
               width: double.infinity,
               height: 48,
               child: ElevatedButton(
-                onPressed:
-                    (_shareTodos || _shareCountdowns || _shareAnnouncements) &&
-                            !_isCreating
-                        ? _createShare
-                        : null,
+                onPressed: (_shareTodos ||
+                            _shareSchedules ||
+                            _shareCountdowns ||
+                            _shareAnnouncements) &&
+                        !_isCreating
+                    ? _createShare
+                    : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.primary,
                   foregroundColor: Theme.of(context).colorScheme.onPrimary,

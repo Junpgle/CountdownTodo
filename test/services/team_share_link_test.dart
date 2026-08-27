@@ -31,5 +31,9 @@ void main() {
       TeamShareLink.codeFromRoute('#/share?code=ABC123'),
       'ABC123',
     );
+    expect(
+      TeamShareLink.codeFromRoute('https://cdt.junpgle.me/#/share?code=ABC123'),
+      'ABC123',
+    );
   });
 }

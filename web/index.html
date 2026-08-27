@@ -577,7 +577,7 @@
     // ── Service Worker Registration ──────────────────────────
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {
-        navigator.serviceWorker.register('sw.js?v=20260701e', { scope: './' }).then(function (reg) {
+        navigator.serviceWorker.register('sw.js?v=20260826c', { scope: './' }).then(function (reg) {
           // Listen for updates and prompt user to reload.
           reg.addEventListener('updatefound', function () {
             var newWorker = reg.installing;
@@ -618,6 +618,6 @@
     });
   </script>
 
-  <script src="flutter_bootstrap.js?v=20260701e" async></script>
+  <script src="flutter_bootstrap.js?v=20260826c" async></script>
 </body>
 </html>

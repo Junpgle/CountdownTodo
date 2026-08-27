@@ -7,11 +7,15 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static String baseUrl = "https://mathquiz.junpgle.me";
   static const String cloudflareUrl = 'https://mathquiz.junpgle.me';
   static const String webAliyunProxyUrl = 'https://api-cdt.junpgle.me';
   static const String aliyunProdUrl = 'http://101.200.13.100:8082';
   static const String aliyunTestUrl = 'http://101.200.13.100:8084';
+
+  // Web must never start against the retired Cloudflare Worker. Share pages
+  // intentionally skip the normal app initialization sequence, so the
+  // default must already be the current API proxy before the first request.
+  static String baseUrl = kIsWeb ? webAliyunProxyUrl : cloudflareUrl;
   static String? _baseUrlOverride;
 
   // 🛡️ 全局使用的、跳过 SSL 证书验证的 HTTP 客户端
@@ -66,7 +70,10 @@ class ApiService {
     _baseUrlOverride = null;
   }
 
-  static String get _effectiveBaseUrl => _baseUrlOverride ?? baseUrl;
+  // Web 分享页必须始终走当前 Alibaba Zero Trust 代理。环境初始化、旧版
+  // 本地设置或迁移工具都不应把浏览器请求重新指向已弃用的 Worker。
+  static String get _effectiveBaseUrl =>
+      kIsWeb ? webAliyunProxyUrl : (_baseUrlOverride ?? baseUrl);
   static String get effectiveBaseUrl => _effectiveBaseUrl;
 
   /// Stable namespace for sync watermarks. Test/custom endpoints must not
@@ -1292,6 +1299,7 @@ class ApiService {
     String? title,
     String? description,
     bool shareTodos = true,
+    bool shareSchedules = true,
     bool shareCountdowns = true,
     bool shareAnnouncements = true,
     String? password,
@@ -1301,6 +1309,7 @@ class ApiService {
       final body = <String, dynamic>{
         'team_uuid': teamUuid,
         'share_todos': shareTodos,
+        'share_schedules': shareSchedules,
         'share_countdowns': shareCountdowns,
         'share_announcements': shareAnnouncements,
       };

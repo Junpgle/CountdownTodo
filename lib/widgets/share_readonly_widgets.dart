@@ -29,7 +29,7 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
   @override
   Widget build(BuildContext context) {
     final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
-    final bool useDarkUI = isDarkTheme || widget.isLight;
+    final bool useDarkUI = isDarkTheme;
     final colorScheme = Theme.of(context).colorScheme;
 
     final DateTime now = DateTime.now();
@@ -642,6 +642,34 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
               ],
             ],
           ),
+          if (_buildTimeLabel(todo) case final timeLabel?) ...[
+            const SizedBox(height: 7),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  todo.isDateOnly
+                      ? Icons.calendar_today_rounded
+                      : Icons.schedule_rounded,
+                  size: 15,
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    timeLabel,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           if (!todo.isDone && progress > 0) ...[
             const SizedBox(height: 8),
             ClipRRect(
@@ -667,6 +695,289 @@ class _ShareTodoSectionState extends State<ShareTodoSection> {
     }
     return false;
   }
+
+  String? _buildTimeLabel(TodoItem todo) {
+    final start = todo.createdDate == null ? null : todo.effectiveStartTime;
+    final end = todo.dueDate?.toLocal();
+
+    if (start == null && end == null) return null;
+    if (todo.isDateOnly) {
+      final date = end ?? start;
+      return date == null ? null : '${DateFormat('MM/dd').format(date)} 内完成';
+    }
+    if (start != null && end != null && todo.hasLegacyTimeRange) {
+      return '${DateFormat('MM/dd HH:mm').format(start)} → '
+          '${DateFormat('MM/dd HH:mm').format(end)}';
+    }
+    if (end != null) {
+      return '${DateFormat('MM/dd HH:mm').format(end)} 前完成';
+    }
+    if (start != null) {
+      return '开始 ${DateFormat('MM/dd HH:mm').format(start)}';
+    }
+    return null;
+  }
+}
+
+/// 分享页只读日程组件。
+///
+/// 日程与待办是两种不同的数据类型：日程使用固定的起止时间，不能用
+/// 待办的完成勾选或截止时间来代替。因此这里单独渲染 `fixed_schedules`。
+class ShareScheduleSection extends StatelessWidget {
+  final List<FixedScheduleItem> schedules;
+  final bool isLight;
+
+  const ShareScheduleSection({
+    super.key,
+    required this.schedules,
+    required this.isLight,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (schedules.isEmpty) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final sorted = schedules.where((item) => !item.isDeleted).toList()
+      ..sort(_compareSchedules);
+
+    if (sorted.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildHeader(context, colorScheme),
+        const SizedBox(height: 14),
+        ...sorted.map((item) => _buildScheduleCard(context, item)),
+      ],
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, ColorScheme colorScheme) {
+    return Row(
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: colorScheme.secondary.withValues(alpha: 0.13),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Icon(Icons.event_available_rounded,
+              size: 20, color: colorScheme.secondary),
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '日程',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '固定安排与活动时间',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        _buildCountChip(colorScheme),
+      ],
+    );
+  }
+
+  Widget _buildCountChip(ColorScheme colorScheme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.secondaryContainer.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        '${schedules.where((item) => !item.isDeleted).length} 项',
+        style: TextStyle(
+          color: colorScheme.onSecondaryContainer,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScheduleCard(BuildContext context, FixedScheduleItem item) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final phase = item.phaseAt(DateTime.now());
+    final phaseColor = _phaseColor(colorScheme, phase);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest
+            .withValues(alpha: isLight ? 0.62 : 0.42),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: phaseColor.withValues(alpha: 0.24)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: phaseColor.withValues(alpha: 0.13),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(Icons.event_rounded, size: 19, color: phaseColor),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.schedule_rounded,
+                        size: 15, color: colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        _formatScheduleTime(item),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (item.location?.isNotEmpty == true) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.location_on_outlined,
+                          size: 15, color: colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          item.location!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: phaseColor.withValues(alpha: 0.13),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              _phaseLabel(phase),
+              style: TextStyle(
+                fontSize: 11,
+                color: phaseColor,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  int _compareSchedules(FixedScheduleItem a, FixedScheduleItem b) {
+    final aStart = a.startTime ?? _dateStart(a.date);
+    final bStart = b.startTime ?? _dateStart(b.date);
+    return aStart.compareTo(bStart);
+  }
+
+  int _dateStart(String value) {
+    final date = DateTime.tryParse(value)?.toLocal();
+    return date?.millisecondsSinceEpoch ?? 0;
+  }
+
+  String _formatScheduleTime(FixedScheduleItem item) {
+    final start = item.startTime == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(item.startTime!, isUtc: true)
+            .toLocal();
+    final end = item.endTime == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(item.endTime!, isUtc: true)
+            .toLocal();
+    final date = DateTime.tryParse(item.date)?.toLocal();
+
+    if (start == null && end == null) {
+      return date == null
+          ? '时间待定'
+          : '${DateFormat('MM/dd').format(date)} · 时间待定';
+    }
+    if (start != null && end != null) {
+      final sameDay = start.year == end.year &&
+          start.month == end.month &&
+          start.day == end.day;
+      return sameDay
+          ? '${DateFormat('MM/dd').format(start)} '
+              '${DateFormat('HH:mm').format(start)} → '
+              '${DateFormat('HH:mm').format(end)}'
+          : '${DateFormat('MM/dd HH:mm').format(start)} → '
+              '${DateFormat('MM/dd HH:mm').format(end)}';
+    }
+    if (start != null) {
+      return '${DateFormat('MM/dd HH:mm').format(start)} · 结束待定';
+    }
+    return '${DateFormat('MM/dd HH:mm').format(end!)} · 开始待定';
+  }
+
+  Color _phaseColor(ColorScheme colorScheme, FixedSchedulePhase phase) {
+    return switch (phase) {
+      FixedSchedulePhase.cancelled => colorScheme.error,
+      FixedSchedulePhase.ended => colorScheme.onSurfaceVariant,
+      FixedSchedulePhase.ongoing => colorScheme.tertiary,
+      FixedSchedulePhase.timeTbd => colorScheme.secondary,
+      FixedSchedulePhase.upcoming => colorScheme.primary,
+    };
+  }
+
+  String _phaseLabel(FixedSchedulePhase phase) {
+    return switch (phase) {
+      FixedSchedulePhase.cancelled => '已取消',
+      FixedSchedulePhase.ended => '已结束',
+      FixedSchedulePhase.ongoing => '进行中',
+      FixedSchedulePhase.timeTbd => '待定',
+      FixedSchedulePhase.upcoming => '即将开始',
+    };
+  }
 }
 
 /// 分享页只读倒计时组件
@@ -686,7 +997,7 @@ class ShareCountdownSection extends StatelessWidget {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
-    final bool useDarkUI = isDarkTheme || isLight;
+    final bool useDarkUI = isDarkTheme;
 
     // 过滤：只显示未完成且未过期的倒计时
     final activeCountdowns = countdowns.where((item) {

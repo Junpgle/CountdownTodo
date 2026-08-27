@@ -40,9 +40,17 @@ class TeamShareLink {
     final uri = _parseRoute(value);
     if (uri == null) return null;
 
-    final queryCode = uri.queryParameters['code']?.trim();
-    if (queryCode != null && queryCode.isNotEmpty) return queryCode;
-    return _extractCode(uri);
+    final directCode = _extractCode(uri);
+    if (directCode != null) return directCode;
+
+    // Uri.parse(fullUrl) stores `#/share?code=...` in fragment instead of
+    // query/path. Support that form as a final fallback for startup routing.
+    final fragment = uri.fragment;
+    if (fragment.isNotEmpty) {
+      final fragmentUri = _parseRoute(fragment);
+      if (fragmentUri != null) return _extractCode(fragmentUri);
+    }
+    return null;
   }
 
   static bool _isPathShare(String path) {

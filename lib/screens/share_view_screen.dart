@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../services/api_service.dart';
@@ -25,6 +27,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
   List<TodoItem> _todos = [];
   List<TodoGroup> _todoGroups = [];
   List<CountdownItem> _countdowns = [];
+  List<FixedScheduleItem> _schedules = [];
 
   @override
   void initState() {
@@ -120,6 +123,37 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
               teamName: teamName,
             ))
         .toList();
+
+    // 日程在新版数据结构中独立于待办返回。兼容后端可能使用的两种命名，
+    // 在服务器还未返回该字段时保持空列表，不影响旧分享链接。
+    final rawSchedules = _readFirstList(result, const [
+      'schedules',
+      'fixed_schedules',
+      'fixedSchedules',
+    ]);
+    _schedules = rawSchedules
+        .whereType<Map>()
+        .map((raw) {
+          final json = Map<String, dynamic>.from(raw);
+          // 兼容 Dart/JSON 风格的驼峰字段。
+          json['uuid'] ??= json['id'];
+          json['start_time'] ??= json['startTime'];
+          json['end_time'] ??= json['endTime'];
+          final schedule = FixedScheduleItem.fromJson(json);
+          schedule.teamUuid ??= teamUuid;
+          return schedule;
+        })
+        .where((schedule) => !schedule.isDeleted)
+        .toList();
+  }
+
+  List<dynamic> _readFirstList(
+      Map<String, dynamic> data, List<String> candidateKeys) {
+    for (final key in candidateKeys) {
+      final value = data[key];
+      if (value is List) return value;
+    }
+    return const [];
   }
 
   Future<void> _verifyPassword() async {
@@ -376,51 +410,65 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     );
   }
 
-  // ==================== 首页布局，复用现有组件 ====================
+  // ==================== 分享页响应式布局 ====================
 
   Widget _buildDashboard() {
-    final teamName = _data!['team']?['name'] ?? '未知团队';
-    final share = _data!['share'] ?? {};
+    final colorScheme = Theme.of(context).colorScheme;
+    final size = MediaQuery.sizeOf(context);
+    final isDesktop = size.width >= 900;
+    final teamName = _displayValue(_data!['team']?['name'], '未知团队');
+    final share = _data!['share'] is Map
+        ? Map<String, dynamic>.from(_data!['share'] as Map)
+        : <String, dynamic>{};
+    final shareTitle = _displayValue(share['title'], teamName);
     final announcements = (_data!['announcements'] as List?) ?? [];
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isLight = !isDark;
-    final primary = Theme.of(context).colorScheme.primary;
-    final secondary = Theme.of(context).colorScheme.secondary;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final contentWidth = math.min(
+      size.width - (isDesktop ? 48 : 32),
+      1240.0,
+    );
+    final hasContent = _todos.isNotEmpty ||
+        _schedules.isNotEmpty ||
+        _countdowns.isNotEmpty ||
+        announcements.isNotEmpty;
 
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF1E1E2E) : const Color(0xFFE8F4FD),
+      backgroundColor: colorScheme.surface,
       body: RefreshIndicator(
+        color: colorScheme.primary,
+        backgroundColor: colorScheme.surfaceContainerHighest,
         onRefresh: _loadData,
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics()),
           slivers: [
-            // ── 顶部 AppBar ──
             SliverAppBar(
-              expandedHeight: 160,
+              expandedHeight: isDesktop ? 236 : 204,
               floating: false,
               pinned: true,
               stretch: true,
-              backgroundColor: isDark ? const Color(0xFF1E1E2E) : primary,
-              foregroundColor: Colors.white,
+              backgroundColor: colorScheme.primary,
+              foregroundColor: colorScheme.onPrimary,
+              actionsIconTheme: IconThemeData(color: colorScheme.onPrimary),
               flexibleSpace: FlexibleSpaceBar(
-                titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
+                collapseMode: CollapseMode.parallax,
+                titlePadding:
+                    const EdgeInsets.only(left: 20, right: 64, bottom: 16),
                 title: Text(
-                  share['title'] ?? teamName,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                background: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: isDark
-                          ? [const Color(0xFF1E1E2E), const Color(0xFF2D2D44)]
-                          : [primary, primary.withValues(alpha: 0.8)],
-                    ),
+                  shareTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colorScheme.onPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
                   ),
+                ),
+                background: _buildHeroBackground(
+                  teamName: teamName,
+                  shareCode: widget.shareCode,
+                  contentWidth: contentWidth,
+                  colorScheme: colorScheme,
                 ),
               ),
               actions: [
@@ -431,167 +479,688 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                 ),
               ],
             ),
-
-            // ── 公告 ──
-            if (announcements.isNotEmpty)
-              SliverToBoxAdapter(
-                child: _buildAnnouncementsSection(announcements, isDark),
+            SliverToBoxAdapter(
+              child: _buildCenteredContent(
+                _buildSummaryCard(
+                  teamName: teamName,
+                  announcementsCount: announcements.length,
+                  isDesktop: isDesktop,
+                  colorScheme: colorScheme,
+                ),
+                contentWidth: contentWidth,
+                top: isDesktop ? 24 : 16,
               ),
-
-            // ── 倒计时 ──
-            if (_countdowns.isNotEmpty)
+            ),
+            if (hasContent)
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: ShareCountdownSection(
-                      countdowns: _countdowns, isLight: isLight),
+                child: _buildCenteredContent(
+                  isDesktop
+                      ? _buildDesktopSections(
+                          announcements: announcements,
+                          isLight: isLight,
+                        )
+                      : _buildMobileSections(
+                          announcements: announcements,
+                          isLight: isLight,
+                        ),
+                  contentWidth: contentWidth,
+                  top: 16,
+                ),
+              )
+            else
+              SliverToBoxAdapter(
+                child: _buildCenteredContent(
+                  _buildEmptyPanel(colorScheme),
+                  contentWidth: contentWidth,
+                  top: 16,
                 ),
               ),
-
-            // ── 待办 ──
-            if (_todos.isNotEmpty || _todoGroups.isNotEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: ShareTodoSection(
-                      todos: _todos, todoGroups: _todoGroups, isLight: isLight),
-                ),
-              ),
-
-            // ── 空状态 ──
-            if (_todos.isEmpty && _countdowns.isEmpty && announcements.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.inbox_outlined,
-                          size: 64, color: Colors.grey.shade300),
-                      const SizedBox(height: 16),
-                      Text('暂无分享内容',
-                          style: TextStyle(
-                              fontSize: 16, color: Colors.grey.shade500)),
-                    ],
-                  ),
-                ),
-              ),
-
-            // ── 底部留白 ──
-            const SliverToBoxAdapter(child: SizedBox(height: 100)),
+            const SliverToBoxAdapter(child: SizedBox(height: 112)),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showJoinDialog,
-        backgroundColor: secondary,
-        icon: const Icon(Icons.person_add_rounded, color: Colors.white),
-        label: const Text('申请加入团队',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: colorScheme.secondaryContainer,
+        foregroundColor: colorScheme.onSecondaryContainer,
+        icon: const Icon(Icons.person_add_rounded),
+        label:
+            const Text('申请加入团队', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
     );
   }
 
-  // ── 公告区域（HomeDashboard 风格）──
-  Widget _buildAnnouncementsSection(List announcements, bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.orangeAccent.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.announcement_outlined,
-                    size: 18, color: Colors.orangeAccent),
+  Widget _buildHeroBackground({
+    required String teamName,
+    required String shareCode,
+    required double contentWidth,
+    required ColorScheme colorScheme,
+  }) {
+    final heroForeground = colorScheme.onPrimary;
+    return ClipRect(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              colorScheme.primary,
+              Color.alphaBlend(
+                colorScheme.secondary.withValues(alpha: 0.28),
+                colorScheme.primary,
               ),
-              const SizedBox(width: 10),
-              const Text('团队公告',
-                  style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orangeAccent)),
             ],
           ),
-          const SizedBox(height: 12),
-          ...announcements.map((a) => _buildAnnouncementCard(a, isDark)),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Positioned(
+              top: -78,
+              right: -32,
+              child: _buildHeroOrb(
+                size: 250,
+                color: heroForeground.withValues(alpha: 0.08),
+              ),
+            ),
+            Positioned(
+              bottom: 26,
+              right: 18,
+              child: _buildHeroOrb(
+                size: 94,
+                color: heroForeground.withValues(alpha: 0.08),
+              ),
+            ),
+            SafeArea(
+              bottom: false,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: SizedBox(
+                  width: contentWidth,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 76),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 62,
+                          height: 62,
+                          decoration: BoxDecoration(
+                            color: heroForeground.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: heroForeground.withValues(alpha: 0.22),
+                            ),
+                          ),
+                          child: Icon(Icons.groups_rounded,
+                              size: 34, color: heroForeground),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                teamName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: heroForeground,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Icon(Icons.public_rounded,
+                                      size: 14,
+                                      color: heroForeground.withValues(
+                                          alpha: 0.72)),
+                                  const SizedBox(width: 5),
+                                  Flexible(
+                                    child: Text(
+                                      '团队公开分享 · 可实时查看内容',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: heroForeground.withValues(
+                                            alpha: 0.72),
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                  if (contentWidth >= 680) ...[
+                                    const SizedBox(width: 14),
+                                    Flexible(
+                                      child: Text(
+                                        '分享码 ${shareCode.substring(0, math.min(8, shareCode.length))}…',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: heroForeground.withValues(
+                                              alpha: 0.58),
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeroOrb({required double size, required Color color}) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
+
+  Widget _buildCenteredContent(
+    Widget child, {
+    required double contentWidth,
+    required double top,
+  }) {
+    return Padding(
+      padding: EdgeInsets.only(top: top),
+      child: Center(
+        child: SizedBox(width: contentWidth, child: child),
+      ),
+    );
+  }
+
+  Widget _buildSummaryCard({
+    required String teamName,
+    required int announcementsCount,
+    required bool isDesktop,
+    required ColorScheme colorScheme,
+  }) {
+    final metrics = [
+      (
+        icon: Icons.checklist_rounded,
+        value: _todos.length.toString(),
+        label: '待办事项',
+        color: colorScheme.primary,
+      ),
+      (
+        icon: Icons.timer_outlined,
+        value: _countdowns.length.toString(),
+        label: '重要日',
+        color: colorScheme.secondary,
+      ),
+      (
+        icon: Icons.event_available_outlined,
+        value: _schedules.length.toString(),
+        label: '日程',
+        color: colorScheme.tertiary,
+      ),
+      (
+        icon: Icons.campaign_outlined,
+        value: announcementsCount.toString(),
+        label: '团队公告',
+        color: colorScheme.error,
+      ),
+    ];
+
+    return _buildSurfacePanel(
+      colorScheme: colorScheme,
+      padding: EdgeInsets.symmetric(
+        horizontal: isDesktop ? 24 : 16,
+        vertical: 16,
+      ),
+      child: Row(
+        children: [
+          if (isDesktop) ...[
+            Expanded(
+              flex: 3,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('分享概览',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          )),
+                  const SizedBox(height: 4),
+                  Text(teamName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 13,
+                      )),
+                ],
+              ),
+            ),
+            Container(
+              width: 1,
+              height: 42,
+              color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+            ),
+            const SizedBox(width: 24),
+          ],
+          for (var i = 0; i < metrics.length; i++) ...[
+            if (i > 0) ...[
+              const SizedBox(width: 12),
+              Container(
+                width: 1,
+                height: 34,
+                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+              const SizedBox(width: 12),
+            ],
+            Expanded(
+              child: _buildSummaryMetric(
+                icon: metrics[i].icon,
+                value: metrics[i].value,
+                label: metrics[i].label,
+                color: metrics[i].color,
+                colorScheme: colorScheme,
+                isDesktop: isDesktop,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildAnnouncementCard(Map<String, dynamic> a, bool isDark) {
-    final isPriority = a['is_priority'] == 1 || a['is_priority'] == true;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+  Widget _buildSummaryMetric({
+    required IconData icon,
+    required String value,
+    required String label,
+    required Color color,
+    required ColorScheme colorScheme,
+    required bool isDesktop,
+  }) {
+    final iconContainer = Container(
+      width: 36,
+      height: 36,
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: isPriority
-            ? Border.all(
-                color: Colors.orangeAccent.withValues(alpha: 0.3), width: 1.5)
-            : null,
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2))
-              ],
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      child: Icon(icon, size: 19, color: color),
+    );
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(value,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  height: 1,
+                )),
+        const SizedBox(height: 4),
+        Text(label,
+            style: TextStyle(
+              color: colorScheme.onSurfaceVariant,
+              fontSize: 12,
+            )),
+      ],
+    );
+
+    if (isDesktop) {
+      return Row(children: [iconContainer, const SizedBox(width: 10), text]);
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        iconContainer,
+        const SizedBox(height: 7),
+        Center(child: text),
+      ],
+    );
+  }
+
+  Widget _buildDesktopSections({
+    required List announcements,
+    required bool isLight,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final todoPanel = _todos.isNotEmpty || _todoGroups.isNotEmpty
+        ? _buildSurfacePanel(
+            colorScheme: colorScheme,
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            child: ShareTodoSection(
+                todos: _todos, todoGroups: _todoGroups, isLight: isLight),
+          )
+        : null;
+    final sideSections = <Widget>[];
+    if (announcements.isNotEmpty) {
+      sideSections.add(_buildAnnouncementsSection(announcements));
+    }
+    if (_countdowns.isNotEmpty) {
+      sideSections.add(
+        _buildSurfacePanel(
+          colorScheme: colorScheme,
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+          child:
+              ShareCountdownSection(countdowns: _countdowns, isLight: isLight),
+        ),
+      );
+    }
+
+    final schedulePanel = _schedules.isNotEmpty
+        ? _buildSurfacePanel(
+            colorScheme: colorScheme,
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+            child: ShareScheduleSection(
+              schedules: _schedules,
+              isLight: isLight,
+            ),
+          )
+        : null;
+
+    final sidePanel = sideSections.isEmpty
+        ? null
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < sideSections.length; i++) ...[
+                if (i > 0) const SizedBox(height: 16),
+                sideSections[i],
+              ],
+            ],
+          );
+
+    if (todoPanel == null && sidePanel == null && schedulePanel == null) {
+      return _buildEmptyPanel(colorScheme);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (schedulePanel != null) schedulePanel,
+        if (schedulePanel != null && (todoPanel != null || sidePanel != null))
+          const SizedBox(height: 16),
+        if (todoPanel != null || sidePanel != null)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (todoPanel != null) Expanded(flex: 7, child: todoPanel),
+              if (todoPanel != null && sidePanel != null)
+                const SizedBox(width: 20),
+              if (sidePanel != null) Expanded(flex: 4, child: sidePanel),
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget _buildMobileSections({
+    required List announcements,
+    required bool isLight,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final sections = <Widget>[];
+    if (_schedules.isNotEmpty) {
+      sections.add(
+        _buildSurfacePanel(
+          colorScheme: colorScheme,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: ShareScheduleSection(
+            schedules: _schedules,
+            isLight: isLight,
+          ),
+        ),
+      );
+    }
+    if (announcements.isNotEmpty) {
+      sections.add(_buildAnnouncementsSection(announcements));
+    }
+    if (_countdowns.isNotEmpty) {
+      sections.add(
+        _buildSurfacePanel(
+          colorScheme: colorScheme,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child:
+              ShareCountdownSection(countdowns: _countdowns, isLight: isLight),
+        ),
+      );
+    }
+    if (_todos.isNotEmpty || _todoGroups.isNotEmpty) {
+      sections.add(
+        _buildSurfacePanel(
+          colorScheme: colorScheme,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+          child: ShareTodoSection(
+              todos: _todos, todoGroups: _todoGroups, isLight: isLight),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        for (var i = 0; i < sections.length; i++) ...[
+          if (i > 0) const SizedBox(height: 16),
+          sections[i],
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSurfacePanel({
+    required ColorScheme colorScheme,
+    required Widget child,
+    EdgeInsetsGeometry padding = const EdgeInsets.fromLTRB(20, 16, 20, 20),
+  }) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.55),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.shadow.withValues(alpha: 0.07),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildEmptyPanel(ColorScheme colorScheme) {
+    return _buildSurfacePanel(
+      colorScheme: colorScheme,
+      padding: const EdgeInsets.symmetric(vertical: 56, horizontal: 24),
+      child: Column(
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.inbox_outlined,
+                size: 34, color: colorScheme.onPrimaryContainer),
+          ),
+          const SizedBox(height: 16),
+          Text('暂无分享内容',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Text('团队还没有公开待办、日程、倒计时或公告',
+              style: TextStyle(color: colorScheme.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
+
+  String _displayValue(dynamic value, String fallback) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
+  }
+
+  // ── 公告区域 ──
+  Widget _buildAnnouncementsSection(List announcements) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return _buildSurfacePanel(
+      colorScheme: colorScheme,
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionTitle(
+            icon: Icons.campaign_outlined,
+            title: '团队公告',
+            subtitle: '最新团队动态',
+            color: colorScheme.tertiary,
+          ),
+          const SizedBox(height: 14),
+          ...announcements.map((a) =>
+              _buildAnnouncementCard(Map<String, dynamic>.from(a as Map))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.13),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Icon(icon, size: 20, color: color),
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      )),
+              const SizedBox(height: 2),
+              Text(subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.onSurfaceVariant,
+                  )),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAnnouncementCard(Map<String, dynamic> a) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isPriority = a['is_priority'] == 1 || a['is_priority'] == true;
+    final creator = a['creator_name']?.toString();
+    final createdAt = a['created_at'];
+    final meta = [
+      if (creator != null && creator.isNotEmpty) creator,
+      if (createdAt is int) _fmtDateTime(createdAt),
+    ].join(' · ');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: isPriority
+            ? colorScheme.tertiaryContainer.withValues(alpha: 0.65)
+            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isPriority
+              ? colorScheme.tertiary.withValues(alpha: 0.35)
+              : colorScheme.outlineVariant.withValues(alpha: 0.5),
+          width: isPriority ? 1.2 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (isPriority) ...[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: colorScheme.tertiary,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text('置顶',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.onTertiary,
+                        fontWeight: FontWeight.w700,
+                      )),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Text(
+                  a['title']?.toString() ?? '',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        height: 1.3,
+                      ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            a['content']?.toString() ?? '',
+            style: TextStyle(
+              fontSize: 13,
+              color: colorScheme.onSurfaceVariant,
+              height: 1.55,
+            ),
+          ),
+          if (meta.isNotEmpty) ...[
+            const SizedBox(height: 11),
             Row(
               children: [
-                if (isPriority) ...[
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.orangeAccent,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Text('置顶',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                Expanded(
-                  child: Text(a['title'] ?? '',
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w600)),
-                ),
+                Icon(Icons.schedule_rounded,
+                    size: 14, color: colorScheme.onSurfaceVariant),
+                const SizedBox(width: 5),
+                Text(meta,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: colorScheme.onSurfaceVariant,
+                    )),
               ],
             ),
-            const SizedBox(height: 8),
-            Text(a['content'] ?? '',
-                style: TextStyle(
-                    fontSize: 14,
-                    color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
-                    height: 1.5)),
-            const SizedBox(height: 10),
-            Text(
-              [
-                if (a['creator_name'] != null) a['creator_name'],
-                if (a['created_at'] != null)
-                  _fmtDateTime(a['created_at'] as int),
-              ].join(' · '),
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-            ),
           ],
-        ),
+        ],
       ),
     );
   }
