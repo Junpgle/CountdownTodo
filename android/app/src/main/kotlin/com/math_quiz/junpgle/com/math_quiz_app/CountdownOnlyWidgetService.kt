@@ -2,8 +2,6 @@ package com.math_quiz.junpgle.com.math_quiz_app
 
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
-import android.graphics.Color
 import android.os.Bundle
 import android.text.Html
 import android.text.Spanned
@@ -59,15 +57,21 @@ class CountdownOnlyRemoteViewsFactory(
         if (position >= itemsData.size) return RemoteViews(context.packageName, R.layout.widget_item_cd)
 
         val data = itemsData[position]
-        val isDarkMode = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val primaryTextColor = context.getColor(R.color.widget_text_primary)
-
         val views = RemoteViews(context.packageName, R.layout.widget_item_cd)
         views.setCharSequence(R.id.cd_title, "setText", getHtmlSpanned(data.getString("title", "")))
-        views.setTextColor(R.id.cd_title, primaryTextColor)
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.cd_title,
+            R.color.widget_text_primary
+        )
         views.setTextViewText(R.id.cd_days, data.getString("days", ""))
-        val blueColor = Color.parseColor(if (isDarkMode) "#60A5FA" else "#3B82F6")
-        views.setTextColor(R.id.cd_days, blueColor)
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.cd_days,
+            R.color.widget_text_accent
+        )
         views.setOnClickFillInIntent(R.id.cd_title, Intent())
         return views
     }

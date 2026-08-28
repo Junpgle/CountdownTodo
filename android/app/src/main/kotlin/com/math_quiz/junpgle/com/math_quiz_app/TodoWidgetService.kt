@@ -2,8 +2,6 @@ package com.math_quiz.junpgle.com.math_quiz_app
 
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
-import android.graphics.Color
 import android.os.Bundle
 import android.text.Html
 import android.text.Spanned
@@ -100,10 +98,6 @@ class TodoRemoteViewsFactory(
         if (position >= itemsData.size) return RemoteViews(context.packageName, R.layout.widget_item_todo)
 
         val data = itemsData[position]
-        val isDarkMode = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val primaryTextColor = context.getColor(R.color.widget_text_primary)
-        val secondaryTextColor = context.getColor(R.color.widget_text_secondary)
-
         when (listType) {
             0 -> {
                 val views = RemoteViews(context.packageName, R.layout.widget_item_todo)
@@ -111,18 +105,28 @@ class TodoRemoteViewsFactory(
                 val title = data.getString("title", "")
 
                 views.setCharSequence(R.id.todo_text, "setText", getHtmlSpanned(if (isDone) "<s>$title</s>" else title))
-                views.setTextColor(R.id.todo_text, if (isDone) secondaryTextColor else primaryTextColor)
+                WidgetProviderSupport.setTextColor(
+                    context,
+                    views,
+                    R.id.todo_text,
+                    if (isDone) R.color.widget_text_secondary else R.color.widget_text_primary
+                )
 
                 val dueText = data.getString("due", "")
                 if (dueText.isNotEmpty() && !isDone) {
                     views.setViewVisibility(R.id.todo_due, View.VISIBLE)
                     views.setTextViewText(R.id.todo_due, dueText)
-                    val redColor = Color.parseColor(if (isDarkMode) "#F87171" else "#EF4444")
-                    val yellowColor = Color.parseColor(if (isDarkMode) "#FBBF24" else "#F59E0B")
-                    val greenColor = Color.parseColor(if (isDarkMode) "#34D399" else "#10B981")
-                    if (dueText.contains("逾期")) views.setTextColor(R.id.todo_due, redColor)
-                    else if (dueText.contains("今天")) views.setTextColor(R.id.todo_due, yellowColor)
-                    else views.setTextColor(R.id.todo_due, greenColor)
+                    val dueColor = when {
+                        dueText.contains("逾期") -> R.color.widget_due_overdue
+                        dueText.contains("今天") -> R.color.widget_due_today
+                        else -> R.color.widget_due_future
+                    }
+                    WidgetProviderSupport.setTextColor(
+                        context,
+                        views,
+                        R.id.todo_due,
+                        dueColor
+                    )
                 } else {
                     views.setViewVisibility(R.id.todo_due, View.GONE)
                 }
@@ -131,20 +135,42 @@ class TodoRemoteViewsFactory(
             1 -> {
                 val views = RemoteViews(context.packageName, R.layout.widget_item_course)
                 views.setCharSequence(R.id.course_date, "setText", getHtmlSpanned(data.getString("date", "")))
-                views.setTextColor(R.id.course_date, secondaryTextColor)
+                WidgetProviderSupport.setTextColor(
+                    context,
+                    views,
+                    R.id.course_date,
+                    R.color.widget_text_secondary
+                )
 
                 val cId = data.getString("id", "")
                 val urgentCourseId = prefs.getString("urgent_course_id", "")
-                val redColor = Color.parseColor(if (isDarkMode) "#F87171" else "#EF4444")
-
                 views.setCharSequence(R.id.course_name, "setText", getHtmlSpanned(data.getString("name", "")))
-                views.setTextColor(R.id.course_name, if (cId == urgentCourseId && urgentCourseId?.isNotEmpty() == true) redColor else primaryTextColor)
+                WidgetProviderSupport.setTextColor(
+                    context,
+                    views,
+                    R.id.course_name,
+                    if (cId == urgentCourseId && urgentCourseId?.isNotEmpty() == true) {
+                        R.color.widget_due_overdue
+                    } else {
+                        R.color.widget_text_primary
+                    }
+                )
 
                 views.setTextViewText(R.id.course_time, data.getString("time", ""))
-                views.setTextColor(R.id.course_time, secondaryTextColor)
+                WidgetProviderSupport.setTextColor(
+                    context,
+                    views,
+                    R.id.course_time,
+                    R.color.widget_text_secondary
+                )
 
                 views.setTextViewText(R.id.course_room, data.getString("room", ""))
-                views.setTextColor(R.id.course_room, secondaryTextColor)
+                WidgetProviderSupport.setTextColor(
+                    context,
+                    views,
+                    R.id.course_room,
+                    R.color.widget_text_secondary
+                )
 
                 // 为了让整个列表都可以点回 App
                 views.setOnClickFillInIntent(R.id.course_name, Intent())
@@ -153,20 +179,38 @@ class TodoRemoteViewsFactory(
             2 -> {
                 val views = RemoteViews(context.packageName, R.layout.widget_item_cd)
                 views.setCharSequence(R.id.cd_title, "setText", getHtmlSpanned(data.getString("title", "")))
-                views.setTextColor(R.id.cd_title, primaryTextColor)
+                WidgetProviderSupport.setTextColor(
+                    context,
+                    views,
+                    R.id.cd_title,
+                    R.color.widget_text_primary
+                )
                 views.setTextViewText(R.id.cd_days, data.getString("days", ""))
-                val blueColor = Color.parseColor(if (isDarkMode) "#60A5FA" else "#3B82F6")
-                views.setTextColor(R.id.cd_days, blueColor)
+                WidgetProviderSupport.setTextColor(
+                    context,
+                    views,
+                    R.id.cd_days,
+                    R.color.widget_text_accent
+                )
                 views.setOnClickFillInIntent(R.id.cd_title, Intent())
                 return views
             }
             3 -> {
                 val views = RemoteViews(context.packageName, R.layout.widget_item_timelog)
                 views.setCharSequence(R.id.tl_title, "setText", getHtmlSpanned(data.getString("title", "")))
-                views.setTextColor(R.id.tl_title, primaryTextColor)
+                WidgetProviderSupport.setTextColor(
+                    context,
+                    views,
+                    R.id.tl_title,
+                    R.color.widget_text_primary
+                )
                 views.setTextViewText(R.id.tl_time, data.getString("time", ""))
-                val greenColor = Color.parseColor(if (isDarkMode) "#34D399" else "#10B981")
-                views.setTextColor(R.id.tl_time, greenColor)
+                WidgetProviderSupport.setTextColor(
+                    context,
+                    views,
+                    R.id.tl_time,
+                    R.color.focus_tag_text
+                )
                 views.setOnClickFillInIntent(R.id.tl_title, Intent())
                 return views
             }

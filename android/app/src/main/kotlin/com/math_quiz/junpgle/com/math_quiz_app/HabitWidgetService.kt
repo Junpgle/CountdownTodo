@@ -54,25 +54,27 @@ class HabitRemoteViewsFactory(
             return RemoteViews(context.packageName, R.layout.widget_item_habit)
         }
         val data = itemsData[position]
-        val primaryTextColor = context.getColor(R.color.widget_text_primary)
-        val secondaryTextColor = context.getColor(R.color.widget_text_secondary)
-        val successColor = context.getColor(R.color.widget_success)
-        val accentColor = context.getColor(R.color.widget_accent)
-
         val views = RemoteViews(context.packageName, R.layout.widget_item_habit)
         val isMet = data.getBoolean("met")
 
         views.setTextViewText(R.id.habit_icon, data.getString("icon", "").ifEmpty { "🎯" })
         views.setTextViewText(R.id.habit_title, data.getString("title", ""))
-        views.setTextColor(R.id.habit_title, primaryTextColor)
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.habit_title,
+            R.color.widget_text_primary
+        )
 
         val progressText = data.getString("progress", "")
         if (progressText.isNotEmpty()) {
             views.setViewVisibility(R.id.habit_progress, View.VISIBLE)
             views.setTextViewText(R.id.habit_progress, progressText)
-            views.setTextColor(
+            WidgetProviderSupport.setTextColor(
+                context,
+                views,
                 R.id.habit_progress,
-                if (isMet) successColor else secondaryTextColor
+                if (isMet) R.color.widget_success else R.color.widget_text_secondary
             )
         } else {
             views.setViewVisibility(R.id.habit_progress, View.GONE)
@@ -83,13 +85,23 @@ class HabitRemoteViewsFactory(
         val source = data.getString("source", "") ?: ""
         if (isMet) {
             views.setTextViewText(R.id.habit_met, "✅")
-            views.setTextColor(R.id.habit_met, successColor)
+            WidgetProviderSupport.setTextColor(
+                context,
+                views,
+                R.id.habit_met,
+                R.color.widget_success
+            )
         } else {
             val quickText = data.getString("quick", "")
             val firstQuick = quickText.split(",").firstOrNull { it.isNotBlank() } ?: ""
             val label = if (firstQuick.isNotEmpty()) "+$firstQuick" else "＋"
             views.setTextViewText(R.id.habit_met, label)
-            views.setTextColor(R.id.habit_met, accentColor)
+            WidgetProviderSupport.setTextColor(
+                context,
+                views,
+                R.id.habit_met,
+                R.color.widget_accent
+            )
         }
 
         // 时长型习惯无法在后台打卡：点击打开应用由用户手动开始专注。

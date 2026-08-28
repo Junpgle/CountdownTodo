@@ -74,7 +74,7 @@ class TodoOnlyWidgetProvider : HomeWidgetProvider() {
             views.setEmptyView(R.id.list_todos, R.id.empty_todos)
 
             val appPendingIntent = WidgetProviderSupport.mainActivityPendingIntent(context)
-            views.setOnClickPendingIntent(R.id.widget_root, appPendingIntent)
+            views.setOnClickPendingIntent(android.R.id.background, appPendingIntent)
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }

@@ -239,8 +239,9 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   static const int _isolateTransformThreshold = 60;
+  static const Duration _systemUiRestoreDelay = Duration(milliseconds: 150);
 
   String? _loggedInUser;
   bool _isChecking = true;
@@ -252,11 +253,15 @@ class _MyAppState extends State<MyApp> {
   bool _defaultSplashCompleted = false;
   bool _windowReadyForSplashTransition = true;
   Timer? _defaultSplashFallbackTimer;
+  Timer? _systemUiRestoreTimer;
   String? _shareCode;
 
   @override
   void initState() {
     super.initState();
+    if (AppPlatform.isAndroid) {
+      WidgetsBinding.instance.addObserver(this);
+    }
     _shareCode = widget.initialShareCode;
     // ── 最先检查分享路由，避免启动多余逻辑 ──
     _checkShareRoute();
@@ -286,6 +291,28 @@ class _MyAppState extends State<MyApp> {
       _initializeApp();
       _startSplashSequence();
     }
+  }
+
+  @override
+  void didChangeMetrics() {
+    _scheduleSystemUiRestore();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _scheduleSystemUiRestore();
+    }
+  }
+
+  void _scheduleSystemUiRestore() {
+    if (!AppPlatform.isAndroid) return;
+
+    _systemUiRestoreTimer?.cancel();
+    _systemUiRestoreTimer = Timer(_systemUiRestoreDelay, () {
+      if (!mounted) return;
+      unawaited(AppSystemUiStyle.restoreAfterWindowChange());
+    });
   }
 
   void _checkShareRoute() {
@@ -737,6 +764,10 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     _defaultSplashFallbackTimer?.cancel();
+    _systemUiRestoreTimer?.cancel();
+    if (AppPlatform.isAndroid) {
+      WidgetsBinding.instance.removeObserver(this);
+    }
     _bandPomodoroSub?.cancel();
     unawaited(FloatWindowService.dispose());
     BandSyncService.dispose();

@@ -7,7 +7,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
+import android.os.Build
 import android.widget.RemoteViews
+import androidx.core.content.ContextCompat
 
 /** Shared lifecycle and RemoteViews helpers for the list-based widgets. */
 object WidgetProviderSupport {
@@ -32,19 +34,26 @@ object WidgetProviderSupport {
             intent.action == HOME_WIDGET_UPDATE_ACTION
 
     fun applyCommonChrome(context: Context, views: RemoteViews, titleViewId: Int) {
-        val bgImageId = context.resources.getIdentifier(
-            "widget_bg_image",
-            "id",
-            context.packageName
-        )
-        if (bgImageId != 0) {
-            views.setInt(
-                bgImageId,
-                "setColorFilter",
-                context.getColor(R.color.widget_bg)
-            )
+        setTextColor(context, views, titleViewId, R.color.widget_text_primary)
+    }
+
+    /**
+     * Android 12+ 在小组件宿主应用 RemoteViews 时再解析颜色资源。
+     *
+     * 这能避免 Android 17/HyperOS 中 provider 进程与桌面宿主的夜间模式配置
+     * 短暂不同步，导致深色文字和浅色背景（或反之）被组合到一起。
+     */
+    fun setTextColor(
+        context: Context,
+        views: RemoteViews,
+        viewId: Int,
+        colorResource: Int
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            views.setColor(viewId, "setTextColor", colorResource)
+        } else {
+            views.setTextColor(viewId, ContextCompat.getColor(context, colorResource))
         }
-        views.setTextColor(titleViewId, context.getColor(R.color.widget_text_primary))
     }
 
     fun serviceIntent(
