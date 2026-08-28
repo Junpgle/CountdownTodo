@@ -50,6 +50,27 @@ void main() {
     );
   });
 
+  test('scales the capsule width with the number of destinations', () {
+    final threeItemWidth = floatingBottomNavigationWidthFor(
+      390,
+      itemCount: 3,
+    );
+
+    expect(threeItemWidth, closeTo(262, 0.001));
+    expect(
+      floatingBottomNavigationWidthFor(390, itemCount: 2),
+      closeTo(threeItemWidth * 2 / 3, 0.001),
+    );
+    expect(
+      floatingBottomNavigationWidthFor(390, itemCount: 4),
+      closeTo(threeItemWidth * 4 / 3, 0.001),
+    );
+    expect(
+      floatingBottomNavigationWidthFor(390, itemCount: 5),
+      closeTo(358, 0.001),
+    );
+  });
+
   testWidgets('keeps the bar child when the effect is disabled',
       (tester) async {
     await LiquidGlassEffectService.setEnabled(false);

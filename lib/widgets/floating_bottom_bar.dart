@@ -44,26 +44,39 @@ double floatingBottomBarHeightFor(BuildContext context) {
 
 /// Resolves the homepage's phone margins for the shared navigation bar.
 EdgeInsets floatingBottomBarMarginFor(BuildContext context) {
-  final horizontal =
-      homeBottomBarHorizontalMarginFor(MediaQuery.sizeOf(context).width);
-  return EdgeInsets.fromLTRB(horizontal, 0, horizontal, 24);
+  return floatingBottomNavigationMarginFor(context, itemCount: 3);
 }
 
-/// Resolves a compact width for a shared navigation bar.
+/// Resolves the capsule width for a shared navigation bar.
 ///
-/// Two-item bars otherwise inherit the homepage's three-slot width and leave
-/// unusually large empty space on either side of each destination. Keep the
-/// homepage margins as the lower bound, while capping the common two-item
-/// treatment at the same compact visual width used by the reference bar.
+/// The homepage's three destinations are the reference: preserve that exact
+/// width, then scale it by the number of destinations so each slot keeps the
+/// same visual rhythm. A small screen-edge inset remains as a safety cap for
+/// four- and five-item bars.
+@visibleForTesting
+double floatingBottomNavigationWidthFor(
+  double screenWidth, {
+  required int itemCount,
+}) {
+  final referenceMargin = homeBottomBarHorizontalMarginFor(screenWidth);
+  final referenceWidth = math.max(0.0, screenWidth - referenceMargin * 2.0);
+  final proportionalWidth =
+      referenceWidth * math.max(1, itemCount).toDouble() / 3.0;
+  final availableWidth = math.max(0.0, screenWidth - 32.0);
+  return math.min(proportionalWidth, availableWidth);
+}
+
+/// Resolves margins for the shared navigation bar from its item count.
 EdgeInsets floatingBottomNavigationMarginFor(
   BuildContext context, {
   required int itemCount,
 }) {
   final width = MediaQuery.sizeOf(context).width;
-  final homepageMargin = homeBottomBarHorizontalMarginFor(width);
-  final maxWidth = itemCount == 2 ? 320.0 : null;
-  final widthMargin = maxWidth == null ? 0.0 : (width - maxWidth) / 2;
-  final horizontal = math.max(homepageMargin, widthMargin);
+  final navigationWidth = floatingBottomNavigationWidthFor(
+    width,
+    itemCount: itemCount,
+  );
+  final horizontal = math.max(16.0, (width - navigationWidth) / 2.0);
   return EdgeInsets.fromLTRB(horizontal, 0, horizontal, 24);
 }
 

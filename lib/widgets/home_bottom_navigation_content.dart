@@ -631,6 +631,7 @@ class _FloatingBottomNavigationContentState
                       RepaintBoundary(
                         key: _indicatorBackgroundKey,
                         child: Stack(
+                          fit: StackFit.expand,
                           clipBehavior: Clip.none,
                           children: [
                             ClipPath(
