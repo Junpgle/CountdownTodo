@@ -28,6 +28,7 @@ class AboutScreen extends StatefulWidget {
 }
 
 class _AboutScreenState extends State<AboutScreen> {
+  static const _appIconAsset = 'assets/icon/app_icon.png';
   static final GitHubResourceService _resourceService = GitHubResourceService();
   String _version = '加载中...';
   List<ChangelogEntry> _changelogEntries = [];
@@ -419,10 +420,15 @@ class _AboutScreenState extends State<AboutScreen> {
                         color: Theme.of(context).colorScheme.primaryContainer,
                         borderRadius: BorderRadius.circular(18),
                       ),
-                      child: Icon(
-                        Icons.checklist_rounded,
-                        size: 48,
-                        color: Theme.of(context).colorScheme.primary,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: Image.asset(
+                          _appIconAsset,
+                          width: 80,
+                          height: 80,
+                          fit: BoxFit.cover,
+                          semanticLabel: 'CountDownTodo',
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -554,10 +560,15 @@ class _AboutScreenState extends State<AboutScreen> {
               color: Theme.of(context).colorScheme.primaryContainer,
               borderRadius: BorderRadius.circular(22),
             ),
-            child: Icon(
-              Icons.checklist_rounded,
-              size: 60,
-              color: Theme.of(context).colorScheme.primary,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(22),
+              child: Image.asset(
+                _appIconAsset,
+                width: 100,
+                height: 100,
+                fit: BoxFit.cover,
+                semanticLabel: 'CountDownTodo',
+              ),
             ),
           ),
           const SizedBox(height: 16),
