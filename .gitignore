@@ -147,6 +147,7 @@ todo.md
 !/test/widgets/optional_liquid_glass_surface_test.dart
 !/test/widgets/app_status_toast_test.dart
 !/test/widgets/home_bottom_navigation_content_test.dart
+!/test/widgets/floating_bottom_bar_test.dart
 !/test/utils/
 /test/utils/*
 !/test/utils/todo_recurrence_picker_test.dart
@@ -163,6 +164,11 @@ todo.md
 !/test/features/habits/habit_streak_service_test.dart
 !/test/features/habits/habit_repository_test.dart
 !/test/features/habits/habit_time_point_chart_test.dart
+!/test/features/finance/
+/test/features/finance/*
+!/test/features/finance/finance_models_test.dart
+!/test/features/finance/finance_schema_test.dart
+!/test/features/finance/finance_automation_test.dart
 !/test/utils/todo_widget_visibility_test.dart
 /macos/build/
 /globalize.md
