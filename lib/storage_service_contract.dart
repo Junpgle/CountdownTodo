@@ -456,6 +456,7 @@ abstract class _StorageServiceBase {
     bool syncPlanBlocks = true,
     bool syncFixedSchedules = true,
     bool syncHabits = true,
+    bool syncFinance = true,
   });
   bool recomputeLocalTodoScheduleConflictsForTest(
     List<TodoItem> todos,

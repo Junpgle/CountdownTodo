@@ -85,6 +85,7 @@ class HomeDrawerMenu extends StatefulWidget {
   final VoidCallback onSettings;
   final VoidCallback onAiAssistant;
   final VoidCallback onTeams;
+  final VoidCallback onFinance;
   final VoidCallback onChangelog;
   final VoidCallback onChallengeCenter;
   final VoidCallback onUpdate;
@@ -104,6 +105,7 @@ class HomeDrawerMenu extends StatefulWidget {
     required this.onSettings,
     required this.onAiAssistant,
     required this.onTeams,
+    required this.onFinance,
     required this.onChangelog,
     required this.onChallengeCenter,
     required this.onUpdate,
@@ -171,6 +173,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
     final definition = SidebarMenuService.definition(key);
     final VoidCallback? onTap = switch (key) {
       'teams' => widget.onTeams,
+      'finance' => widget.onFinance,
       'aiAssistant' => widget.onAiAssistant,
       'timeline' => widget.onTimeline,
       'journal' => widget.onJournal,

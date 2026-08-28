@@ -73,6 +73,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
           SafeArea(
             // 仅避让顶部状态栏。列表需要继续绘制到 Android 手势导航区
             // 后方，末尾的滚动余量再保证卡片操作不会被底栏遮挡。
+            top: false,
             bottom: false,
             child: Column(
               children: [
@@ -871,6 +872,27 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                   child: const Text('🍅', style: TextStyle(fontSize: 18)),
                 ),
                 const SizedBox(height: 8),
+                HomeQuickActionButton.compact(
+                  key: _fabFinanceKey,
+                  heroTag: 'fab_finance',
+                  onPressed: () async {
+                    await PageTransitions.pushFromRect(
+                      context: context,
+                      page: FinanceHomeScreen(
+                        username: widget.username,
+                        openQuickEntry: true,
+                      ),
+                      sourceKey: _fabFinanceKey,
+                      placeholderIcon: Icons.account_balance_wallet_outlined,
+                    );
+                  },
+                  tooltip: '记一笔',
+                  tint: Theme.of(context).colorScheme.secondary,
+                  foregroundColor: Theme.of(context).colorScheme.secondary,
+                  isDark: isDarkMode,
+                  child: const Icon(Icons.add_card_outlined, size: 20),
+                ),
+                const SizedBox(height: 8),
                 HomeQuickActionButton.extended(
                   key: _fabTodoKey,
                   heroTag: 'fab_todo',
@@ -1037,6 +1059,17 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                 .clearUnreadBackgroundNotifications();
             await _fetchTeamPendingCount();
             _loadAllData(deferred: true);
+          });
+        },
+        onFinance: () {
+          Future.delayed(const Duration(milliseconds: 300), () async {
+            if (!context.mounted) return;
+            await PageTransitions.pushFromRect(
+              context: context,
+              page: FinanceHomeScreen(username: widget.username),
+              sourceKey: _fabFinanceKey,
+              placeholderIcon: Icons.account_balance_wallet_outlined,
+            );
           });
         },
         teamPendingCount: _teamPendingCount,

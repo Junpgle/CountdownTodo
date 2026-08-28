@@ -1,7 +1,7 @@
 # Current conflict logic
 
-Last verified against the Flutter client and external Alibaba debug/release
-servers: 2026-08-25.
+Last verified against the Flutter client and external Alibaba debug server:
+2026-08-27.
 
 ## Two conflict classes
 
@@ -26,6 +26,17 @@ tombstone is rejected even when it carries a higher version, and that response
 forces a full fixed-schedule downlink so the client converges past an advanced
 watermark. Team members may edit shared schedule content, but only the database
 owner may clear `team_uuid` or transfer the schedule to another joined team.
+
+Personal finance rows use an independent `finance_v1` capability and cursor.
+Transactions, catalogs, budgets, recurring rules and templates are scoped only
+by authenticated `user_id`; they never enter team sync. The server applies
+`updated_at` first and `version` only for equal timestamps. A stale or invalid
+finance payload returns a finance conflict and a full finance snapshot, while
+the client leaves the finance cursor unchanged until the capability and all
+finance response fields are present. Local finance rows carry a `pending_sync`
+marker and are cleared only by a server acknowledgement for the same request
+version; system categories and payment methods are stable local defaults and are
+not uploaded or overwritten by the server.
 
 Todo comparison includes content/completion/deletion, dates, recurrence and
 `recurrence_series_id`, custom interval/end date, remark/group/team/category,
@@ -76,9 +87,10 @@ the normal LWW rejection path.
   after ignoring sync metadata is not a conflict
   (`lib/features/habits/services/habit_sync_conflict_service.dart`,
   `lib/services/sync_capability_service.dart`).
-- Alibaba debug/release server: `CDT-server/debug/routes/sync.js` and
-  `CDT-server/math_quiz_backend/routes/sync.js`, plus their shared helper and
-  service modules in the separate checkout.
+- Alibaba debug server: `CDT-server/debug/routes/sync.js`,
+  `CDT-server/debug/services/financeSync.js` and `CDT-server/debug/db/init.js`,
+  plus their shared helper and service modules in the separate checkout. The
+  production `math_quiz_backend/` tree remains unchanged.
 - Compatibility Worker: `math-quiz-backend/src/index.js`.
 
 Any change needs tests for local/local and client/server races, accept-server

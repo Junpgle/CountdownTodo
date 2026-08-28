@@ -11,10 +11,42 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 44;
+  static const int currentVersion = 48;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 48,
+      title: '记账待同步标记',
+      changes: [
+        '为六张个人记账表增加 pending_sync，避免因设备时间偏差漏传本地修改。',
+        '同步成功后按请求快照安全确认，失败、冲突或并发修改时保留待同步状态。',
+      ],
+    ),
+    DatabaseSchemaChange(
+      version: 47,
+      title: '记账自动化',
+      changes: [
+        '新增周期账单规则，支持每月/每年提醒和到期自动记账。',
+        '新增快捷记账模板，支持桌面端快捷录入。',
+      ],
+    ),
+    DatabaseSchemaChange(
+      version: 46,
+      title: '个人记账预算',
+      changes: [
+        '新增按月份和分类设置的个人预算表。',
+        '支持总预算、分类预算和本地预算进度统计。',
+      ],
+    ),
+    DatabaseSchemaChange(
+      version: 45,
+      title: '个人记账',
+      changes: [
+        '新增个人记账交易、分类和付款方式表。',
+        '金额以最小货币单位整数保存，支持离线账单和月度统计。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 44,
       title: '本地私密日记',

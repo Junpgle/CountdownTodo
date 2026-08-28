@@ -370,6 +370,15 @@ class ApiService {
     bool habitFullSync = false,
     int? habitLastSyncTime,
     bool syncHabits = true,
+    List<Map<String, dynamic>> financeCategoryChanges = const [],
+    List<Map<String, dynamic>> financePaymentMethodChanges = const [],
+    List<Map<String, dynamic>> financeTransactionChanges = const [],
+    List<Map<String, dynamic>> financeBudgetChanges = const [],
+    List<Map<String, dynamic>> financeRecurringRuleChanges = const [],
+    List<Map<String, dynamic>> financeTemplateChanges = const [],
+    bool financeFullSync = false,
+    int? financeLastSyncTime,
+    bool syncFinance = true,
   }) async {
     try {
       final Map<String, dynamic> body = {
@@ -391,11 +400,23 @@ class ApiService {
         'habit_sleep_coaching_plans_changes': habitSleepCoachingPlanChanges,
         'habit_full_sync': habitFullSync,
         'sync_habits': syncHabits,
+        'finance_categories_changes': financeCategoryChanges,
+        'finance_payment_methods_changes': financePaymentMethodChanges,
+        'finance_transactions_changes': financeTransactionChanges,
+        'finance_budgets_changes': financeBudgetChanges,
+        'finance_recurring_rules_changes': financeRecurringRuleChanges,
+        'finance_entry_templates_changes': financeTemplateChanges,
+        'finance_full_sync': financeFullSync,
+        'sync_finance': syncFinance,
         'force_full_sync': forceFullSync,
       };
 
       if (habitLastSyncTime != null) {
         body['habit_last_sync_time'] = habitLastSyncTime;
+      }
+
+      if (financeLastSyncTime != null) {
+        body['finance_last_sync_time'] = financeLastSyncTime;
       }
 
       if (screenTime != null) {
@@ -428,6 +449,24 @@ class ApiService {
           'server_habit_sleep_coaching_plans':
               data['server_habit_sleep_coaching_plans'] ?? [],
           'new_habit_sync_time': data['new_habit_sync_time'],
+          'server_finance_categories': data['server_finance_categories'] ?? [],
+          'server_finance_payment_methods':
+              data['server_finance_payment_methods'] ?? [],
+          'server_finance_transactions':
+              data['server_finance_transactions'] ?? [],
+          'server_finance_budgets': data['server_finance_budgets'] ?? [],
+          'server_finance_recurring_rules':
+              data['server_finance_recurring_rules'] ?? [],
+          'server_finance_entry_templates':
+              data['server_finance_entry_templates'] ?? [],
+          'new_finance_sync_time': data['new_finance_sync_time'],
+          // Keep a missing acknowledgement field distinguishable from an
+          // empty acknowledgement list. This prevents a partially deployed
+          // server from advancing the finance cursor or clearing pending rows.
+          'finance_acknowledged_changes': data['finance_acknowledged_changes'],
+          'finance_conflicts': data['finance_conflicts'] ?? [],
+          'finance_full_sync_required':
+              data['finance_full_sync_required'] == true,
           'sync_capabilities': data['sync_capabilities'],
           'joined_team_uuids': data['joined_team_uuids'],
           'independent_completions':

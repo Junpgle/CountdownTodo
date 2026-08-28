@@ -360,6 +360,15 @@ mixin _StorageSync on _StorageServiceBase {
     await prefs.remove('last_sync_time_aliyun_test_$username');
     await prefs.remove('last_sync_time_cf_$username');
     await prefs.remove('last_sync_time_$username'); // 兼容旧版本
+    final financeSyncServerScope = base64Url
+        .encode(utf8.encode(ApiService.effectiveBaseUrl))
+        .replaceAll('=', '');
+    await prefs.remove(
+      'finance_last_sync_time_${ApiService.syncServerKey}_$username',
+    );
+    await prefs.remove(
+      'finance_sync_v1_${financeSyncServerScope}_$username',
+    );
   }
 
   Future<Map<String, dynamic>> syncData(
@@ -375,7 +384,15 @@ mixin _StorageSync on _StorageServiceBase {
     bool syncPlanBlocks = true,
     bool syncFixedSchedules = true,
     bool syncHabits = true,
+    bool syncFinance = true,
   }) async {
+    final syncsCoreData = syncTodos ||
+        syncCountdowns ||
+        syncTimeLogs ||
+        syncPomodoro ||
+        syncPlanBlocks ||
+        syncFixedSchedules ||
+        syncHabits;
     final bool shouldUploadAllLocal = uploadAllLocal || forceFullSync;
     // 1. 状态锁：防止重复进入
     if (!syncTodos &&
@@ -384,7 +401,8 @@ mixin _StorageSync on _StorageServiceBase {
         !syncPomodoro &&
         !syncPlanBlocks &&
         !syncFixedSchedules &&
-        !syncHabits) {
+        !syncHabits &&
+        !syncFinance) {
       return {'success': false, 'hasChanges': false};
     }
     if (_isSyncing) {
@@ -392,6 +410,8 @@ mixin _StorageSync on _StorageServiceBase {
     }
     _isSyncing = true;
     bool hasChanges = false;
+    FinanceSyncRequest? financeRequest;
+    List<dynamic> financeConflicts = const [];
     final scopedRefreshDomains = <DataRefreshDomain>{
       if (syncTodos) DataRefreshDomain.todos,
       if (syncTodos) DataRefreshDomain.todoGroups,
@@ -401,6 +421,7 @@ mixin _StorageSync on _StorageServiceBase {
       if (syncPlanBlocks) DataRefreshDomain.planBlocks,
       if (syncFixedSchedules) DataRefreshDomain.fixedSchedules,
       if (syncHabits) DataRefreshDomain.habits,
+      if (syncFinance) DataRefreshDomain.finance,
     };
     List<ConflictInfo> conflicts = [];
     final Set<String> updatedTodoIds = <String>{};
@@ -451,6 +472,13 @@ mixin _StorageSync on _StorageServiceBase {
                       0)
                   : lastSyncTime));
       _lastSyncRequestAt = DateTime.now().millisecondsSinceEpoch;
+
+      if (syncFinance) {
+        financeRequest = await FinanceSyncService.prepare(
+          username: username,
+          forceFullSync: forceFullSync,
+        );
+      }
 
       // 3. 🛡️ 核心修复：基于 op_logs 识别脏数据，并进行 UUID 去重处理（防止 1000+ 冗余同步）
       final db = await DatabaseHelper.instance.database;
@@ -937,6 +965,17 @@ mixin _StorageSync on _StorageServiceBase {
       }
 
       // 5. 发起网络同步请求
+      final financePayload =
+          financeRequest?.payload ?? const <String, dynamic>{};
+      List<Map<String, dynamic>> financeChangesFor(String key) {
+        final raw = financePayload[key];
+        if (raw is! List) return const [];
+        return raw
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList(growable: false);
+      }
+
       Future<Map<String, dynamic>> sendSyncRequest() {
         return ApiService.postDeltaSync(
           userId: userId,
@@ -957,13 +996,34 @@ mixin _StorageSync on _StorageServiceBase {
           habitFullSync: syncHabits && (!habitSyncInitialized || forceFullSync),
           habitLastSyncTime: syncHabits ? habitLastSyncTime : null,
           syncHabits: syncHabits,
+          financeCategoryChanges: syncFinance
+              ? financeChangesFor('finance_categories_changes')
+              : const [],
+          financePaymentMethodChanges: syncFinance
+              ? financeChangesFor('finance_payment_methods_changes')
+              : const [],
+          financeTransactionChanges: syncFinance
+              ? financeChangesFor('finance_transactions_changes')
+              : const [],
+          financeBudgetChanges: syncFinance
+              ? financeChangesFor('finance_budgets_changes')
+              : const [],
+          financeRecurringRuleChanges: syncFinance
+              ? financeChangesFor('finance_recurring_rules_changes')
+              : const [],
+          financeTemplateChanges: syncFinance
+              ? financeChangesFor('finance_entry_templates_changes')
+              : const [],
+          financeFullSync: syncFinance && (financeRequest?.fullSync ?? false),
+          financeLastSyncTime: syncFinance ? financeRequest?.cursor : null,
+          syncFinance: syncFinance,
           screenTime: syncScreenTime ? screenPayload : null,
           forceFullSync: forceFullSync,
         );
       }
 
       Map<String, dynamic> response = await sendSyncRequest();
-      bool hasPendingUpload() =>
+      bool hasPendingCoreUpload() =>
           dirtyTodos.isNotEmpty ||
           dirtyGroups.isNotEmpty ||
           dirtyCountdowns.isNotEmpty ||
@@ -975,9 +1035,18 @@ mixin _StorageSync on _StorageServiceBase {
           dirtyHabitCheckIns.isNotEmpty ||
           dirtyHabitSleepCoachingPlans.isNotEmpty ||
           screenPayload != null;
-
+      bool hasPendingFinanceUpload() =>
+          syncFinance && (financeRequest?.hasPendingChanges ?? false);
       bool isDebounceIgnored(Map<String, dynamic> syncResponse) {
-        if (!forceFullSync && !hasPendingUpload()) {
+        final financeProtocolAvailable = syncFinance &&
+            SyncCapabilityService.supportsFinance(
+              syncResponse['sync_capabilities'],
+            ) &&
+            syncResponse['new_finance_sync_time'] != null &&
+            syncResponse['finance_acknowledged_changes'] is List;
+        final pendingForThisResponse = hasPendingCoreUpload() ||
+            (financeProtocolAvailable && hasPendingFinanceUpload());
+        if (!forceFullSync && !pendingForThisResponse) {
           return false;
         }
         final remotePayloadEmpty = (syncResponse['server_todos'] as List?)
@@ -997,22 +1066,60 @@ mixin _StorageSync on _StorageServiceBase {
             (syncResponse['server_habit_checkins'] as List?)?.isEmpty == true &&
             (syncResponse['server_habit_sleep_coaching_plans'] as List?)
                     ?.isEmpty ==
-                true;
+                true &&
+            (!financeProtocolAvailable ||
+                ((syncResponse['server_finance_categories'] as List?)
+                            ?.isEmpty ==
+                        true &&
+                    (syncResponse[
+                                'server_finance_payment_methods'] as List?)
+                            ?.isEmpty ==
+                        true &&
+                    (syncResponse['server_finance_transactions'] as List?)
+                            ?.isEmpty ==
+                        true &&
+                    (syncResponse['server_finance_budgets'] as List?)
+                            ?.isEmpty ==
+                        true &&
+                    (syncResponse['server_finance_recurring_rules'] as List?)
+                            ?.isEmpty ==
+                        true &&
+                    (syncResponse['server_finance_entry_templates'] as List?)
+                            ?.isEmpty ==
+                        true));
         final syncTimeUnchanged =
             (syncResponse['new_sync_time'] ?? -1) == lastSyncTime;
+        final forceFullRelevant = forceFullSync &&
+            (!syncFinance ||
+                financeProtocolAvailable ||
+                syncTodos ||
+                syncCountdowns ||
+                syncTimeLogs ||
+                syncPomodoro ||
+                syncPlanBlocks ||
+                syncFixedSchedules ||
+                syncHabits);
         return syncResponse['success'] == true &&
             syncTimeUnchanged &&
             remotePayloadEmpty &&
             (syncResponse['status'] == 'ignored' ||
-                forceFullSync ||
-                hasPendingUpload());
+                forceFullRelevant ||
+                pendingForThisResponse);
       }
 
       if (isDebounceIgnored(response)) {
         debugPrint('⏳ [同步] 命中服务端防抖空响应，3.2s 后自动重试一次');
         await Future.delayed(const Duration(milliseconds: 3200));
         response = await sendSyncRequest();
-        if (isDebounceIgnored(response) && hasPendingUpload()) {
+        final financeProtocolAvailable = syncFinance &&
+            SyncCapabilityService.supportsFinance(
+              response['sync_capabilities'],
+            ) &&
+            response['new_finance_sync_time'] != null &&
+            response['finance_acknowledged_changes'] is List;
+        final hasPendingUploadForResponse = hasPendingCoreUpload() ||
+            (financeProtocolAvailable && hasPendingFinanceUpload());
+        if (isDebounceIgnored(response) && hasPendingUploadForResponse) {
           throw Exception('同步被服务端防抖延迟，已保留本地待同步记录');
         }
       }
@@ -1041,6 +1148,9 @@ mixin _StorageSync on _StorageServiceBase {
           SyncCapabilityService.shouldAcknowledgeHabitOps(
         syncEnabled: syncHabits,
         rawCapabilities: response['sync_capabilities'],
+      );
+      final financeSupported = SyncCapabilityService.supportsFinance(
+        response['sync_capabilities'],
       );
 
       // 🚀 提取当前团队列表，用于孤立检测和合并防御
@@ -1323,6 +1433,24 @@ mixin _StorageSync on _StorageServiceBase {
         await db.update('op_logs', {'sync_error': errorMsg},
             where: 'is_synced = 0');
         throw Exception(errorMsg);
+      }
+
+      if (syncFinance && financeRequest != null) {
+        final financeResult = await FinanceSyncService.finish(
+          request: financeRequest,
+          response: response,
+          supported: financeSupported,
+        );
+        if (financeResult.hasChanges) hasChanges = true;
+        financeConflicts = financeResult.rejectedChanges;
+        if (financeResult.localChangesDuringRequest) {
+          debugPrint('🛡️ [记账同步] 请求期间发生本地修改，本轮不前移记账水位线');
+        }
+        if (financeResult.rejectedChanges.isNotEmpty) {
+          debugPrint(
+            '⚠️ [记账同步] 服务端拒绝 ${financeResult.rejectedChanges.length} 条无效或过期记录',
+          );
+        }
       }
 
       // 解析服务器返回的实时冲突
@@ -2223,7 +2351,10 @@ mixin _StorageSync on _StorageServiceBase {
       // 8. 更新同步水位线
       int newSyncTime =
           response['new_sync_time'] ?? DateTime.now().millisecondsSinceEpoch;
-      await prefs.setInt('last_sync_time_${serverKey}_$username', newSyncTime);
+      if (syncsCoreData) {
+        await prefs.setInt(
+            'last_sync_time_${serverKey}_$username', newSyncTime);
+      }
       if (syncHabits && habitsSupported) {
         await prefs.setBool(
           habitCursorCapabilityKey,
@@ -2310,6 +2441,7 @@ mixin _StorageSync on _StorageServiceBase {
         'success': true,
         'hasChanges': hasChanges,
         'conflicts': conflicts,
+        'financeConflicts': financeConflicts,
         'updatedTodoIds': updatedTodoIds.toList(),
       };
     } catch (e) {

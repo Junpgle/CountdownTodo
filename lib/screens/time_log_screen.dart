@@ -260,7 +260,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             syncPomodoro: false,
             syncPlanBlocks: false,
             syncFixedSchedules: false,
-            syncHabits: false);
+            syncHabits: false,
+            syncFinance: false);
       } catch (e) {
         if (mounted) {
           AppSnackBars.error(context, '同步失败: $e');

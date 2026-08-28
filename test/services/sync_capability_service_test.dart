@@ -114,5 +114,41 @@ void main() {
         isFalse,
       );
     });
+
+    test('recognizes the independent finance v1 capability', () {
+      expect(
+        SyncCapabilityService.supportsFinance({'finance_v1': 1}),
+        isTrue,
+      );
+      expect(
+        SyncCapabilityService.supportsFinance({'finance_v1': 0}),
+        isFalse,
+      );
+      expect(SyncCapabilityService.supportsFinance(null), isFalse);
+    });
+
+    test('finance acknowledgement is gated by both switch and capability', () {
+      expect(
+        SyncCapabilityService.shouldAcknowledgeFinanceChanges(
+          syncEnabled: true,
+          rawCapabilities: {'finance_v1': 1},
+        ),
+        isTrue,
+      );
+      expect(
+        SyncCapabilityService.shouldAcknowledgeFinanceChanges(
+          syncEnabled: false,
+          rawCapabilities: {'finance_v1': 1},
+        ),
+        isFalse,
+      );
+      expect(
+        SyncCapabilityService.shouldAcknowledgeFinanceChanges(
+          syncEnabled: true,
+          rawCapabilities: null,
+        ),
+        isFalse,
+      );
+    });
   });
 }

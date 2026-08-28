@@ -10,7 +10,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:ui';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/search_service.dart';
@@ -75,6 +74,7 @@ import '../widgets/todo_section_widget.dart';
 import '../widgets/pomodoro_today_section.dart';
 import '../widgets/plan_block_today_section.dart';
 import '../features/habits/screens/habit_center_screen.dart';
+import '../features/finance/screens/finance_home_screen.dart';
 import '../features/habits/services/habit_reminder_service.dart';
 import '../features/habits/widgets/habit_today_section.dart';
 import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
@@ -126,7 +126,6 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     with WidgetsBindingObserver, _HomeDashboardContract {
   late final PermissionRequestCoordinator _permissionCoordinator;
   final GitHubResourceService _githubResourceService = GitHubResourceService();
-
   // === 状态变量 ===
   List<CountdownItem> _countdowns = [];
   List<TodoItem> _todos = [];
@@ -206,6 +205,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final GlobalKey _habitsCardKey = GlobalKey();
   final GlobalKey _focusBannerKey = GlobalKey();
   final GlobalKey _fabPomodoroKey = GlobalKey();
+  final GlobalKey _fabFinanceKey = GlobalKey();
   final GlobalKey _fabTodoKey = GlobalKey();
   final GlobalKey _courseButtonKey = GlobalKey();
 

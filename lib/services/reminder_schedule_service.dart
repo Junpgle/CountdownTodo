@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
+import '../features/finance/services/finance_automation_service.dart';
 import '../storage_service.dart';
 import 'course_service.dart';
 import 'item_semantics_service.dart';
@@ -16,6 +17,7 @@ import 'notification_service.dart';
 ///       31001 ~ 31999  →  课程提醒
 ///       32001 ~ 32999  →  特殊待办提醒（快递/外卖/餐饮）
 ///       34001 ~ 41999  →  固定日程提醒（每个日程最多 8 个）
+///       52001 ~ 59999  →  周期账单提醒
 ///   - 每次调用 scheduleAll 都覆盖上一次的完整列表（幂等）
 ///   - 只注册未来 7 天内的提醒，超出部分在下次 App 启动时补注册
 class ReminderScheduleService {
@@ -70,6 +72,20 @@ class ReminderScheduleService {
         prefs.getString(StorageService.keyCurrentUser) ?? 'default';
 
     final fixedSchedules = await StorageService.getFixedSchedules(username);
+
+    // ── 记账自动化 ──────────────────────────────────────────────────
+    // 自动生成当前已到期周期账单，并把未来 7 天的账单加入同一套系统提醒。
+    try {
+      await FinanceAutomationService.reconcileCurrentPeriod(now: now);
+      reminders.addAll(
+        await FinanceAutomationService.buildRecurringReminders(
+          now: now,
+          limit: limit,
+        ),
+      );
+    } catch (_) {
+      // 记账自动化是可选能力，数据库异常不应阻断待办和课程提醒。
+    }
 
     // ── 待办提醒（普通 + 特殊）──────────────────────────────────────────
     for (int i = 0; i < todos.length && i < 999; i++) {
@@ -279,6 +295,13 @@ class ReminderScheduleService {
       courses: results[1] as List<CourseItem>,
       force: force,
     );
+  }
+
+  /// 供修改周期账单或模板后的页面立即刷新系统提醒。
+  static Future<void> scheduleCurrentUser({bool force = true}) async {
+    final username = await StorageService.getLoginSession();
+    if (username == null || username.isEmpty) return;
+    await scheduleFromStorage(username, force: force);
   }
 
   static List<Map<String, dynamic>> buildFixedScheduleReminders({

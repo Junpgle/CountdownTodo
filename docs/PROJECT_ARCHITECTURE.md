@@ -49,12 +49,15 @@ as part of normal client work.
 
 ## Local data
 
-- SQLite schema version: **44** in `DatabaseHelper`
+- SQLite schema version: **48** in `DatabaseHelper`
   (`DatabaseSchemaHistory.currentVersion`).
 - Per-user database: `uni_sync_<username>.db`.
 - Main tables include todos, groups, countdowns, courses, plan blocks, time logs,
   Pomodoro records/tags, settings, collaboration data, audit/conflict data,
   search history and medal recommendations.
+- Personal finance tables include transactions, categories, payment methods, monthly
+  budgets, recurring rules and entry templates. They are a personal-only domain;
+  `finance_v1` uses an independent cursor and never carries `team_uuid`.
 - Search initializes FTS5 when available, then FTS4, then falls back to `LIKE`.
 - SharedPreferences holds lightweight settings and session information; it is
   not the primary store for full synchronized datasets.
@@ -81,7 +84,7 @@ as part of normal client work.
 
 1. Client mutations update UUID/version/timestamps and local audit state.
 2. `StorageService.syncData()` sends deltas and receives server changes and
-   conflicts.
+   conflicts, including the capability-gated personal finance slice.
 3. The Alibaba server checks ownership/scope, versions and schedule overlap,
    persists conflict snapshots, and broadcasts live-update signals.
 4. Client conflict screens can keep local/server data, merge supported fields,

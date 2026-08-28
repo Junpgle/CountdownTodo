@@ -21,6 +21,8 @@ class AppSettingsStorage {
   static const String _notifyPomodoroEndEnabled = "notify_pomodoro_end_enabled";
   static const String _notifyTodoLiveEnabled = "notify_todo_live_enabled";
   static const String _notifyReminderEnabled = "notify_reminder_enabled";
+  static const String _notifyFinanceBudgetEnabled =
+      "notify_finance_budget_enabled";
   static const String _courseReminderMinutes = "course_reminder_minutes";
 
   static const String _privacyAgreed = "privacy_policy_agreed";
@@ -156,6 +158,16 @@ class AppSettingsStorage {
   static Future<void> setReminderNotificationEnabled(bool enabled) async {
     final prefs = await _prefs;
     await prefs.setBool(_notifyReminderEnabled, enabled);
+  }
+
+  static Future<bool> isFinanceBudgetAlertEnabled() async {
+    final prefs = await _prefs;
+    return prefs.getBool(_notifyFinanceBudgetEnabled) ?? true;
+  }
+
+  static Future<void> setFinanceBudgetAlertEnabled(bool enabled) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_notifyFinanceBudgetEnabled, enabled);
   }
 
   static Future<int> getCourseReminderMinutes() async {

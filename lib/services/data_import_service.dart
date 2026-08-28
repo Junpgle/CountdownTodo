@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models.dart';
 import '../models/data_export_models.dart';
+import '../features/finance/services/finance_storage.dart';
 import '../storage_service.dart';
 import '../utils/text_file_reader.dart';
 import 'api_service.dart';
@@ -29,6 +30,7 @@ class DataImportService {
     'courses': '课表',
     'pomodoro_tags': '番茄钟标签',
     'pomodoro_records': '番茄钟记录',
+    'finance': '记账数据',
     'settings': '偏好设置',
   };
 
@@ -91,6 +93,22 @@ class DataImportService {
           key: key,
           label: '偏好设置',
           count: 1,
+        ));
+        continue;
+      }
+      if (key == 'finance' && entry.value is Map) {
+        final finance = Map<String, dynamic>.from(entry.value as Map);
+        final transactions = finance['transactions'];
+        final budgets = finance['budgets'];
+        final recurringRules = finance['recurring_rules'];
+        final templates = finance['templates'];
+        types.add(ImportTypePreview(
+          key: key,
+          label: _typeLabels[key] ?? key,
+          count: (transactions is List ? transactions.length : 0) +
+              (budgets is List ? budgets.length : 0) +
+              (recurringRules is List ? recurringRules.length : 0) +
+              (templates is List ? templates.length : 0),
         ));
         continue;
       }
@@ -321,6 +339,19 @@ class DataImportService {
         importedCount += result['imported']!;
         skippedCount += result['skipped']!;
         updatedCount += result['updated']!;
+      }
+
+      if (data['finance'] is Map) {
+        final result = await FinanceStorage.importBundle(
+          Map<String, dynamic>.from(data['finance'] as Map),
+          remapUuid: (uuid) => _remapUuid(
+            uuid,
+            shouldRegenerate: uuidStrategy == UuidStrategy.regenerate,
+          ),
+        );
+        importedCount += result['imported'] ?? 0;
+        skippedCount += result['skipped'] ?? 0;
+        updatedCount += result['updated'] ?? 0;
       }
 
       if (data.containsKey('settings') && data['settings'] is Map) {

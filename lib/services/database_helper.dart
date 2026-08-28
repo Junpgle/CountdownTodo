@@ -530,6 +530,210 @@ class DatabaseHelper {
     );
   }
 
+  /// 轻量个人记账表结构、预算、自动化和同步状态表（V45-V48）。
+  ///
+  /// 记账数据默认只保存在当前用户自己的数据库中。金额使用整数分存储，
+  /// 分类和付款方式只做归档，不物理删除，以保证历史账单仍可正确展示。
+  static Future<void> ensureFinanceSchema(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS finance_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'expense',
+        icon TEXT NOT NULL DEFAULT '📦',
+        color_value INTEGER,
+        parent_uuid TEXT,
+        is_system INTEGER NOT NULL DEFAULT 0,
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        pending_sync INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS finance_payment_methods (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        icon TEXT NOT NULL DEFAULT '💼',
+        color_value INTEGER,
+        is_system INTEGER NOT NULL DEFAULT 0,
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        pending_sync INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS finance_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL DEFAULT 'expense',
+        amount_minor INTEGER NOT NULL DEFAULT 0,
+        currency_code TEXT NOT NULL DEFAULT 'CNY',
+        category_uuid TEXT,
+        payment_method_uuid TEXT,
+        transaction_date TEXT NOT NULL,
+        occurred_at INTEGER,
+        timezone_offset_minutes INTEGER NOT NULL DEFAULT 0,
+        merchant TEXT,
+        note TEXT,
+        source TEXT NOT NULL DEFAULT 'manual',
+        related_todo_uuid TEXT,
+        related_plan_block_uuid TEXT,
+        related_transaction_uuid TEXT,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        device_id TEXT,
+        pending_sync INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS finance_budgets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        month_key TEXT NOT NULL,
+        category_uuid TEXT,
+        amount_minor INTEGER NOT NULL DEFAULT 0,
+        currency_code TEXT NOT NULL DEFAULT 'CNY',
+        note TEXT,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        device_id TEXT,
+        pending_sync INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS finance_recurring_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'expense',
+        amount_minor INTEGER NOT NULL DEFAULT 0,
+        currency_code TEXT NOT NULL DEFAULT 'CNY',
+        category_uuid TEXT,
+        payment_method_uuid TEXT,
+        merchant TEXT,
+        note TEXT,
+        frequency TEXT NOT NULL DEFAULT 'monthly',
+        day_of_month INTEGER NOT NULL DEFAULT 1,
+        month_of_year INTEGER NOT NULL DEFAULT 1,
+        start_date TEXT NOT NULL,
+        end_date TEXT,
+        reminder_minutes INTEGER NOT NULL DEFAULT 1440,
+        auto_generate INTEGER NOT NULL DEFAULT 1,
+        is_enabled INTEGER NOT NULL DEFAULT 1,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        last_generated_period TEXT,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        device_id TEXT,
+        pending_sync INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS finance_entry_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'expense',
+        amount_minor INTEGER NOT NULL DEFAULT 0,
+        currency_code TEXT NOT NULL DEFAULT 'CNY',
+        category_uuid TEXT,
+        payment_method_uuid TEXT,
+        merchant TEXT,
+        note TEXT,
+        use_count INTEGER NOT NULL DEFAULT 0,
+        last_used_at INTEGER,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        device_id TEXT,
+        pending_sync INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    const financeTables = [
+      'finance_categories',
+      'finance_payment_methods',
+      'finance_transactions',
+      'finance_budgets',
+      'finance_recurring_rules',
+      'finance_entry_templates',
+    ];
+    for (final table in financeTables) {
+      final columns = await db.rawQuery('PRAGMA table_info($table)');
+      var addedPendingColumn = false;
+      if (!columns.any((row) => row['name'] == 'pending_sync')) {
+        await db.execute(
+          'ALTER TABLE $table ADD COLUMN pending_sync INTEGER NOT NULL DEFAULT 0',
+        );
+        addedPendingColumn = true;
+      }
+      if (addedPendingColumn) {
+        final systemFilter =
+            table == 'finance_categories' || table == 'finance_payment_methods'
+                ? ' WHERE is_system = 0'
+                : '';
+        // Existing rows were written before the marker existed. Queue them
+        // once so an offline edit made by an older app cannot be lost merely
+        // because its timestamp is behind the current sync cursor.
+        await db.execute(
+          'UPDATE $table SET pending_sync = 1$systemFilter',
+        );
+      }
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_${table}_pending '
+        'ON $table(pending_sync, updated_at)',
+      );
+    }
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_transactions_date '
+      'ON finance_transactions(is_deleted, transaction_date DESC, occurred_at DESC)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_transactions_updated '
+      'ON finance_transactions(is_deleted, updated_at)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_transactions_category '
+      'ON finance_transactions(category_uuid, is_deleted, transaction_date)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_categories_active '
+      'ON finance_categories(is_deleted, is_archived, type, sort_order)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_payment_methods_active '
+      'ON finance_payment_methods(is_deleted, is_archived, sort_order)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_budgets_month '
+      'ON finance_budgets(is_deleted, month_key, category_uuid)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_recurring_rules_active '
+      'ON finance_recurring_rules(is_deleted, is_enabled, frequency, start_date)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_templates_active '
+      'ON finance_entry_templates(is_deleted, use_count DESC, last_used_at DESC)',
+    );
+  }
+
   static Future<void> ensureTeamsSchema(Database db) async {
     try {
       await db.execute('''
@@ -577,6 +781,9 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 48) {
+              await ensureFinanceSchema(db);
+            }
             if (oldVersion < 44) {
               await ensureJournalSchema(db);
             }
@@ -1128,6 +1335,7 @@ class DatabaseHelper {
             await ensureScreenTimeSchema(db);
             await ensureHabitSchema(db);
             await ensureJournalSchema(db);
+            await ensureFinanceSchema(db);
             await ensureMissingIndexes(db);
           },
         );
@@ -1668,7 +1876,10 @@ class DatabaseHelper {
     // 19. 创建本地私密日记表
     await ensureJournalSchema(db);
 
-    // 20. 创建性能索引
+    // 20. 创建个人记账表、预算和自动化表
+    await ensureFinanceSchema(db);
+
+    // 21. 创建性能索引
     await ensureMissingIndexes(db);
   }
 

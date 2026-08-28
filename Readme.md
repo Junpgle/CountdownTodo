@@ -22,6 +22,7 @@ Countdown Todo is a Flutter productivity app combining todos, recurring habits, 
 - **规划块**：把已有待办安排到具体时间段，支持日视图创建、拖动改期、边缘调整、番茄钟绑定和统计，可写入系统日历。
 - **番茄钟**：标签、暂停详情、运行状态持久化、规划块绑定、记录统计、WebSocket 跨端感知、云同步、专注备注。
 - **习惯中心**：独立打卡模型（`lib/features/habits/`），连续天数与完成率统计、睡眠作息渐进训练、快捷打卡与小组件打卡。
+- **个人记账**：离线优先的支出、收入、退款记录，分类/月度统计、账单筛选、月度总预算与分类预算、预算提醒、周期账单、快捷模板、CSV/JSON 备份和回收站恢复（`lib/features/finance/`）。
 - **时间日志和时间线**：合并补录记录与番茄钟记录做效率分析；个人时间轴支持天/周/月/年维度。
 - **课程表**：导入与解析（`lib/course_import/`）、共存模式、多学期切换、周/月视图、调休。
 - **本地私密日记**：仅存本地的图文日记（`lib/features/journal/`）。
@@ -34,8 +35,8 @@ Countdown Todo is a Flutter productivity app combining todos, recurring habits, 
 ## 当前架构
 
 - 主 Flutter 应用位于 `lib/`，平台壳位于 `android/`、`windows/`、`macos/`、`ios/`、`linux/`、`web/`。
-- 高容量业务数据以 SQLite 为主存储（当前 schema v44）；`SharedPreferences` 保留设置、登录态、同步水位线、小缓存和兼容迁移。
-- 主同步入口为 `StorageService.syncData()`，负责待办、分组、倒数日、时间日志、规划块和屏幕时间 payload；番茄钟同步由 `PomodoroService` 单独处理（标签、记录、oplog 保护、漏传恢复水位线）。
+- 高容量业务数据以 SQLite 为主存储（当前 schema v48）；`SharedPreferences` 保留设置、登录态、同步水位线、小缓存和兼容迁移。
+- 主同步入口为 `StorageService.syncData()`，负责待办、分组、倒数日、时间日志、规划块、屏幕时间 payload 和能力门控的个人记账切片；番茄钟同步由 `PomodoroService` 单独处理（标签、记录、oplog 保护、漏传恢复水位线）。
 - 后端同时保留 Alibaba Cloud 和 Cloudflare Worker。新后端能力优先修改 `CDT-server/debug/`（外部 checkout 的研发树）；`math-quiz-backend/` 保留兼容行为。
 - Web 通过 Cloudflare Zero Trust 访问 `https://api-cdt.junpgle.me/`；Windows/Android 可直接访问 Alibaba Cloud HTTP 服务。
 - WebSocket 用于番茄钟跨端感知和协同同步信号。

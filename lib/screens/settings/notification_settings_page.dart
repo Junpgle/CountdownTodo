@@ -35,6 +35,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
   bool _pomodoroEndEnabled = true;
   bool _reminderEnabled = true;
+  bool _financeBudgetEnabled = true;
 
   int _courseReminderMinutes = 15;
   List<TodoGroup> _todoGroups = [];
@@ -71,6 +72,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         await AppSettingsStorage.isPomodoroEndNotificationEnabled();
     final reminderEnabled =
         await AppSettingsStorage.isReminderNotificationEnabled();
+    final financeBudgetEnabled =
+        await AppSettingsStorage.isFinanceBudgetAlertEnabled();
     final reminderMinutes = await AppSettingsStorage.getCourseReminderMinutes();
 
     setState(() {
@@ -85,6 +88,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       _todoLiveEnabled = todoLiveEnabled;
       _pomodoroEndEnabled = pomodoroEndEnabled;
       _reminderEnabled = reminderEnabled;
+      _financeBudgetEnabled = financeBudgetEnabled;
       _courseReminderMinutes = reminderMinutes;
     });
 
@@ -188,15 +192,18 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       if (!enabled) {
         _pomodoroEndEnabled = false;
         _reminderEnabled = false;
+        _financeBudgetEnabled = false;
       }
     });
     if (enabled) {
       await AppSettingsStorage.setPomodoroEndNotificationEnabled(true);
       await AppSettingsStorage.setReminderNotificationEnabled(true);
+      await AppSettingsStorage.setFinanceBudgetAlertEnabled(true);
       _triggerReschedule();
     } else {
       await AppSettingsStorage.setPomodoroEndNotificationEnabled(false);
       await AppSettingsStorage.setReminderNotificationEnabled(false);
+      await AppSettingsStorage.setFinanceBudgetAlertEnabled(false);
       await NotificationService.scheduleReminders([], clearFirst: true);
     }
   }
@@ -373,6 +380,18 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   AppSettingsStorage.setReminderNotificationEnabled,
                 ),
               ),
+              _buildSwitchTile(
+                title: '预算提醒',
+                subtitle: '预算达到 80% 或超支时提醒',
+                icon: Icons.track_changes_outlined,
+                value: _financeBudgetEnabled,
+                onChanged: (v) => _toggleSubNotification(
+                  'finance_budget',
+                  v,
+                  (val) => _financeBudgetEnabled = val,
+                  AppSettingsStorage.setFinanceBudgetAlertEnabled,
+                ),
+              ),
               if (_reminderEnabled) ...[
                 _buildCourseReminderTile(),
               ],
@@ -516,6 +535,18 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   v,
                   (val) => _reminderEnabled = val,
                   AppSettingsStorage.setReminderNotificationEnabled,
+                ),
+              ),
+              _buildSwitchTile(
+                title: '预算提醒',
+                subtitle: '预算达到 80% 或超支时弹出浏览器通知',
+                icon: Icons.track_changes_outlined,
+                value: _financeBudgetEnabled,
+                onChanged: (v) => _toggleSubNotification(
+                  'finance_budget',
+                  v,
+                  (val) => _financeBudgetEnabled = val,
+                  AppSettingsStorage.setFinanceBudgetAlertEnabled,
                 ),
               ),
               if (_reminderEnabled) _buildCourseReminderTile(),

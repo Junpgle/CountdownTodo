@@ -12,6 +12,7 @@ excluded.
 - `habits.md` — habit center design; core capabilities are implemented in
   `../lib/features/habits/` (check-ins, sleep coaching, widget check-in).
 - `features/plan-blocks.md` — plan-block model and current behavior.
+- `features/finance.md` — personal finance MVP, storage boundary and sync notes.
 - `features/captcha-verification.md` — Turnstile paths by platform.
 - `features/mac-support.md` — macOS integrations.
 - `features/medal-recommendation.md` — rule and ML recommendation flow.
