@@ -28,6 +28,7 @@ import '../models.dart';
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
 import '../widgets/app_settings_widgets.dart';
+import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import 'animation_settings_page.dart';
 
@@ -2422,49 +2423,52 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           return _pagesBuilder[i]();
         },
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildPageIndicator(),
-              if (_pagesBuilder.length > 1) const SizedBox(height: 16),
-              Row(
-                children: [
-                  if (_currentPage > 0)
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 8.0),
-                        child: OutlinedButton(
-                          onPressed: _previousPage,
-                          style: OutlinedButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 16)),
-                          child: const Text('上一页'),
+      bottomNavigationBar: FloatingBottomBar(
+        height: 136,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildPageIndicator(),
+                if (_pagesBuilder.length > 1) const SizedBox(height: 16),
+                Row(
+                  children: [
+                    if (_currentPage > 0)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: OutlinedButton(
+                            onPressed: _previousPage,
+                            style: OutlinedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16)),
+                            child: const Text('上一页'),
+                          ),
                         ),
                       ),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton.icon(
+                        onPressed: _currentPage == _pagesBuilder.length - 1
+                            ? _done
+                            : _nextPage,
+                        icon: Icon(_currentPage == _pagesBuilder.length - 1
+                            ? Icons.check_rounded
+                            : Icons.arrow_forward_rounded),
+                        // 🚀 动态判断按钮文字，只有一页时直接显示 "完成体验"
+                        label: Text(_currentPage == _pagesBuilder.length - 1
+                            ? '完成体验'
+                            : '继续探索'),
+                        style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16)),
+                      ),
                     ),
-                  Expanded(
-                    flex: 2,
-                    child: FilledButton.icon(
-                      onPressed: _currentPage == _pagesBuilder.length - 1
-                          ? _done
-                          : _nextPage,
-                      icon: Icon(_currentPage == _pagesBuilder.length - 1
-                          ? Icons.check_rounded
-                          : Icons.arrow_forward_rounded),
-                      // 🚀 动态判断按钮文字，只有一页时直接显示 "完成体验"
-                      label: Text(_currentPage == _pagesBuilder.length - 1
-                          ? '完成体验'
-                          : '继续探索'),
-                      style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

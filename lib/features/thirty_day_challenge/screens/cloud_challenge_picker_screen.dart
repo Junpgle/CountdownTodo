@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/cloud_challenge.dart';
 import '../services/cloud_challenge_service.dart';
+import '../../../widgets/floating_bottom_bar.dart';
 
 class CloudChallengePickerScreen extends StatefulWidget {
   const CloudChallengePickerScreen({super.key});
@@ -140,7 +141,10 @@ class _CloudChallengePickerScreenState
               : catalog == null
                   ? _buildErrorState(scheme)
                   : _buildCatalog(catalog, scheme),
-      bottomNavigationBar: _buildExitAction(scheme),
+      bottomNavigationBar: FloatingBottomBar(
+        height: 96,
+        child: _buildExitAction(scheme),
+      ),
     );
   }
 
@@ -562,12 +566,17 @@ class _CloudChallengePickerScreenState
   }
 
   Widget _buildExitAction(ColorScheme scheme) {
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
     return SafeArea(
       top: false,
       child: Container(
         decoration: BoxDecoration(
-          color: scheme.surface,
-          border: Border(top: BorderSide(color: scheme.outlineVariant)),
+          color: useFloatingBottomBar
+              ? scheme.surface.withValues(alpha: 0)
+              : scheme.surface,
+          border: useFloatingBottomBar
+              ? null
+              : Border(top: BorderSide(color: scheme.outlineVariant)),
         ),
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
         child: TextButton.icon(

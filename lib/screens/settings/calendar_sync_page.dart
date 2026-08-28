@@ -7,6 +7,7 @@ import '../../services/permission_request_coordinator.dart';
 import '../../storage_service.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/app_dialogs.dart';
+import '../../widgets/floating_bottom_bar.dart';
 
 class CalendarSyncPage extends StatefulWidget {
   final bool isEmbedded;
@@ -353,48 +354,52 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
       body: _buildBody(),
       bottomNavigationBar: _loading || _error != null
           ? null
-          : SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: Row(
-                  children: [
-                    if (!AppPlatform.isWeb) ...[
+          : FloatingBottomBar(
+              height: 100,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Row(
+                    children: [
+                      if (!AppPlatform.isWeb) ...[
+                        OutlinedButton.icon(
+                          onPressed: _working ? null : _clearAll,
+                          icon: const Icon(Icons.delete_sweep_outlined),
+                          label: const Text('一键清除'),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
                       OutlinedButton.icon(
-                        onPressed: _working ? null : _clearAll,
-                        icon: const Icon(Icons.delete_sweep_outlined),
-                        label: const Text('一键清除'),
+                        onPressed: _working ? null : _previewSelected,
+                        icon: const Icon(Icons.visibility_outlined),
+                        label: const Text('预览'),
                       ),
                       const SizedBox(width: 12),
-                    ],
-                    OutlinedButton.icon(
-                      onPressed: _working ? null : _previewSelected,
-                      icon: const Icon(Icons.visibility_outlined),
-                      label: const Text('预览'),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _working
-                            ? null
-                            : (AppPlatform.isWeb
-                                ? _exportSelectedIcs
-                                : _writeSelected),
-                        icon: _working
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Icon(AppPlatform.isWeb
-                                ? Icons.download_outlined
-                                : Icons.event_available_outlined),
-                        label: Text(AppPlatform.isWeb
-                            ? '导出所选 ${_selectedIds.length} 项'
-                            : '写入所选 ${_selectedIds.length} 项'),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: _working
+                              ? null
+                              : (AppPlatform.isWeb
+                                  ? _exportSelectedIcs
+                                  : _writeSelected),
+                          icon: _working
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Icon(AppPlatform.isWeb
+                                  ? Icons.download_outlined
+                                  : Icons.event_available_outlined),
+                          label: Text(AppPlatform.isWeb
+                              ? '导出所选 ${_selectedIds.length} 项'
+                              : '写入所选 ${_selectedIds.length} 项'),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

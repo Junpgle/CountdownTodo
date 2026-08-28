@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../models.dart';
 import '../../../storage_service.dart';
+import '../../../widgets/floating_bottom_bar.dart';
 
 class RecurrenceSeriesMergePage extends StatefulWidget {
   final String username;
@@ -370,36 +371,42 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
   Widget? _buildMergeBar() {
     if (_selectedSeriesIds.isEmpty) return null;
     final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: colorScheme.surfaceContainer,
-      elevation: 8,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '已选 ${_selectedSeriesIds.length} 个系列'
-                  '${_targetSeriesId == null ? '' : ' · 已指定主系列'}',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+    return FloatingBottomBar(
+      height: 96,
+      child: Material(
+        color: useFloatingBottomBar
+            ? colorScheme.surface.withValues(alpha: 0)
+            : colorScheme.surfaceContainer,
+        elevation: useFloatingBottomBar ? 0 : 8,
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '已选 ${_selectedSeriesIds.length} 个系列'
+                    '${_targetSeriesId == null ? '' : ' · 已指定主系列'}',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                 ),
-              ),
-              FilledButton.icon(
-                onPressed: _selectedSeriesIds.length >= 2 && !_isMerging
-                    ? _confirmMerge
-                    : null,
-                icon: _isMerging
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.merge_type_rounded),
-                label: Text(_isMerging ? '正在合并' : '合并'),
-              ),
-            ],
+                FilledButton.icon(
+                  onPressed: _selectedSeriesIds.length >= 2 && !_isMerging
+                      ? _confirmMerge
+                      : null,
+                  icon: _isMerging
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.merge_type_rounded),
+                  label: Text(_isMerging ? '正在合并' : '合并'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
