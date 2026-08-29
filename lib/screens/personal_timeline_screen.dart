@@ -1314,6 +1314,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
     final isWide = MediaQuery.of(context).size.width > 900;
     final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+    final topBarHeight = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    final appBarExpandedHeight = _timelineAppBarExpandedHeight(context);
 
     return Scaffold(
       extendBody: useFloatingBottomBar,
@@ -1519,6 +1521,27 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               ),
             ],
           ),
+          Positioned(
+            top: topBarHeight,
+            left: 0,
+            right: 0,
+            child: FloatingGlassTopBarOverlay(
+              height: 0,
+              overlapStart: math.max(
+                0.0,
+                appBarExpandedHeight - kToolbarHeight - 4.0,
+              ),
+              fadeExtent: 48,
+              fadeTailExtent: 88,
+              effectStrength: 0.55,
+              // BackdropFilter applies to its full rectangular layer even
+              // where the gradient has faded to transparent. Keep this
+              // timeline tail as a paint-only fade so it cannot create a
+              // detached block of blur below the toolbar.
+              blur: false,
+              tint: colorScheme.surface,
+            ),
+          ),
         ],
       ),
     );
@@ -1597,62 +1620,132 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   }
 
   Widget _buildAppBar(BuildContext context, ColorScheme cs) {
-    final isCompact = MediaQuery.of(context).size.width < 600;
-    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
-    final extraHeight = _dimension != TimelineDimension.daily ? 36.0 : 0.0;
-    final dimensionToggleHeight = useFloatingBottomBar ? 0.0 : 52.0;
+    final expandedHeight = _timelineAppBarExpandedHeight(context);
+    final isDark = cs.brightness == Brightness.dark;
 
-    return SliverAppBar(
-      expandedHeight:
-          (isCompact ? 280.0 : 240.0) + extraHeight - dimensionToggleHeight,
+    return FloatingGlassSliverAppBar(
+      expandedHeight: expandedHeight,
+      pinned: true,
       backgroundColor: Colors.transparent,
       elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: Colors.transparent,
+      foregroundColor: cs.onSurface,
+      clipBehavior: Clip.hardEdge,
+      centerTitle: true,
+      leadingWidth: 64,
+      title: Text(
+        '个人时间轴',
+        style: TextStyle(
+          color: cs.onSurface,
+          fontSize: 17,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.2,
+        ),
+      ),
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded),
+        tooltip: '返回',
+        icon: const Icon(Icons.arrow_back_rounded),
+        iconSize: 22,
         onPressed: () => Navigator.pop(context),
       ),
+      actionsPadding: const EdgeInsets.only(right: 8),
       actions: [
         IconButton(
           tooltip: '保存分享长图',
           icon: _isExportingPoster
-              ? const SizedBox(
+              ? SizedBox(
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: cs.primary,
+                  ),
                 )
-              : const Icon(Icons.ios_share_rounded),
+              : const Icon(Icons.ios_share_outlined),
+          iconSize: 22,
           onPressed: _isLoading || _isExportingPoster
               ? null
               : _chooseAndExportTimelinePoster,
         ),
-        const SizedBox(width: 8),
       ],
-      flexibleSpace: FlexibleSpaceBar(
-        background: Stack(
-          children: [
-            // Subtle Pattern or Illustration (Fixed)
-            Positioned(
-              right: -60,
-              top: -40,
-              child: Container(
-                width: 250,
-                height: 250,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      cs.primary.withValues(alpha: 0.12),
-                      cs.primary.withValues(alpha: 0.0),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            _buildGreeting(cs),
+      floatingControlTint: cs.surface,
+      floatingControlIsDark: isDark,
+      systemOverlayStyle: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+        statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+      ),
+      flexibleSpace: Stack(
+        fit: StackFit.expand,
+        children: [
+          _buildHeaderSurface(context, cs),
+          _buildGreeting(cs),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeaderSurface(BuildContext context, ColorScheme cs) {
+    final isDark = cs.brightness == Brightness.dark;
+    final tintedSurface = Color.alphaBlend(
+      cs.primary.withValues(alpha: isDark ? 0.06 : 0.03),
+      cs.surface,
+    );
+    final settings =
+        context.dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>();
+    final collapseRange =
+        settings == null ? 0.0 : settings.maxExtent - settings.minExtent;
+    final collapseProgress = collapseRange <= 0.0
+        ? 0.0
+        : (1.0 - (settings!.currentExtent - settings.minExtent) / collapseRange)
+            .clamp(0.0, 1.0);
+    final collapse = Curves.easeOutCubic.transform(collapseProgress);
+    final middleAlpha = ui.lerpDouble(
+      isDark ? 0.54 : 0.70,
+      isDark ? 0.76 : 0.86,
+      collapse,
+    )!;
+    final lowerAlpha = ui.lerpDouble(
+      isDark ? 0.18 : 0.30,
+      isDark ? 0.62 : 0.78,
+      collapse,
+    )!;
+    final bottomAlpha = ui.lerpDouble(
+      0.0,
+      isDark ? 0.56 : 0.72,
+      collapse,
+    )!;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          stops: const [0.0, 0.38, 0.72, 1.0],
+          colors: [
+            // The status-bar edge is opaque so content has zero visibility
+            // there. As the app bar collapses, the mask continues farther
+            // down instead of ending at a visible horizontal rule.
+            tintedSurface,
+            tintedSurface.withValues(alpha: middleAlpha),
+            tintedSurface.withValues(alpha: lowerAlpha),
+            tintedSurface.withValues(alpha: bottomAlpha),
           ],
         ),
       ),
     );
+  }
+
+  double _timelineAppBarExpandedHeight(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 600;
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+    final extraHeight = _dimension != TimelineDimension.daily ? 36.0 : 0.0;
+    final dimensionToggleHeight = useFloatingBottomBar ? 0.0 : 52.0;
+    final baseHeight =
+        isCompact ? (useFloatingBottomBar ? 224.0 : 280.0) : 240.0;
+    return baseHeight + extraHeight - dimensionToggleHeight;
   }
 
   Widget _buildGreeting(ColorScheme cs) {

@@ -384,6 +384,7 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
     required this.tint,
     required this.isDark,
     this.haloColor,
+    this.backerOpacity,
     this.allowChildOverflow = false,
   });
 
@@ -395,6 +396,10 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
   final Color tint;
   final bool isDark;
   final Color? haloColor;
+
+  /// Optional opacity for the neutral pad behind the glass. Small controls
+  /// can use a lighter pad so the backdrop remains visible through the lens.
+  final double? backerOpacity;
 
   /// Paints [child] above the clipped glass shell so elevated controls can
   /// extend beyond the surface without losing their shadow or refraction rim.
@@ -420,6 +425,7 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
             tint: tint,
             haloColor: haloColor,
             isDark: isDark,
+            backerOpacity: backerOpacity,
             allowChildOverflow: allowChildOverflow,
             child: child,
           );
@@ -447,10 +453,13 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
             // Keep the refraction, but place a stronger neutral pad behind it
             // so busy wallpapers cannot compete with tab labels/icons.
             backerColor: tint.withValues(
-              alpha: liquidGlassSurfaceBackerOpacityFor(
-                configuration.mode,
-                isDark: isDark,
-              ),
+              alpha: (backerOpacity ??
+                      liquidGlassSurfaceBackerOpacityFor(
+                        configuration.mode,
+                        isDark: isDark,
+                      ))
+                  .clamp(0.0, 1.0)
+                  .toDouble(),
             ),
           ),
           useOwnLayer: true,
@@ -498,6 +507,7 @@ class _FrostedGlassSurface extends StatelessWidget {
     required this.tint,
     required this.haloColor,
     required this.isDark,
+    required this.backerOpacity,
     required this.allowChildOverflow,
     required this.child,
   });
@@ -508,6 +518,7 @@ class _FrostedGlassSurface extends StatelessWidget {
   final Color tint;
   final Color? haloColor;
   final bool isDark;
+  final double? backerOpacity;
   final bool allowChildOverflow;
   final Widget child;
 
@@ -515,10 +526,12 @@ class _FrostedGlassSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final neutralBase = isDark ? colorScheme.scrim : colorScheme.surface;
+    final baseAlpha =
+        (backerOpacity ?? (isDark ? 0.34 : 0.46)).clamp(0.0, 1.0).toDouble();
     final baseColor = Color.alphaBlend(
       tint.withValues(alpha: isDark ? 0.2 : 0.14),
       neutralBase,
-    ).withValues(alpha: isDark ? 0.34 : 0.46);
+    ).withValues(alpha: baseAlpha);
     final highlightBase = isDark
         ? colorScheme.surfaceBright
         : colorScheme.surfaceContainerHighest;

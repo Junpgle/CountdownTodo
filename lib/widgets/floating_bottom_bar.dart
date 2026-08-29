@@ -1,40 +1,26 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-import '../utils/app_platform.dart';
+import 'floating_glass_control.dart';
 import 'home_bottom_navigation_content.dart';
-import 'optional_liquid_glass_surface.dart';
+
+export 'floating_glass_control.dart'
+    show
+        FloatingGlassAppBar,
+        FloatingGlassAppBarAction,
+        FloatingGlassActionButton,
+        FloatingGlassControl,
+        FloatingGlassLargeFlexibleSpace,
+        FloatingGlassPinnedHeaderLayout,
+        FloatingGlassScrollAware,
+        FloatingGlassSliverAppBar,
+        FloatingGlassTopBarBackground,
+        FloatingGlassTopBarOverlay,
+        floatingBottomBarShouldFloat,
+        floatingBottomBarShouldFloatFor;
 
 export 'home_bottom_navigation_content.dart' show FloatingBottomNavigationItem;
-
-/// Whether a bottom bar should use the floating treatment on this device.
-///
-/// The floating capsule is intentionally limited to phone-sized portrait
-/// layouts. Tablets, desktop windows, and landscape layouts keep their
-/// existing bottom-bar geometry so a wide navigation surface is not squeezed
-/// into a phone-shaped capsule.
-@visibleForTesting
-bool floatingBottomBarShouldFloatFor({
-  required bool isMobile,
-  required double width,
-  required double height,
-  double maxPhoneShortestSide = 600,
-}) {
-  final shortestSide = math.min(width, height);
-  return isMobile && height > width && shortestSide < maxPhoneShortestSide;
-}
-
-/// The runtime device/layout check used by [FloatingBottomBar].
-bool floatingBottomBarShouldFloat(BuildContext context) {
-  final size = MediaQuery.sizeOf(context);
-  return floatingBottomBarShouldFloatFor(
-    isMobile: AppPlatform.isMobile,
-    width: size.width,
-    height: size.height,
-  );
-}
 
 /// Resolves the compact homepage height for the shared phone navigation bar.
 double floatingBottomBarHeightFor(BuildContext context) {
@@ -113,36 +99,15 @@ class FloatingBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (mobilePortraitOnly && !floatingBottomBarShouldFloat(context)) {
-      return child;
-    }
-
-    final colorScheme = Theme.of(context).colorScheme;
-    final dark = isDark ?? colorScheme.brightness == Brightness.dark;
-    final resolvedTint = tint ??
-        Color.alphaBlend(
-          colorScheme.primary.withValues(alpha: 0.08),
-          colorScheme.surface,
-        ).withValues(alpha: dark ? 0.24 : 0.32);
-    final resolvedHalo = haloColor ?? colorScheme.primary;
-
-    return OptionalLiquidGlassSurface(
+    return FloatingGlassControl(
       height: height,
       margin: margin,
       borderRadius: borderRadius,
-      tint: resolvedTint,
-      haloColor: resolvedHalo,
-      isDark: dark,
+      tint: tint,
+      haloColor: haloColor,
+      isDark: isDark,
+      mobilePortraitOnly: mobilePortraitOnly,
       allowChildOverflow: allowChildOverflow,
-      fallback: _FloatingBottomBarFallback(
-        height: height,
-        margin: margin,
-        borderRadius: borderRadius,
-        haloColor: resolvedHalo,
-        isDark: dark,
-        allowChildOverflow: allowChildOverflow,
-        child: child,
-      ),
       child: child,
     );
   }
@@ -255,80 +220,6 @@ class _FloatingBottomNavigationBarState
         );
       },
       child: surface,
-    );
-  }
-}
-
-class _FloatingBottomBarFallback extends StatelessWidget {
-  const _FloatingBottomBarFallback({
-    required this.height,
-    required this.margin,
-    required this.borderRadius,
-    required this.haloColor,
-    required this.isDark,
-    required this.allowChildOverflow,
-    required this.child,
-  });
-
-  final double height;
-  final EdgeInsetsGeometry margin;
-  final double borderRadius;
-  final Color haloColor;
-  final bool isDark;
-  final bool allowChildOverflow;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final decoration = BoxDecoration(
-      color: isDark
-          ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.82)
-          : colorScheme.surface.withValues(alpha: 0.9),
-      borderRadius: BorderRadius.circular(borderRadius),
-      border: Border.all(
-        color:
-            colorScheme.outlineVariant.withValues(alpha: isDark ? 0.42 : 0.54),
-        width: 0.8,
-      ),
-      boxShadow: <BoxShadow>[
-        BoxShadow(
-          color: haloColor.withValues(alpha: isDark ? 0.12 : 0.2),
-          blurRadius: 26,
-          spreadRadius: 1,
-          offset: const Offset(0, 4),
-        ),
-        BoxShadow(
-          color: colorScheme.shadow.withValues(alpha: 0.12),
-          blurRadius: 15,
-          offset: const Offset(0, 5),
-        ),
-      ],
-    );
-
-    final content = Stack(
-      fit: StackFit.expand,
-      clipBehavior: allowChildOverflow ? Clip.none : Clip.hardEdge,
-      children: <Widget>[
-        // Backdrop blur is deliberately skipped on Android, where a full
-        // capsule blur can cause raster jank over a scrolling dashboard.
-        if (!AppPlatform.isAndroid)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(borderRadius),
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-              child: const SizedBox.expand(),
-            ),
-          ),
-        child,
-      ],
-    );
-
-    return Container(
-      height: height,
-      margin: margin,
-      decoration: decoration,
-      child: content,
     );
   }
 }
