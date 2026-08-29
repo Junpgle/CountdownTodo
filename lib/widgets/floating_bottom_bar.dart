@@ -22,9 +22,12 @@ export 'floating_glass_control.dart'
         FloatingGlassTopBarOverlay,
         floatingGlassTopBarContentFadeShader,
         floatingGlassTopBarDefaultFadeTail,
+        floatingGlassSettingsBody,
+        floatingGlassSettingsContentTopInset,
         floatingGlassTopBarHeight,
         floatingGlassTopBarSystemOverlayStyle,
         floatingGlassTopBarTitleProgress,
+        floatingGlassStandardControlSize,
         floatingBottomBarShouldFloat,
         floatingBottomBarShouldFloatFor;
 

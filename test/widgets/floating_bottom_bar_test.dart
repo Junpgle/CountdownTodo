@@ -1,6 +1,11 @@
 import 'package:countdown_todo/widgets/floating_bottom_bar.dart';
+import 'package:countdown_todo/widgets/home_app_bar.dart';
+import 'package:countdown_todo/widgets/home_quick_action_button.dart';
+import 'package:countdown_todo/widgets/home_sections.dart';
+import 'package:countdown_todo/theme/app_liquid_glass_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -8,6 +13,10 @@ import 'package:countdown_todo/services/liquid_glass_effect_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() async {
+    await initializeDateFormatting('zh_CN');
+  });
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -317,6 +326,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('keeps composite segmented actions out of circular shells',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          appBar: FloatingGlassAppBar(
+            title: const Text('Segmented action'),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: SegmentedButton<bool>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: false, icon: Icon(Icons.list)),
+                    ButtonSegment(value: true, icon: Icon(Icons.grid_view)),
+                  ],
+                  selected: const {false},
+                  onSelectionChanged: (_) {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(SegmentedButton<bool>), findsOneWidget);
+    expect(find.byType(FloatingGlassAppBarAction), findsNothing);
+  });
+
   testWidgets('animates an AppBar control into its glass shell',
       (tester) async {
     final collapseProgress = ValueNotifier<double>(0);
@@ -347,6 +387,128 @@ void main() {
 
     expect(find.byType(FloatingGlassControl), findsOneWidget);
     collapseProgress.dispose();
+  });
+
+  testWidgets('does not nest a second glass circle inside an AppBar action',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+    final collapseProgress = ValueNotifier<double>(1);
+    final theme = applyAppLiquidGlassTheme(
+      ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+      ),
+      enabled: true,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: Scaffold(
+          body: FloatingGlassAppBarAction(
+            collapseProgress: collapseProgress,
+            child: IconButton(
+              tooltip: 'Action',
+              onPressed: () {},
+              icon: const Icon(Icons.more_horiz),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 220));
+
+    expect(find.byType(FloatingGlassControl), findsOneWidget);
+    expect(find.byType(GlassContainer), findsOneWidget);
+    collapseProgress.dispose();
+  });
+
+  testWidgets('home AppBar icon layers stay transparent inside the shell',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+    final theme = applyAppLiquidGlassTheme(
+      ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+      ),
+      enabled: true,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: Scaffold(
+          appBar: HomeAppBar(
+            username: 'Test user',
+            timeSalutation: '晚上好',
+            currentGreeting: '祝你今天一切顺利！',
+            isLight: false,
+            isSyncing: false,
+            onSync: () {},
+            onSettings: () {},
+          ),
+          body: const SizedBox.shrink(),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    final iconButtons =
+        tester.widgetList<IconButton>(find.byType(IconButton)).toList();
+    expect(iconButtons, isNotEmpty);
+    expect(
+      iconButtons.every((button) => button.style?.backgroundBuilder != null),
+      isTrue,
+    );
+  });
+
+  testWidgets('keeps home content actions out of the glass button theme',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+    final theme = applyAppLiquidGlassTheme(
+      ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+      ),
+      enabled: true,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: Scaffold(
+          body: Column(
+            children: [
+              SectionHeader(
+                title: '重要日',
+                icon: Icons.timer_outlined,
+                onAdd: () {},
+              ),
+              HomeQuickActionButton.compact(
+                heroTag: 'home-content-action-test',
+                onPressed: () {},
+                tooltip: '快速操作',
+                tint: Colors.deepPurple,
+                foregroundColor: Colors.white,
+                isDark: false,
+                child: const Icon(Icons.add),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    final iconButtons =
+        tester.widgetList<IconButton>(find.byType(IconButton)).toList();
+    expect(iconButtons, hasLength(1));
+    expect(iconButtons.single.style?.backgroundBuilder, isNotNull);
+    expect(find.byType(GlassContainer), findsNothing);
+    expect(find.byType(FloatingActionButton), findsOneWidget);
   });
 
   testWidgets('keeps the top-bar shell on the real Liquid Glass renderer',

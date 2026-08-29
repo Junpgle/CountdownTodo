@@ -39,6 +39,30 @@ bool floatingBottomBarShouldFloat(BuildContext context) {
 const double _floatingGlassAppBarScrollDistance = 72.0;
 const double _floatingGlassAppBarControlThreshold = 0.58;
 
+/// Shared diameter for compact floating controls.
+///
+/// Keeping this in the common control layer prevents app-bar actions and
+/// dashboard quick actions from drifting into separate 40/48 dp systems.
+const double floatingGlassStandardControlSize = 48.0;
+
+/// Returns a native-looking icon-button style for controls that live in a
+/// glass-enabled page but should not become glass themselves.
+///
+/// The explicit identity [ButtonStyle.backgroundBuilder] is important: a
+/// page-level icon-button theme may otherwise add a second glass surface while
+/// the caller is intentionally using a plain icon control.
+ButtonStyle floatingGlassPlainIconButtonStyle() {
+  return ButtonStyle(
+    backgroundBuilder: (context, states, child) =>
+        child ?? const SizedBox.shrink(),
+    backgroundColor: const WidgetStatePropertyAll(Colors.transparent),
+    side: const WidgetStatePropertyAll(BorderSide.none),
+    elevation: const WidgetStatePropertyAll(0),
+    shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+    surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+  );
+}
+
 double _floatingGlassAppBarProgressForMetrics(
   ScrollMetrics metrics, {
   double scrollDistance = _floatingGlassAppBarScrollDistance,
@@ -74,6 +98,16 @@ double floatingGlassTopBarHeight(
 }) {
   final topInset = primary ? MediaQuery.paddingOf(context).top : 0.0;
   return topInset + toolbarHeight + (bottom?.preferredSize.height ?? 0.0);
+}
+
+/// Returns the initial scroll inset that keeps a standalone settings page's
+/// first item in the same place after its body starts behind the top bar.
+double floatingGlassSettingsContentTopInset(
+  BuildContext context, {
+  double extra = 0.0,
+  PreferredSizeWidget? bottom,
+}) {
+  return floatingGlassTopBarHeight(context, bottom: bottom) + extra;
 }
 
 /// Resolves the platform status-bar appearance for a transparent top bar.
@@ -148,6 +182,28 @@ class FloatingGlassTopBarContentFade extends StatelessWidget {
       child: child,
     );
   }
+}
+
+/// Applies the shared top-bar fade only to standalone settings routes.
+///
+/// Settings pages are also embedded in the wide two-pane settings shell. In
+/// that mode there is no route-level top bar to overlap the content, so the
+/// body must remain untouched. Keeping this decision in one helper prevents
+/// individual settings pages from drifting apart again.
+Widget floatingGlassSettingsBody(
+  BuildContext context, {
+  required Widget child,
+  required bool standalone,
+  double topBarHeight = kToolbarHeight,
+  double tailExtent = floatingGlassTopBarDefaultFadeTail,
+}) {
+  if (!standalone) return child;
+
+  return FloatingGlassTopBarContentFade(
+    topBarHeight: topBarHeight,
+    tailExtent: tailExtent,
+    child: child,
+  );
 }
 
 /// Applies the same alpha fade to a group of slivers while leaving a pinned
@@ -824,8 +880,8 @@ class FloatingGlassAppBarAction extends StatelessWidget {
   const FloatingGlassAppBarAction({
     super.key,
     required this.child,
-    this.size = 48,
-    this.borderRadius = 24,
+    this.size = floatingGlassStandardControlSize,
+    this.borderRadius = floatingGlassStandardControlSize / 2,
     this.margin = EdgeInsets.zero,
     this.tint,
     this.haloColor,
@@ -950,6 +1006,29 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
   Widget _buildForProgress(BuildContext context, double progress) {
     final colorScheme = Theme.of(context).colorScheme;
     final resolvedTint = tint ?? _floatingAppBarTint(colorScheme, null);
+    final nativeChild = Theme(
+      data: Theme.of(context).copyWith(
+        // The app-wide glass button theme applies to ordinary page controls.
+        // Top-bar actions have their own scroll-aware shell, so keep the
+        // resting child visually native and avoid a second glass surface.
+        iconButtonTheme: IconButtonThemeData(
+          style: ButtonStyle(
+            // A non-null identity builder is required here: null would allow
+            // the app-wide glass backgroundBuilder to merge back in and paint
+            // a second circle inside the app-bar shell.
+            backgroundBuilder: (context, states, child) =>
+                child ?? const SizedBox.shrink(),
+            backgroundColor: const WidgetStatePropertyAll(Colors.transparent),
+            foregroundColor: WidgetStatePropertyAll(colorScheme.onSurface),
+            side: const WidgetStatePropertyAll(BorderSide.none),
+            elevation: const WidgetStatePropertyAll(0),
+            shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+            surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+          ),
+        ),
+      ),
+      child: child,
+    );
 
     return Padding(
       padding: margin,
@@ -988,7 +1067,7 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
                   ),
                 ),
               ),
-              Center(child: child),
+              Center(child: nativeChild),
             ],
           ),
         ),
@@ -1094,6 +1173,21 @@ class FloatingGlassAppBar extends StatelessWidget
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    // Every screen that opts into the shared adapter should start as a
+    // native, background-connected toolbar. Callers can still provide an
+    // explicit background/elevation when they intentionally need a different
+    // surface, but the default must not recreate Material's opaque AppBar
+    // slab or let the platform infer the wrong status-bar icon contrast.
+    final resolvedBackgroundColor = backgroundColor ?? Colors.transparent;
+    final resolvedForegroundColor = foregroundColor ?? colorScheme.onSurface;
+    final resolvedElevation = elevation ?? 0.0;
+    final resolvedScrolledUnderElevation = scrolledUnderElevation ?? 0.0;
+    final resolvedSurfaceTintColor = surfaceTintColor ?? Colors.transparent;
+    final resolvedShadowColor = shadowColor ?? Colors.transparent;
+    final resolvedSystemOverlayStyle =
+        systemOverlayStyle ?? floatingGlassTopBarSystemOverlayStyle(context);
+    final resolvedForceMaterialTransparency =
+        forceMaterialTransparency || backgroundColor == null;
     final glassTint = floatingControlTint ??
         _floatingAppBarTint(colorScheme, backgroundColor);
     final glassIsDark = floatingControlIsDark ??
@@ -1144,14 +1238,14 @@ class FloatingGlassAppBar extends StatelessWidget
             child: flexibleSpace ?? const FloatingGlassTopBarBackground(),
           ),
           bottom: bottom,
-          elevation: elevation,
-          scrolledUnderElevation: scrolledUnderElevation,
+          elevation: resolvedElevation,
+          scrolledUnderElevation: resolvedScrolledUnderElevation,
           notificationPredicate: notificationPredicate,
-          shadowColor: shadowColor,
-          surfaceTintColor: surfaceTintColor,
+          shadowColor: resolvedShadowColor,
+          surfaceTintColor: resolvedSurfaceTintColor,
           shape: shape,
-          backgroundColor: backgroundColor,
-          foregroundColor: foregroundColor,
+          backgroundColor: resolvedBackgroundColor,
+          foregroundColor: resolvedForegroundColor,
           iconTheme: iconTheme,
           actionsIconTheme: actionsIconTheme,
           primary: primary,
@@ -1165,8 +1259,8 @@ class FloatingGlassAppBar extends StatelessWidget
               (decoratedLeading == null ? null : _floatingAppBarLeadingWidth),
           toolbarTextStyle: toolbarTextStyle,
           titleTextStyle: titleTextStyle,
-          systemOverlayStyle: systemOverlayStyle,
-          forceMaterialTransparency: forceMaterialTransparency,
+          systemOverlayStyle: resolvedSystemOverlayStyle,
+          forceMaterialTransparency: resolvedForceMaterialTransparency,
           useDefaultSemanticsOrder: useDefaultSemanticsOrder,
           clipBehavior: clipBehavior,
           actionsPadding: actionsPadding ??
@@ -1218,7 +1312,17 @@ bool _isFloatingGlassAppBarLayoutOnly(Widget action) {
   // Text actions must keep their intrinsic width. The circular glass shell
   // is reserved for compact controls such as IconButton and PopupMenuButton;
   // forcing a TextButton into 48 px would clip labels and overflow its row.
-  return action is SizedBox || action is Spacer || action is ButtonStyleButton;
+  // Composite controls already own their shape and width; wrapping a
+  // SegmentedButton in another circular shell makes its two segments look
+  // like a broken split-circle control.
+  if (action is Padding && action.child != null) {
+    return _isFloatingGlassAppBarLayoutOnly(action.child!);
+  }
+
+  return action is SizedBox ||
+      action is Spacer ||
+      action is ButtonStyleButton ||
+      action is SegmentedButton<dynamic>;
 }
 
 Color _floatingAppBarTint(ColorScheme colorScheme, Color? backgroundColor) {
