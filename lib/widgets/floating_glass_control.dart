@@ -38,7 +38,10 @@ bool floatingBottomBarShouldFloat(BuildContext context) {
 const double _floatingGlassAppBarScrollDistance = 72.0;
 const double _floatingGlassAppBarControlThreshold = 0.58;
 
-double _floatingGlassAppBarProgressForMetrics(ScrollMetrics metrics) {
+double _floatingGlassAppBarProgressForMetrics(
+  ScrollMetrics metrics, {
+  double scrollDistance = _floatingGlassAppBarScrollDistance,
+}) {
   if (metrics.axis != Axis.vertical) return 0.0;
 
   final offset = switch (metrics.axisDirection) {
@@ -46,7 +49,7 @@ double _floatingGlassAppBarProgressForMetrics(ScrollMetrics metrics) {
     AxisDirection.down => metrics.extentBefore,
     AxisDirection.left || AxisDirection.right => 0.0,
   };
-  return (offset / _floatingGlassAppBarScrollDistance).clamp(0.0, 1.0);
+  return (offset / math.max(1.0, scrollDistance)).clamp(0.0, 1.0);
 }
 
 double _floatingGlassAppBarProgressForFlexibleSpace(
@@ -166,11 +169,13 @@ class _FloatingGlassAppBarHost extends StatefulWidget {
     required this.notificationPredicate,
     required this.builder,
     this.observeScroll = true,
+    this.scrollDistance = _floatingGlassAppBarScrollDistance,
   });
 
   final ScrollNotificationPredicate notificationPredicate;
   final Widget Function(BuildContext, ValueNotifier<double>) builder;
   final bool observeScroll;
+  final double scrollDistance;
 
   @override
   State<_FloatingGlassAppBarHost> createState() =>
@@ -221,6 +226,7 @@ class _FloatingGlassAppBarHostState extends State<_FloatingGlassAppBarHost> {
 
     final nextProgress = _floatingGlassAppBarProgressForMetrics(
       notification.metrics,
+      scrollDistance: widget.scrollDistance,
     );
     if ((nextProgress - _collapseProgress.value).abs() > 0.001) {
       _collapseProgress.value = nextProgress;
@@ -454,7 +460,12 @@ class _FloatingGlassTopBarOverlayState
     return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
       valueListenable: LiquidGlassEffectService.configurationListenable,
       builder: (context, configuration, _) {
-        if (!configuration.enabled) return const SizedBox.shrink();
+        // A gradient-only fade is a layout treatment, not a Liquid Glass
+        // effect. Keep it available when the optional glass feature is off;
+        // only the BackdropFilter variant depends on that feature switch.
+        if (!configuration.enabled && widget.blur) {
+          return const SizedBox.shrink();
+        }
 
         final colorScheme = Theme.of(context).colorScheme;
         final dark = widget.isDark ?? colorScheme.brightness == Brightness.dark;
@@ -1035,6 +1046,7 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
     this.actionsPadding,
     this.floatingControlTint,
     this.floatingControlIsDark,
+    this.floatingControlScrollDistance,
   })  : assert(floating || !snap),
         assert(stretchTriggerOffset > 0.0),
         assert(collapsedHeight == null || collapsedHeight >= toolbarHeight),
@@ -1082,6 +1094,7 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
     this.actionsPadding,
     this.floatingControlTint,
     this.floatingControlIsDark,
+    this.floatingControlScrollDistance,
   })  : assert(floating || !snap),
         assert(stretchTriggerOffset > 0.0),
         assert(collapsedHeight == null || collapsedHeight >= toolbarHeight),
@@ -1129,6 +1142,7 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
     this.actionsPadding,
     this.floatingControlTint,
     this.floatingControlIsDark,
+    this.floatingControlScrollDistance,
   })  : assert(floating || !snap),
         assert(stretchTriggerOffset > 0.0),
         assert(collapsedHeight == null || collapsedHeight >= toolbarHeight),
@@ -1174,6 +1188,7 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
   final EdgeInsetsGeometry? actionsPadding;
   final Color? floatingControlTint;
   final bool? floatingControlIsDark;
+  final double? floatingControlScrollDistance;
   final _FloatingGlassSliverAppBarVariant _variant;
 
   @override
@@ -1217,14 +1232,21 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
             ? null
             : _floatingAppBarActionsPadding);
 
+    final useScrollDrivenControls = floatingControlScrollDistance != null;
     return _FloatingGlassAppBarHost(
-      observeScroll: false,
+      observeScroll: useScrollDrivenControls,
+      scrollDistance:
+          floatingControlScrollDistance ?? _floatingGlassAppBarScrollDistance,
       notificationPredicate: defaultScrollNotificationPredicate,
       builder: (context, collapseProgress) {
-        final decoratedFlexibleSpace = _FloatingGlassCollapseReporter(
-          collapseProgress: collapseProgress,
-          child: flexibleSpace ?? const FloatingGlassTopBarBackground(),
-        );
+        final flexibleSpaceChild =
+            flexibleSpace ?? const FloatingGlassTopBarBackground();
+        final decoratedFlexibleSpace = useScrollDrivenControls
+            ? flexibleSpaceChild
+            : _FloatingGlassCollapseReporter(
+                collapseProgress: collapseProgress,
+                child: flexibleSpaceChild,
+              );
         return _FloatingGlassAppBarScope(
           collapseProgress: collapseProgress,
           child: switch (_variant) {

@@ -55,6 +55,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   bool _isLoadingAllTimeMedals = false;
   int _loadGeneration = 0;
   late AnimationController _animationController;
+  late final ScrollController _timelineScrollController;
+  final ValueNotifier<double> _timelineTitleProgress =
+      ValueNotifier<double>(0.0);
 
   // Data points
   List<TimelineEvent> _events = [];
@@ -110,11 +113,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     );
+    _timelineScrollController = ScrollController()
+      ..addListener(_handleTimelineScroll);
     _loadData();
   }
 
   @override
   void dispose() {
+    _timelineScrollController.dispose();
+    _timelineTitleProgress.dispose();
     _animationController.dispose();
     super.dispose();
   }
@@ -1314,9 +1321,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
     final isWide = MediaQuery.of(context).size.width > 900;
     final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
-    final topBarHeight = MediaQuery.paddingOf(context).top + kToolbarHeight;
-    final appBarExpandedHeight = _timelineAppBarExpandedHeight(context);
-
+    final topPadding = MediaQuery.paddingOf(context).top;
+    final topBarHeight = topPadding + kToolbarHeight;
     return Scaffold(
       extendBody: useFloatingBottomBar,
       bottomNavigationBar: useFloatingBottomBar
@@ -1349,197 +1355,215 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       body: Stack(
         children: [
           _buildBackground(colorScheme),
-          CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              _buildAppBar(context, colorScheme),
-              SliverToBoxAdapter(
-                child: Center(
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 1400),
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Animated Content Area
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 600),
-                          switchInCurve: Curves.easeOutQuart,
-                          switchOutCurve: Curves.easeInQuart,
-                          transitionBuilder:
-                              (Widget child, Animation<double> animation) {
-                            return FadeTransition(
-                              opacity: animation,
-                              child: SlideTransition(
-                                position: Tween<Offset>(
-                                  begin: const Offset(0, 0.02),
-                                  end: Offset.zero,
-                                ).animate(animation),
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: _isLoading
-                              ? _buildSkeleton(colorScheme)
-                              : Column(
-                                  key: ValueKey(
-                                      'content_${_dimension}_${_selectedDate.millisecondsSinceEpoch}'),
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _buildStatsOverview(colorScheme, isWide),
-                                    const SizedBox(height: 40),
-                                    if (isWide)
-                                      Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          // Left Side: Main Content
-                                          Expanded(
-                                            flex: 2,
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                _buildSectionTitle(
-                                                    '概览回顾',
-                                                    Icons.insights_rounded,
-                                                    colorScheme),
-                                                const SizedBox(height: 16),
-                                                _buildRangeSummary(
-                                                    colorScheme, isWide),
-                                                _buildOverviewInsightPanels(
-                                                    colorScheme, isWide),
-                                                if (_mlInsights.isNotEmpty) ...[
-                                                  const SizedBox(height: 36),
+          _buildTimelineContentFade(
+            topBarHeight: topBarHeight,
+            child: CustomScrollView(
+              controller: _timelineScrollController,
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                _buildAppBar(context),
+                SliverToBoxAdapter(
+                  child: _buildGreeting(colorScheme),
+                ),
+                SliverToBoxAdapter(
+                  child: Center(
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 1400),
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Animated Content Area
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 600),
+                            switchInCurve: Curves.easeOutQuart,
+                            switchOutCurve: Curves.easeInQuart,
+                            transitionBuilder:
+                                (Widget child, Animation<double> animation) {
+                              return FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: Tween<Offset>(
+                                    begin: const Offset(0, 0.02),
+                                    end: Offset.zero,
+                                  ).animate(animation),
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: _isLoading
+                                ? _buildSkeleton(colorScheme)
+                                : Column(
+                                    key: ValueKey(
+                                        'content_${_dimension}_${_selectedDate.millisecondsSinceEpoch}'),
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _buildStatsOverview(colorScheme, isWide),
+                                      const SizedBox(height: 40),
+                                      if (isWide)
+                                        Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            // Left Side: Main Content
+                                            Expanded(
+                                              flex: 2,
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
                                                   _buildSectionTitle(
-                                                      'AI 深度洞察',
-                                                      Icons
-                                                          .auto_awesome_rounded,
+                                                      '概览回顾',
+                                                      Icons.insights_rounded,
                                                       colorScheme),
                                                   const SizedBox(height: 16),
-                                                  _buildMLInsightsSection(
-                                                      colorScheme),
+                                                  _buildRangeSummary(
+                                                      colorScheme, isWide),
+                                                  _buildOverviewInsightPanels(
+                                                      colorScheme, isWide),
+                                                  if (_mlInsights
+                                                      .isNotEmpty) ...[
+                                                    const SizedBox(height: 36),
+                                                    _buildSectionTitle(
+                                                        'AI 深度洞察',
+                                                        Icons
+                                                            .auto_awesome_rounded,
+                                                        colorScheme),
+                                                    const SizedBox(height: 16),
+                                                    _buildMLInsightsSection(
+                                                        colorScheme),
+                                                  ],
+                                                  _buildMedalWall(
+                                                      colorScheme, isWide),
+                                                  if (_dimension ==
+                                                      TimelineDimension
+                                                          .daily) ...[
+                                                    const SizedBox(height: 40),
+                                                    _buildSectionTitle(
+                                                        '时光足迹',
+                                                        Icons
+                                                            .auto_stories_outlined,
+                                                        colorScheme),
+                                                    const SizedBox(height: 16),
+                                                    _buildTimelineFlow(
+                                                        colorScheme),
+                                                  ],
                                                 ],
-                                                _buildMedalWall(
-                                                    colorScheme, isWide),
-                                                if (_dimension ==
-                                                    TimelineDimension
-                                                        .daily) ...[
+                                              ),
+                                            ),
+                                            const SizedBox(width: 48),
+                                            // Right Side: Sidebar
+                                            SizedBox(
+                                              width: 320,
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  _buildSectionTitle(
+                                                      '数据深度洞察',
+                                                      Icons.analytics_outlined,
+                                                      colorScheme),
+                                                  const SizedBox(height: 20),
+                                                  _buildSideHighlights(
+                                                      colorScheme),
                                                   const SizedBox(height: 40),
                                                   _buildSectionTitle(
-                                                      '时光足迹',
-                                                      Icons
-                                                          .auto_stories_outlined,
+                                                      '感悟与思考',
+                                                      Icons.edit_note_rounded,
                                                       colorScheme),
                                                   const SizedBox(height: 16),
-                                                  _buildTimelineFlow(
-                                                      colorScheme),
+                                                  _buildReflection(colorScheme),
                                                 ],
-                                              ],
+                                              ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 48),
-                                          // Right Side: Sidebar
-                                          SizedBox(
-                                            width: 320,
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                _buildSectionTitle(
-                                                    '数据深度洞察',
-                                                    Icons.analytics_outlined,
-                                                    colorScheme),
-                                                const SizedBox(height: 20),
-                                                _buildSideHighlights(
-                                                    colorScheme),
-                                                const SizedBox(height: 40),
-                                                _buildSectionTitle(
-                                                    '感悟与思考',
-                                                    Icons.edit_note_rounded,
-                                                    colorScheme),
-                                                const SizedBox(height: 16),
-                                                _buildReflection(colorScheme),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      )
-                                    else ...[
-                                      // Mobile Layout (Existing)
-                                      _buildSectionTitle(
-                                          _dimension == TimelineDimension.daily
-                                              ? '概览回顾'
-                                              : '阶段回顾',
-                                          Icons.insights_rounded,
-                                          colorScheme),
-                                      const SizedBox(height: 16),
-                                      _buildRangeSummary(colorScheme, isWide),
-                                      _buildOverviewInsightPanels(
-                                          colorScheme, isWide),
-                                      if (_mlInsights.isNotEmpty) ...[
-                                        const SizedBox(height: 36),
+                                          ],
+                                        )
+                                      else ...[
+                                        // Mobile Layout (Existing)
                                         _buildSectionTitle(
-                                            'AI 深度洞察',
-                                            Icons.auto_awesome_rounded,
+                                            _dimension ==
+                                                    TimelineDimension.daily
+                                                ? '概览回顾'
+                                                : '阶段回顾',
+                                            Icons.insights_rounded,
                                             colorScheme),
                                         const SizedBox(height: 16),
-                                        _buildMLInsightsSection(colorScheme),
-                                      ],
-                                      _buildMedalWall(colorScheme, isWide),
-                                      if (_dimension ==
-                                          TimelineDimension.daily) ...[
+                                        _buildRangeSummary(colorScheme, isWide),
+                                        _buildOverviewInsightPanels(
+                                            colorScheme, isWide),
+                                        if (_mlInsights.isNotEmpty) ...[
+                                          const SizedBox(height: 36),
+                                          _buildSectionTitle(
+                                              'AI 深度洞察',
+                                              Icons.auto_awesome_rounded,
+                                              colorScheme),
+                                          const SizedBox(height: 16),
+                                          _buildMLInsightsSection(colorScheme),
+                                        ],
+                                        _buildMedalWall(colorScheme, isWide),
+                                        if (_dimension ==
+                                            TimelineDimension.daily) ...[
+                                          const SizedBox(height: 40),
+                                          _buildSectionTitle(
+                                              '时光足迹',
+                                              Icons.auto_stories_outlined,
+                                              colorScheme),
+                                          const SizedBox(height: 16),
+                                          _buildTimelineFlow(colorScheme),
+                                        ],
                                         const SizedBox(height: 40),
                                         _buildSectionTitle(
-                                            '时光足迹',
-                                            Icons.auto_stories_outlined,
+                                            '数据深度洞察',
+                                            Icons.analytics_outlined,
                                             colorScheme),
                                         const SizedBox(height: 16),
-                                        _buildTimelineFlow(colorScheme),
+                                        _buildSideHighlights(colorScheme),
+                                        const SizedBox(height: 40),
+                                        _buildSectionTitle(
+                                            '感悟与思考',
+                                            Icons.edit_note_rounded,
+                                            colorScheme),
+                                        const SizedBox(height: 16),
+                                        _buildReflection(colorScheme),
                                       ],
-                                      const SizedBox(height: 40),
-                                      _buildSectionTitle(
-                                          '数据深度洞察',
-                                          Icons.analytics_outlined,
-                                          colorScheme),
-                                      const SizedBox(height: 16),
-                                      _buildSideHighlights(colorScheme),
-                                      const SizedBox(height: 40),
-                                      _buildSectionTitle('感悟与思考',
-                                          Icons.edit_note_rounded, colorScheme),
-                                      const SizedBox(height: 16),
-                                      _buildReflection(colorScheme),
+                                      const SizedBox(height: 60),
                                     ],
-                                    const SizedBox(height: 60),
-                                  ],
-                                ),
-                        ),
-                      ],
+                                  ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
+          // The foreground AppBar is deliberately above the mask: its title
+          // and actions must stay crisp while only the scrolling body fades.
           Positioned(
-            top: topBarHeight,
+            top: 0,
             left: 0,
             right: 0,
-            child: FloatingGlassTopBarOverlay(
-              height: 0,
-              overlapStart: math.max(
-                0.0,
-                appBarExpandedHeight - kToolbarHeight - 4.0,
+            height: topBarHeight,
+            child: AnnotatedRegion<SystemUiOverlayStyle>(
+              value: SystemUiOverlayStyle(
+                statusBarColor: Colors.transparent,
+                statusBarIconBrightness:
+                    colorScheme.brightness == Brightness.dark
+                        ? Brightness.light
+                        : Brightness.dark,
+                statusBarBrightness: colorScheme.brightness == Brightness.dark
+                    ? Brightness.dark
+                    : Brightness.light,
               ),
-              fadeExtent: 48,
-              fadeTailExtent: 88,
-              effectStrength: 0.55,
-              // BackdropFilter applies to its full rectangular layer even
-              // where the gradient has faded to transparent. Keep this
-              // timeline tail as a paint-only fade so it cannot create a
-              // detached block of blur below the toolbar.
-              blur: false,
-              tint: colorScheme.surface,
+              child: Padding(
+                padding: EdgeInsets.only(top: topPadding),
+                child: SizedBox(
+                  height: kToolbarHeight,
+                  child: _buildTimelineToolbar(colorScheme),
+                ),
+              ),
             ),
           ),
         ],
@@ -1619,30 +1643,75 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     );
   }
 
-  Widget _buildAppBar(BuildContext context, ColorScheme cs) {
-    final expandedHeight = _timelineAppBarExpandedHeight(context);
+  Widget _buildAppBar(BuildContext context) {
+    // The visible toolbar lives in the fixed foreground layer below. This
+    // sliver only reserves its height in the scrollable content; an empty
+    // SliverAppBar would still introduce a material/shadow boundary.
+    return SliverToBoxAdapter(
+      child: SizedBox(
+        height: MediaQuery.paddingOf(context).top + kToolbarHeight,
+      ),
+    );
+  }
+
+  Widget _buildTimelineContentFade({
+    required double topBarHeight,
+    required Widget child,
+  }) {
+    return ShaderMask(
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (bounds) {
+        final fadeExtent = math.min(
+          bounds.height,
+          topBarHeight + 36.0,
+        );
+        final fadeHeight = math.max(1.0, fadeExtent);
+        return LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          // Fade the scrolling pixels themselves instead of painting a
+          // tinted rectangle over them. This keeps the background continuous
+          // and leaves no visible edge at the bottom of the toolbar.
+          stops: const [0.0, 0.18, 0.78, 1.0],
+          colors: [
+            Colors.transparent,
+            Colors.transparent,
+            Colors.white.withValues(alpha: 0.86),
+            Colors.white,
+          ],
+        ).createShader(
+          Rect.fromLTWH(0, 0, bounds.width, fadeHeight),
+        );
+      },
+      child: child,
+    );
+  }
+
+  Widget _buildTimelineToolbar(ColorScheme cs) {
     final isDark = cs.brightness == Brightness.dark;
 
-    return FloatingGlassSliverAppBar(
-      expandedHeight: expandedHeight,
-      pinned: true,
+    return FloatingGlassAppBar(
+      primary: false,
+      automaticallyImplyLeading: false,
+      automaticallyImplyActions: false,
       backgroundColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
       surfaceTintColor: Colors.transparent,
       shadowColor: Colors.transparent,
       foregroundColor: cs.onSurface,
+      forceMaterialTransparency: true,
       clipBehavior: Clip.hardEdge,
       centerTitle: true,
+      // Do not use FloatingGlassAppBar's default full-width glass backdrop.
+      // The timeline owns a separate paint-only fade mask below this
+      // foreground toolbar.
+      flexibleSpace: const SizedBox.shrink(),
       leadingWidth: 64,
-      title: Text(
-        '个人时间轴',
-        style: TextStyle(
-          color: cs.onSurface,
-          fontSize: 17,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.2,
-        ),
+      title: ValueListenableBuilder<double>(
+        valueListenable: _timelineTitleProgress,
+        builder: (context, progress, _) =>
+            _buildTimelineAppBarTitle(cs, progress),
       ),
       leading: IconButton(
         tooltip: '返回',
@@ -1672,113 +1741,58 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       ],
       floatingControlTint: cs.surface,
       floatingControlIsDark: isDark,
-      systemOverlayStyle: SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-        statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
-      ),
-      flexibleSpace: Stack(
-        fit: StackFit.expand,
-        children: [
-          _buildHeaderSurface(context, cs),
-          _buildGreeting(cs),
-        ],
-      ),
     );
   }
 
-  Widget _buildHeaderSurface(BuildContext context, ColorScheme cs) {
-    final isDark = cs.brightness == Brightness.dark;
-    final tintedSurface = Color.alphaBlend(
-      cs.primary.withValues(alpha: isDark ? 0.06 : 0.03),
-      cs.surface,
-    );
-    final settings =
-        context.dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>();
-    final collapseRange =
-        settings == null ? 0.0 : settings.maxExtent - settings.minExtent;
-    final collapseProgress = collapseRange <= 0.0
-        ? 0.0
-        : (1.0 - (settings!.currentExtent - settings.minExtent) / collapseRange)
-            .clamp(0.0, 1.0);
-    final collapse = Curves.easeOutCubic.transform(collapseProgress);
-    final middleAlpha = ui.lerpDouble(
-      isDark ? 0.54 : 0.70,
-      isDark ? 0.76 : 0.86,
-      collapse,
-    )!;
-    final lowerAlpha = ui.lerpDouble(
-      isDark ? 0.18 : 0.30,
-      isDark ? 0.62 : 0.78,
-      collapse,
-    )!;
-    final bottomAlpha = ui.lerpDouble(
-      0.0,
-      isDark ? 0.56 : 0.72,
-      collapse,
-    )!;
+  void _handleTimelineScroll() {
+    if (!_timelineScrollController.hasClients) return;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          stops: const [0.0, 0.38, 0.72, 1.0],
-          colors: [
-            // The status-bar edge is opaque so content has zero visibility
-            // there. As the app bar collapses, the mask continues farther
-            // down instead of ending at a visible horizontal rule.
-            tintedSurface,
-            tintedSurface.withValues(alpha: middleAlpha),
-            tintedSurface.withValues(alpha: lowerAlpha),
-            tintedSurface.withValues(alpha: bottomAlpha),
-          ],
+    final scrollOffset = math.max(0.0, _timelineScrollController.offset);
+    final labelOffset = _timelinePeriodLabelOffset(context);
+    final titleProgress = ((scrollOffset - (labelOffset - 36.0)) /
+            math.max(1.0, labelOffset + 10.0 - (labelOffset - 36.0)))
+        .clamp(0.0, 1.0);
+    if ((titleProgress - _timelineTitleProgress.value).abs() > 0.001) {
+      _timelineTitleProgress.value = titleProgress;
+    }
+  }
+
+  double _timelinePeriodLabelOffset(BuildContext context) {
+    return _timelineGreetingTopPadding(context) + 21.0;
+  }
+
+  double _timelineGreetingTopPadding(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 600;
+    return isCompact ? 24.0 : 32.0;
+  }
+
+  Widget _buildTimelineAppBarTitle(ColorScheme cs, double titleProgress) {
+    return Opacity(
+      opacity: titleProgress,
+      child: Text(
+        _timelinePeriodLabel(),
+        style: TextStyle(
+          color: cs.onSurface,
+          fontSize: 17,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.2,
         ),
       ),
     );
   }
 
-  double _timelineAppBarExpandedHeight(BuildContext context) {
-    final isCompact = MediaQuery.of(context).size.width < 600;
-    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
-    final extraHeight = _dimension != TimelineDimension.daily ? 36.0 : 0.0;
-    final dimensionToggleHeight = useFloatingBottomBar ? 0.0 : 52.0;
-    final baseHeight =
-        isCompact ? (useFloatingBottomBar ? 224.0 : 280.0) : 240.0;
-    return baseHeight + extraHeight - dimensionToggleHeight;
-  }
-
   Widget _buildGreeting(ColorScheme cs) {
     final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
-    String label;
-    String sub;
-    switch (_dimension) {
-      case TimelineDimension.daily:
-        label = DateFormat('yyyy年MM月dd日').format(_selectedDate);
-        sub = DateFormat('EEEE', 'zh_CN').format(_selectedDate);
-        break;
-      case TimelineDimension.weekly:
-        final start =
-            _selectedDate.subtract(Duration(days: _selectedDate.weekday - 1));
-        final end = start.add(const Duration(days: 6));
-        label =
-            '${DateFormat('MM/dd').format(start)} - ${DateFormat('MM/dd').format(end)}';
-        sub = '本周回顾';
-        break;
-      case TimelineDimension.monthly:
-        label = DateFormat('yyyy年MM月').format(_selectedDate);
-        sub = '月度总结';
-        break;
-      case TimelineDimension.yearly:
-        label = '${_selectedDate.year}年';
-        sub = '年度回顾';
-        break;
-    }
-
-    final isCompact = MediaQuery.of(context).size.width < 600;
+    final label = _timelinePeriodLabel();
+    final sub = _timelinePeriodSubtitle();
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(24, isCompact ? 92 : 64, 24, 8),
+      padding: EdgeInsets.fromLTRB(
+        24,
+        _timelineGreetingTopPadding(context),
+        24,
+        8,
+      ),
       child: Row(
         children: [
           Expanded(
@@ -1823,16 +1837,14 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                 const SizedBox(height: 10),
                 if (!useFloatingBottomBar) _buildDimensionToggle(cs),
                 const SizedBox(height: 8),
-                Flexible(
-                  child: Text(
-                    _getMotivationText(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: cs.onSurfaceVariant.withValues(alpha: 0.6),
-                        fontStyle: FontStyle.italic),
-                  ),
+                Text(
+                  _getMotivationText(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                      fontStyle: FontStyle.italic),
                 ),
               ],
             ),
@@ -1847,6 +1859,35 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         ],
       ),
     );
+  }
+
+  String _timelinePeriodLabel() {
+    switch (_dimension) {
+      case TimelineDimension.daily:
+        return DateFormat('yyyy年MM月dd日').format(_selectedDate);
+      case TimelineDimension.weekly:
+        final start =
+            _selectedDate.subtract(Duration(days: _selectedDate.weekday - 1));
+        final end = start.add(const Duration(days: 6));
+        return '${DateFormat('MM/dd').format(start)} - ${DateFormat('MM/dd').format(end)}';
+      case TimelineDimension.monthly:
+        return DateFormat('yyyy年MM月').format(_selectedDate);
+      case TimelineDimension.yearly:
+        return '${_selectedDate.year}年';
+    }
+  }
+
+  String _timelinePeriodSubtitle() {
+    switch (_dimension) {
+      case TimelineDimension.daily:
+        return DateFormat('EEEE', 'zh_CN').format(_selectedDate);
+      case TimelineDimension.weekly:
+        return '本周回顾';
+      case TimelineDimension.monthly:
+        return '月度总结';
+      case TimelineDimension.yearly:
+        return '年度回顾';
+    }
   }
 
   Widget _buildNavButton(IconData icon, VoidCallback onTap) {
