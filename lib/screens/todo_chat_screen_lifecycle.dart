@@ -506,7 +506,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       for (final msg in sourceMessages) {
         apiMessages.add({
           'role': msg.role == ChatRole.user ? 'user' : 'assistant',
-          'content': msg.content,
+          'content': msg.toLLMMessage(),
         });
       }
     } else {
@@ -535,7 +535,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         if (msg.content == firstUserMsg.content) continue;
         apiMessages.add({
           'role': msg.role == ChatRole.user ? 'user' : 'assistant',
-          'content': msg.content,
+          'content': msg.toLLMMessage(),
         });
       }
     }

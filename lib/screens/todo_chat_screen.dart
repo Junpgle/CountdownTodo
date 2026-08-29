@@ -28,6 +28,9 @@ import '../services/feature_tip_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../widgets/floating_glass_control.dart';
+import '../features/finance/models/finance_models.dart';
+import '../features/finance/screens/finance_entry_screen.dart';
+import '../features/finance/services/finance_text_parser.dart';
 
 part 'todo_chat_screen_contract.dart';
 part 'todo_chat_screen_lifecycle.dart';

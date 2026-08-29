@@ -10,6 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'course_service.dart';
 import '../storage_service.dart';
 import '../models.dart';
+import '../features/finance/models/finance_models.dart';
+import '../features/finance/services/finance_text_parser.dart';
 import 'llm_service.dart';
 import 'notification_service.dart';
 
@@ -26,6 +28,8 @@ class ExternalShareHandler {
     BuildContext context,
     Function onCourseImported, {
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
+    FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
+        onFinanceRecognized,
   }) {
     if (!Platform.isAndroid && !Platform.isIOS) return;
     final previousSubscription = _intentDataStreamSubscription;
@@ -38,7 +42,9 @@ class ExternalShareHandler {
       (List<SharedMediaFile> value) {
         if (!context.mounted) return;
         _processSharedFiles(context, value, onCourseImported,
-            onTodoRecognized: onTodoRecognized, fromInitial: false);
+            onTodoRecognized: onTodoRecognized,
+            onFinanceRecognized: onFinanceRecognized,
+            fromInitial: false);
       },
       onError: (err) {
         // debugPrint("获取外部意图失败: $err");
@@ -49,7 +55,9 @@ class ExternalShareHandler {
       (List<SharedMediaFile> value) {
         if (!context.mounted) return;
         _processSharedFiles(context, value, onCourseImported,
-            onTodoRecognized: onTodoRecognized, fromInitial: true);
+            onTodoRecognized: onTodoRecognized,
+            onFinanceRecognized: onFinanceRecognized,
+            fromInitial: true);
       },
     );
   }
@@ -59,6 +67,8 @@ class ExternalShareHandler {
     List<SharedMediaFile> files,
     Function onSuccess, {
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
+    FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
+        onFinanceRecognized,
     bool fromInitial = false,
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
@@ -67,9 +77,37 @@ class ExternalShareHandler {
 
     await Future.delayed(const Duration(milliseconds: 500));
 
-    final firstPath = files.first.path;
+    final media = files.first;
+    final isSharedText = media.type == SharedMediaType.text ||
+        media.mimeType?.toLowerCase().startsWith('text/') == true;
+    if (isSharedText) {
+      try {
+        final text = _sharedTextPayload(media);
+        final drafts = text == null
+            ? const <FinanceEntryDraft>[]
+            : FinanceTextParser.parse(
+                text,
+                source: FinanceEntrySource.import,
+              );
+        if (drafts.isNotEmpty && context.mounted) {
+          await onFinanceRecognized?.call(drafts, null);
+        } else if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('未识别到符合格式的记账文本')),
+          );
+        }
+      } finally {
+        ReceiveSharingIntent.instance.reset();
+        _isProcessing = false;
+      }
+      return;
+    }
+
+    final firstPath = media.path;
     final isValidFile = firstPath.isNotEmpty &&
-        firstPath.contains('.') &&
+        (firstPath.contains('.') ||
+            media.type == SharedMediaType.image ||
+            media.mimeType?.toLowerCase().startsWith('image/') == true) &&
         !firstPath.startsWith('countdowntodo://');
     if (!isValidFile) {
       // debugPrint('ExternalShareHandler: skip non-file intent: $firstPath');
@@ -128,7 +166,7 @@ class ExternalShareHandler {
     try {
       await Future.delayed(const Duration(milliseconds: 400));
 
-      String filePath = files.first.path;
+      String filePath = media.path;
       File file = File(filePath);
       String ext = filePath.split('.').last.toLowerCase();
 
@@ -144,7 +182,9 @@ class ExternalShareHandler {
 
       // 检测是否为图片
       final imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
-      final isImage = imageExtensions.contains(ext);
+      final isImage = media.type == SharedMediaType.image ||
+          imageExtensions.contains(ext) ||
+          media.mimeType?.toLowerCase().startsWith('image/') == true;
 
       if (isImage) {
         // 图片处理：调用大模型识别事项并保留类型声明
@@ -193,10 +233,13 @@ class ExternalShareHandler {
         );
 
         try {
-          final results = await LLMService.parseTodoFromImage(compressedPath)
-              .timeout(const Duration(seconds: 90));
-
-          statusNotifier.value = "✅ 识别成功！\n发现${results.length}个事项";
+          final recognition = await _recognizeImage(compressedPath);
+          final results = recognition.todoResults;
+          final financeDrafts = recognition.financeDrafts;
+          final totalCount = results.length + financeDrafts.length;
+          statusNotifier.value = totalCount == 0
+              ? '✅ 识别完成，未发现可编辑事件'
+              : '✅ 识别成功！\n发现${results.length}个事项，${financeDrafts.length}笔账单';
           // 标记文件为已处理，防止重复处理
           await _markFileProcessed(fileKey);
           await Future.delayed(const Duration(milliseconds: 800));
@@ -206,20 +249,26 @@ class ExternalShareHandler {
           await StorageService.savePendingTodoConfirm(
             imagePath: filePath,
             results: results,
+            financeResults:
+                financeDrafts.map((draft) => draft.toJson()).toList(),
             status: 'success',
             compressedPath: compressedPath,
           );
 
           // 显示成功通知
           await NotificationService.showTodoRecognizeSuccess(
-            todoCount: results.length,
+            todoCount: totalCount,
           );
 
-          // 通知首页刷新（dialog 已关闭）
+          // 通知首页刷新（dialog 已关闭）。两个回调按顺序执行，避免
+          // 记账编辑页和待办确认页同时抢占导航栈。
+          if (context.mounted && financeDrafts.isNotEmpty) {
+            await onFinanceRecognized?.call(financeDrafts, filePath);
+          }
           if (context.mounted &&
               onTodoRecognized != null &&
               results.isNotEmpty) {
-            onTodoRecognized(results, filePath);
+            await onTodoRecognized(results, filePath);
           }
         } catch (e) {
           // debugPrint("大模型图片识别失败: $e");
@@ -247,6 +296,7 @@ class ExternalShareHandler {
               fileKey: fileKey,
               maxRetries: maxRetries,
               onTodoRecognized: onTodoRecognized,
+              onFinanceRecognized: onFinanceRecognized,
             );
           } else {
             // 没有重试次数，直接显示错误
@@ -497,6 +547,58 @@ class ExternalShareHandler {
     }
   }
 
+  static String? _sharedTextPayload(SharedMediaFile media) {
+    final message = media.message?.trim();
+    if (message != null && message.isNotEmpty) return message;
+    final path = media.path.trim();
+    return path.isEmpty ? null : path;
+  }
+
+  /// 同一张图片走两条互不排斥的识别通道：待办通道负责取餐/取件码，
+  /// 账单通道负责支付记录。任一通道失败都不影响另一类结果。
+  static Future<_ImageRecognitionResult> _recognizeImage(
+    String imagePath,
+  ) async {
+    final errors = <Object>[];
+    final results = await Future.wait<List<Map<String, dynamic>>>([
+      _runVisionPass(
+        () => LLMService.parseTodoFromImage(imagePath),
+        errors,
+      ),
+      _runVisionPass(
+        () => LLMService.parseFinanceFromImage(imagePath),
+        errors,
+      ),
+    ]);
+
+    final todoResults = results.first
+        .where((result) => !FinanceTextParser.isFinanceResult(result))
+        .toList();
+    final financeDrafts = FinanceTextParser.fromRecognitionResults(
+      [...results.first, ...results.last],
+      source: FinanceEntrySource.import,
+    );
+    if (todoResults.isEmpty && financeDrafts.isEmpty && errors.isNotEmpty) {
+      throw Exception('图片识别失败：${errors.first}');
+    }
+    return _ImageRecognitionResult(
+      todoResults: todoResults,
+      financeDrafts: financeDrafts,
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> _runVisionPass(
+    Future<List<Map<String, dynamic>>> Function() operation,
+    List<Object> errors,
+  ) async {
+    try {
+      return await operation().timeout(const Duration(seconds: 90));
+    } catch (error) {
+      errors.add(error);
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
   /// 压缩图片，返回压缩后的文件路径
   static Future<String> _compressImage(String inputPath) async {
     final dir = await getTemporaryDirectory();
@@ -596,6 +698,8 @@ class ExternalShareHandler {
     required String fileKey,
     required int maxRetries,
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
+    FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
+        onFinanceRecognized,
   }) async {
     // debugPrint("启动后台重试: filePath=$filePath, maxRetries=$maxRetries");
 
@@ -607,7 +711,7 @@ class ExternalShareHandler {
     );
 
     bool success = false;
-    List<Map<String, dynamic>>? results;
+    _ImageRecognitionResult? recognition;
     String? lastError;
 
     // 尝试原始图片和压缩后的图片
@@ -638,8 +742,7 @@ class ExternalShareHandler {
         final currentPath = pathsToTry[(attempt - 1) % pathsToTry.length];
 
         // 增加超时时间到 180 秒，提高后台识别成功率
-        results = await LLMService.parseTodoFromImage(currentPath)
-            .timeout(const Duration(seconds: 180));
+        recognition = await _recognizeImage(currentPath);
 
         success = true;
         // debugPrint("后台重试第$attempt次成功!");
@@ -672,7 +775,10 @@ class ExternalShareHandler {
       }
     }
 
-    if (success && results != null && results.isNotEmpty) {
+    if (success && recognition != null) {
+      final results = recognition.todoResults;
+      final financeDrafts = recognition.financeDrafts;
+      final totalCount = results.length + financeDrafts.length;
       // 标记文件为已处理
       await _markFileProcessed(fileKey);
 
@@ -680,18 +786,22 @@ class ExternalShareHandler {
       await StorageService.savePendingTodoConfirm(
         imagePath: filePath,
         results: results,
+        financeResults: financeDrafts.map((draft) => draft.toJson()).toList(),
         status: 'success',
         compressedPath: compressedPath,
       );
 
       // 发送成功通知
       await NotificationService.showTodoRecognizeSuccess(
-        todoCount: results.length,
+        todoCount: totalCount,
       );
 
       // 通知首页刷新（成功时自动打开确认页面）
+      if (financeDrafts.isNotEmpty) {
+        await onFinanceRecognized?.call(financeDrafts, filePath);
+      }
       if (onTodoRecognized != null) {
-        onTodoRecognized(results, filePath);
+        await onTodoRecognized(results, filePath);
       }
 
       // debugPrint("后台重试成功，已保存${results.length}个待办，等待用户确认");
@@ -723,10 +833,21 @@ class ExternalShareHandler {
     await StorageService.clearPendingTodoConfirm();
   }
 
+  static Future<void> clearPendingFinanceRecognized() async {
+    final pending = await StorageService.getPendingTodoConfirm();
+    if (pending == null) return;
+    await StorageService.updatePendingTodoConfirmStatus(
+      status: pending['status']?.toString() ?? 'success',
+      financeResults: const [],
+    );
+  }
+
   /// 重试图片识别
   /// [onTodoRecognized] 事项识别成功回调（名称为旧接口兼容保留）
   static Future<void> retryTodoRecognition({
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
+    FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
+        onFinanceRecognized,
   }) async {
     final pendingData = await StorageService.getPendingTodoConfirm();
     if (pendingData == null) {
@@ -776,10 +897,12 @@ class ExternalShareHandler {
     // 不通知首页刷新，让首页通过 _checkPendingTodoConfirm 自动刷新
 
     try {
-      final results = await LLMService.parseTodoFromImage(retryPath)
-          .timeout(const Duration(seconds: 90));
+      final recognition = await _recognizeImage(retryPath);
+      final results = recognition.todoResults;
+      final financeDrafts = recognition.financeDrafts;
+      final totalCount = results.length + financeDrafts.length;
 
-      if (results.isNotEmpty) {
+      if (totalCount > 0) {
         // 标记文件为已处理
         final fileKey = await _generateFileKey(imagePath);
         await _markFileProcessed(fileKey);
@@ -788,18 +911,22 @@ class ExternalShareHandler {
         await StorageService.savePendingTodoConfirm(
           imagePath: imagePath,
           results: results,
+          financeResults: financeDrafts.map((draft) => draft.toJson()).toList(),
           status: 'success',
           compressedPath: compressedPath,
         );
 
         // 显示成功通知
         await NotificationService.showTodoRecognizeSuccess(
-          todoCount: results.length,
+          todoCount: totalCount,
         );
 
         // 通知首页刷新
+        if (financeDrafts.isNotEmpty) {
+          await onFinanceRecognized?.call(financeDrafts, imagePath);
+        }
         if (onTodoRecognized != null) {
-          onTodoRecognized(results, imagePath);
+          await onTodoRecognized(results, imagePath);
         }
 
         // debugPrint("重试成功，已保存${results.length}个待办");
@@ -834,4 +961,14 @@ class ExternalShareHandler {
       // 不通知首页刷新，让用户点击重试按钮来手动刷新
     }
   }
+}
+
+class _ImageRecognitionResult {
+  final List<Map<String, dynamic>> todoResults;
+  final List<FinanceEntryDraft> financeDrafts;
+
+  const _ImageRecognitionResult({
+    required this.todoResults,
+    required this.financeDrafts,
+  });
 }

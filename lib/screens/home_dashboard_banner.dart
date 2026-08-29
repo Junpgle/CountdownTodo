@@ -263,6 +263,9 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
           }
         });
       },
+      onFinanceRecognized: (drafts, imagePath) async {
+        await _openRecognizedFinanceDrafts(drafts);
+      },
     );
 
     // 重试完成后刷新首页状态（无论成功或失败）

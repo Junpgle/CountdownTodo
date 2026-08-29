@@ -123,6 +123,196 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     }
   }
 
+  Widget _buildMessageFinanceDrafts(ChatMessage msg, bool isDark) {
+    final drafts = msg.financeDrafts!
+        .where((draft) => !draft.isAdded && !draft.isIgnored)
+        .toList();
+    if (drafts.isEmpty) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: _IridescentActionPanel(
+        isDark: isDark,
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: isDark
+                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.24)
+                : colorScheme.primaryContainer.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.account_balance_wallet_outlined,
+                      color: colorScheme.primary,
+                      size: 17,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      drafts.length == 1 ? '待确认记账' : '待确认记账（${drafts.length}笔）',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ...drafts.map(
+                (draft) => Container(
+                  margin:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? colorScheme.surface.withValues(alpha: 0.08)
+                        : colorScheme.surface.withValues(alpha: 0.8),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${draft.type.label}  ${formatFinanceAmount(draft.amountMinor)}',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color:
+                                    draft.type == FinanceTransactionType.expense
+                                        ? colorScheme.error
+                                        : colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _editFinanceDraft(draft),
+                            icon: const Icon(Icons.edit_outlined, size: 16),
+                            label: const Text('编辑并保存'),
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => _ignoreFinanceDraft(draft),
+                            tooltip: '忽略此账单',
+                            icon: const Icon(Icons.close_rounded, size: 18),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 4,
+                        children: [
+                          if (draft.merchant?.isNotEmpty == true)
+                            _buildFinanceDraftMeta(
+                              Icons.storefront_outlined,
+                              draft.merchant!,
+                              colorScheme.onSurfaceVariant,
+                            ),
+                          if (draft.categoryName?.isNotEmpty == true)
+                            _buildFinanceDraftMeta(
+                              Icons.category_outlined,
+                              draft.categoryName!,
+                              colorScheme.onSurfaceVariant,
+                            ),
+                          _buildFinanceDraftMeta(
+                            Icons.calendar_today_outlined,
+                            draft.transactionDate,
+                            colorScheme.onSurfaceVariant,
+                          ),
+                          if (draft.paymentMethodName?.isNotEmpty == true)
+                            _buildFinanceDraftMeta(
+                              Icons.account_balance_wallet_outlined,
+                              draft.paymentMethodName!,
+                              colorScheme.onSurfaceVariant,
+                            ),
+                        ],
+                      ),
+                      if (draft.note?.isNotEmpty == true)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: Text(
+                            draft.note!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Text(
+                  '账单只会在你编辑并保存后写入记账本。',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFinanceDraftMeta(IconData icon, String text, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: color.withValues(alpha: 0.8)),
+        const SizedBox(width: 3),
+        Text(
+          text,
+          style: TextStyle(fontSize: 11, color: color),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _editFinanceDraft(FinanceEntryDraft draft) async {
+    final saved = await Navigator.of(context).push<FinanceTransaction>(
+      MaterialPageRoute(
+        builder: (_) => FinanceEntryScreen(initialDraft: draft),
+      ),
+    );
+    if (saved == null || !mounted) return;
+    draft.isAdded = true;
+    await _saveHistorySilently();
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('账单已保存')),
+    );
+  }
+
+  Future<void> _ignoreFinanceDraft(FinanceEntryDraft draft) async {
+    draft.isIgnored = true;
+    await _saveHistorySilently();
+    if (mounted) setState(() {});
+  }
+
   Widget _buildMessageTodoActions(ChatMessage msg, bool isDark) {
     final activeActions = msg.todoActions!
         .where((action) => !action.isAdded && !action.isIgnored)

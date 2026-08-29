@@ -50,6 +50,10 @@ mixin _HomeDashboardContract {
 
   Future<void> _checkPendingTodoConfirm();
 
+  Future<void> _openRecognizedFinanceDrafts(
+    List<FinanceEntryDraft> drafts,
+  );
+
   void _showAnalysisImage(String imagePath);
 
   void _showOriginalText(String text);

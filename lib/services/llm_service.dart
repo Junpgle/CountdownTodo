@@ -161,7 +161,30 @@ class LLMConfig {
 如果图片中有多个事项，请返回JSON数组；如果是单个事项，也请返回JSON数组（只有一个元素）。
 例如：[{"itemKind":"fixedSchedule","title":"项目会议","location":"第一会议室","remark":null,"isAllDay":false,"startTime":"YYYY-MM-DD HH:mm","endTime":"YYYY-MM-DD HH:mm","timeMode":"range","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null,"reminderMinutes":15}]
 
-必须且只能返回纯JSON数组格式，不要包含Markdown标记。''';
+  必须且只能返回纯JSON数组格式，不要包含Markdown标记。''';
+
+  /// 外部分享图片使用的第二条识别通道。它只负责账单，和待办/取餐码
+  /// 识别并行执行，避免一张支付截图里同时出现取餐码时互相覆盖结果。
+  static const String defaultFinanceVisionPrompt =
+      '''你是一个严格的账单识别器，请从图片中提取所有有可靠金额依据的消费、收入或退款记录。
+
+【当前基准日期】
+{now}
+
+【识别边界】
+1. 只识别账单、支付成功/退款凭证、消费明细、收款记录、订单金额等有明确金额的交易。
+2. 每一笔独立交易都要单独输出，不能因为同一张图还包含取餐码、取件码、快递信息或待办信息而省略账单。
+3. 取餐码/取件码本身不是账单，不要把码值当金额；但图片中同时有账单和取餐码时，只输出账单，另一条通道会负责取餐码。
+4. 金额以人民币“元”的数字输出，不要输出千分位符；金额必须大于0。
+5. type只能是expense（支出）、income（收入）或refund（退款）。无法确认交易方向时，默认expense，但必须有可靠金额。
+6. 日期能从凭证可靠读出时使用yyyy-MM-dd，否则使用{now}中的日期。不要凭猜测补日期。
+7. category尽量使用餐饮、交通、购物、居住、学习、娱乐、健康、社交、订阅、工资、零花钱、奖金、退款或其他；无法判断时为其他。
+8. merchant填写商户或交易对象，paymentMethod填写微信、支付宝、银行卡、现金、信用卡或其他；没有可靠内容时为null。
+
+【输出格式】
+必须且只能返回纯JSON数组，不要包含Markdown。每个对象必须包含：
+{"itemKind":"finance","type":"expense|income|refund","amount":28.50,"category":"餐饮","merchant":"商户名","date":"yyyy-MM-dd","paymentMethod":"微信","note":"可选说明"}
+如果没有可靠账单，返回[]。''';
 
   /// 追加到默认或自定义识别提示词末尾的强制语义护栏。
   /// 用户仍可定制提取风格，但不能覆盖当前数据模型的类型与时间边界。
@@ -640,7 +663,31 @@ class LLMService {
   }
 
   static Future<List<Map<String, dynamic>>> parseTodoFromImage(
-      String imagePath) async {
+      String imagePath) {
+    return _parseImageWithPrompt(
+      imagePath,
+      promptBuilder: (config, nowStr) =>
+          '${config.visionPrompt.replaceAll('{now}', nowStr)}\n\n'
+          '${LLMConfig.itemSemanticGuardrailPrompt}',
+    );
+  }
+
+  /// Performs the finance half of a shared-image recognition pass. This is
+  /// intentionally separate from [parseTodoFromImage]: a vision model should
+  /// be allowed to return both a pickup todo and a bill from the same image.
+  static Future<List<Map<String, dynamic>>> parseFinanceFromImage(
+      String imagePath) {
+    return _parseImageWithPrompt(
+      imagePath,
+      promptBuilder: (_, nowStr) =>
+          LLMConfig.defaultFinanceVisionPrompt.replaceAll('{now}', nowStr),
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> _parseImageWithPrompt(
+    String imagePath, {
+    required String Function(LLMConfig config, String nowStr) promptBuilder,
+  }) async {
     await _ensureAiInteractionAllowed();
     final config = await getConfig();
     if (config == null || !config.isConfigured) {
@@ -648,43 +695,27 @@ class LLMService {
     }
 
     final imageInput = await readImageInput(imagePath);
-
-    // 检查文件大小
     final fileSize = imageInput.length;
-    // print('图片大小: ${(fileSize / 1024).toStringAsFixed(1)}KB');
-
     if (fileSize > 10 * 1024 * 1024) {
       throw Exception('图片太大，请使用小于10MB的图片');
     }
 
-    // 读取并编码图片
-    final bytes = imageInput.bytes;
-
-    // 使用 Future.microtask 避免阻塞主线程
-    final base64Image = await Future.microtask(() => base64Encode(bytes));
-
-    final mimeType = imageInput.mimeType;
-
+    final base64Image = await Future.microtask(
+      () => base64Encode(imageInput.bytes),
+    );
     final now = DateTime.now();
     final nowStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-
-    final resolvedPrompt = config.visionPrompt.replaceAll('{now}', nowStr);
-    final prompt =
-        '$resolvedPrompt\n\n${LLMConfig.itemSemanticGuardrailPrompt}';
+    final prompt = promptBuilder(config, nowStr);
 
     final endpoint = await resolveVisionEndpoint(config.visionModel);
     final visionUrl = endpoint.url.isNotEmpty ? endpoint.url : config.apiUrl;
     final visionKey = endpoint.key.isNotEmpty ? endpoint.key : config.apiKey;
-
     final headers = {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer $visionKey',
     };
-
-    final imageUrl = 'data:$mimeType;base64,$base64Image';
-    // print('Base64 长度: ${imageUrl.length}');
-
+    final imageUrl = 'data:${imageInput.mimeType};base64,$base64Image';
     final body = jsonEncode({
       'model': config.visionModel,
       'messages': [
@@ -694,21 +725,13 @@ class LLMService {
             {'type': 'text', 'text': prompt},
             {
               'type': 'image_url',
-              'image_url': {'url': imageUrl}
-            }
-          ]
-        }
+              'image_url': {'url': imageUrl},
+            },
+          ],
+        },
       ],
       'temperature': 0.1,
     });
-
-    // print('========== LLM 图片识别请求 ==========');
-    // print('API: $visionUrl');
-    // print('Model: ${config.visionModel}');
-    // print(
-    //     'Image: ${imageInput.displayName} (${(fileSize / 1024).toStringAsFixed(1)}KB)');
-    // print('Body 大小: ${(body.length / 1024).toStringAsFixed(1)}KB');
-    // print('====================================');
 
     final response = await http
         .post(
@@ -717,9 +740,7 @@ class LLMService {
           body: body,
         )
         .timeout(const Duration(seconds: 90));
-
     if (response.statusCode != 200) {
-      // print('LLM 请求失败: ${response.statusCode} - ${response.body}');
       throw Exception('API调用失败: ${response.statusCode}');
     }
 
@@ -728,23 +749,12 @@ class LLMService {
     if (choices == null || choices.isEmpty) {
       throw Exception('API返回数据格式异常');
     }
-
     final message = choices[0]['message'] as Map<String, dynamic>;
     final content = (message['content'] as String?) ?? '';
     final reasoning = (message['reasoning_content'] as String?) ?? '';
     final fullContent =
         reasoning.isNotEmpty ? '$reasoning\n\n$content' : content;
-
-    // print('========== LLM 图片识别响应 ==========');
-    // print('原始返回:\n$fullContent');
-    // print('=====================================');
-
-    final results = _extractJsonList(fullContent);
-
-    // print('解析结果: $results');
-    // print('====================================');
-
-    return results;
+    return _extractJsonList(fullContent);
   }
 
   static Future<void> _ensureAiInteractionAllowed() async {
@@ -793,7 +803,11 @@ class LLMService {
     for (final match in matches) {
       try {
         final obj = jsonDecode(match.group(0)!) as Map<String, dynamic>;
-        if (obj.containsKey('title')) {
+        if (obj.containsKey('title') ||
+            obj.containsKey('itemKind') ||
+            obj.containsKey('item_kind') ||
+            obj.containsKey('amount') ||
+            obj.containsKey('amount_minor')) {
           results.add(obj);
         }
       } catch (_) {}

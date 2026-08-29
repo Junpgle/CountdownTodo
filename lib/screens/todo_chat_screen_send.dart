@@ -6,6 +6,12 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty || _isLoading) return;
 
+    // The explicit #记账 format is intentionally handled locally. This keeps
+    // a simple import usable without an AI key and makes its result editable
+    // immediately; natural-language finance requests still go through the
+    // assistant below.
+    if (await _tryHandleExplicitFinanceText(text)) return;
+
     String model = _chatModel;
     String apiKey = _chatApiKey;
     String apiUrl = _chatApiUrl;
@@ -131,15 +137,22 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             existingTodoTitles: existingTodoTitles,
             existingScheduleTitles: existingScheduleTitles,
           );
-          final cleanContent = AiActionParser.cleanActionContent(fullContent);
+          final financeDrafts = FinanceTextParser.extractAssistantDrafts(
+            fullContent,
+          );
+          final cleanContent = FinanceTextParser.cleanAssistantContent(
+            AiActionParser.cleanActionContent(fullContent),
+          );
           setState(() {
             final assistantMsg = ChatMessage(
               role: ChatRole.assistant,
-              content: '$cleanContent\n\n*(已中断)*',
+              content:
+                  '${cleanContent.isEmpty && financeDrafts.isNotEmpty ? '已生成记账草案，请核对后编辑并保存。' : cleanContent}\n\n*(已中断)*',
               rawContent: fullContent,
               reasoningContent: reasoningContent,
               smartContext: _lastRequestSmartContext,
               todoActions: todoActions.isNotEmpty ? todoActions : null,
+              financeDrafts: financeDrafts.isNotEmpty ? financeDrafts : null,
             );
             _messages.add(assistantMsg);
             _streamingContent = '';
@@ -179,16 +192,24 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         existingScheduleTitles: existingScheduleTitles,
       );
       final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
-      final cleanContent = AiActionParser.cleanActionContent(fullContent);
+      final financeDrafts = FinanceTextParser.extractAssistantDrafts(
+        fullContent,
+      );
+      final cleanContent = FinanceTextParser.cleanAssistantContent(
+        AiActionParser.cleanActionContent(fullContent),
+      );
 
       setState(() {
         final assistantMsg = ChatMessage(
           role: ChatRole.assistant,
-          content: cleanContent,
+          content: cleanContent.isEmpty && financeDrafts.isNotEmpty
+              ? '已生成记账草案，请核对后编辑并保存。'
+              : cleanContent,
           rawContent: fullContent,
           reasoningContent: reasoningContent,
           smartContext: _lastRequestSmartContext,
           todoActions: todoActions.isNotEmpty ? todoActions : null,
+          financeDrafts: financeDrafts.isNotEmpty ? financeDrafts : null,
         );
 
         _messages.add(assistantMsg);
@@ -218,6 +239,40 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         );
       }
     }
+  }
+
+  Future<bool> _tryHandleExplicitFinanceText(String text) async {
+    final hasPickupClue = RegExp(
+      r'取餐|取件|取货|餐号|取单号|取餐码|取件码|外卖|快递',
+    ).hasMatch(text);
+    if (hasPickupClue || !FinanceTextParser.looksLikeFinanceFormat(text)) {
+      return false;
+    }
+    final drafts = FinanceTextParser.parse(
+      text,
+      source: FinanceEntrySource.import,
+    );
+    if (drafts.isEmpty) return false;
+
+    final userMsg = ChatMessage(role: ChatRole.user, content: text);
+    final assistantMsg = ChatMessage(
+      role: ChatRole.assistant,
+      content: drafts.length == 1
+          ? '已识别为一笔记账草案，请核对后编辑并保存。'
+          : '已识别为 ${drafts.length} 笔记账草案，请逐笔核对后保存。',
+      rawContent: text,
+      financeDrafts: drafts,
+    );
+    setState(() {
+      _messages.addAll([userMsg, assistantMsg]);
+      _inputCtrl.clear();
+      _suggestions = _getSmartSuggestions();
+    });
+    await ChatStorageService.addMessage(userMsg);
+    await ChatStorageService.addMessage(assistantMsg);
+    _scrollToBottom();
+    _generateSessionTitle();
+    return true;
   }
 
   Future<void> _copyManualPromptFromInput() async {
@@ -298,7 +353,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       existingScheduleTitles: existingScheduleTitles,
     );
     final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
-    final cleanContent = AiActionParser.cleanActionContent(fullContent);
+    final financeDrafts = FinanceTextParser.extractAssistantDrafts(fullContent);
+    final cleanContent = FinanceTextParser.cleanAssistantContent(
+      AiActionParser.cleanActionContent(fullContent),
+    );
 
     final newMessages = <ChatMessage>[];
     if (originalText.isNotEmpty && _lastUserContent() != originalText) {
@@ -306,10 +364,15 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     }
     final assistantMsg = ChatMessage(
       role: ChatRole.assistant,
-      content: cleanContent.isEmpty ? fullContent : cleanContent,
+      content: cleanContent.isEmpty
+          ? financeDrafts.isNotEmpty
+              ? '已生成记账草案，请核对后编辑并保存。'
+              : fullContent
+          : cleanContent,
       rawContent: fullContent,
       smartContext: smartContext,
       todoActions: todoActions.isNotEmpty ? todoActions : null,
+      financeDrafts: financeDrafts.isNotEmpty ? financeDrafts : null,
     );
     newMessages.add(assistantMsg);
 

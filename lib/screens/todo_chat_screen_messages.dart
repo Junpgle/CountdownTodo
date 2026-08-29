@@ -132,6 +132,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                       msg.todoActions != null &&
                       msg.todoActions!.isNotEmpty)
                     _buildMessageTodoActions(msg, isDark),
+                  if (msg.financeDrafts != null &&
+                      msg.financeDrafts!.isNotEmpty)
+                    _buildMessageFinanceDrafts(msg, isDark),
                   Padding(
                     padding: const EdgeInsets.only(top: 4, left: 4, right: 4),
                     child: Row(

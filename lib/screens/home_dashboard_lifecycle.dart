@@ -161,6 +161,9 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
             }
           });
         },
+        onFinanceRecognized: (drafts, imagePath) async {
+          await _openRecognizedFinanceDrafts(drafts);
+        },
       );
 
       // 检查是否有待确认的事项数据（从通知点击进入）

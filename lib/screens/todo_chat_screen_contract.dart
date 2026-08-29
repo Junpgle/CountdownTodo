@@ -145,6 +145,9 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   String _getTodoCurrentFolderName(String? todoId);
   String _getRecurrenceText(String recurrence);
   Widget _buildMessageTodoActions(ChatMessage msg, bool isDark);
+  Widget _buildMessageFinanceDrafts(ChatMessage msg, bool isDark);
+  Future<void> _editFinanceDraft(FinanceEntryDraft draft);
+  Future<void> _ignoreFinanceDraft(FinanceEntryDraft draft);
   Widget _buildClassificationMetadata(AiTodoAction action);
   Widget _buildMiniMetaChip(IconData icon, String label, Color color);
   Widget _buildActionBadge(AiTodoAction action);

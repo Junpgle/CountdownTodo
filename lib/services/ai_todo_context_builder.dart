@@ -26,7 +26,7 @@ class AiTodoContextBuilder {
 所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算。
 
 【动作输出规则】
-当用户明确要求管理待办、固定日程、规划块、专注记录、番茄钟、倒计时或标签时，回复末尾必须附 [ACTION_START]...[ACTION_END] JSON 数组。
+当用户明确要求管理待办、固定日程、规划块、专注记录、番茄钟、倒计时、标签或记账时，回复末尾必须附对应的结构化结果。待办等使用 [ACTION_START]...[ACTION_END] JSON 数组；记账使用 [FINANCE_START]...[FINANCE_END] JSON 数组。
 每个操作对象必须包含 action 字段；禁止旧标记与 Markdown 代码块。
 具体可用动作与字段约束会按当前问题动态提供。''';
   }
@@ -54,6 +54,9 @@ class AiTodoContextBuilder {
     final requestsScheduleAction =
         _shouldInjectFixedScheduleContext(userMessage) ||
             _matchesAny(userMessage, _fixedScheduleKeywords);
+    final requestsFinanceAction = _matchesAny(userMessage, _financeKeywords) ||
+        userMessage.contains('#记账') ||
+        userMessage.contains('账单');
     if (requestsTodoAction) {
       add(
         '- create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","timeMode":"unscheduled|dateOnly|deadline","dueDate":null,"groupId":null,"reminderMinutes":5,"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}',
@@ -77,6 +80,17 @@ class AiTodoContextBuilder {
       );
       add(
         '- cancel_schedule / delete_schedule: 必须带scheduleId；默认只操作本期，只有用户明确说本期及以后时才用recurrenceScope="future"',
+      );
+    }
+    if (requestsFinanceAction) {
+      add(
+        '- 记账草案：回复正文末尾追加 [FINANCE_START]...[FINANCE_END]，其中必须是JSON数组；每笔使用 {"type":"expense|income|refund","amount":28.50,"category":"餐饮","merchant":"午餐","date":"YYYY-MM-DD","paymentMethod":"微信","note":"备注"}，金额单位为元，缺失的可选字段用null；只生成草案，不要声称已保存',
+      );
+      add(
+        '- 记账与取餐码双识别：同一条消息同时包含账单和取餐/取件信息时，两者都保留，记账放FINANCE块，取餐放ACTION块，禁止二选一',
+      );
+      add(
+        '- 只记账时不要为了凑协议生成空的ACTION块；FINANCE块独立于ACTION块，账单只作为待确认草案，不要声称已保存',
       );
     }
     if (_matchesAny(userMessage, _planKeywords) ||
@@ -677,6 +691,25 @@ JSON操作块必须且只能使用以下协议：
     '标签',
     '番茄标签',
     'tag',
+  ];
+  static const _financeKeywords = [
+    '记账',
+    '账单',
+    '支出',
+    '收入',
+    '退款',
+    '消费',
+    '记一笔',
+    '花钱',
+    '买了',
+    '付款',
+    '支付',
+    '花了',
+    '花费',
+    '进账',
+    '收款',
+    '余额',
+    '预算',
   ];
   static const _planKeywords = [
     '规划',

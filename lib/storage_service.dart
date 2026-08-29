@@ -752,6 +752,7 @@ class StorageService {
   static Future<void> savePendingTodoConfirm({
     required String imagePath,
     List<Map<String, dynamic>> results = const [],
+    List<Map<String, dynamic>> financeResults = const [],
     String status = 'success',
     String? compressedPath,
     int currentAttempt = 1,
@@ -761,6 +762,7 @@ class StorageService {
       _storage.savePendingTodoConfirm(
           imagePath: imagePath,
           results: results,
+          financeResults: financeResults,
           status: status,
           compressedPath: compressedPath,
           currentAttempt: currentAttempt,
@@ -773,13 +775,15 @@ class StorageService {
     int? maxAttempts,
     String? errorMsg,
     List<Map<String, dynamic>>? results,
+    List<Map<String, dynamic>>? financeResults,
   }) =>
       _storage.updatePendingTodoConfirmStatus(
           status: status,
           currentAttempt: currentAttempt,
           maxAttempts: maxAttempts,
           errorMsg: errorMsg,
-          results: results);
+          results: results,
+          financeResults: financeResults);
 
   static Future<Map<String, dynamic>?> getPendingTodoConfirm() =>
       _storage.getPendingTodoConfirm();

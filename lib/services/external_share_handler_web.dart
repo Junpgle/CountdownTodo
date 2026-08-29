@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../features/finance/models/finance_models.dart';
 import '../storage_service.dart';
 
 class ExternalShareHandler {
@@ -7,6 +8,8 @@ class ExternalShareHandler {
     BuildContext context,
     Function onCourseImported, {
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
+    Future<void> Function(List<FinanceEntryDraft>, String?)?
+        onFinanceRecognized,
   }) {}
 
   static void dispose() {}
@@ -19,8 +22,19 @@ class ExternalShareHandler {
     return StorageService.clearPendingTodoConfirm();
   }
 
+  static Future<void> clearPendingFinanceRecognized() async {
+    final pending = await StorageService.getPendingTodoConfirm();
+    if (pending == null) return;
+    await StorageService.updatePendingTodoConfirmStatus(
+      status: pending['status']?.toString() ?? 'success',
+      financeResults: const [],
+    );
+  }
+
   static Future<void> retryTodoRecognition({
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
+    Future<void> Function(List<FinanceEntryDraft>, String?)?
+        onFinanceRecognized,
   }) async {
     await StorageService.updatePendingTodoConfirmStatus(
       status: 'failed',
