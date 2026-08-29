@@ -2412,9 +2412,104 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
   // ── 布局搭建 ──────────────────────────────────────────
 
+  Widget _buildLiquidGlassAction({
+    required VoidCallback onPressed,
+    required IconData icon,
+    required String label,
+    double? width,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final foregroundColor = colorScheme.onSurface;
+    final borderRadius = BorderRadius.circular(28);
+
+    return FloatingGlassControl(
+      height: 56,
+      borderRadius: 28,
+      haloColor: colorScheme.primary,
+      isDark: colorScheme.brightness == Brightness.dark,
+      child: Semantics(
+        button: true,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: borderRadius,
+            child: SizedBox(
+              width: width,
+              height: 56,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 24, color: foregroundColor),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: foregroundColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isSinglePage = _pagesBuilder.length == 1;
+    final isFirstPage = _currentPage == 0;
+    final isLastPage = _currentPage == _pagesBuilder.length - 1;
+    final primaryAction = _buildLiquidGlassAction(
+      onPressed: isLastPage ? _done : _nextPage,
+      icon: isLastPage ? Icons.check_rounded : Icons.arrow_forward_rounded,
+      label: isLastPage ? '完成体验' : '继续探索',
+      width: isSinglePage ? 212 : null,
+    );
+    final bottomActions = isFirstPage
+        ? Center(child: primaryAction)
+        : Row(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: OutlinedButton(
+                    onPressed: _previousPage,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 44),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('上一页'),
+                  ),
+                ),
+              ),
+              Expanded(flex: 2, child: primaryAction),
+            ],
+          );
+    final bottomBar = FloatingBottomBar(
+      height: 136,
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildPageIndicator(),
+              if (!isSinglePage) const SizedBox(height: 16),
+              bottomActions,
+            ],
+          ),
+        ),
+      ),
+    );
+
     return Scaffold(
+      extendBody: floatingBottomBarShouldFloat(context),
       body: PageView.builder(
         controller: _pageController,
         itemCount: _pagesBuilder.length,
@@ -2423,55 +2518,15 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           return _pagesBuilder[i]();
         },
       ),
-      bottomNavigationBar: FloatingBottomBar(
-        height: 136,
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildPageIndicator(),
-                if (_pagesBuilder.length > 1) const SizedBox(height: 16),
-                Row(
-                  children: [
-                    if (_currentPage > 0)
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 8.0),
-                          child: OutlinedButton(
-                            onPressed: _previousPage,
-                            style: OutlinedButton.styleFrom(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 16)),
-                            child: const Text('上一页'),
-                          ),
-                        ),
-                      ),
-                    Expanded(
-                      flex: 2,
-                      child: FilledButton.icon(
-                        onPressed: _currentPage == _pagesBuilder.length - 1
-                            ? _done
-                            : _nextPage,
-                        icon: Icon(_currentPage == _pagesBuilder.length - 1
-                            ? Icons.check_rounded
-                            : Icons.arrow_forward_rounded),
-                        // 🚀 动态判断按钮文字，只有一页时直接显示 "完成体验"
-                        label: Text(_currentPage == _pagesBuilder.length - 1
-                            ? '完成体验'
-                            : '继续探索'),
-                        style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16)),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      bottomNavigationBar: isSinglePage
+          ? SafeArea(
+              top: false,
+              child: SizedBox(
+                height: 64,
+                child: Center(child: primaryAction),
+              ),
+            )
+          : bottomBar,
     );
   }
 }
