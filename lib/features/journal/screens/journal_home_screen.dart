@@ -162,25 +162,34 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
             onPressed: () => _showSearch(context),
             icon: const Icon(Icons.search_rounded),
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: SegmentedButton<bool>(
-              showSelectedIcon: false,
-              style: const ButtonStyle(
-                visualDensity: VisualDensity.compact,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          MenuAnchor(
+            menuChildren: [
+              _buildViewMenuItem(
+                isPhotoWall: false,
+                icon: Icons.view_agenda_rounded,
+                label: '时间线',
               ),
-              segments: const [
-                ButtonSegment(
-                    value: false, icon: Icon(Icons.view_agenda_rounded)),
-                ButtonSegment(value: true, icon: Icon(Icons.grid_view_rounded)),
-              ],
-              selected: {_isPhotoWall},
-              onSelectionChanged: (values) {
-                setState(() => _isPhotoWall = values.first);
-              },
-            ),
+              _buildViewMenuItem(
+                isPhotoWall: true,
+                icon: Icons.grid_view_rounded,
+                label: '照片墙',
+              ),
+            ],
+            builder: (context, controller, child) {
+              return IconButton(
+                tooltip: '选择视图',
+                onPressed: () {
+                  if (controller.isOpen) {
+                    controller.close();
+                  } else {
+                    controller.open();
+                  }
+                },
+                icon: const Icon(Icons.filter_list_rounded),
+              );
+            },
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: _isLoading
@@ -219,6 +228,26 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
         icon: const Icon(Icons.edit_rounded),
         label: const Text('写一篇'),
       ),
+    );
+  }
+
+  Widget _buildViewMenuItem({
+    required bool isPhotoWall,
+    required IconData icon,
+    required String label,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final selected = _isPhotoWall == isPhotoWall;
+    return MenuItemButton(
+      onPressed: () {
+        if (_isPhotoWall != isPhotoWall) {
+          setState(() => _isPhotoWall = isPhotoWall);
+        }
+      },
+      leadingIcon: Icon(icon),
+      trailingIcon:
+          selected ? Icon(Icons.check_rounded, color: scheme.primary) : null,
+      child: Text(label),
     );
   }
 
