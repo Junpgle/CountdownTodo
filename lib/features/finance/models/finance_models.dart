@@ -495,6 +495,138 @@ class FinanceTransaction {
   }
 }
 
+/// A bill recognized from text, an image, or the AI assistant.
+///
+/// A draft deliberately does not write to storage.  It is passed to the
+/// normal entry editor so the user can review the amount, category, date and
+/// note before saving it as a [FinanceTransaction].
+class FinanceEntryDraft {
+  FinanceTransactionType type;
+  int amountMinor;
+  String transactionDate;
+  String? categoryUuid;
+  String? categoryName;
+  String? paymentMethodUuid;
+  String? paymentMethodName;
+  String? merchant;
+  String? note;
+  FinanceEntrySource source;
+  String? originalText;
+  bool isAdded;
+  bool isIgnored;
+
+  FinanceEntryDraft({
+    required this.amountMinor,
+    required this.transactionDate,
+    this.type = FinanceTransactionType.expense,
+    this.categoryUuid,
+    this.categoryName,
+    this.paymentMethodUuid,
+    this.paymentMethodName,
+    this.merchant,
+    this.note,
+    this.source = FinanceEntrySource.import,
+    this.originalText,
+    this.isAdded = false,
+    this.isIgnored = false,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'type': type.name,
+        'amount_minor': amountMinor,
+        'transaction_date': transactionDate,
+        'category_uuid': categoryUuid,
+        'category_name': categoryName,
+        'payment_method_uuid': paymentMethodUuid,
+        'payment_method_name': paymentMethodName,
+        'merchant': merchant,
+        'note': note,
+        'source': source.name,
+        'original_text': originalText,
+        'is_added': isAdded,
+        'is_ignored': isIgnored,
+      };
+
+  factory FinanceEntryDraft.fromJson(Map<String, dynamic> map) {
+    final minorValue = map['amount_minor'] ?? map['amountMinor'];
+    final amountMinor = minorValue == null
+        ? _draftAmountMinor(
+            map['amount'] ??
+                map['amount_yuan'] ??
+                map['amountYuan'] ??
+                map['total'] ??
+                map['total_amount'] ??
+                map['totalAmount'] ??
+                map['money'] ??
+                map['price'],
+          )
+        : _int(minorValue).abs();
+    return FinanceEntryDraft(
+      type: _draftTransactionType(
+        map['type'] ?? map['transaction_type'] ?? map['transactionType'],
+      ),
+      amountMinor: amountMinor,
+      transactionDate: _string(
+            map['transaction_date'] ??
+                map['transactionDate'] ??
+                map['date'] ??
+                map['transaction_day'],
+          ) ??
+          dateKey(DateTime.now()),
+      categoryUuid: _string(
+        map['category_uuid'] ?? map['categoryUuid'],
+      ),
+      categoryName: _string(
+        map['category_name'] ?? map['categoryName'] ?? map['category'],
+      ),
+      paymentMethodUuid: _string(
+        map['payment_method_uuid'] ?? map['paymentMethodUuid'],
+      ),
+      paymentMethodName: _string(
+        map['payment_method_name'] ??
+            map['paymentMethodName'] ??
+            map['payment_method'] ??
+            map['paymentMethod'],
+      ),
+      merchant: _string(map['merchant'] ?? map['title'] ?? map['name']),
+      note: _string(map['note'] ?? map['remark']),
+      source: _entrySource(map['source']),
+      originalText: _string(map['original_text'] ?? map['originalText']),
+      isAdded: _bool(map['is_added'] ?? map['isAdded']),
+      isIgnored: _bool(map['is_ignored'] ?? map['isIgnored']),
+    );
+  }
+
+  static int _draftAmountMinor(dynamic value) {
+    if (value is num) return (value.toDouble() * 100).round().abs();
+    final normalized = value
+        ?.toString()
+        .trim()
+        .replaceAll(',', '')
+        .replaceAll(RegExp(r'^[¥￥$€£]'), '')
+        .replaceAll(
+            RegExp(r'\s*(?:元|块|人民币|CNY)\s*$', caseSensitive: false), '');
+    final parsed = double.tryParse(normalized ?? '');
+    return parsed == null ? 0 : (parsed * 100).round().abs();
+  }
+}
+
+FinanceTransactionType _draftTransactionType(dynamic raw) {
+  final value = raw?.toString().trim().toLowerCase();
+  if (value == 'income' ||
+      value == '收入' ||
+      value == '进账' ||
+      value == '入账' ||
+      value == '收款' ||
+      value == '+') {
+    return FinanceTransactionType.income;
+  }
+  if (value == 'refund' || value == '退款') {
+    return FinanceTransactionType.refund;
+  }
+  return FinanceTransactionType.expense;
+}
+
 class FinanceBudget {
   String uuid;
   String monthKey;

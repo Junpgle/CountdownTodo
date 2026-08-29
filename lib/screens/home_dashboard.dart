@@ -75,6 +75,9 @@ import '../widgets/pomodoro_today_section.dart';
 import '../widgets/plan_block_today_section.dart';
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/finance/screens/finance_home_screen.dart';
+import '../features/finance/screens/finance_entry_screen.dart';
+import '../features/finance/models/finance_models.dart';
+import '../features/finance/widgets/finance_today_section.dart';
 import '../features/habits/services/habit_reminder_service.dart';
 import '../features/habits/widgets/habit_today_section.dart';
 import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
@@ -164,7 +167,8 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     'countdowns',
     'screenTime',
     'timeline',
-    'pomodoro'
+    'pomodoro',
+    'finance',
   ];
   List<String> _mobileHomeSections =
       HomeLayoutService.defaultOrder(HomeLayoutTarget.mobileHome);
@@ -182,6 +186,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     'pomodoro': true,
     'timeline': true,
     'habits': true,
+    'finance': true,
   };
   Timer? _courseTimer;
   final Set<String> _coursesWithScheduledAlarms = {};
@@ -206,6 +211,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final GlobalKey _focusBannerKey = GlobalKey();
   final GlobalKey _fabPomodoroKey = GlobalKey();
   final GlobalKey _fabFinanceKey = GlobalKey();
+  final GlobalKey _financeCardKey = GlobalKey();
   final GlobalKey _fabTodoKey = GlobalKey();
   final GlobalKey _courseButtonKey = GlobalKey();
 
@@ -253,6 +259,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
 
   // 待确认的事项数据（从图片识别来）
   Map<String, dynamic>? _pendingTodoConfirm;
+  bool _isOpeningPendingFinance = false;
 
   // ── 跨端专注感知 ──
   CrossDevicePomodoroState? _remotePomodoro; // 其他设备正在进行的专注

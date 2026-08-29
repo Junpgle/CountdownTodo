@@ -476,6 +476,28 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                         },
                                       ),
                                     );
+                                    Widget financeSection = RepaintBoundary(
+                                      child: KeyedSubtree(
+                                        key: _financeCardKey,
+                                        child: FinanceTodaySection(
+                                          username: widget.username,
+                                          isLight: isLight,
+                                          onTap: () async {
+                                            await PageTransitions.pushFromRect(
+                                              context: context,
+                                              page: FinanceHomeScreen(
+                                                username: widget.username,
+                                              ),
+                                              sourceKey: _financeCardKey,
+                                              placeholderIcon: Icons
+                                                  .account_balance_wallet_outlined,
+                                              sourceBorderRadius:
+                                                  BorderRadius.circular(24),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    );
 
                                     Map<String, Widget> sectionsMap = {
                                       'banners': AnimatedBuilder(
@@ -496,6 +518,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       'math': mathSection,
                                       'pomodoro': pomodoroSection,
                                       'timeline': timelineSection,
+                                      'finance': financeSection,
                                       'habits': RepaintBoundary(
                                         child: KeyedSubtree(
                                           key: _habitsCardKey,

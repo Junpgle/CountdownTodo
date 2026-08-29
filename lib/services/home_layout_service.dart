@@ -41,6 +41,7 @@ class HomeLayoutService {
     HomeLayoutTarget.mobileFocus: [
       'timeline',
       'pomodoro',
+      'finance',
       'habits',
       'screenTime',
       'math',
@@ -54,6 +55,7 @@ class HomeLayoutService {
       'courses',
       'timeline',
       'pomodoro',
+      'finance',
       'habits',
       'screenTime',
       'math',

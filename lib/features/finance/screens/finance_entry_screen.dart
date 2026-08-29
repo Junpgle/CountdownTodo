@@ -9,11 +9,13 @@ import '../services/finance_storage.dart';
 class FinanceEntryScreen extends StatefulWidget {
   final FinanceTransaction? transaction;
   final FinanceEntryTemplate? initialTemplate;
+  final FinanceEntryDraft? initialDraft;
 
   const FinanceEntryScreen({
     super.key,
     this.transaction,
     this.initialTemplate,
+    this.initialDraft,
   });
 
   @override
@@ -44,27 +46,40 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     super.initState();
     final transaction = widget.transaction;
     final template = transaction == null ? widget.initialTemplate : null;
-    _type =
-        transaction?.type ?? template?.type ?? FinanceTransactionType.expense;
+    final draft = transaction == null ? widget.initialDraft : null;
+    _type = transaction?.type ??
+        draft?.type ??
+        template?.type ??
+        FinanceTransactionType.expense;
     _date = transaction == null
-        ? DateTime.now()
+        ? draft == null
+            ? DateTime.now()
+            : dateFromKey(draft.transactionDate)
         : dateFromKey(transaction.transactionDate);
     _amountController = TextEditingController(
       text: transaction == null
-          ? template == null
-              ? ''
-              : formatFinanceAmount(template.amountMinor, withSymbol: false)
+          ? draft != null
+              ? formatFinanceAmount(draft.amountMinor, withSymbol: false)
+              : template == null
+                  ? ''
+                  : formatFinanceAmount(template.amountMinor, withSymbol: false)
           : (transaction.amountMinor / 100)
               .toStringAsFixed(2)
               .replaceFirst(RegExp(r'\.00$'), ''),
     );
     _merchantController = TextEditingController(
-        text: transaction?.merchant ?? template?.merchant ?? '');
-    _noteController =
-        TextEditingController(text: transaction?.note ?? template?.note ?? '');
-    _categoryUuid = transaction?.categoryUuid ?? template?.categoryUuid;
-    _paymentMethodUuid =
-        transaction?.paymentMethodUuid ?? template?.paymentMethodUuid;
+      text:
+          transaction?.merchant ?? draft?.merchant ?? template?.merchant ?? '',
+    );
+    _noteController = TextEditingController(
+      text: transaction?.note ?? draft?.note ?? template?.note ?? '',
+    );
+    _categoryUuid = transaction?.categoryUuid ??
+        draft?.categoryUuid ??
+        template?.categoryUuid;
+    _paymentMethodUuid = transaction?.paymentMethodUuid ??
+        draft?.paymentMethodUuid ??
+        template?.paymentMethodUuid;
     _selectedTemplateUuid = template?.uuid;
     _loadOptions();
   }
@@ -91,6 +106,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         _templates = options[2] as List<FinanceEntryTemplate>;
         _isLoading = false;
       });
+      _resolveDraftSelections();
       _normalizeSelections();
     } catch (error) {
       if (!mounted) return;
@@ -99,10 +115,43 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     }
   }
 
+  void _resolveDraftSelections() {
+    final draft = widget.initialDraft;
+    if (draft == null || widget.transaction != null) return;
+    if (_categoryUuid == null && draft.categoryName != null) {
+      final wanted = _normalizeOptionName(draft.categoryName!);
+      _categoryUuid = _categories
+          .where((item) =>
+              item.type ==
+                  (_type == FinanceTransactionType.expense
+                      ? FinanceCategoryType.expense
+                      : FinanceCategoryType.income) &&
+              !item.isDeleted)
+          .where((item) => _normalizeOptionName(item.name) == wanted)
+          .map((item) => item.uuid)
+          .firstOrNull;
+    }
+    if (_paymentMethodUuid == null && draft.paymentMethodName != null) {
+      final wanted = _normalizeOptionName(draft.paymentMethodName!);
+      _paymentMethodUuid = _paymentMethods
+          .where((item) => !item.isDeleted)
+          .where((item) => _normalizeOptionName(item.name) == wanted)
+          .map((item) => item.uuid)
+          .firstOrNull;
+    }
+  }
+
+  String _normalizeOptionName(String value) {
+    return value
+        .replaceAll(RegExp(r'^[^\u4e00-\u9fffA-Za-z0-9]+'), '')
+        .trim()
+        .toLowerCase();
+  }
+
   List<FinanceCategory> get _visibleCategories {
-    final type = _type == FinanceTransactionType.income
-        ? FinanceCategoryType.income
-        : FinanceCategoryType.expense;
+    final type = _type == FinanceTransactionType.expense
+        ? FinanceCategoryType.expense
+        : FinanceCategoryType.income;
     final result = _categories
         .where(
           (item) => item.type == type && !item.isArchived && !item.isDeleted,
@@ -182,7 +231,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           old?.timezoneOffsetMinutes ?? DateTime.now().timeZoneOffset.inMinutes,
       merchant: _emptyToNull(_merchantController.text),
       note: _emptyToNull(_noteController.text),
-      source: old?.source ?? FinanceEntrySource.manual,
+      source: old?.source ??
+          widget.initialDraft?.source ??
+          FinanceEntrySource.manual,
       relatedTodoUuid: old?.relatedTodoUuid,
       relatedPlanBlockUuid: old?.relatedPlanBlockUuid,
       relatedTransactionUuid: old?.relatedTransactionUuid,

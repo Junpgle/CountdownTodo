@@ -13,6 +13,7 @@ import 'finance_automation_screen.dart';
 import 'finance_budget_screen.dart';
 import 'finance_entry_screen.dart';
 import 'finance_settings_screen.dart';
+import 'finance_text_recognition_screen.dart';
 import 'finance_trash_screen.dart';
 
 class FinanceHomeScreen extends StatefulWidget {
@@ -122,6 +123,15 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     if (mounted) await _load();
   }
 
+  Future<void> _openTextRecognition() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const FinanceTextRecognitionScreen(),
+      ),
+    );
+    if (mounted) await _load();
+  }
+
   Future<void> _openBudgets() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -213,6 +223,11 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         title: const Text('记账'),
         actions: [
           IconButton(
+            tooltip: '文本识别',
+            onPressed: _openTextRecognition,
+            icon: const Icon(Icons.text_snippet_outlined),
+          ),
+          IconButton(
             tooltip: '预算',
             onPressed: _openBudgets,
             icon: const Icon(Icons.track_changes_outlined),
@@ -221,6 +236,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
             tooltip: '更多操作',
             onSelected: (value) {
               if (value == 'settings') _openSettings();
+              if (value == 'text') _openTextRecognition();
               if (value == 'automation') _openAutomation();
               if (value == 'export') _exportCsv();
               if (value == 'trash') {
@@ -232,6 +248,14 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
               }
             },
             itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'text',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.text_snippet_outlined),
+                  title: Text('文本识别记账'),
+                ),
+              ),
               PopupMenuItem(
                 value: 'export',
                 child: ListTile(

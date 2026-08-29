@@ -11,12 +11,14 @@ abstract final class FinanceRepository {
     DateTime? to,
     String? keyword,
     FinanceTransactionType? type,
+    int? limit,
   }) {
     return FinanceStorage.getTransactions(
       from: from,
       to: to,
       keyword: keyword,
       type: type,
+      limit: limit,
     );
   }
 

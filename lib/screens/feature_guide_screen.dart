@@ -25,6 +25,7 @@ import '../services/minor_mode_service.dart';
 import '../services/liquid_glass_effect_service.dart';
 import '../models/minor_mode_state.dart';
 import '../models.dart';
+import '../features/finance/screens/finance_home_screen.dart';
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
 import '../widgets/app_settings_widgets.dart';
@@ -104,6 +105,14 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     if (AppPlatform.isWeb) {
       return [
         _RecentFeature(
+          Icons.account_balance_wallet_outlined,
+          scheme.tertiary,
+          '记账',
+          '账单·预算·自动化·本地同步',
+          destinationBuilder: () =>
+              FinanceHomeScreen(username: widget.loggedInUser ?? ''),
+        ),
+        _RecentFeature(
           Icons.blur_on_rounded,
           scheme.primary,
           'Liquid Glass 视觉升级',
@@ -165,6 +174,14 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     }
 
     return [
+      _RecentFeature(
+        Icons.account_balance_wallet_outlined,
+        scheme.tertiary,
+        '记账',
+        '账单·预算·自动化·本地同步',
+        destinationBuilder: () =>
+            FinanceHomeScreen(username: widget.loggedInUser ?? ''),
+      ),
       _RecentFeature(
         Icons.blur_on_rounded,
         scheme.primary,
