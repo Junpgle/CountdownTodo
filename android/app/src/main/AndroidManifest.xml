@@ -103,6 +103,16 @@
                     android:pathPrefix="/report" />
             </intent-filter>
 
+            <!-- 记账小部件主体与“记一笔”快捷入口 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="countdowntodo"
+                    android:host="finance" />
+            </intent-filter>
+
             <!-- ========================================== -->
             <!-- 🚀 新增：处理通过“分享”发送到本应用的 JSON 文件 -->
             <!-- ========================================== -->
@@ -300,6 +310,19 @@
         <service
             android:name=".HabitWidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <!-- 记账小部件：本月摘要与快速记一笔 -->
+        <receiver
+            android:name=".FinanceOnlyWidgetProvider"
+            android:label="@string/widget_label_finance"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_finance_info" />
+        </receiver>
 
     </application>
 </manifest>

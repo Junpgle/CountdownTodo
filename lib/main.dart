@@ -100,6 +100,14 @@ Future<void> _initializePlatformBeforeHome(List<String> args) async {
   // These tasks are independent. Start them together while the Flutter splash
   // is already visible, then keep the authenticated home flow behind this
   // readiness barrier so SQLite and platform channels are safe to use.
+  // Bind the deep-link channel before starting the other platform tasks. A
+  // synchronous startup failure in an earlier task must not prevent a widget
+  // intent from being captured during a cold start.
+  final deepLinkReady = _runStartupTask(
+    'AppDeepLinkService.init',
+    AppDeepLinkService.init(args),
+    timeout: const Duration(seconds: 2),
+  );
   await Future.wait<dynamic>([
     _runStartupTask(
       'NotificationService.bindNativeChannel',
@@ -116,11 +124,7 @@ Future<void> _initializePlatformBeforeHome(List<String> args) async {
       PageTransitions.init(),
       timeout: const Duration(seconds: 1),
     ),
-    _runStartupTask(
-      'AppDeepLinkService.init',
-      AppDeepLinkService.init(args),
-      timeout: const Duration(seconds: 2),
-    ),
+    deepLinkReady,
     _runStartupTask(
       'WindowService.init',
       PlatformBootstrap.initWindowService(),
@@ -251,7 +255,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool _showHolidaySplash = false;
   bool _showPrivacyUpdate = false;
   bool _defaultSplashCompleted = false;
+  bool _splashSequenceReady = false;
   bool _windowReadyForSplashTransition = true;
+  bool _deepLinkConsumptionScheduled = false;
   Timer? _defaultSplashFallbackTimer;
   Timer? _systemUiRestoreTimer;
   String? _shareCode;
@@ -345,22 +351,25 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   Future<void> _startSplashSequence() async {
+    Map<String, dynamic>? splashContent;
     try {
       // 异步获取节日开屏内容，不在这加延迟，让 DefaultSplashScreen 自己跑
-      final splashContent = await SplashService.getCachedContent()
+      splashContent = await SplashService.getCachedContent()
           .timeout(const Duration(seconds: 1));
-      if (mounted) {
-        setState(() {
-          _splashContent = splashContent;
-          // 避免竞态：如果默认开屏已结束但缓存稍后才返回，也要能切到节日开屏。
-          if (_defaultSplashCompleted && splashContent != null) {
-            _showHolidaySplash = true;
-          }
-        });
-      }
     } catch (e) {
       // debugPrint('[Main] 开屏缓存读取失败，跳过节日开屏: $e');
     }
+    if (!mounted) return;
+    setState(() {
+      _splashContent = splashContent;
+      // 避免竞态：如果默认开屏已结束但缓存稍后才返回，也要能切到节日开屏。
+      if (_defaultSplashCompleted && splashContent != null) {
+        _showHolidaySplash = true;
+      }
+    });
+    _splashSequenceReady = true;
+    if (_defaultSplashCompleted) _applySplashTransitionIfReady();
+    _scheduleDeepLinkConsumption();
   }
 
   Future<bool> _showCloseConfirmDialog() async {
@@ -471,9 +480,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             _showPrivacyUpdateDialog();
           });
         }
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          unawaited(AppDeepLinkService.consumePendingAfterAppReady());
-        });
+        _scheduleDeepLinkConsumption();
       }
     } catch (e) {
       // debugPrint('[Main] 初始化失败: $e');
@@ -481,6 +488,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         setState(() {
           _isChecking = false;
         });
+        _scheduleDeepLinkConsumption();
       }
     }
 
@@ -576,19 +584,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   void _applySplashTransitionIfReady() {
     if (!_defaultSplashCompleted ||
+        !_splashSequenceReady ||
         !_windowReadyForSplashTransition ||
         !mounted) {
       return;
     }
+    final showHolidaySplash = _splashContent != null;
     if (mounted) {
       setState(() {
         _showDefaultSplash = false;
         // 如果有开屏图，切换到开屏图状态
-        if (_splashContent != null) {
-          _showHolidaySplash = true;
-        }
+        _showHolidaySplash = showHolidaySplash;
       });
     }
+    if (!showHolidaySplash) _scheduleDeepLinkConsumption();
   }
 
   void _onHolidaySplashComplete() {
@@ -597,7 +606,37 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         _showHolidaySplash = false;
         _splashContent = null;
       });
+      _scheduleDeepLinkConsumption();
     }
+  }
+
+  /// Wait until the authenticated root page and every startup splash route
+  /// have settled before consuming a widget deep link. MaterialApp can rebuild
+  /// its initial `/` route during the splash handoff; navigating earlier would
+  /// leave the target page underneath that replacement route.
+  void _scheduleDeepLinkConsumption() {
+    if (!mounted ||
+        !_splashSequenceReady ||
+        !_defaultSplashCompleted ||
+        _showDefaultSplash ||
+        _showHolidaySplash ||
+        _isChecking ||
+        _deepLinkConsumptionScheduled) {
+      return;
+    }
+    _deepLinkConsumptionScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _deepLinkConsumptionScheduled = false;
+      if (!mounted ||
+          !_splashSequenceReady ||
+          !_defaultSplashCompleted ||
+          _showDefaultSplash ||
+          _showHolidaySplash ||
+          _isChecking) {
+        return;
+      }
+      unawaited(AppDeepLinkService.consumePendingAfterAppReady());
+    });
   }
 
   StreamSubscription? _bandPomodoroSub;

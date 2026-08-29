@@ -12,8 +12,8 @@ The Android host contains more than a standard Flutter bootstrap. Last reviewed:
   `ReminderAlarmReceiver.kt`, and `ReminderService.kt`: background polling,
   alarms and reminder delivery.
 - `BandCommunicationPlugin.kt`: bridge to the Xiaomi band companion.
-- Five widget families, each with provider/service pairs: combined todo widget,
-  todo-only, countdown-only, course-only and focus-only.
+- Multiple widget families: combined todo, todo-only, countdown-only, course-only,
+  focus-only, recurrence, habit and finance widgets.
 
 Resources and declarations live under `android/app/src/main/res/` and
 `AndroidManifest.xml`. Update both code and manifest/resource entries when

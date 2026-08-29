@@ -18,6 +18,8 @@ import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.Environment
 import android.os.Process
 import android.os.SystemClock
@@ -178,6 +180,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             super.getRenderMode()
         }
     }
+
+    /**
+     * Deep links are routed by the Dart service so widget intents can share
+     * one authenticated navigation path across Android and desktop. Flutter's
+     * automatic route handling would otherwise also push the custom URI as a
+     * Navigator route, which can cover the page opened by the widget.
+     */
+    override fun shouldHandleDeeplinking(): Boolean = false
 
     private val lastNotificationFingerprint = ConcurrentHashMap<Int, NotificationFingerprint>()
     private val largeIconCache = ConcurrentHashMap<Int, Icon>()
@@ -403,6 +413,16 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         if (deepLink != null) {
             sanitizeDeepLinkIntent(intent)
             dispatchDeepLink(deepLink)
+            // A Flutter isolate can still be paused while onNewIntent is
+            // delivered from the launcher. Retry after the Activity has had
+            // time to reach the resumed state; the pending value is cleared
+            // by the MethodChannel acknowledgement when the first delivery
+            // succeeds.
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (pendingDeepLink == deepLink) {
+                    dispatchDeepLink(deepLink)
+                }
+            }, 600)
         }
     }
 
@@ -440,11 +460,30 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     private fun dispatchDeepLink(data: String) {
         Log.d(TAG, "🔗 dispatchDeepLink: $data")
-        if (deepLinkChannel != null) {
-            deepLinkChannel?.invokeMethod("openDeepLink", data)
+        // Keep a copy until Flutter acknowledges the message. When the
+        // Activity is resumed from the launcher, the Flutter isolate can be
+        // paused for a short window and a one-shot platform message may be
+        // delivered too early. Dart can fetch this value on resume.
+        pendingDeepLink = data
+        val channel = deepLinkChannel
+        if (channel != null) {
+            channel.invokeMethod("openDeepLink", data, object : MethodChannel.Result {
+                override fun success(result: Any?) {
+                    if (pendingDeepLink == data) {
+                        pendingDeepLink = null
+                    }
+                }
+
+                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+                    Log.w(TAG, "🔗 Flutter deep link delivery failed: $errorCode")
+                }
+
+                override fun notImplemented() {
+                    Log.w(TAG, "🔗 Flutter deep link handler is not ready")
+                }
+            })
             Log.d(TAG, "🔗 Invoked openDeepLink to Flutter")
         } else {
-            pendingDeepLink = data
             Log.d(TAG, "🔗 Saved pending deep link")
         }
     }

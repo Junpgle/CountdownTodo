@@ -3,10 +3,12 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
 
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/habits/services/habit_widget_checkin.dart';
+import '../features/finance/screens/finance_home_screen.dart';
 import '../screens/course_screens.dart';
 import '../screens/personal_timeline_screen.dart';
 import '../storage_service.dart';
@@ -21,10 +23,20 @@ class AppDeepLinkService {
       MethodChannel('com.math_quiz_app/deep_links');
   static Uri? _pendingUri;
   static bool _initialized = false;
+  // Deep links can arrive while MyApp is still replacing its splash/checking
+  // route with the authenticated home route. Hold them until that root route
+  // has settled; otherwise the later MaterialApp rebuild can cover the page
+  // opened from a widget.
+  static bool _appReady = false;
+  static bool _readingNativePending = false;
+  static String? _lastHandledRaw;
+  static DateTime? _lastHandledAt;
+  static final _lifecycleObserver = _AppDeepLinkLifecycleObserver();
 
   static Future<void> init(List<String> launchArgs) async {
     if (_initialized) return;
     _initialized = true;
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
 
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'openDeepLink') {
@@ -57,17 +69,47 @@ class AppDeepLinkService {
   }
 
   static Future<void> handleUriString(String raw) async {
-    final uri = Uri.tryParse(raw.trim());
+    final normalizedRaw = raw.trim();
+    final now = DateTime.now();
+    if (_lastHandledRaw == normalizedRaw &&
+        _lastHandledAt != null &&
+        now.difference(_lastHandledAt!) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastHandledRaw = normalizedRaw;
+    _lastHandledAt = now;
+
+    final uri = Uri.tryParse(normalizedRaw);
     if (uri == null || uri.scheme != scheme) return;
     _pendingUri = uri;
     await _tryConsumePending();
   }
 
-  static Future<void> consumePendingAfterAppReady() => _tryConsumePending();
+  static Future<void> consumePendingAfterAppReady() {
+    _appReady = true;
+    return _tryConsumePending();
+  }
+
+  static Future<void> _readPendingNativeLink() async {
+    if (_readingNativePending || kIsWeb || !Platform.isAndroid) return;
+    _readingNativePending = true;
+    try {
+      final raw = await _channel.invokeMethod<String>('getInitialDeepLink');
+      if (raw != null && raw.isNotEmpty) {
+        await handleUriString(raw);
+      }
+    } catch (_) {
+      // The native channel may be temporarily unavailable while the Flutter
+      // Activity is being resumed. The next resume can retry safely.
+    } finally {
+      _readingNativePending = false;
+    }
+  }
 
   static Future<void> _tryConsumePending({int attempt = 0}) async {
     final uri = _pendingUri;
     if (uri == null) return;
+    if (!_appReady) return;
 
     final navigator = appNavigatorKey.currentState;
     final context = appNavigatorKey.currentContext;
@@ -86,6 +128,22 @@ class AppDeepLinkService {
     }
 
     _pendingUri = null;
+
+    // 记账小组件：主体打开记账首页，快捷按钮直接打开「记一笔」。
+    if (uri.host == 'finance') {
+      final openQuickEntry = uri.pathSegments.contains('entry') ||
+          uri.queryParameters['action'] == 'entry';
+      navigator.push(
+        PageTransitions.slideHorizontal(
+          FinanceHomeScreen(
+            username: username,
+            openQuickEntry: openQuickEntry,
+          ),
+          settings: const RouteSettings(name: '/finance'),
+        ),
+      );
+      return;
+    }
 
     // 习惯中心（macOS 习惯小组件点击进入）。
     if (uri.host == 'habit') {
@@ -216,8 +274,15 @@ class AppDeepLinkService {
       for (final args in commands) {
         await Process.run('reg', args);
       }
-    } catch (e) {
-      // debugPrint('[DeepLink] Windows protocol registration failed: $e');
+    } catch (_) {}
+  }
+}
+
+class _AppDeepLinkLifecycleObserver extends WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(AppDeepLinkService._readPendingNativeLink());
     }
   }
 }

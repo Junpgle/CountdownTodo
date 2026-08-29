@@ -2,6 +2,7 @@ import WidgetKit
 import SwiftUI
 import AppIntents
 import AppKit
+import Foundation
 
 // MARK: - Container Background Extension
 
@@ -30,6 +31,7 @@ struct WidgetSnapshot: Codable {
     let focus: WidgetFocusState
     let recurrenceSeries: [WidgetRecurrenceSeriesItem]?
     let habits: [WidgetHabitItem]?
+    let finance: WidgetFinanceSummary?
 
     static let empty = WidgetSnapshot(
         updatedAt: "",
@@ -38,8 +40,71 @@ struct WidgetSnapshot: Codable {
         courses: [],
         focus: WidgetFocusState.empty,
         recurrenceSeries: [],
-        habits: []
+        habits: [],
+        finance: .empty
     )
+}
+
+struct WidgetFinanceSummary: Codable {
+    let monthLabel: String
+    let incomeMinor: Int
+    let netExpenseMinor: Int
+    let balanceMinor: Int
+    let transactionCount: Int
+    let latestTitle: String
+    let latestAmountMinor: Int
+    let latestType: String
+    let latestDate: String
+
+    static let empty = WidgetFinanceSummary(
+        monthLabel: "本月",
+        incomeMinor: 0,
+        netExpenseMinor: 0,
+        balanceMinor: 0,
+        transactionCount: 0,
+        latestTitle: "",
+        latestAmountMinor: 0,
+        latestType: "",
+        latestDate: ""
+    )
+
+    var hasData: Bool {
+        transactionCount > 0 || incomeMinor != 0 || netExpenseMinor != 0 || balanceMinor != 0
+    }
+
+    var incomeText: String { formatMinor(incomeMinor) }
+    var expenseText: String { formatMinor(netExpenseMinor) }
+    var balanceText: String { signedText(balanceMinor) }
+
+    var latestAmountText: String {
+        guard latestAmountMinor != 0 else { return "" }
+        let prefix = latestType == "expense" ? "-" : "+"
+        return "\(prefix)\(formatMinor(latestAmountMinor))"
+    }
+
+    var homeURL: URL {
+        URL(string: "countdowntodo://finance")!
+    }
+
+    var quickEntryURL: URL {
+        URL(string: "countdowntodo://finance/entry")!
+    }
+
+    private func signedText(_ minor: Int) -> String {
+        let prefix = minor < 0 ? "-" : ""
+        return "\(prefix)\(formatMinor(minor))"
+    }
+
+    private func formatMinor(_ minor: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "CNY"
+        formatter.currencySymbol = "¥"
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: Double(abs(minor)) / 100.0)) ?? "¥0.00"
+    }
 }
 
 struct WidgetHabitItem: Codable, Identifiable {
@@ -217,7 +282,8 @@ class WidgetDataLoader {
             courses: snapshot.courses,
             focus: snapshot.focus,
             recurrenceSeries: snapshot.recurrenceSeries,
-            habits: snapshot.habits
+            habits: snapshot.habits,
+            finance: snapshot.finance
         )
     }
 
@@ -439,7 +505,14 @@ struct RecurrenceWidgetProvider: AppIntentTimelineProvider {
 
 extension WidgetSnapshot {
     var isEmpty: Bool {
-        countdowns.isEmpty && todos.isEmpty && courses.isEmpty && !focus.isRunning && (habits ?? []).isEmpty
+        // The overview card does not render finance data; keep its empty state
+        // independent so a finance-only snapshot does not create a blank overview.
+        countdowns.isEmpty && todos.isEmpty && courses.isEmpty && !focus.isRunning &&
+            (habits ?? []).isEmpty
+    }
+
+    var financeSummary: WidgetFinanceSummary {
+        finance ?? .empty
     }
 
     var deepLinkURL: URL {
@@ -1613,6 +1686,171 @@ struct FocusWidgetEntryView: View {
     }
 }
 
+// MARK: - Finance Widget
+
+struct CountDownTodoFinanceWidget: Widget {
+    let kind: String = "CountDownTodoFinanceWidget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: Provider()) { entry in
+            FinanceWidgetEntryView(entry: entry)
+        }
+        .configurationDisplayName("本月记账")
+        .description("查看本月收支并快速记一笔")
+        .supportedFamilies([.systemSmall, .systemMedium])
+    }
+}
+
+struct FinanceWidgetEntryView: View {
+    @Environment(\.widgetFamily) var family
+    var entry: SimpleEntry
+
+    private var summary: WidgetFinanceSummary {
+        entry.snapshot.financeSummary
+    }
+
+    var body: some View {
+        content
+            .widgetContainerBackground {
+                Color.clear
+            }
+            .widgetURL(summary.homeURL)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch family {
+        case .systemMedium:
+            mediumFinance
+        default:
+            smallFinance
+        }
+    }
+
+    private var financeHeader: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "wallet.pass.fill")
+                .foregroundColor(.accentColor)
+            Text("本月记账")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Text(summary.monthLabel)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+            Text("\(summary.transactionCount)笔")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    private var smallFinance: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            financeHeader
+
+            HStack(spacing: 10) {
+                financeMetric("支出", summary.expenseText, .red)
+                financeMetric("收入", summary.incomeText, .green)
+            }
+
+            HStack(spacing: 10) {
+                financeMetric(
+                    "结余",
+                    summary.balanceText,
+                    summary.balanceMinor < 0 ? .red : .accentColor
+                )
+                financeMetric("账单", "\(summary.transactionCount) 笔", .secondary)
+            }
+
+            Spacer(minLength: 0)
+            quickEntryLink
+        }
+        .padding()
+    }
+
+    private var mediumFinance: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            financeHeader
+
+            HStack(spacing: 12) {
+                financeMetric("支出", summary.expenseText, .red)
+                financeMetric("收入", summary.incomeText, .green)
+                financeMetric(
+                    "结余",
+                    summary.balanceText,
+                    summary.balanceMinor < 0 ? .red : .accentColor
+                )
+            }
+
+            Divider()
+
+            HStack(alignment: .center, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("最近一笔")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text(summary.latestTitle.isEmpty ? "暂无账单" : summary.latestTitle)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                    Text(summary.latestDate.isEmpty ? "点击“记一笔”开始记录" : summary.latestDate)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .trailing, spacing: 5) {
+                    if !summary.latestAmountText.isEmpty {
+                        Text(summary.latestAmountText)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.accentColor)
+                            .lineLimit(1)
+                    }
+                    quickEntryLink
+                }
+            }
+        }
+        .padding()
+    }
+
+    @ViewBuilder
+    private func financeMetric(_ label: String, _ value: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var quickEntryLink: some View {
+        Link(destination: summary.quickEntryURL) {
+            HStack(spacing: 4) {
+                Image(systemName: "plus")
+                Text("记一笔")
+            }
+            .font(.caption2)
+            .foregroundColor(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(Color.accentColor)
+            .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - Habit Widget
 
 struct CountDownTodoHabitWidget: Widget {
@@ -2164,11 +2402,12 @@ struct CountDownTodoWidgetBundle: WidgetBundle {
     var body: some Widget {
         // macOS 桌面小组件画廊按扩展显示，WidgetBundle 编译期上限为 10 个
         // （Xcode 14+）。专注状态已并入总览小组件，因此专注条目让位给
-        // 循环待办与习惯条目。
+        // 循环待办、习惯与记账条目。
         CountDownTodoOverviewWidget()
         CountDownTodoCountdownWidget()
         CountDownTodoTodoWidget()
         CountDownTodoCourseWidget()
+        CountDownTodoFinanceWidget()
         CountDownTodoHabitWidget()
         CountDownTodoRecurrenceWidget()
     }
@@ -2229,7 +2468,18 @@ struct CountDownTodoWidget_Previews: PreviewProvider {
                     goalMet: false,
                     quickValues: []
                 ),
-            ]
+            ],
+            finance: WidgetFinanceSummary(
+                monthLabel: "2026年6月",
+                incomeMinor: 120000,
+                netExpenseMinor: 38650,
+                balanceMinor: 81350,
+                transactionCount: 12,
+                latestTitle: "咖啡",
+                latestAmountMinor: 2800,
+                latestType: "expense",
+                latestDate: "06-08"
+            )
         )
         let entry = SimpleEntry(date: Date(), snapshot: sampleSnapshot, isPlaceholder: false)
 
@@ -2246,6 +2496,12 @@ struct CountDownTodoWidget_Previews: PreviewProvider {
             HabitWidgetEntryView(entry: entry)
                 .previewContext(WidgetPreviewContext(family: .systemMedium))
                 .previewDisplayName("今日习惯 · 中号")
+            FinanceWidgetEntryView(entry: entry)
+                .previewContext(WidgetPreviewContext(family: .systemSmall))
+                .previewDisplayName("本月记账 · 小号")
+            FinanceWidgetEntryView(entry: entry)
+                .previewContext(WidgetPreviewContext(family: .systemMedium))
+                .previewDisplayName("本月记账 · 中号")
             if #available(macOS 14.2, *) {
                 RecurrenceWidgetEntryView(
                     entry: RecurrenceWidgetEntry(
