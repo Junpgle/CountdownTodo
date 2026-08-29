@@ -552,27 +552,210 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     _checkCollapsedSlots();
   }
 
+  double _filterMenuWidth(BuildContext context) {
+    final availableWidth = MediaQuery.sizeOf(context).width - 24;
+    return availableWidth.clamp(176.0, 320.0).toDouble();
+  }
+
+  int get _selectedFilterCount => const {
+        'courses',
+        'todos',
+        'timeLogs',
+        'plans',
+        'pomodoros'
+      }.where(_activeDataViews.contains).length;
+
+  IconData _filterIconForKey(String key) {
+    switch (key) {
+      case 'courses':
+        return Icons.calendar_today_rounded;
+      case 'todos':
+        return Icons.checklist_rounded;
+      case 'timeLogs':
+        return Icons.edit_calendar_rounded;
+      case 'plans':
+        return Icons.event_note_rounded;
+      case 'pomodoros':
+        return Icons.timer_outlined;
+      case 'hideCrossDay':
+        return Icons.layers_clear_outlined;
+      case 'disableFreeTimeCollapse':
+        return Icons.unfold_more_rounded;
+      default:
+        return Icons.tune_rounded;
+    }
+  }
+
+  Color _filterAccentForKey(String key, ColorScheme colorScheme) {
+    switch (key) {
+      case 'courses':
+      case 'hideCrossDay':
+        return colorScheme.primary;
+      case 'todos':
+      case 'disableFreeTimeCollapse':
+        return colorScheme.secondary;
+      case 'timeLogs':
+      case 'plans':
+      case 'pomodoros':
+        return colorScheme.tertiary;
+      default:
+        return colorScheme.primary;
+    }
+  }
+
+  Widget _buildFilterMenuHeader() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final selectedCount = _selectedFilterCount;
+    final width = _filterMenuWidth(context);
+    final statusLabel = selectedCount == 5
+        ? '全部'
+        : (selectedCount == 0 ? '未选择' : '$selectedCount/5');
+
+    return SizedBox(
+      width: width,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+        child: Row(
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(7),
+                child: Icon(
+                  Icons.filter_alt_rounded,
+                  size: 18,
+                  color: colorScheme.onPrimaryContainer,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '日历筛选',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$selectedCount/5 项内容显示',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              statusLabel,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterSectionLabel(String label) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: _filterMenuWidth(context),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 6, 14, 4),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: colorScheme.primary,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+              ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterMenuDivider() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: _filterMenuWidth(context),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        child: Divider(
+          height: 1,
+          thickness: 1,
+          color: colorScheme.outlineVariant.withValues(alpha: 0.45),
+        ),
+      ),
+    );
+  }
+
   Widget _buildCheckableMenuItem(String key, String label) {
     final bool isSelected = key == 'disableFreeTimeCollapse'
         ? !_collapseFreeTime
         : _activeDataViews.contains(key);
-    return MenuItemButton(
-      closeOnActivate: false,
-      onPressed: () => _handleFilterSelection(key),
-      child: SizedBox(
-        width: 150,
+    final colorScheme = Theme.of(context).colorScheme;
+    final accent = _filterAccentForKey(key, colorScheme);
+    return SizedBox(
+      width: _filterMenuWidth(context),
+      child: MenuItemButton(
+        closeOnActivate: false,
+        onPressed: () => _handleFilterSelection(key),
+        style: MenuItemButton.styleFrom(
+          minimumSize: const Size(0, 40),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          foregroundColor: colorScheme.onSurface,
+          backgroundColor: isSelected
+              ? colorScheme.primary.withValues(alpha: 0.08)
+              : colorScheme.surface.withValues(alpha: 0),
+          overlayColor: colorScheme.primary.withValues(alpha: 0.12),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              isSelected ? Icons.check : null,
-              size: 16,
-              color: isSelected
-                  ? Theme.of(context).colorScheme.primary
-                  : Colors.transparent,
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? colorScheme.primary
+                    : accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Icon(
+                isSelected ? Icons.check_rounded : _filterIconForKey(key),
+                size: 16,
+                color: isSelected ? colorScheme.onPrimary : accent,
+              ),
             ),
-            const SizedBox(width: 8),
-            Text(label),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.w500,
+                    ),
+              ),
+            ),
           ],
         ),
       ),
@@ -581,16 +764,42 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
 
   Widget _buildFilterActionItem(
       String value, String label, IconData icon, Color color) {
-    return MenuItemButton(
-      closeOnActivate: false,
-      onPressed: () => _handleFilterSelection(value),
-      child: SizedBox(
-        width: 150,
+    final colorScheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: _filterMenuWidth(context),
+      child: MenuItemButton(
+        closeOnActivate: false,
+        onPressed: () => _handleFilterSelection(value),
+        style: MenuItemButton.styleFrom(
+          minimumSize: const Size(0, 40),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          foregroundColor: color,
+          backgroundColor: colorScheme.surface.withValues(alpha: 0),
+          overlayColor: color.withValues(alpha: 0.12),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
         child: Row(
           children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 8),
-            Text(label, style: TextStyle(color: color)),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Icon(icon, size: 16, color: color),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
           ],
         ),
       ),
