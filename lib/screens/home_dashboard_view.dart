@@ -12,7 +12,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         isDarkMode ? Brightness.dark : Brightness.light;
 
     final mainScreen = Scaffold(
-      extendBody: true,
+      extendBody: !isTablet,
       resizeToAvoidBottomInset: !_isSearchOpen, // 🚀 关键：搜索时锁定背景，防止位移卡顿
       backgroundColor: (showWallpaper && !AppPlatform.isWindows)
           ? Colors.transparent
@@ -75,100 +75,107 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             // 后方，末尾的滚动余量再保证卡片操作不会被底栏遮挡。
             top: false,
             bottom: false,
-            child: Column(
-              children: [
-                _buildSemesterProgressBar(isLight),
+            child: FloatingGlassPinnedHeaderLayout(
+              initialHeaderExtent:
+                  (_selectedTabIndex != 1 || isTablet) ? 112.0 : 0.0,
+              header: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildSemesterProgressBar(isLight),
 
-                if (_selectedTabIndex != 1 || isTablet)
-                  HomeAppBar(
-                    username: widget.username,
-                    timeSalutation: _timeSalutation,
-                    currentGreeting: _currentGreeting,
-                    textConfig: HomeTextConfig(
-                      customTimeSalutation:
-                          _homeTextConfig['customTimeSalutation'] as String?,
-                      dateFormat: _homeTextConfig['dateFormat'] as String?,
-                      usernameFormat:
-                          _homeTextConfig['usernameFormat'] as String?,
+                  if (_selectedTabIndex != 1 || isTablet)
+                    HomeAppBar(
+                      username: widget.username,
+                      timeSalutation: _timeSalutation,
+                      currentGreeting: _currentGreeting,
+                      textConfig: HomeTextConfig(
+                        customTimeSalutation:
+                            _homeTextConfig['customTimeSalutation'] as String?,
+                        dateFormat: _homeTextConfig['dateFormat'] as String?,
+                        usernameFormat:
+                            _homeTextConfig['usernameFormat'] as String?,
+                      ),
+                      isLight: isLight,
+                      isSyncing: _isSyncing,
+                      onSync: _showSyncOptionsDialog,
+                      onSearch: _showGlobalSearch,
+                      onAiAssistant: _openAiAssistantFromAppBar,
+                      searchKey: _searchButtonKey,
+                      syncKey: _syncButtonKey,
+                      teamsKey: _teamsButtonKey,
+                      aiKey: _aiButtonKey,
+                      settingsKey: _settingsButtonKey,
+                      menuKey: _menuKey,
+                      courseKey: _courseButtonKey,
+                      showCourseButton: isTablet,
+                      teamPendingCount: _teamPendingCount, // 🚀 绑定计数
+                      hasTeamConflictDot: _hasTeamConflictDot,
+                      onTeams: () async {
+                        await PageTransitions.pushFromRect(
+                          context: context,
+                          page: TeamManagementScreen(username: widget.username),
+                          sourceKey: _teamsButtonKey,
+                        );
+                        final unreadBackgroundNotifications =
+                            await BackgroundNotificationService
+                                .getUnreadBackgroundNotifications();
+                        final notificationIds = unreadBackgroundNotifications
+                            .map((e) => e['id'])
+                            .whereType<num>()
+                            .map((e) => e.toInt())
+                            .toList();
+                        await ApiService.markNotificationsRead(notificationIds);
+                        await BackgroundNotificationService
+                            .clearUnreadBackgroundNotifications();
+                        await _fetchTeamPendingCount();
+                        _loadAllData(deferred: true);
+                      },
+                      onSettings: () async {
+                        await PageTransitions.pushFromRect(
+                          context: context,
+                          page: const SettingsPage(),
+                          sourceKey: _settingsButtonKey,
+                        );
+                        _loadSectionPreferences();
+                        _loadSemesterSettings();
+                        await _loadHomeTextConfig();
+                        _loadAllData(deferred: true);
+                      },
                     ),
-                    isLight: isLight,
-                    isSyncing: _isSyncing,
-                    onSync: _showSyncOptionsDialog,
-                    onSearch: _showGlobalSearch,
-                    onAiAssistant: _openAiAssistantFromAppBar,
-                    searchKey: _searchButtonKey,
-                    syncKey: _syncButtonKey,
-                    teamsKey: _teamsButtonKey,
-                    aiKey: _aiButtonKey,
-                    settingsKey: _settingsButtonKey,
-                    menuKey: _menuKey,
-                    courseKey: _courseButtonKey,
-                    showCourseButton: isTablet,
-                    teamPendingCount: _teamPendingCount, // 🚀 绑定计数
-                    hasTeamConflictDot: _hasTeamConflictDot,
-                    onTeams: () async {
-                      await PageTransitions.pushFromRect(
-                        context: context,
-                        page: TeamManagementScreen(username: widget.username),
-                        sourceKey: _teamsButtonKey,
-                      );
-                      final unreadBackgroundNotifications =
-                          await BackgroundNotificationService
-                              .getUnreadBackgroundNotifications();
-                      final notificationIds = unreadBackgroundNotifications
-                          .map((e) => e['id'])
-                          .whereType<num>()
-                          .map((e) => e.toInt())
-                          .toList();
-                      await ApiService.markNotificationsRead(notificationIds);
-                      await BackgroundNotificationService
-                          .clearUnreadBackgroundNotifications();
-                      await _fetchTeamPendingCount();
-                      _loadAllData(deferred: true);
-                    },
-                    onSettings: () async {
-                      await PageTransitions.pushFromRect(
-                        context: context,
-                        page: const SettingsPage(),
-                        sourceKey: _settingsButtonKey,
-                      );
-                      _loadSectionPreferences();
-                      _loadSemesterSettings();
-                      await _loadHomeTextConfig();
-                      _loadAllData(deferred: true);
-                    },
-                  ),
 
-                // 🚀 Uni-Sync 4.0: 全局链路诊断横幅
-                if (_selectedTabIndex != 1 || isTablet)
-                  SyncStatusBanner(
-                    onDiagnosticRequested: _showLinkDiagnostics,
-                  ),
+                  // 🚀 Uni-Sync 4.0: 全局链路诊断横幅
+                  if (_selectedTabIndex != 1 || isTablet)
+                    SyncStatusBanner(
+                      onDiagnosticRequested: _showLinkDiagnostics,
+                    ),
 
-                // DEBUG: 检查状态
-                // if (_activeAnnouncement != null) Text("DEBUG: Announcement exists: ${_activeAnnouncement!.title}"),
+                  // DEBUG: 检查状态
+                  // if (_activeAnnouncement != null) Text("DEBUG: Announcement exists: ${_activeAnnouncement!.title}"),
 
-                // 🚀 Uni-Sync 4.0: 团队置顶公告
-                if (_activeAnnouncement != null &&
-                    (_selectedTabIndex != 1 || isTablet))
-                  StickyAnnouncementBanner(
-                    announcement: _activeAnnouncement!,
-                    onAcknowledge: () async {
-                      final uuid = _activeAnnouncement!.uuid;
-                      setState(() => _activeAnnouncement = null);
-                      await ApiService.markAnnouncementAsRead(uuid);
-                    },
-                  ),
+                  // 🚀 Uni-Sync 4.0: 团队置顶公告
+                  if (_activeAnnouncement != null &&
+                      (_selectedTabIndex != 1 || isTablet))
+                    StickyAnnouncementBanner(
+                      announcement: _activeAnnouncement!,
+                      onAcknowledge: () async {
+                        final uuid = _activeAnnouncement!.uuid;
+                        setState(() => _activeAnnouncement = null);
+                        await ApiService.markAnnouncementAsRead(uuid);
+                      },
+                    ),
 
-                if (_isThirtyDayChallengeActive &&
-                    (_selectedTabIndex != 1 || isTablet))
-                  _buildChallengeParticipationBanner(isLight),
+                  if (_isThirtyDayChallengeActive &&
+                      (_selectedTabIndex != 1 || isTablet))
+                    _buildChallengeParticipationBanner(isLight),
 
-                // 待确认事项入口卡片（从图片识别来）
-                _buildPendingTodoConfirmCard(isLight),
-
-                Expanded(
-                  child: ValueListenableBuilder<bool>(
+                  // 待确认事项入口卡片（从图片识别来）
+                  _buildPendingTodoConfirmCard(isLight),
+                ],
+              ),
+              bodyBuilder: (context, headerExtent) => Stack(
+                fit: StackFit.expand,
+                children: [
+                  ValueListenableBuilder<bool>(
                     valueListenable: _isGlobalLoadingNotifier,
                     builder: (context, isLoading, child) {
                       // 🚀 核心优化：只有当数据完全为空且正在加载时才显示骨架屏，避免背景刷新时的闪烁
@@ -179,7 +186,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                   (_dashboardCourseData['courses'] as List? ??
                                           [])
                                       .isEmpty)
-                              ? _buildDashboardSkeleton(isLight)
+                              ? _buildDashboardSkeleton(
+                                  isLight,
+                                  topPadding: headerExtent + 16,
+                                )
                               : LayoutBuilder(
                                   builder: (context, constraints) {
                                     // ... (rest of section definitions)
@@ -672,10 +682,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                     ? 'home-focus-sections'
                                                     : 'home-main-sections',
                                               ),
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 16,
-                                                vertical: 16,
+                                              padding: EdgeInsets.fromLTRB(
+                                                16,
+                                                headerExtent + 16,
+                                                16,
+                                                16,
                                               ),
                                               itemCount: activeWidgets.length +
                                                   (hasCopyright ? 1 : 0) +
@@ -756,7 +767,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       child: SingleChildScrollView(
                                         padding: EdgeInsets.fromLTRB(
                                           isTablet ? 32 : 16,
-                                          16,
+                                          headerExtent + 16,
                                           isTablet ? 32 : 16,
                                           16 + bottomSystemInset,
                                         ),
@@ -821,25 +832,20 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                     );
                                   },
                                 ),
-                          // 🚀 移动端底部悬浮胶囊底栏 (始终显示，不受加载状态影响)
-                          if (!isTablet)
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              child: _buildCustomBottomBar(isDarkMode, isLight),
-                            ),
                         ],
                       );
                     },
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
       ),
-      bottomNavigationBar: null,
+      // Scaffold 的底部槽位负责悬浮层的布局，避免自绘 Positioned 把
+      // 底栏锁在内容 Stack 内并遮挡最后一张卡片。
+      bottomNavigationBar:
+          !isTablet ? _buildCustomBottomBar(isDarkMode, isLight) : null,
       // 专注页的卡片自身带有「开始专注/查看记录」按钮，悬浮按钮会覆盖
       // 这些操作，因此仅在首页显示浮动入口。
       floatingActionButton: (!isTablet && _selectedTabIndex == 2)
@@ -1425,12 +1431,15 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     return _isDeepValueEqual(a, b);
   }
 
-  Widget _buildDashboardSkeleton(bool isLight) {
+  Widget _buildDashboardSkeleton(
+    bool isLight, {
+    double topPadding = 16,
+  }) {
     final baseColor =
         isLight ? Colors.white.withValues(alpha: 0.3) : Colors.grey[800]!;
     return SingleChildScrollView(
       physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 16),
       child: Column(
         children: [
           _buildSkeletonCard(baseColor, height: 120),

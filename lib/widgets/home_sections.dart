@@ -5,6 +5,7 @@ import 'package:intl/intl.dart' hide TextDirection;
 import '../services/liquid_glass_effect_service.dart';
 import '../utils/time_utils.dart';
 import '../utils/app_platform.dart';
+import 'floating_glass_control.dart';
 import 'optional_liquid_glass_surface.dart';
 
 /// 通用的板块标题
@@ -64,6 +65,12 @@ class SectionHeader extends StatelessWidget {
             SizedBox(
               key: actionKey,
               child: IconButton(
+                constraints: const BoxConstraints.tightFor(
+                  width: floatingGlassStandardControlSize,
+                  height: floatingGlassStandardControlSize,
+                ),
+                visualDensity: VisualDensity.standard,
+                style: floatingGlassPlainIconButtonStyle(),
                 icon: Icon(actionIcon!, color: iconColor, size: 20),
                 onPressed: onAction,
                 tooltip: actionTooltip ?? "操作",
@@ -75,6 +82,12 @@ class SectionHeader extends StatelessWidget {
             KeyedSubtree(
               key: addKey,
               child: IconButton(
+                constraints: const BoxConstraints.tightFor(
+                  width: floatingGlassStandardControlSize,
+                  height: floatingGlassStandardControlSize,
+                ),
+                visualDensity: VisualDensity.standard,
+                style: floatingGlassPlainIconButtonStyle(),
                 onPressed: onAdd,
                 icon: Icon(Icons.add_circle_outline, color: iconColor),
                 tooltip: "添加",

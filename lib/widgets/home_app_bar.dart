@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 import '../screens/course_screens.dart';
 import '../utils/page_transitions.dart';
-import 'optional_liquid_glass_surface.dart';
+import 'floating_glass_control.dart';
 
 class ShimmerWidget extends StatefulWidget {
   final bool isLight;
@@ -197,10 +197,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       Key? buttonKey}) {
     final double iconSize = isSmall ? 22.0 : 28.0;
     final double padding = isSmall ? 4.0 : 8.0;
-    final double? containerSize = isSmall ? 34.0 : null;
     final colorScheme = Theme.of(context).colorScheme;
-    final useDarkGlass =
-        widget.isLight || colorScheme.brightness == Brightness.dark;
 
     final content = Stack(
       alignment: Alignment.center,
@@ -209,6 +206,7 @@ class _HomeAppBarState extends State<HomeAppBar>
           iconSize: iconSize,
           padding: EdgeInsets.all(padding),
           constraints: isSmall ? const BoxConstraints() : null,
+          style: floatingGlassPlainIconButtonStyle(),
           icon: isLoading
               ? RotationTransition(
                   turns: _syncRotationController,
@@ -268,31 +266,14 @@ class _HomeAppBarState extends State<HomeAppBar>
           ),
       ],
     );
-    final fallback = Container(
-      width: containerSize,
-      height: containerSize,
-      alignment: Alignment.center,
-      margin: margin ?? const EdgeInsets.only(right: 8, top: 4, bottom: 4),
-      decoration: BoxDecoration(
-        color: widget.isLight
-            ? colorScheme.onInverseSurface.withValues(alpha: 0.15)
-            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        shape: BoxShape.circle,
-      ),
-      child: content,
-    );
-
-    return OptionalLiquidGlassPanel(
-      key: buttonKey,
-      width: containerSize,
-      height: containerSize,
-      margin: margin ?? const EdgeInsets.only(right: 8, top: 4, bottom: 4),
-      circular: true,
-      isDark: useDarkGlass,
-      tint: widget.isLight ? colorScheme.scrim.withValues(alpha: 0.24) : null,
-      fallback: fallback,
-      child: content,
-    );
+    Widget action = content;
+    if (margin != null) {
+      action = Padding(padding: margin, child: action);
+    }
+    if (buttonKey != null) {
+      action = KeyedSubtree(key: buttonKey, child: action);
+    }
+    return action;
   }
 
   Widget _buildAnimatedAction(int index, Widget child) {
@@ -319,6 +300,7 @@ class _HomeAppBarState extends State<HomeAppBar>
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
     final bool isTablet = MediaQuery.of(context).size.width >= 768;
@@ -382,9 +364,17 @@ class _HomeAppBarState extends State<HomeAppBar>
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
 
-    return AppBar(
+    return FloatingGlassAppBar(
       backgroundColor: widget.isLight ? Colors.transparent : null,
+      floatingControlTint:
+          widget.isLight ? colorScheme.scrim.withValues(alpha: 0.32) : null,
+      floatingControlIsDark: widget.isLight ? true : null,
       elevation: 0,
+      flexibleSpace: FloatingGlassTopBarBackground(
+        tint: widget.isLight ? colorScheme.scrim : null,
+        isDark: widget.isLight ? true : null,
+        unboundedHeight: toolbarH + MediaQuery.paddingOf(context).top,
+      ),
       toolbarHeight: toolbarH,
       leading: (isTablet || isLandscape)
           ? null
@@ -392,10 +382,12 @@ class _HomeAppBarState extends State<HomeAppBar>
               key: widget.menuKey,
               icon: const Icon(Icons.menu_rounded),
               iconSize: 28,
-              color: widget.isLight
-                  ? Colors.white
-                  : Theme.of(context).colorScheme.onSurface,
-              padding: const EdgeInsets.only(left: 8),
+              color: widget.isLight ? Colors.white : colorScheme.onSurface,
+              // The shared app-bar adapter centers this control inside its
+              // circular glass shell. Keep the native hit target symmetric
+              // so the hamburger glyph does not drift to the right.
+              padding: EdgeInsets.zero,
+              style: floatingGlassPlainIconButtonStyle(),
               onPressed: () {
                 ZoomDrawer.of(context)?.toggle();
               },
@@ -462,17 +454,8 @@ class _HomeAppBarState extends State<HomeAppBar>
           _buildAnimatedAction(4, aiBtn),
           _buildAnimatedAction(5, settingsBtn),
         ] else ...[
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildAnimatedAction(0, searchBtn),
-                const SizedBox(width: 8),
-                _buildAnimatedAction(1, syncBtn),
-              ],
-            ),
-          ),
+          _buildAnimatedAction(0, searchBtn),
+          _buildAnimatedAction(1, syncBtn),
         ],
         const SizedBox(width: 8),
       ],

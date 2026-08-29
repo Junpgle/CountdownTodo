@@ -1871,7 +1871,12 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                 SizedBox(
                   key: widget.historyKey,
                   child: IconButton(
-                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints.tightFor(
+                      width: floatingGlassStandardControlSize,
+                      height: floatingGlassStandardControlSize,
+                    ),
+                    visualDensity: VisualDensity.standard,
+                    style: floatingGlassPlainIconButtonStyle(),
                     icon: Icon(
                       Icons.history,
                       size: 20,
@@ -1890,7 +1895,12 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                   ),
                 ),
                 IconButton(
-                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(
+                    width: floatingGlassStandardControlSize,
+                    height: floatingGlassStandardControlSize,
+                  ),
+                  visualDensity: VisualDensity.standard,
+                  style: floatingGlassPlainIconButtonStyle(),
                   icon: Icon(
                     _isWholeListExpanded
                         ? Icons.expand_less

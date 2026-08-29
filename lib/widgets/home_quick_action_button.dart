@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import 'floating_glass_control.dart';
 import 'optional_liquid_glass_surface.dart';
 
-/// A home-screen quick action that preserves the stock FAB while Liquid Glass
-/// is disabled and swaps only its visual shell when the effect is enabled.
+/// A home-screen quick action that uses the stock FAB treatment by default.
+/// Callers can opt into the glass shell when a standalone floating action
+/// explicitly needs it.
 class HomeQuickActionButton extends StatelessWidget {
   const HomeQuickActionButton.compact({
     super.key,
@@ -13,6 +15,7 @@ class HomeQuickActionButton extends StatelessWidget {
     required this.tint,
     required this.foregroundColor,
     required this.isDark,
+    this.useLiquidGlass = false,
     required Widget child,
   })  : _extended = false,
         _compactChild = child,
@@ -27,6 +30,7 @@ class HomeQuickActionButton extends StatelessWidget {
     required this.tint,
     required this.foregroundColor,
     required this.isDark,
+    this.useLiquidGlass = false,
     required Widget icon,
     required Widget label,
   })  : _extended = true,
@@ -40,6 +44,7 @@ class HomeQuickActionButton extends StatelessWidget {
   final Color tint;
   final Color foregroundColor;
   final bool isDark;
+  final bool useLiquidGlass;
   final bool _extended;
   final Widget? _compactChild;
   final Widget? _icon;
@@ -62,7 +67,10 @@ class HomeQuickActionButton extends StatelessWidget {
             child: _compactChild,
           );
 
-    final borderRadius = _extended ? 16.0 : 20.0;
+    if (!useLiquidGlass) return fallback;
+
+    final borderRadius =
+        _extended ? 16.0 : floatingGlassStandardControlSize / 2;
     final glassContent = Tooltip(
       message: tooltip,
       child: Material(
@@ -100,8 +108,8 @@ class HomeQuickActionButton extends StatelessWidget {
                   ),
                 )
               : SizedBox(
-                  width: 40,
-                  height: 40,
+                  width: floatingGlassStandardControlSize,
+                  height: floatingGlassStandardControlSize,
                   child: Center(child: _compactChild),
                 ),
         ),

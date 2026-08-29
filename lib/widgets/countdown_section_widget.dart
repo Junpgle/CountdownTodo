@@ -9,6 +9,7 @@ import 'package:countdown_todo/screens/historical_countdowns_screen.dart';
 import 'package:countdown_todo/screens/app_board_screen.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../widgets/home_sections.dart';
+import '../widgets/floating_glass_control.dart';
 import '../utils/page_transitions.dart';
 import 'platform_backdrop_filter.dart';
 import 'optional_liquid_glass_surface.dart';
@@ -296,6 +297,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                       isLight: widget.isLight)),
               if (MediaQuery.of(context).size.width >= 600)
                 IconButton(
+                  style: floatingGlassPlainIconButtonStyle(),
                   icon: Icon(Icons.dashboard_rounded,
                       color: useDarkUI ? Colors.white70 : Colors.grey),
                   tooltip: '看板',
@@ -307,10 +309,11 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                     widget.onDataChanged();
                   },
                 ),
-              SizedBox(
-                key: widget.historyKey,
-                child: IconButton(
-                  icon: Icon(Icons.history,
+                SizedBox(
+                  key: widget.historyKey,
+                  child: IconButton(
+                    style: floatingGlassPlainIconButtonStyle(),
+                    icon: Icon(Icons.history,
                       color: useDarkUI ? Colors.white70 : Colors.grey),
                   onPressed: () async {
                     await Navigator.push(

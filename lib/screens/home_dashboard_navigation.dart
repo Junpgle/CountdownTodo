@@ -224,7 +224,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
       PageTransitions.material(
         builder: (context) => Scaffold(
           backgroundColor: Colors.black,
-          appBar: AppBar(
+          appBar: FloatingGlassAppBar(
+            flexibleSpace: const FloatingGlassTopBarBackground(),
             backgroundColor: Colors.black,
             foregroundColor: Colors.white,
             title: const Text("原本分析图片"),
