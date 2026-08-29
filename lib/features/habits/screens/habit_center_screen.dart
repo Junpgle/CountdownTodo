@@ -647,14 +647,15 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
 
         if (isWide) {
           return Scaffold(
-            appBar: AppBar(
+            appBar: FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('习惯中心'),
               centerTitle: false,
               actions: actions,
             ),
             floatingActionButton: Padding(
               padding: const EdgeInsets.only(bottom: 32.0, right: 32.0),
-              child: FloatingActionButton.extended(
+              child: FloatingGlassActionButton.extended(
                 key: _createActionKey,
                 onPressed: _openCreateHabit,
                 tooltip: '新建习惯',
@@ -741,7 +742,8 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
 
         return Scaffold(
           extendBody: useFloatingBottomBar,
-          appBar: AppBar(
+          appBar: FloatingGlassAppBar(
+            flexibleSpace: const FloatingGlassTopBarBackground(),
             title: const Text('习惯中心'),
             centerTitle: false,
             actions: actions,
@@ -762,7 +764,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              FloatingActionButton.extended(
+              FloatingGlassActionButton.extended(
                 key: _createActionKey,
                 onPressed: _openCreateHabit,
                 tooltip: '新建习惯',

@@ -115,9 +115,12 @@ class _CloudChallengePickerScreenState
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final catalog = _catalog;
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
 
     return Scaffold(
-      appBar: AppBar(
+      extendBody: useFloatingBottomBar,
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('云端挑战'),
         actions: [
           IconButton(
