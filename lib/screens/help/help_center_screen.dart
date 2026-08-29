@@ -12,6 +12,7 @@ import '../feature_guide_screen.dart';
 import '../pomodoro_screen.dart';
 import '../add_todo_screen.dart';
 import '../course_screens.dart';
+import '../../widgets/floating_glass_control.dart';
 import 'help_article_screen.dart';
 
 class HelpCenterScreen extends StatefulWidget {
@@ -30,96 +31,110 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('帮助与反馈'),
             ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _buildSection(
-            scheme,
-            Icons.rocket_launch_rounded,
-            '快速上手',
-            scheme.primary,
-            [
-              _HelpEntry(
-                '重新显示功能提示',
-                '重置所有情境提示，让其重新出现',
-                Icons.tips_and_updates_rounded,
-                Colors.amber,
-                () => _resetTips(context),
-              ),
-            ],
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            widget.isEmbedded
+                ? 16
+                : floatingGlassSettingsContentTopInset(context, extra: 16),
+            16,
+            16,
           ),
-          const SizedBox(height: 16),
-          _buildSection(
-            scheme,
-            Icons.explore_rounded,
-            '生活挑战',
-            scheme.tertiary,
-            [
-              _HelpEntry(
-                '30天找到全新自我',
-                '用 30 个小任务，重新找回生活中的兴奋感',
-                Icons.auto_awesome_rounded,
-                scheme.tertiary,
-                () {
-                  Navigator.of(context, rootNavigator: true).push(
-                    PageTransitions.slideHorizontal(
-                      const ThirtyDayChallengeScreen(),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildSection(
-            scheme,
-            Icons.article_rounded,
-            '功能介绍',
-            Colors.teal,
-            _buildArticleEntries(),
-          ),
-          const SizedBox(height: 16),
-          _buildSection(
-            scheme,
-            Icons.settings_rounded,
-            '更多',
-            Colors.grey,
-            [
-              _HelpEntry(
-                '查看更新日志',
-                '查看历史版本更新内容',
-                Icons.system_update_rounded,
-                Colors.blueGrey,
-                _showChangelog,
-              ),
-              _HelpEntry(
-                '检查新版本',
-                '手动检查应用更新',
-                Icons.update_rounded,
-                Colors.grey,
-                () async {
-                  final manifest =
-                      await UpdateService.checkManifest(preferCache: false);
-                  if (!context.mounted) return;
-                  if (manifest != null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('当前版本: ${manifest.versionName}')),
+          children: [
+            _buildSection(
+              scheme,
+              Icons.rocket_launch_rounded,
+              '快速上手',
+              scheme.primary,
+              [
+                _HelpEntry(
+                  '重新显示功能提示',
+                  '重置所有情境提示，让其重新出现',
+                  Icons.tips_and_updates_rounded,
+                  Colors.amber,
+                  () => _resetTips(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildSection(
+              scheme,
+              Icons.explore_rounded,
+              '生活挑战',
+              scheme.tertiary,
+              [
+                _HelpEntry(
+                  '30天找到全新自我',
+                  '用 30 个小任务，重新找回生活中的兴奋感',
+                  Icons.auto_awesome_rounded,
+                  scheme.tertiary,
+                  () {
+                    Navigator.of(context, rootNavigator: true).push(
+                      PageTransitions.slideHorizontal(
+                        const ThirtyDayChallengeScreen(),
+                      ),
                     );
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('当前已是最新版本')),
-                    );
-                  }
-                },
-              ),
-            ],
-          ),
-        ],
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildSection(
+              scheme,
+              Icons.article_rounded,
+              '功能介绍',
+              Colors.teal,
+              _buildArticleEntries(),
+            ),
+            const SizedBox(height: 16),
+            _buildSection(
+              scheme,
+              Icons.settings_rounded,
+              '更多',
+              Colors.grey,
+              [
+                _HelpEntry(
+                  '查看更新日志',
+                  '查看历史版本更新内容',
+                  Icons.system_update_rounded,
+                  Colors.blueGrey,
+                  _showChangelog,
+                ),
+                _HelpEntry(
+                  '检查新版本',
+                  '手动检查应用更新',
+                  Icons.update_rounded,
+                  Colors.grey,
+                  () async {
+                    final manifest =
+                        await UpdateService.checkManifest(preferCache: false);
+                    if (!context.mounted) return;
+                    if (manifest != null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content: Text('当前版本: ${manifest.versionName}')),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('当前已是最新版本')),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

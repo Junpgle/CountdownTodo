@@ -191,75 +191,94 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
     }).toList();
 
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(title: const Text('合并重复待办')),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: colorScheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              Icons.info_outline_rounded,
-                              color: colorScheme.onSecondaryContainer,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                '选择两个或多个被拆分的循环系列，再指定一个主系列。不会按标题自动合并。',
-                                style: TextStyle(
-                                  color: colorScheme.onSecondaryContainer,
+      extendBody: floatingBottomBarShouldFloat(context),
+      extendBodyBehindAppBar: !widget.isEmbedded,
+      appBar: widget.isEmbedded
+          ? null
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
+              title: const Text('合并重复待办'),
+            ),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                children: [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      widget.isEmbedded
+                          ? 16
+                          : floatingGlassSettingsContentTopInset(context,
+                              extra: 16),
+                      16,
+                      8,
+                    ),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: colorScheme.secondaryContainer,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.info_outline_rounded,
+                                color: colorScheme.onSecondaryContainer,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  '选择两个或多个被拆分的循环系列，再指定一个主系列。不会按标题自动合并。',
+                                  style: TextStyle(
+                                    color: colorScheme.onSecondaryContainer,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _searchController,
-                        onChanged: (value) =>
-                            setState(() => _query = value.trim()),
-                        decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.search_rounded),
-                          hintText: '搜索待办标题或系列 ID',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: filtered.isEmpty
-                      ? Center(
-                          child: Text(
-                            _series.isEmpty ? '暂无可合并的重复待办' : '没有匹配的重复系列',
-                            style: TextStyle(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
+                            ],
                           ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 112),
-                          itemCount: filtered.length,
-                          itemBuilder: (context, index) {
-                            return _buildSeriesCard(filtered[index]);
-                          },
                         ),
-                ),
-              ],
-            ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _searchController,
+                          onChanged: (value) =>
+                              setState(() => _query = value.trim()),
+                          decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.search_rounded),
+                            hintText: '搜索待办标题或系列 ID',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? Center(
+                            child: Text(
+                              _series.isEmpty ? '暂无可合并的重复待办' : '没有匹配的重复系列',
+                              style: TextStyle(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 112),
+                            itemCount: filtered.length,
+                            itemBuilder: (context, index) {
+                              return _buildSeriesCard(filtered[index]);
+                            },
+                          ),
+                  ),
+                ],
+              ),
+      ),
       bottomNavigationBar: _buildMergeBar(),
     );
   }

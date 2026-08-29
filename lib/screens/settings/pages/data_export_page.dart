@@ -6,6 +6,7 @@ import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
 import '../../../storage_service.dart';
 import '../../../utils/app_platform.dart';
+import '../../../widgets/floating_glass_control.dart';
 
 class DataExportPage extends StatefulWidget {
   final bool isEmbedded;
@@ -139,25 +140,54 @@ class _DataExportPageState extends State<DataExportPage> {
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
     final isWideScreen = screenWidth > 600;
+    final standalone = !widget.isEmbedded && !isWideScreen;
 
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(title: const Text('数据导出')),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _buildBody(colorScheme, isLandscape || isWideScreen),
+      extendBodyBehindAppBar: standalone,
+      appBar: widget.isEmbedded
+          ? null
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
+              title: const Text('数据导出'),
+            ),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: standalone,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _buildBody(
+                colorScheme,
+                isLandscape || isWideScreen,
+                standalone: standalone,
+              ),
+      ),
     );
   }
 
-  Widget _buildBody(ColorScheme colorScheme, bool isWide) {
+  Widget _buildBody(
+    ColorScheme colorScheme,
+    bool isWide, {
+    required bool standalone,
+  }) {
     if (isWide) {
       return _buildWideLayout(colorScheme);
     }
-    return _buildNarrowLayout(colorScheme);
+    return _buildNarrowLayout(colorScheme, standalone: standalone);
   }
 
-  Widget _buildNarrowLayout(ColorScheme colorScheme) {
+  Widget _buildNarrowLayout(
+    ColorScheme colorScheme, {
+    required bool standalone,
+  }) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        standalone
+            ? floatingGlassSettingsContentTopInset(context, extra: 16)
+            : 16,
+        16,
+        16,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

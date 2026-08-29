@@ -7,6 +7,7 @@ import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
 import '../../../utils/app_platform.dart';
 import '../../../widgets/app_settings_widgets.dart';
+import '../../../widgets/floating_glass_control.dart';
 
 class MinorModeSettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -100,40 +101,56 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
           valueListenable: MinorModeService.instance.googleAgeSignalNotifier,
           builder: (context, googleAgeSignal, _) {
             return Scaffold(
+              extendBodyBehindAppBar: !widget.isEmbedded,
               appBar: widget.isEmbedded
                   ? null
-                  : AppBar(title: const Text('未成年人模式')),
-              body: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                children: [
-                  _buildStatusSection(context, state, googleAgeSignal),
-                  const SizedBox(height: 16),
-                  _buildManualSection(context, state),
-                  if (AppPlatform.isAndroid) ...[
-                    const SizedBox(height: 16),
-                    _buildGoogleAgeSignalsSection(context, googleAgeSignal),
-                  ],
-                  if (state.systemSupported) ...[
-                    const SizedBox(height: 16),
-                    AppSettingsSection(
-                      title: '系统设置',
-                      children: [
-                        ListTile(
-                          leading: Icon(
-                            Icons.open_in_new,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          title: const Text('打开手机系统设置'),
-                          subtitle: const Text('系统模式由手机系统管理'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: _openSystemSettings,
-                        ),
-                      ],
+                  : FloatingGlassAppBar(
+                      flexibleSpace: const FloatingGlassTopBarBackground(),
+                      title: const Text('未成年人模式'),
                     ),
+              body: floatingGlassSettingsBody(
+                context,
+                standalone: !widget.isEmbedded,
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    widget.isEmbedded
+                        ? 8
+                        : floatingGlassSettingsContentTopInset(context,
+                            extra: 8),
+                    16,
+                    32,
+                  ),
+                  children: [
+                    _buildStatusSection(context, state, googleAgeSignal),
+                    const SizedBox(height: 16),
+                    _buildManualSection(context, state),
+                    if (AppPlatform.isAndroid) ...[
+                      const SizedBox(height: 16),
+                      _buildGoogleAgeSignalsSection(context, googleAgeSignal),
+                    ],
+                    if (state.systemSupported) ...[
+                      const SizedBox(height: 16),
+                      AppSettingsSection(
+                        title: '系统设置',
+                        children: [
+                          ListTile(
+                            leading: Icon(
+                              Icons.open_in_new,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            title: const Text('打开手机系统设置'),
+                            subtitle: const Text('系统模式由手机系统管理'),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: _openSystemSettings,
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    _buildCapabilityMatrix(context, state, googleAgeSignal),
                   ],
-                  const SizedBox(height: 16),
-                  _buildCapabilityMatrix(context, state, googleAgeSignal),
-                ],
+                ),
               ),
             );
           },

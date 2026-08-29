@@ -1,3 +1,4 @@
+import '../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
@@ -124,146 +125,159 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('壁纸设置')),
+        appBar: FloatingGlassAppBar(
+            flexibleSpace: const FloatingGlassTopBarBackground(),
+            title: const Text('壁纸设置')),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('壁纸设置'),
               elevation: 0,
             ),
-      body: ListView(
-        children: [
-          _buildSectionTitle('基本设置'),
-          ListTile(
-            leading:
-                const Icon(Icons.source_outlined, color: Colors.deepPurple),
-            title: const Text('壁纸来源'),
-            subtitle: const Text('GitHub: 随机仓库壁纸 | Bing: 必应每日一图 | 自定义: 本地图片'),
-            trailing: DropdownButton<String>(
-              value: _provider,
-              underline: const SizedBox(),
-              items: const [
-                DropdownMenuItem(value: 'github', child: Text('GitHub 随机')),
-                DropdownMenuItem(value: 'bing', child: Text('Bing 每日一图')),
-                DropdownMenuItem(value: 'custom', child: Text('自定义壁纸')),
-              ],
-              onChanged: (val) {
-                if (val != null) {
-                  setState(() => _provider = val);
-                  AppSettingsStorage.saveWallpaperProvider(val);
-                  StorageService.triggerWallpaperRefresh();
-                }
-              },
-            ),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: ListView(
+          padding: EdgeInsets.only(
+            top: widget.isEmbedded
+                ? 0
+                : floatingGlassSettingsContentTopInset(context),
           ),
-          if (_provider == 'custom') ...[
-            const Divider(height: 1, indent: 56),
-            _buildCustomWallpaperSection(),
+          children: [
+            _buildSectionTitle('基本设置'),
+            ListTile(
+              leading:
+                  const Icon(Icons.source_outlined, color: Colors.deepPurple),
+              title: const Text('壁纸来源'),
+              subtitle: const Text('GitHub: 随机仓库壁纸 | Bing: 必应每日一图 | 自定义: 本地图片'),
+              trailing: DropdownButton<String>(
+                value: _provider,
+                underline: const SizedBox(),
+                items: const [
+                  DropdownMenuItem(value: 'github', child: Text('GitHub 随机')),
+                  DropdownMenuItem(value: 'bing', child: Text('Bing 每日一图')),
+                  DropdownMenuItem(value: 'custom', child: Text('自定义壁纸')),
+                ],
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() => _provider = val);
+                    AppSettingsStorage.saveWallpaperProvider(val);
+                    StorageService.triggerWallpaperRefresh();
+                  }
+                },
+              ),
+            ),
+            if (_provider == 'custom') ...[
+              const Divider(height: 1, indent: 56),
+              _buildCustomWallpaperSection(),
+            ],
+            if (_provider == 'bing') ...[
+              const Divider(height: 1, indent: 56),
+              _buildSectionTitle('必应选项'),
+              ListTile(
+                leading:
+                    const Icon(Icons.image_outlined, color: Colors.deepPurple),
+                title: const Text('图片格式'),
+                trailing: DropdownButton<String>(
+                  value: _format,
+                  underline: const SizedBox(),
+                  items: const [
+                    DropdownMenuItem(value: 'jpg', child: Text('JPG')),
+                    DropdownMenuItem(value: 'webp', child: Text('WebP')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _format = val);
+                      AppSettingsStorage.saveWallpaperImageFormat(val);
+                    }
+                  },
+                ),
+              ),
+              const Divider(height: 1, indent: 56),
+              ListTile(
+                leading: const Icon(Icons.history, color: Colors.deepPurple),
+                title: const Text('壁纸索引'),
+                subtitle: const Text('0为今日，1为昨日...'),
+                trailing: DropdownButton<int>(
+                  value: _index,
+                  underline: const SizedBox(),
+                  items: List.generate(
+                      8,
+                      (i) => DropdownMenuItem(
+                          value: i, child: Text(i == 0 ? '今日' : '$i 天前'))),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _index = val);
+                      AppSettingsStorage.saveWallpaperIndex(val);
+                    }
+                  },
+                ),
+              ),
+              const Divider(height: 1, indent: 56),
+              ListTile(
+                leading: const Icon(Icons.language_outlined,
+                    color: Colors.deepPurple),
+                title: const Text('地区/语言'),
+                trailing: DropdownButton<String>(
+                  value: _mkt,
+                  underline: const SizedBox(),
+                  items: const [
+                    DropdownMenuItem(value: 'zh-CN', child: Text('中国 (简体)')),
+                    DropdownMenuItem(value: 'en-US', child: Text('美国 (英语)')),
+                    DropdownMenuItem(value: 'ja-JP', child: Text('日本 (日语)')),
+                    DropdownMenuItem(value: 'en-AU', child: Text('澳大利亚')),
+                    DropdownMenuItem(value: 'en-GB', child: Text('英国')),
+                    DropdownMenuItem(value: 'de-DE', child: Text('德国')),
+                    DropdownMenuItem(value: 'en-NZ', child: Text('新西兰')),
+                    DropdownMenuItem(value: 'en-CA', child: Text('加拿大')),
+                    DropdownMenuItem(value: 'en-IN', child: Text('印度')),
+                    DropdownMenuItem(value: 'fr-FR', child: Text('法国')),
+                    DropdownMenuItem(value: 'fr-CA', child: Text('加拿大 (法语)')),
+                    DropdownMenuItem(value: 'it-IT', child: Text('意大利')),
+                    DropdownMenuItem(value: 'es-ES', child: Text('西班牙')),
+                    DropdownMenuItem(value: 'pt-BR', child: Text('巴西')),
+                    DropdownMenuItem(value: 'en-ROW', child: Text('全球其他地区')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _mkt = val);
+                      AppSettingsStorage.saveWallpaperMkt(val);
+                    }
+                  },
+                ),
+              ),
+              const Divider(height: 1, indent: 56),
+              ListTile(
+                leading: const Icon(Icons.monitor_outlined,
+                    color: Colors.deepPurple),
+                title: const Text('分辨率'),
+                trailing: DropdownButton<String>(
+                  value: _resolution,
+                  underline: const SizedBox(),
+                  items: const [
+                    DropdownMenuItem(value: '1366', child: Text('1366x768')),
+                    DropdownMenuItem(value: '1920', child: Text('1080P')),
+                    DropdownMenuItem(value: '3840', child: Text('4K (3840)')),
+                    DropdownMenuItem(value: 'UHD', child: Text('超高清 (UHD)')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _resolution = val);
+                      AppSettingsStorage.saveWallpaperResolution(val);
+                    }
+                  },
+                ),
+              ),
+            ],
           ],
-          if (_provider == 'bing') ...[
-            const Divider(height: 1, indent: 56),
-            _buildSectionTitle('必应选项'),
-            ListTile(
-              leading:
-                  const Icon(Icons.image_outlined, color: Colors.deepPurple),
-              title: const Text('图片格式'),
-              trailing: DropdownButton<String>(
-                value: _format,
-                underline: const SizedBox(),
-                items: const [
-                  DropdownMenuItem(value: 'jpg', child: Text('JPG')),
-                  DropdownMenuItem(value: 'webp', child: Text('WebP')),
-                ],
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _format = val);
-                    AppSettingsStorage.saveWallpaperImageFormat(val);
-                  }
-                },
-              ),
-            ),
-            const Divider(height: 1, indent: 56),
-            ListTile(
-              leading: const Icon(Icons.history, color: Colors.deepPurple),
-              title: const Text('壁纸索引'),
-              subtitle: const Text('0为今日，1为昨日...'),
-              trailing: DropdownButton<int>(
-                value: _index,
-                underline: const SizedBox(),
-                items: List.generate(
-                    8,
-                    (i) => DropdownMenuItem(
-                        value: i, child: Text(i == 0 ? '今日' : '$i 天前'))),
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _index = val);
-                    AppSettingsStorage.saveWallpaperIndex(val);
-                  }
-                },
-              ),
-            ),
-            const Divider(height: 1, indent: 56),
-            ListTile(
-              leading:
-                  const Icon(Icons.language_outlined, color: Colors.deepPurple),
-              title: const Text('地区/语言'),
-              trailing: DropdownButton<String>(
-                value: _mkt,
-                underline: const SizedBox(),
-                items: const [
-                  DropdownMenuItem(value: 'zh-CN', child: Text('中国 (简体)')),
-                  DropdownMenuItem(value: 'en-US', child: Text('美国 (英语)')),
-                  DropdownMenuItem(value: 'ja-JP', child: Text('日本 (日语)')),
-                  DropdownMenuItem(value: 'en-AU', child: Text('澳大利亚')),
-                  DropdownMenuItem(value: 'en-GB', child: Text('英国')),
-                  DropdownMenuItem(value: 'de-DE', child: Text('德国')),
-                  DropdownMenuItem(value: 'en-NZ', child: Text('新西兰')),
-                  DropdownMenuItem(value: 'en-CA', child: Text('加拿大')),
-                  DropdownMenuItem(value: 'en-IN', child: Text('印度')),
-                  DropdownMenuItem(value: 'fr-FR', child: Text('法国')),
-                  DropdownMenuItem(value: 'fr-CA', child: Text('加拿大 (法语)')),
-                  DropdownMenuItem(value: 'it-IT', child: Text('意大利')),
-                  DropdownMenuItem(value: 'es-ES', child: Text('西班牙')),
-                  DropdownMenuItem(value: 'pt-BR', child: Text('巴西')),
-                  DropdownMenuItem(value: 'en-ROW', child: Text('全球其他地区')),
-                ],
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _mkt = val);
-                    AppSettingsStorage.saveWallpaperMkt(val);
-                  }
-                },
-              ),
-            ),
-            const Divider(height: 1, indent: 56),
-            ListTile(
-              leading:
-                  const Icon(Icons.monitor_outlined, color: Colors.deepPurple),
-              title: const Text('分辨率'),
-              trailing: DropdownButton<String>(
-                value: _resolution,
-                underline: const SizedBox(),
-                items: const [
-                  DropdownMenuItem(value: '1366', child: Text('1366x768')),
-                  DropdownMenuItem(value: '1920', child: Text('1080P')),
-                  DropdownMenuItem(value: '3840', child: Text('4K (3840)')),
-                  DropdownMenuItem(value: 'UHD', child: Text('超高清 (UHD)')),
-                ],
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _resolution = val);
-                    AppSettingsStorage.saveWallpaperResolution(val);
-                  }
-                },
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }

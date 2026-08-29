@@ -4,6 +4,7 @@ import '../../models.dart';
 import '../../services/pomodoro_service.dart';
 import '../../storage_service.dart';
 import '../../utils/app_color_utils.dart';
+import '../../widgets/floating_glass_control.dart';
 
 class BatchTagPage extends StatefulWidget {
   final String username;
@@ -279,9 +280,13 @@ class _BatchTagPageState extends State<BatchTagPage>
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
 
     return Scaffold(
-      appBar: AppBar(
+      extendBody: useFloatingBottomBar,
+      extendBodyBehindAppBar: !widget.isEmbedded,
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         automaticallyImplyLeading: !widget.isEmbedded,
         toolbarHeight: widget.isEmbedded ? 0 : null,
         title: widget.isEmbedded ? null : const Text('批量添加标签'),
@@ -318,24 +323,37 @@ class _BatchTagPageState extends State<BatchTagPage>
           ],
         ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                _buildFilterBar(),
-                _buildTagSelector(),
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildPomodoroList(),
-                      _buildTimeLogList(),
-                    ],
-                  ),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        topBarHeight: kToolbarHeight + kTextTabBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Padding(
+                padding: EdgeInsets.only(
+                  top: widget.isEmbedded
+                      ? 0
+                      : floatingGlassSettingsContentTopInset(context) +
+                          kTextTabBarHeight,
                 ),
-                _buildBottomBar(),
-              ],
-            ),
+                child: Column(
+                  children: [
+                    _buildFilterBar(),
+                    _buildTagSelector(),
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _buildPomodoroList(),
+                          _buildTimeLogList(),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+      ),
+      bottomNavigationBar: _buildBottomBar(),
     );
   }
 
@@ -604,9 +622,14 @@ class _BatchTagPageState extends State<BatchTagPage>
         isPomodoro ? _selectedPomodoros.length : _selectedTimeLogs.length;
     final allSelected = selectedCount == totalCount && totalCount > 0;
 
-    return Container(
+    final useFloating = floatingBottomBarShouldFloat(context);
+    final child = Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      decoration: useFloating
+          ? null
+          : BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            ),
       child: Row(
         children: [
           Checkbox(
@@ -625,6 +648,15 @@ class _BatchTagPageState extends State<BatchTagPage>
           ),
         ],
       ),
+    );
+    return FloatingGlassControl(
+      height: 56,
+      margin: useFloating
+          ? const EdgeInsets.fromLTRB(12, 8, 12, 4)
+          : EdgeInsets.zero,
+      borderRadius: useFloating ? 28 : 0,
+      mobilePortraitOnly: true,
+      child: child,
     );
   }
 
@@ -661,26 +693,32 @@ class _BatchTagPageState extends State<BatchTagPage>
         .map((t) => t.name)
         .toList();
 
-    return Container(
+    final useFloating = floatingBottomBarShouldFloat(context);
+    final child = Container(
       padding: EdgeInsets.fromLTRB(
         16,
         12,
         16,
-        MediaQuery.of(context).padding.bottom + 12,
+        useFloating ? 12 : MediaQuery.of(context).padding.bottom + 12,
       ),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        border: Border(
-          top: BorderSide(color: Theme.of(context).dividerColor),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
+      decoration: useFloating
+          ? null
+          : BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              border: Border(
+                top: BorderSide(color: Theme.of(context).dividerColor),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .shadow
+                      .withValues(alpha: 0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
       child: Row(
         children: [
           Expanded(
@@ -716,6 +754,15 @@ class _BatchTagPageState extends State<BatchTagPage>
           ),
         ],
       ),
+    );
+    return FloatingGlassControl(
+      height: useFloating ? 88 : 84,
+      margin: useFloating
+          ? const EdgeInsets.fromLTRB(16, 8, 16, 24)
+          : EdgeInsets.zero,
+      borderRadius: useFloating ? 28 : 0,
+      mobilePortraitOnly: true,
+      child: child,
     );
   }
 }

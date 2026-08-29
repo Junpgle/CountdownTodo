@@ -9,6 +9,7 @@ import '../services/pomodoro_service.dart';
 import '../services/permission_request_coordinator.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
+import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
 /// 手环同步界面
@@ -164,31 +165,44 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('手环同步'),
               elevation: 0,
             ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildConnectionCard(),
-            const SizedBox(height: 16),
-            _buildBandVersionCard(),
-            const SizedBox(height: 16),
-            _buildLastSyncCard(),
-            const SizedBox(height: 16),
-            _buildPermissionCard(),
-            const SizedBox(height: 16),
-            _buildSyncButtons(),
-            const SizedBox(height: 16),
-            _buildLogArea(),
-            const SizedBox(height: 16),
-            _buildReceivedMessages(),
-          ],
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            widget.isEmbedded
+                ? 16
+                : floatingGlassSettingsContentTopInset(context, extra: 16),
+            16,
+            16,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildConnectionCard(),
+              const SizedBox(height: 16),
+              _buildBandVersionCard(),
+              const SizedBox(height: 16),
+              _buildLastSyncCard(),
+              const SizedBox(height: 16),
+              _buildPermissionCard(),
+              const SizedBox(height: 16),
+              _buildSyncButtons(),
+              const SizedBox(height: 16),
+              _buildLogArea(),
+              const SizedBox(height: 16),
+              _buildReceivedMessages(),
+            ],
+          ),
         ),
       ),
     );

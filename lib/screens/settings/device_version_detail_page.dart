@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
+import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
 
 class DeviceVersionDetailPage extends StatefulWidget {
@@ -47,42 +48,55 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final body = _loading
+        ? const Center(child: CircularProgressIndicator())
+        : _error != null
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline,
+                        size: 48, color: Colors.red),
+                    const SizedBox(height: 16),
+                    Text('加载失败: $_error'),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: _loadData,
+                      child: const Text('重试'),
+                    ),
+                  ],
+                ),
+              )
+            : RefreshIndicator(
+                onRefresh: _loadData,
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    floatingGlassSettingsContentTopInset(context, extra: 16),
+                    16,
+                    16,
+                  ),
+                  children: [
+                    _buildOnlineCard(),
+                    const SizedBox(height: 16),
+                    _buildVersionCard(),
+                  ],
+                ),
+              );
+
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('设备版本明细'),
             ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.error_outline,
-                          size: 48, color: Colors.red),
-                      const SizedBox(height: 16),
-                      Text('加载失败: $_error'),
-                      const SizedBox(height: 16),
-                      FilledButton(
-                        onPressed: _loadData,
-                        child: const Text('重试'),
-                      ),
-                    ],
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadData,
-                  child: ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      _buildOnlineCard(),
-                      const SizedBox(height: 16),
-                      _buildVersionCard(),
-                    ],
-                  ),
-                ),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: body,
+      ),
     );
   }
 

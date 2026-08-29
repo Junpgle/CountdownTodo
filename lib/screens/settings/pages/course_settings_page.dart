@@ -13,6 +13,7 @@ import '../../course_calendar_adjustment_screen.dart';
 import '../../../models.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/page_transitions.dart';
+import '../../../widgets/floating_glass_control.dart';
 
 class CourseSettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -585,56 +586,49 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('课表与学期'),
             ),
-      body: ListView(
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 16.0),
-            child: Text('学期管理',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey)),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: ListView(
+          padding: EdgeInsets.only(
+            top: widget.isEmbedded
+                ? 0
+                : floatingGlassSettingsContentTopInset(context),
           ),
-          _buildTile(
-            targetId: 'semester_management',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 学期列表
-                if (_semesters.isNotEmpty)
-                  ..._semesters.map((semester) => _buildSemesterTile(semester)),
-                // 添加新学期按钮
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0, vertical: 6.0),
-                  child: OutlinedButton.icon(
-                    onPressed: _showAddSemesterDialog,
-                    icon: const Icon(Icons.add),
-                    label: const Text('添加新学期'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-                // 清除学期课程数据按钮
-                if (_semesters.isNotEmpty)
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 16.0),
+              child: Text('学期管理',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey)),
+            ),
+            _buildTile(
+              targetId: 'semester_management',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 学期列表
+                  if (_semesters.isNotEmpty)
+                    ..._semesters
+                        .map((semester) => _buildSemesterTile(semester)),
+                  // 添加新学期按钮
                   Padding(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16.0, vertical: 4.0),
-                    child: TextButton.icon(
-                      onPressed: _showClearSemesterCoursesDialog,
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      label: const Text('清除学期课程数据'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.red,
+                        horizontal: 16.0, vertical: 6.0),
+                    child: OutlinedButton.icon(
+                      onPressed: _showAddSemesterDialog,
+                      icon: const Icon(Icons.add),
+                      label: const Text('添加新学期'),
+                      style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -642,180 +636,201 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                       ),
                     ),
                   ),
-              ],
+                  // 清除学期课程数据按钮
+                  if (_semesters.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16.0, vertical: 4.0),
+                      child: TextButton.icon(
+                        onPressed: _showClearSemesterCoursesDialog,
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        label: const Text('清除学期课程数据'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-          const Padding(
-            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-            child: Text('学期设置',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey)),
-          ),
-          _buildTile(
-            targetId: 'semester_progress',
-            child: SwitchListTile(
-              secondary: const Icon(Icons.linear_scale),
-              title: const Text('首页学期进度条'),
-              value: _semesterEnabled,
-              onChanged: (val) {
-                setState(() => _semesterEnabled = val);
-                StorageService.saveAppSetting(
-                    StorageService.keySemesterProgressEnabled, val);
-              },
+            const Padding(
+              padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
+              child: Text('学期设置',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey)),
             ),
-          ),
-          const Divider(height: 1, indent: 72),
-          _buildTile(
-            targetId: 'course_calendar_adjustment',
-            child: ListTile(
-              leading: const Icon(Icons.event_repeat_outlined,
-                  color: Colors.deepPurple),
-              title: const Text('放假与调休'),
-              subtitle: const Text('设置停课日期，以及补哪一天的课'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () async {
-                await Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    CourseCalendarAdjustmentScreen(
-                        isEmbedded: widget.isEmbedded),
-                    settings: const RouteSettings(name: '校历偏移动态调整'),
-                  ),
-                );
-                _rescheduleReminders();
-              },
+            _buildTile(
+              targetId: 'semester_progress',
+              child: SwitchListTile(
+                secondary: const Icon(Icons.linear_scale),
+                title: const Text('首页学期进度条'),
+                value: _semesterEnabled,
+                onChanged: (val) {
+                  setState(() => _semesterEnabled = val);
+                  StorageService.saveAppSetting(
+                      StorageService.keySemesterProgressEnabled, val);
+                },
+              ),
             ),
-          ),
-          const Padding(
-            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-            child: Text('课程导入与同步',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey)),
-          ),
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: MediaQuery.of(context).size.width > 600 ? 4 : 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 2.2,
-              children: [
-                _buildActionCard(
-                  id: 'webview_import',
-                  icon: isWeb ? Icons.open_in_browser : Icons.language_outlined,
-                  title: isWeb ? '打开教务网页' : '在线教务导入',
-                  subtitle: isWeb ? '导出文件后导入' : '推荐方式',
-                  color: Colors.teal,
-                  onTap: _courseImportHandler.importFromWebView,
-                ),
-                _buildActionCard(
-                  id: 'smart_import',
-                  icon: Icons.file_upload_outlined,
-                  title: '本地智能导入',
-                  subtitle: '自动嗅探格式',
-                  color: Colors.indigo,
-                  onTap: _courseImportHandler.smartImportCourse,
-                ),
-                _buildActionCard(
-                  id: 'course_sync',
-                  icon: Icons.cloud_download_outlined,
-                  title: '从云端获取',
-                  subtitle: '覆盖本地课表',
-                  color: Colors.green,
-                  onTap: _fetchCoursesFromCloud,
-                ),
-                _buildActionCard(
-                  id: 'course_upload',
-                  icon: Icons.cloud_upload_outlined,
-                  title: '上传到云端',
-                  subtitle: '多端备份同步',
-                  color: Theme.of(context).colorScheme.primary,
-                  onTap: _uploadCoursesToCloud,
-                ),
-              ],
+            const Divider(height: 1, indent: 72),
+            _buildTile(
+              targetId: 'course_calendar_adjustment',
+              child: ListTile(
+                leading: const Icon(Icons.event_repeat_outlined,
+                    color: Colors.deepPurple),
+                title: const Text('放假与调休'),
+                subtitle: const Text('设置停课日期，以及补哪一天的课'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(
+                      CourseCalendarAdjustmentScreen(
+                          isEmbedded: widget.isEmbedded),
+                      settings: const RouteSettings(name: '校历偏移动态调整'),
+                    ),
+                  );
+                  _rescheduleReminders();
+                },
+              ),
             ),
-          ),
-          const Padding(
-            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-            child: Text('无课时板块行为',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey)),
-          ),
-          _buildTile(
-            targetId: 'no_course_behavior',
-            child: Padding(
+            const Padding(
+              padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
+              child: Text('课程导入与同步',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey)),
+            ),
+            Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: MediaQuery.of(context).size.width > 600 ? 4 : 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 2.2,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                          child: _buildBehaviorCard('keep', '保持原位',
-                              Icons.align_vertical_top_outlined)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                          child: _buildBehaviorCard('bottom', '排到最后',
-                              Icons.align_vertical_bottom_outlined)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                          child: _buildBehaviorCard(
-                              'hide', '自动隐藏', Icons.visibility_off_outlined)),
-                    ],
+                  _buildActionCard(
+                    id: 'webview_import',
+                    icon:
+                        isWeb ? Icons.open_in_browser : Icons.language_outlined,
+                    title: isWeb ? '打开教务网页' : '在线教务导入',
+                    subtitle: isWeb ? '导出文件后导入' : '推荐方式',
+                    color: Colors.teal,
+                    onTap: _courseImportHandler.importFromWebView,
+                  ),
+                  _buildActionCard(
+                    id: 'smart_import',
+                    icon: Icons.file_upload_outlined,
+                    title: '本地智能导入',
+                    subtitle: '自动嗅探格式',
+                    color: Colors.indigo,
+                    onTap: _courseImportHandler.smartImportCourse,
+                  ),
+                  _buildActionCard(
+                    id: 'course_sync',
+                    icon: Icons.cloud_download_outlined,
+                    title: '从云端获取',
+                    subtitle: '覆盖本地课表',
+                    color: Colors.green,
+                    onTap: _fetchCoursesFromCloud,
+                  ),
+                  _buildActionCard(
+                    id: 'course_upload',
+                    icon: Icons.cloud_upload_outlined,
+                    title: '上传到云端',
+                    subtitle: '多端备份同步',
+                    color: Theme.of(context).colorScheme.primary,
+                    onTap: _uploadCoursesToCloud,
                   ),
                 ],
               ),
             ),
-          ),
-          const Padding(
-            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-            child: Text('请求课表适配',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey)),
-          ),
-          _buildTile(
-            targetId: 'course_adapt',
-            child: ListTile(
-              leading: const Icon(Icons.auto_awesome, color: Colors.orange),
-              title: const Text('我要请求开发者适配！'),
-              subtitle: const Text('如果没有你的学校，点此申请'),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Text('推荐',
-                    style: TextStyle(
-                        color: Colors.orange,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold)),
-              ),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    CourseAdaptationScreen(isEmbedded: widget.isEmbedded),
-                    settings: const RouteSettings(name: '课程表适配机制'),
-                  ),
-                );
-              },
+            const Padding(
+              padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
+              child: Text('无课时板块行为',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey)),
             ),
-          ),
-          const SizedBox(height: 40),
-        ],
+            _buildTile(
+              targetId: 'no_course_behavior',
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                            child: _buildBehaviorCard('keep', '保持原位',
+                                Icons.align_vertical_top_outlined)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                            child: _buildBehaviorCard('bottom', '排到最后',
+                                Icons.align_vertical_bottom_outlined)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                            child: _buildBehaviorCard(
+                                'hide', '自动隐藏', Icons.visibility_off_outlined)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
+              child: Text('请求课表适配',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey)),
+            ),
+            _buildTile(
+              targetId: 'course_adapt',
+              child: ListTile(
+                leading: const Icon(Icons.auto_awesome, color: Colors.orange),
+                title: const Text('我要请求开发者适配！'),
+                subtitle: const Text('如果没有你的学校，点此申请'),
+                trailing: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text('推荐',
+                      style: TextStyle(
+                          color: Colors.orange,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold)),
+                ),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(
+                      CourseAdaptationScreen(isEmbedded: widget.isEmbedded),
+                      settings: const RouteSettings(name: '课程表适配机制'),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 40),
+          ],
+        ),
       ),
     );
   }

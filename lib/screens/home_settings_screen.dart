@@ -1,3 +1,4 @@
+import '../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
@@ -723,6 +724,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width >= 800;
     final paneTitle = _getPaneTitle();
+    final colorScheme = Theme.of(context).colorScheme;
 
     // 构建面包屑标题组件
     Widget titleWidget;
@@ -763,32 +765,49 @@ class _SettingsPageState extends State<SettingsPage> {
       titleWidget = const Text('设置');
     }
 
+    final pageBody = AnimatedSwitcher(
+      // 首次进入设置时，600ms 淡入会与大量设置卡片同时栅格化，
+      // Android 真机上会连续超出 120Hz 帧预算。移动端缩短过渡，
+      // 桌面端保留原有动效。
+      duration: Duration(milliseconds: AppPlatform.isAndroid ? 140 : 600),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: _isInitialLoading
+          ? const Center(child: CircularProgressIndicator())
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth < 150) {
+                  return const SizedBox.shrink();
+                }
+                if (constraints.maxWidth >= 800) {
+                  return _buildWideLayout();
+                }
+                return _buildNarrowLayout();
+              },
+            ),
+    );
+
     return Scaffold(
-      appBar: AppBar(
+      extendBodyBehindAppBar: !isWide,
+      appBar: FloatingGlassAppBar(
+        backgroundColor: Colors.transparent,
+        foregroundColor: colorScheme.onSurface,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        forceMaterialTransparency: true,
+        systemOverlayStyle: floatingGlassTopBarSystemOverlayStyle(context),
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: titleWidget,
         centerTitle: true,
       ),
-      body: AnimatedSwitcher(
-        // 首次进入设置时，600ms 淡入会与大量设置卡片同时栅格化，
-        // Android 真机上会连续超出 120Hz 帧预算。移动端缩短过渡，
-        // 桌面端保留原有动效。
-        duration: Duration(milliseconds: AppPlatform.isAndroid ? 140 : 600),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        child: _isInitialLoading
-            ? const Center(child: CircularProgressIndicator())
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  if (constraints.maxWidth < 150) {
-                    return const SizedBox.shrink();
-                  }
-                  if (constraints.maxWidth >= 800) {
-                    return _buildWideLayout();
-                  }
-                  return _buildNarrowLayout();
-                },
-              ),
-      ),
+      body: isWide
+          ? pageBody
+          : FloatingGlassTopBarContentFade(
+              topBarHeight: kToolbarHeight,
+              child: pageBody,
+            ),
     );
   }
 
@@ -1164,7 +1183,12 @@ class _SettingsPageState extends State<SettingsPage> {
   // ===== 窄屏单栏布局 (原版) =====
   Widget _buildNarrowLayout() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
+      padding: EdgeInsets.fromLTRB(
+        16.0,
+        floatingGlassTopBarHeight(context) + 16.0,
+        16.0,
+        16.0,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

@@ -338,10 +338,15 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
 
   @override
   Widget build(BuildContext context) {
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+    final standalone = !widget.isEmbedded;
     return Scaffold(
+      extendBody: useFloatingBottomBar,
+      extendBodyBehindAppBar: standalone,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: Text(AppPlatform.isWeb ? '导出日历文件' : '写入系统日历'),
               actions: [
                 IconButton(
@@ -351,7 +356,11 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                 ),
               ],
             ),
-      body: _buildBody(),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: standalone,
+        child: _buildBody(standalone: standalone),
+      ),
       bottomNavigationBar: _loading || _error != null
           ? null
           : FloatingBottomBar(
@@ -406,7 +415,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody({required bool standalone}) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -420,7 +429,14 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
     }
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        standalone
+            ? floatingGlassSettingsContentTopInset(context, extra: 12)
+            : 12,
+        16,
+        100,
+      ),
       children: [
         ListTile(
           contentPadding: EdgeInsets.zero,

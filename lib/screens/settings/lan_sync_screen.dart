@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../services/file_open_service.dart';
 import '../../services/lan_sync_service.dart';
 import '../../utils/app_platform.dart';
+import '../../widgets/floating_glass_control.dart';
 
 class LanSyncScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -390,9 +391,11 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('局域网同步'),
               actions: [
                 if (_service.isRunning && _devices.isEmpty)
@@ -409,53 +412,64 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
                 ),
               ],
             ),
-      body: Column(
-        children: [
-          _buildStatusCard(),
-          _buildFilterBar(),
-          const Divider(height: 1),
-          Expanded(
-            child: _devices.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.devices_other,
-                          size: 64,
-                          color: Colors.grey[400],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          _service.isRunning
-                              ? (_discoverAll ? '未发现任何设备' : '未发现同账号设备')
-                              : '请先启动服务',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 16,
-                          ),
-                        ),
-                        if (_service.isRunning) ...[
-                          const SizedBox(height: 16),
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.add),
-                            label: const Text('手动添加设备'),
-                            onPressed: _showManualAddDialog,
-                          ),
-                        ],
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: _devices.length,
-                    itemBuilder: (context, index) {
-                      final device = _devices[index];
-                      return _buildDeviceTile(device);
-                    },
-                  ),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: Padding(
+          padding: EdgeInsets.only(
+            top: widget.isEmbedded
+                ? 0
+                : floatingGlassSettingsContentTopInset(context),
           ),
-          if (_progress.isNotEmpty) _buildProgressBanner(),
-        ],
+          child: Column(
+            children: [
+              _buildStatusCard(),
+              _buildFilterBar(),
+              const Divider(height: 1),
+              Expanded(
+                child: _devices.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.devices_other,
+                              size: 64,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _service.isRunning
+                                  ? (_discoverAll ? '未发现任何设备' : '未发现同账号设备')
+                                  : '请先启动服务',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 16,
+                              ),
+                            ),
+                            if (_service.isRunning) ...[
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                icon: const Icon(Icons.add),
+                                label: const Text('手动添加设备'),
+                                onPressed: _showManualAddDialog,
+                              ),
+                            ],
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: _devices.length,
+                        itemBuilder: (context, index) {
+                          final device = _devices[index];
+                          return _buildDeviceTile(device);
+                        },
+                      ),
+              ),
+              if (_progress.isNotEmpty) _buildProgressBanner(),
+            ],
+          ),
+        ),
       ),
     );
   }

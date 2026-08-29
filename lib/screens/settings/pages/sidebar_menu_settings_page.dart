@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../services/sidebar_menu_service.dart';
+import '../../../widgets/floating_glass_control.dart';
 
 class SidebarMenuSettingsPage extends StatefulWidget {
   final bool isEmbedded;
@@ -221,7 +222,14 @@ class _SidebarMenuSettingsPageState extends State<SidebarMenuSettingsPage> {
     final content = _isLoading
         ? const Center(child: CircularProgressIndicator())
         : ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              widget.isEmbedded
+                  ? 16
+                  : floatingGlassSettingsContentTopInset(context, extra: 16),
+              16,
+              32,
+            ),
             children: [
               Text(
                 '自定义首页侧边栏的入口显示状态和顺序。设置中心始终保留，方便随时恢复其他入口。',
@@ -237,20 +245,26 @@ class _SidebarMenuSettingsPageState extends State<SidebarMenuSettingsPage> {
           );
 
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('侧边栏菜单'),
               actions: [_buildResetButton()],
             ),
-      body: widget.isEmbedded
-          ? Column(
-              children: [
-                _buildEmbeddedHeader(context),
-                Expanded(child: content),
-              ],
-            )
-          : content,
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: widget.isEmbedded
+            ? Column(
+                children: [
+                  _buildEmbeddedHeader(context),
+                  Expanded(child: content),
+                ],
+              )
+            : content,
+      ),
     );
   }
 

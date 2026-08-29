@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../models.dart';
 import '../../services/pomodoro_service.dart';
 import '../../storage_service.dart';
+import '../../widgets/floating_glass_control.dart';
 
 class RebindTagPage extends StatefulWidget {
   final String username;
@@ -303,7 +304,9 @@ class _RebindTagPageState extends State<RebindTagPage>
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
+      extendBodyBehindAppBar: true,
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('重新绑定标签'),
         actions: [
           if (_selectedOldTagUuids.isNotEmpty && _selectedNewTagUuid != null)
@@ -336,35 +339,46 @@ class _RebindTagPageState extends State<RebindTagPage>
           ],
         ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // 旧标签选择区域
-                _buildOldTagSelector(colorScheme),
-
-                // 新标签选择区域
-                _buildNewTagSelector(colorScheme),
-
-                // 筛选工具栏
-                _buildFilterToolbar(colorScheme),
-
-                // 记录列表
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildPomodoroList(colorScheme),
-                      _buildTimeLogList(colorScheme),
-                    ],
-                  ),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: true,
+        topBarHeight: kToolbarHeight + kTextTabBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Padding(
+                padding: EdgeInsets.only(
+                  top: floatingGlassSettingsContentTopInset(context) +
+                      kTextTabBarHeight,
                 ),
-              ],
-            ),
+                child: Column(
+                  children: [
+                    // 旧标签选择区域
+                    _buildOldTagSelector(colorScheme),
+
+                    // 新标签选择区域
+                    _buildNewTagSelector(colorScheme),
+
+                    // 筛选工具栏
+                    _buildFilterToolbar(colorScheme),
+
+                    // 记录列表
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _buildPomodoroList(colorScheme),
+                          _buildTimeLogList(colorScheme),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+      ),
       floatingActionButton: (_selectedOldTagUuids.isNotEmpty &&
               _selectedNewTagUuid != null &&
               (_selectedPomodoros.isNotEmpty || _selectedTimeLogs.isNotEmpty))
-          ? FloatingActionButton.extended(
+          ? FloatingGlassActionButton.extended(
               onPressed: _applyRebind,
               icon: const Icon(Icons.swap_horiz),
               label: const Text('重新绑定'),

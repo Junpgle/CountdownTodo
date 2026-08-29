@@ -17,6 +17,7 @@ import '../../../utils/app_dialogs.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/app_state_views.dart';
+import '../../../widgets/floating_glass_control.dart';
 import '../dialogs/island_priority_dialog.dart';
 
 class PlatformSpecificSettingsPage extends StatefulWidget {
@@ -355,420 +356,446 @@ class _PlatformSpecificSettingsPageState
             : (AppPlatform.isMacOS ? 'macOS 专属设置' : '平台专属设置'));
 
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: Text(pageTitle),
             ),
-      body: ListView(
-        children: [
-          if (!AppPlatform.isWindows &&
-              !AppPlatform.isAndroid &&
-              !AppPlatform.isMacOS) ...[
-            const AppEmptyState(
-              icon: Icons.stars_rounded,
-              title: '当前平台无专属设置',
-              message: '您的设备正在以最佳状态运行该应用，无需任何额外配置即可享受全部核心功能。',
-              padding: EdgeInsets.only(top: 100, left: 32, right: 32),
-            ),
-          ],
-          if (AppPlatform.isWindows) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: AppSettingsSection(
-                title: '屏幕时间统计',
-                headerPadding:
-                    const EdgeInsets.only(left: 8, bottom: 8, top: 0),
-                children: [
-                  _buildTile(
-                    targetId: 'tai_db',
-                    child: ListTile(
-                      leading: Icon(Icons.timer_outlined,
-                          color: colorScheme.primary),
-                      title: const Text('Tai 屏幕时间数据库'),
-                      subtitle: Text(
-                        _taiDbPath.isEmpty ? '未设置，点击选择 data.db 文件' : _taiDbPath,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: _taiDbPath.isEmpty
-                              ? colorScheme.cdtWarning
-                              : colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      trailing: const Icon(Icons.folder_open_outlined),
-                      onTap: _pickTaiDatabase,
-                    ),
-                  ),
-                ],
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: ListView(
+          padding: EdgeInsets.only(
+            top: widget.isEmbedded
+                ? 0
+                : floatingGlassSettingsContentTopInset(context),
+          ),
+          children: [
+            if (!AppPlatform.isWindows &&
+                !AppPlatform.isAndroid &&
+                !AppPlatform.isMacOS) ...[
+              const AppEmptyState(
+                icon: Icons.stars_rounded,
+                title: '当前平台无专属设置',
+                message: '您的设备正在以最佳状态运行该应用，无需任何额外配置即可享受全部核心功能。',
+                padding: EdgeInsets.only(top: 100, left: 32, right: 32),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: AppSettingsSection(
-                title: '桌面挂件设置',
-                headerPadding:
-                    const EdgeInsets.only(left: 8, bottom: 8, top: 0),
-                children: [
-                  _buildTile(
-                    targetId: 'float_window_style',
-                    child: ListTile(
-                      leading: Icon(Icons.layers_outlined,
-                          color: colorScheme.primary),
-                      title: const Text('桌面灵动岛'),
-                      subtitle: const Text('开启灵动岛式浮动窗口'),
-                      trailing: Switch(
-                        value: _floatWindowStyle != 2,
-                        activeThumbColor: colorScheme.primary,
-                        onChanged: (val) async {
-                          int newStyle = val ? 1 : 2;
-                          setState(() => _floatWindowStyle = newStyle);
-                          final prefs = await SharedPreferences.getInstance();
-                          await prefs.setInt('float_window_style', newStyle);
-                          if (newStyle == 2) {
-                            try {
-                              IslandDataProvider().invalidateCache();
-                              IslandManagerBridge.clearIslandCache('island-1');
-                            } catch (_) {
-                              // Ignore cleanup failures; the setting value was saved.
-                            }
-                          } else {
-                            try {
-                              IslandDataProvider().invalidateCache();
-                              IslandManagerBridge.clearIslandCache('island-1');
-                              await IslandManagerBridge.createIsland(
-                                  'island-1');
-                            } catch (_) {
-                              // Ignore stale island window errors during style changes.
-                            }
-                            try {
-                              await FloatWindowService.update(forceReset: true);
-                            } catch (_) {
-                              // The next island refresh will retry if this update fails.
-                            }
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-                  const AppSettingsDivider(),
-                  _buildTile(
-                    targetId: 'force_refresh',
-                    child: ListTile(
-                      leading: Icon(Icons.refresh, color: colorScheme.primary),
-                      title: const Text('强制刷新悬浮窗位置'),
-                      subtitle: const Text('将灵动岛悬浮窗重置到屏幕中央'),
-                      trailing: TextButton(
-                        onPressed: () async {
-                          try {
-                            await StorageService.saveIslandBounds(
-                                'island-1', {});
-                          } catch (_) {}
-                          try {
-                            IslandDataProvider().invalidateCache();
-                          } catch (_) {}
-                          try {
-                            IslandManagerBridge.clearIslandCache('island-1');
-                          } catch (_) {}
-                          try {
-                            await FloatWindowService.update(forceReset: true);
-                          } catch (_) {}
-                        },
-                        child: const Text('强制刷新'),
-                      ),
-                    ),
-                  ),
-                  if (_floatWindowStyle != 2) ...[
-                    const AppSettingsDivider(),
+            ],
+            if (AppPlatform.isWindows) ...[
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: AppSettingsSection(
+                  title: '屏幕时间统计',
+                  headerPadding:
+                      const EdgeInsets.only(left: 8, bottom: 8, top: 0),
+                  children: [
                     _buildTile(
-                      targetId: 'island_priority',
+                      targetId: 'tai_db',
                       child: ListTile(
-                        leading: Icon(Icons.priority_high,
+                        leading: Icon(Icons.timer_outlined,
                             color: colorScheme.primary),
-                        title: const Text('灵动岛优先级设置'),
-                        subtitle: const Text('配置哪些应用可以抢占灵动岛显示'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: _showIslandPriorityDialog,
+                        title: const Text('Tai 屏幕时间数据库'),
+                        subtitle: Text(
+                          _taiDbPath.isEmpty
+                              ? '未设置，点击选择 data.db 文件'
+                              : _taiDbPath,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _taiDbPath.isEmpty
+                                ? colorScheme.cdtWarning
+                                : colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        trailing: const Icon(Icons.folder_open_outlined),
+                        onTap: _pickTaiDatabase,
                       ),
                     ),
                   ],
-                ],
+                ),
               ),
-            ),
-          ],
-          if (AppPlatform.isAndroid) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: AppSettingsSection(
-                title: 'Android 系统特性',
-                headerPadding:
-                    const EdgeInsets.only(left: 8, bottom: 8, top: 0),
-                children: [
-                  _buildTile(
-                    targetId: 'live_updates',
-                    child: ListTile(
-                      leading:
-                          Icon(Icons.update, color: colorScheme.cdtSuccess),
-                      title: const Text('Android 16 实时活动 (Live Updates)'),
-                      subtitle: Text(_liveUpdatesStatus,
-                          style: TextStyle(
-                              color: _liveUpdatesStatus.contains('✅')
-                                  ? colorScheme.cdtSuccess
-                                  : colorScheme.cdtWarning,
-                              fontSize: 12)),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: _checkAndOpenLiveUpdates,
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: AppSettingsSection(
+                  title: '桌面挂件设置',
+                  headerPadding:
+                      const EdgeInsets.only(left: 8, bottom: 8, top: 0),
+                  children: [
+                    _buildTile(
+                      targetId: 'float_window_style',
+                      child: ListTile(
+                        leading: Icon(Icons.layers_outlined,
+                            color: colorScheme.primary),
+                        title: const Text('桌面灵动岛'),
+                        subtitle: const Text('开启灵动岛式浮动窗口'),
+                        trailing: Switch(
+                          value: _floatWindowStyle != 2,
+                          activeThumbColor: colorScheme.primary,
+                          onChanged: (val) async {
+                            int newStyle = val ? 1 : 2;
+                            setState(() => _floatWindowStyle = newStyle);
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setInt('float_window_style', newStyle);
+                            if (newStyle == 2) {
+                              try {
+                                IslandDataProvider().invalidateCache();
+                                IslandManagerBridge.clearIslandCache(
+                                    'island-1');
+                              } catch (_) {
+                                // Ignore cleanup failures; the setting value was saved.
+                              }
+                            } else {
+                              try {
+                                IslandDataProvider().invalidateCache();
+                                IslandManagerBridge.clearIslandCache(
+                                    'island-1');
+                                await IslandManagerBridge.createIsland(
+                                    'island-1');
+                              } catch (_) {
+                                // Ignore stale island window errors during style changes.
+                              }
+                              try {
+                                await FloatWindowService.update(
+                                    forceReset: true);
+                              } catch (_) {
+                                // The next island refresh will retry if this update fails.
+                              }
+                            }
+                          },
+                        ),
+                      ),
                     ),
-                  ),
-                  const AppSettingsDivider(),
-                  _buildTile(
-                    targetId: 'island_support',
-                    child: ListTile(
-                      leading:
-                          Icon(Icons.phone_android, color: colorScheme.primary),
-                      title: const Text('检测状态栏超级岛支持 (OriginOS/ColorOS等)'),
-                      subtitle: Text(_islandStatus,
-                          style: TextStyle(
-                              color: _islandStatus.contains('✅')
-                                  ? colorScheme.cdtSuccess
-                                  : colorScheme.cdtWarning,
-                              fontSize: 12)),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: _checkIslandSupport,
+                    const AppSettingsDivider(),
+                    _buildTile(
+                      targetId: 'force_refresh',
+                      child: ListTile(
+                        leading:
+                            Icon(Icons.refresh, color: colorScheme.primary),
+                        title: const Text('强制刷新悬浮窗位置'),
+                        subtitle: const Text('将灵动岛悬浮窗重置到屏幕中央'),
+                        trailing: TextButton(
+                          onPressed: () async {
+                            try {
+                              await StorageService.saveIslandBounds(
+                                  'island-1', {});
+                            } catch (_) {}
+                            try {
+                              IslandDataProvider().invalidateCache();
+                            } catch (_) {}
+                            try {
+                              IslandManagerBridge.clearIslandCache('island-1');
+                            } catch (_) {}
+                            try {
+                              await FloatWindowService.update(forceReset: true);
+                            } catch (_) {}
+                          },
+                          child: const Text('强制刷新'),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                    if (_floatWindowStyle != 2) ...[
+                      const AppSettingsDivider(),
+                      _buildTile(
+                        targetId: 'island_priority',
+                        child: ListTile(
+                          leading: Icon(Icons.priority_high,
+                              color: colorScheme.primary),
+                          title: const Text('灵动岛优先级设置'),
+                          subtitle: const Text('配置哪些应用可以抢占灵动岛显示'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: _showIslandPriorityDialog,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-            ),
-          ],
-          if (AppPlatform.isMacOS) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: AppSettingsSection(
-                title: 'Mac 灵动岛',
-                headerPadding:
-                    const EdgeInsets.only(left: 8, bottom: 8, top: 0),
-                children: [
-                  _buildTile(
-                    targetId: 'mac_status_bar',
-                    child: ListTile(
-                      leading: Icon(Icons.call_to_action_rounded,
-                          color: colorScheme.primary),
-                      title: const Text('启用刘海灵动岛'),
-                      subtitle: const Text('专注时在屏幕顶部显示倒计时，菜单栏不再显示应用图标'),
-                      trailing: Switch(
-                        value: _macIslandEnabled,
-                        activeThumbColor: colorScheme.primary,
-                        onChanged: (val) async {
-                          setState(() => _macIslandEnabled = val);
-                          final prefs = await SharedPreferences.getInstance();
-                          await prefs.setBool('macos_island_enabled', val);
-                          await prefs.setBool('macos_tray_icon_enabled', false);
-                          await WindowService.configureMacIsland();
-                          if (!val) {
-                            MacPomodoroStatusBarService.clearNative();
-                          } else {
-                            await MacPomodoroStatusBarService
-                                .syncCurrentStatus();
-                          }
-                          if (!context.mounted) return;
-                          AppSnackBars.success(
-                              context, val ? 'Mac 灵动岛已开启' : 'Mac 灵动岛已关闭');
-                        },
+            ],
+            if (AppPlatform.isAndroid) ...[
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: AppSettingsSection(
+                  title: 'Android 系统特性',
+                  headerPadding:
+                      const EdgeInsets.only(left: 8, bottom: 8, top: 0),
+                  children: [
+                    _buildTile(
+                      targetId: 'live_updates',
+                      child: ListTile(
+                        leading:
+                            Icon(Icons.update, color: colorScheme.cdtSuccess),
+                        title: const Text('Android 16 实时活动 (Live Updates)'),
+                        subtitle: Text(_liveUpdatesStatus,
+                            style: TextStyle(
+                                color: _liveUpdatesStatus.contains('✅')
+                                    ? colorScheme.cdtSuccess
+                                    : colorScheme.cdtWarning,
+                                fontSize: 12)),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: _checkAndOpenLiveUpdates,
                       ),
                     ),
-                  ),
-                  const AppSettingsDivider(),
-                  _buildTile(
-                    targetId: 'mac_island_shortcut',
-                    child: ListTile(
-                      enabled: _macIslandEnabled,
-                      leading: Icon(
-                        Icons.keyboard_command_key_rounded,
-                        color: _macIslandEnabled
-                            ? colorScheme.primary
-                            : colorScheme.onSurfaceVariant,
+                    const AppSettingsDivider(),
+                    _buildTile(
+                      targetId: 'island_support',
+                      child: ListTile(
+                        leading: Icon(Icons.phone_android,
+                            color: colorScheme.primary),
+                        title: const Text('检测状态栏超级岛支持 (OriginOS/ColorOS等)'),
+                        subtitle: Text(_islandStatus,
+                            style: TextStyle(
+                                color: _islandStatus.contains('✅')
+                                    ? colorScheme.cdtSuccess
+                                    : colorScheme.cdtWarning,
+                                fontSize: 12)),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: _checkIslandSupport,
                       ),
-                      title: const Text('隐藏/恢复灵动岛快捷键'),
-                      subtitle: Text(
-                        _macIslandShortcut.isEmpty
-                            ? '未设置；设置全局快捷键后可临时让出菜单栏空间'
-                            : '按 ${_macIslandShortcut.displayText} 隐藏，再按一次恢复',
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (AppPlatform.isMacOS) ...[
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: AppSettingsSection(
+                  title: 'Mac 灵动岛',
+                  headerPadding:
+                      const EdgeInsets.only(left: 8, bottom: 8, top: 0),
+                  children: [
+                    _buildTile(
+                      targetId: 'mac_status_bar',
+                      child: ListTile(
+                        leading: Icon(Icons.call_to_action_rounded,
+                            color: colorScheme.primary),
+                        title: const Text('启用刘海灵动岛'),
+                        subtitle: const Text('专注时在屏幕顶部显示倒计时，菜单栏不再显示应用图标'),
+                        trailing: Switch(
+                          value: _macIslandEnabled,
+                          activeThumbColor: colorScheme.primary,
+                          onChanged: (val) async {
+                            setState(() => _macIslandEnabled = val);
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setBool('macos_island_enabled', val);
+                            await prefs.setBool(
+                                'macos_tray_icon_enabled', false);
+                            await WindowService.configureMacIsland();
+                            if (!val) {
+                              MacPomodoroStatusBarService.clearNative();
+                            } else {
+                              await MacPomodoroStatusBarService
+                                  .syncCurrentStatus();
+                            }
+                            if (!context.mounted) return;
+                            AppSnackBars.success(
+                                context, val ? 'Mac 灵动岛已开启' : 'Mac 灵动岛已关闭');
+                          },
+                        ),
                       ),
-                      trailing: OutlinedButton(
-                        onPressed:
+                    ),
+                    const AppSettingsDivider(),
+                    _buildTile(
+                      targetId: 'mac_island_shortcut',
+                      child: ListTile(
+                        enabled: _macIslandEnabled,
+                        leading: Icon(
+                          Icons.keyboard_command_key_rounded,
+                          color: _macIslandEnabled
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                        ),
+                        title: const Text('隐藏/恢复灵动岛快捷键'),
+                        subtitle: Text(
+                          _macIslandShortcut.isEmpty
+                              ? '未设置；设置全局快捷键后可临时让出菜单栏空间'
+                              : '按 ${_macIslandShortcut.displayText} 隐藏，再按一次恢复',
+                        ),
+                        trailing: OutlinedButton(
+                          onPressed:
+                              _macIslandEnabled ? _editMacIslandShortcut : null,
+                          child: Text(_macIslandShortcut.isEmpty ? '设置' : '修改'),
+                        ),
+                        onTap:
                             _macIslandEnabled ? _editMacIslandShortcut : null,
-                        child: Text(_macIslandShortcut.isEmpty ? '设置' : '修改'),
                       ),
-                      onTap: _macIslandEnabled ? _editMacIslandShortcut : null,
                     ),
-                  ),
-                  const AppSettingsDivider(),
-                  _buildTile(
-                    targetId: 'mac_island_reminders',
-                    child: ListTile(
-                      leading: Icon(Icons.notifications_active_outlined,
-                          color: colorScheme.primary),
-                      title: const Text('在灵动岛显示提醒'),
-                      subtitle: const Text('待办、课程和计划到点时自动展开，支持稍后提醒'),
-                      trailing: Switch(
-                        value: _macIslandRemindersEnabled,
-                        activeThumbColor: colorScheme.primary,
-                        onChanged: _macIslandEnabled
-                            ? (val) async {
-                                setState(
-                                    () => _macIslandRemindersEnabled = val);
-                                final prefs =
-                                    await SharedPreferences.getInstance();
-                                await prefs.setBool(
-                                    'macos_island_reminders_enabled', val);
-                                await WindowService.configureMacIsland();
-                                if (val) {
-                                  final reminders = await NotificationService
-                                      .getScheduledReminders();
-                                  await MacPomodoroStatusBarService
-                                      .scheduleIslandReminders(
-                                    reminders,
-                                    clearFirst: true,
-                                    restoring: true,
-                                  );
-                                } else {
-                                  MacPomodoroStatusBarService
-                                      .clearIslandReminders();
+                    const AppSettingsDivider(),
+                    _buildTile(
+                      targetId: 'mac_island_reminders',
+                      child: ListTile(
+                        leading: Icon(Icons.notifications_active_outlined,
+                            color: colorScheme.primary),
+                        title: const Text('在灵动岛显示提醒'),
+                        subtitle: const Text('待办、课程和计划到点时自动展开，支持稍后提醒'),
+                        trailing: Switch(
+                          value: _macIslandRemindersEnabled,
+                          activeThumbColor: colorScheme.primary,
+                          onChanged: _macIslandEnabled
+                              ? (val) async {
+                                  setState(
+                                      () => _macIslandRemindersEnabled = val);
+                                  final prefs =
+                                      await SharedPreferences.getInstance();
+                                  await prefs.setBool(
+                                      'macos_island_reminders_enabled', val);
+                                  await WindowService.configureMacIsland();
+                                  if (val) {
+                                    final reminders = await NotificationService
+                                        .getScheduledReminders();
+                                    await MacPomodoroStatusBarService
+                                        .scheduleIslandReminders(
+                                      reminders,
+                                      clearFirst: true,
+                                      restoring: true,
+                                    );
+                                  } else {
+                                    MacPomodoroStatusBarService
+                                        .clearIslandReminders();
+                                  }
                                 }
-                              }
-                            : null,
+                              : null,
+                        ),
                       ),
                     ),
-                  ),
-                  const AppSettingsDivider(),
-                  _buildTile(
-                    targetId: 'mac_island_clipboard_links',
-                    child: ListTile(
-                      enabled: _macIslandEnabled,
-                      leading: Icon(
-                        Icons.link_rounded,
-                        color: _macIslandEnabled
-                            ? colorScheme.primary
-                            : colorScheme.onSurfaceVariant,
-                      ),
-                      title: const Text('检测剪贴板网址'),
-                      subtitle: const Text('复制网页链接时短暂展开灵动岛，可确认后用浏览器打开'),
-                      trailing: Switch(
-                        value: _macIslandClipboardLinksEnabled,
-                        activeThumbColor: colorScheme.primary,
-                        onChanged: _macIslandEnabled
-                            ? (val) async {
-                                setState(() =>
-                                    _macIslandClipboardLinksEnabled = val);
-                                final prefs =
-                                    await SharedPreferences.getInstance();
-                                await prefs.setBool(
-                                    'macos_island_clipboard_links_enabled',
-                                    val);
-                                await WindowService.configureMacIsland();
-                              }
-                            : null,
+                    const AppSettingsDivider(),
+                    _buildTile(
+                      targetId: 'mac_island_clipboard_links',
+                      child: ListTile(
+                        enabled: _macIslandEnabled,
+                        leading: Icon(
+                          Icons.link_rounded,
+                          color: _macIslandEnabled
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                        ),
+                        title: const Text('检测剪贴板网址'),
+                        subtitle: const Text('复制网页链接时短暂展开灵动岛，可确认后用浏览器打开'),
+                        trailing: Switch(
+                          value: _macIslandClipboardLinksEnabled,
+                          activeThumbColor: colorScheme.primary,
+                          onChanged: _macIslandEnabled
+                              ? (val) async {
+                                  setState(() =>
+                                      _macIslandClipboardLinksEnabled = val);
+                                  final prefs =
+                                      await SharedPreferences.getInstance();
+                                  await prefs.setBool(
+                                      'macos_island_clipboard_links_enabled',
+                                      val);
+                                  await WindowService.configureMacIsland();
+                                }
+                              : null,
+                        ),
                       ),
                     ),
-                  ),
-                  const AppSettingsDivider(),
-                  _buildTile(
-                    targetId: 'mac_island_clipboard_browser',
-                    child: ListTile(
-                      enabled: _macIslandEnabled,
-                      leading: Icon(
-                        Icons.language_rounded,
-                        color: _macIslandEnabled
-                            ? colorScheme.primary
-                            : colorScheme.onSurfaceVariant,
-                      ),
-                      title: const Text('剪贴板网址默认浏览器'),
-                      subtitle: Text(
-                        _macIslandBrowsers.isEmpty
-                            ? '未检测到可用浏览器'
-                            : '复制网址时默认使用 ${_macIslandBrowserName(_macIslandDefaultBrowserId)}，展开灵动岛后仍可临时切换',
-                      ),
-                      trailing: SizedBox(
-                        width: 170,
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            isExpanded: true,
-                            value: _macIslandBrowsers.any((browser) =>
-                                    browser['id'] == _macIslandDefaultBrowserId)
-                                ? _macIslandDefaultBrowserId
-                                : null,
-                            hint: const Text('选择浏览器'),
-                            items: _macIslandBrowsers.map((browser) {
-                              final id = browser['id'];
-                              return DropdownMenuItem<String>(
-                                value: id,
-                                child: Text(
-                                  browser['name'] ?? '',
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              );
-                            }).toList(),
-                            onChanged: _macIslandEnabled &&
-                                    _macIslandBrowsers.isNotEmpty
-                                ? _selectMacIslandDefaultBrowser
-                                : null,
+                    const AppSettingsDivider(),
+                    _buildTile(
+                      targetId: 'mac_island_clipboard_browser',
+                      child: ListTile(
+                        enabled: _macIslandEnabled,
+                        leading: Icon(
+                          Icons.language_rounded,
+                          color: _macIslandEnabled
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                        ),
+                        title: const Text('剪贴板网址默认浏览器'),
+                        subtitle: Text(
+                          _macIslandBrowsers.isEmpty
+                              ? '未检测到可用浏览器'
+                              : '复制网址时默认使用 ${_macIslandBrowserName(_macIslandDefaultBrowserId)}，展开灵动岛后仍可临时切换',
+                        ),
+                        trailing: SizedBox(
+                          width: 170,
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              isExpanded: true,
+                              value: _macIslandBrowsers.any((browser) =>
+                                      browser['id'] ==
+                                      _macIslandDefaultBrowserId)
+                                  ? _macIslandDefaultBrowserId
+                                  : null,
+                              hint: const Text('选择浏览器'),
+                              items: _macIslandBrowsers.map((browser) {
+                                final id = browser['id'];
+                                return DropdownMenuItem<String>(
+                                  value: id,
+                                  child: Text(
+                                    browser['name'] ?? '',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: _macIslandEnabled &&
+                                      _macIslandBrowsers.isNotEmpty
+                                  ? _selectMacIslandDefaultBrowser
+                                  : null,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  const AppSettingsDivider(),
-                  _buildTile(
-                    targetId: 'mac_island_test',
-                    child: ListTile(
-                      enabled: _macIslandEnabled && _macIslandRemindersEnabled,
-                      leading: Icon(Icons.play_circle_outline_rounded,
-                          color: _macIslandEnabled && _macIslandRemindersEnabled
-                              ? colorScheme.primary
-                              : colorScheme.onSurfaceVariant),
-                      title: const Text('测试灵动岛提醒'),
-                      subtitle: const Text('立即显示一条测试提醒，用于检查位置和交互'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: _macIslandEnabled && _macIslandRemindersEnabled
-                          ? () async {
-                              await MacPomodoroStatusBarService
-                                  .showTestReminder();
-                            }
-                          : null,
-                    ),
-                  ),
-                  const AppSettingsDivider(),
-                  _buildTile(
-                    targetId: 'mac_island_without_notch',
-                    child: ListTile(
-                      leading: Icon(Icons.desktop_mac_rounded,
-                          color: colorScheme.primary),
-                      title: const Text('无刘海屏幕也显示'),
-                      subtitle: const Text('在外接显示器或无刘海 Mac 顶部显示居中胶囊'),
-                      trailing: Switch(
-                        value: _macIslandShowWithoutNotch,
-                        activeThumbColor: colorScheme.primary,
-                        onChanged: _macIslandEnabled
-                            ? (val) async {
-                                setState(
-                                    () => _macIslandShowWithoutNotch = val);
-                                final prefs =
-                                    await SharedPreferences.getInstance();
-                                await prefs.setBool(
-                                    'macos_island_show_without_notch', val);
-                                await WindowService.configureMacIsland();
+                    const AppSettingsDivider(),
+                    _buildTile(
+                      targetId: 'mac_island_test',
+                      child: ListTile(
+                        enabled:
+                            _macIslandEnabled && _macIslandRemindersEnabled,
+                        leading: Icon(Icons.play_circle_outline_rounded,
+                            color:
+                                _macIslandEnabled && _macIslandRemindersEnabled
+                                    ? colorScheme.primary
+                                    : colorScheme.onSurfaceVariant),
+                        title: const Text('测试灵动岛提醒'),
+                        subtitle: const Text('立即显示一条测试提醒，用于检查位置和交互'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: _macIslandEnabled && _macIslandRemindersEnabled
+                            ? () async {
+                                await MacPomodoroStatusBarService
+                                    .showTestReminder();
                               }
                             : null,
                       ),
                     ),
-                  ),
-                ],
+                    const AppSettingsDivider(),
+                    _buildTile(
+                      targetId: 'mac_island_without_notch',
+                      child: ListTile(
+                        leading: Icon(Icons.desktop_mac_rounded,
+                            color: colorScheme.primary),
+                        title: const Text('无刘海屏幕也显示'),
+                        subtitle: const Text('在外接显示器或无刘海 Mac 顶部显示居中胶囊'),
+                        trailing: Switch(
+                          value: _macIslandShowWithoutNotch,
+                          activeThumbColor: colorScheme.primary,
+                          onChanged: _macIslandEnabled
+                              ? (val) async {
+                                  setState(
+                                      () => _macIslandShowWithoutNotch = val);
+                                  final prefs =
+                                      await SharedPreferences.getInstance();
+                                  await prefs.setBool(
+                                      'macos_island_show_without_notch', val);
+                                  await WindowService.configureMacIsland();
+                                }
+                              : null,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

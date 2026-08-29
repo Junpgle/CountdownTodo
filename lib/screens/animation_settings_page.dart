@@ -3,6 +3,7 @@ import '../services/animation_config_service.dart';
 import '../services/liquid_glass_effect_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/floating_glass_control.dart';
 
 class AnimationSettingsPage extends StatefulWidget {
   final bool isEmbedded;
@@ -185,422 +186,434 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('动画设置'),
               centerTitle: true,
             ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isDesktop = constraints.maxWidth >= 800;
-          final isWide = constraints.maxWidth > 600;
-          final isCompact = constraints.maxWidth <= 600;
-          final content = ListView(
-            padding: EdgeInsets.fromLTRB(
-              isDesktop ? 24 : 16,
-              isDesktop ? 20 : 16,
-              isDesktop ? 24 : 16,
-              isDesktop ? 32 : 16,
-            ),
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
-                child: Text(
-                  '性能预设',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isDesktop = constraints.maxWidth >= 800;
+            final isWide = constraints.maxWidth > 600;
+            final isCompact = constraints.maxWidth <= 600;
+            final content = ListView(
+              padding: EdgeInsets.fromLTRB(
+                isDesktop ? 24 : 16,
+                widget.isEmbedded
+                    ? (isDesktop ? 20 : 16)
+                    : floatingGlassSettingsContentTopInset(
+                        context,
+                        extra: isDesktop ? 20 : 16,
+                      ),
+                isDesktop ? 24 : 16,
+                isDesktop ? 32 : 16,
+              ),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
+                  child: Text(
+                    '性能预设',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
-              ),
-              _buildPresetGrid(
-                isDesktop: isDesktop,
-                isWide: isWide,
-                isCompact: isCompact,
-              ),
-              SizedBox(height: isDesktop ? 28 : 24),
-              Padding(
-                padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
-                child: Text('核心特效开关',
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurfaceVariant)),
-              ),
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: isWide ? 3 : 2,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: isDesktop ? 2.45 : 1.3,
-                children: [
-                  _buildToggleCard(
-                    isDesktop: isDesktop,
-                    title: '启用页面动画',
-                    subtitle: '开启/关闭过渡动画',
-                    icon: Icons.animation,
-                    value: _animationsEnabled,
-                    onChanged: (val) {
-                      setState(() => _animationsEnabled = val);
-                      _update(enabled: val);
-                    },
-                  ),
-                  _buildToggleCard(
-                    isDesktop: isDesktop,
-                    title: '懒加载优化',
-                    subtitle: '动画进行中再渲染内容',
-                    icon: Icons.hourglass_empty,
-                    value: _lazyLoadEnabled,
-                    onChanged: (val) {
-                      setState(() => _lazyLoadEnabled = val);
-                      _update(lazyLoad: val);
-                    },
-                  ),
-                  _buildToggleCard(
-                    isDesktop: isDesktop,
-                    title: '屏幕圆角适配',
-                    subtitle: '动画过程中适配屏幕圆角',
-                    icon: Icons.rounded_corner,
-                    value: _screenRadiusEnabled,
-                    onChanged: (val) {
-                      setState(() => _screenRadiusEnabled = val);
-                      _update(screenRadius: val);
-                    },
-                  ),
-                  if (!AppPlatform.isWeb)
+                _buildPresetGrid(
+                  isDesktop: isDesktop,
+                  isWide: isWide,
+                  isCompact: isCompact,
+                ),
+                SizedBox(height: isDesktop ? 28 : 24),
+                Padding(
+                  padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
+                  child: Text('核心特效开关',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onSurfaceVariant)),
+                ),
+                GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: isWide ? 3 : 2,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: isDesktop ? 2.45 : 1.3,
+                  children: [
                     _buildToggleCard(
                       isDesktop: isDesktop,
-                      title: '预测性返回',
-                      subtitle: 'Android 14+ 返回手势',
-                      icon: Icons.swipe_left,
-                      value: _predictiveBackEnabled,
+                      title: '启用页面动画',
+                      subtitle: '开启/关闭过渡动画',
+                      icon: Icons.animation,
+                      value: _animationsEnabled,
                       onChanged: (val) {
-                        setState(() => _predictiveBackEnabled = val);
-                        _update(predictiveBack: val);
+                        setState(() => _animationsEnabled = val);
+                        _update(enabled: val);
                       },
                     ),
-                  _buildToggleCard(
-                    isDesktop: isDesktop,
-                    title: '运动模糊',
-                    subtitle: '滑动动态模糊 (影响性能)',
-                    icon: Icons.blur_linear,
-                    value: _motionBlurEnabled,
-                    onChanged: (val) {
-                      setState(() => _motionBlurEnabled = val);
-                      _update(motionBlur: val);
-                    },
-                  ),
-                  _buildToggleCard(
-                    isDesktop: isDesktop,
-                    title: '层级模糊',
-                    subtitle: '背景页面模糊 (影响性能)',
-                    icon: Icons.blur_on,
-                    value: _layerBlurEnabled,
-                    onChanged: (val) {
-                      setState(() => _layerBlurEnabled = val);
-                      _update(layerBlur: val);
-                    },
-                  ),
-                  _buildToggleCard(
-                    isDesktop: isDesktop,
-                    title: 'Liquid Glass',
-                    subtitle: '全应用玻璃材质、折射与半透明层次 (可选)',
-                    icon: Icons.water_drop_rounded,
-                    value: _liquidGlassEnabled,
-                    onChanged: _liquidGlassMutationPending
-                        ? null
-                        : _setLiquidGlassEnabled,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              AnimatedOpacity(
-                duration: const Duration(milliseconds: 180),
-                opacity: _liquidGlassEnabled ? 1 : 0.58,
-                child: Card(
-                  elevation: 1,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.tune_rounded,
-                              color: colorScheme.primary,
-                            ),
-                            const SizedBox(width: 10),
-                            const Expanded(
-                              child: Text(
-                                'Liquid Glass 模式',
-                                style: TextStyle(fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: SegmentedButton<LiquidGlassEffectMode>(
-                            segments: const [
-                              ButtonSegment(
-                                value: LiquidGlassEffectMode.standard,
-                                icon: Icon(Icons.speed_rounded),
-                                label: Text('标准'),
-                              ),
-                              ButtonSegment(
-                                value: LiquidGlassEffectMode.enhanced,
-                                icon: Icon(Icons.auto_awesome_rounded),
-                                label: Text('增强'),
-                              ),
-                            ],
-                            selected: {_liquidGlassMode},
-                            onSelectionChanged: !_liquidGlassEnabled ||
-                                    _liquidGlassMutationPending
-                                ? null
-                                : (selection) =>
-                                    _setLiquidGlassMode(selection.first),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          _liquidGlassMode == LiquidGlassEffectMode.standard
-                              ? '高可读性和低功耗；滚动卡片使用轻量玻璃材质，重点表面保留折射。'
-                              : '更强折射、高光和色散；固定重点表面使用高画质玻璃，滚动卡片启用实时玻璃。',
-                          style: TextStyle(
-                            fontSize: 12,
-                            height: 1.4,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        if (!_liquidGlassEnabled) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            '开启 Liquid Glass 后可切换模式',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colorScheme.outline,
-                            ),
-                          ),
-                        ],
-                      ],
+                    _buildToggleCard(
+                      isDesktop: isDesktop,
+                      title: '懒加载优化',
+                      subtitle: '动画进行中再渲染内容',
+                      icon: Icons.hourglass_empty,
+                      value: _lazyLoadEnabled,
+                      onChanged: (val) {
+                        setState(() => _lazyLoadEnabled = val);
+                        _update(lazyLoad: val);
+                      },
                     ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding:
-                    const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 32.0),
-                child: Text('参数微调',
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurfaceVariant)),
-              ),
-              Card(
-                elevation: 1,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('动画时长',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.w600)),
-                              Text('${_animationDuration}ms',
-                                  style: TextStyle(
-                                      color: colorScheme.primary,
-                                      fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Slider(
-                            value: _animationDuration.toDouble(),
-                            min: 150,
-                            max: 600,
-                            divisions: 9,
-                            label: '${_animationDuration}ms',
-                            onChanged: (val) {
-                              setState(() => _animationDuration = val.round());
-                              _update(duration: val.round());
-                            },
-                          ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('快',
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: colorScheme.onSurfaceVariant)),
-                              Text('慢',
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: colorScheme.onSurfaceVariant)),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          const Text('动画速度预设',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _buildSpeedPresetChip(
-                                preset: AnimationSpeedPreset.elegant,
-                                title: '优雅',
-                              ),
-                              _buildSpeedPresetChip(
-                                preset: AnimationSpeedPreset.balanced,
-                                title: '均衡',
-                              ),
-                              _buildSpeedPresetChip(
-                                preset: AnimationSpeedPreset.fast,
-                                title: '快速',
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                    _buildToggleCard(
+                      isDesktop: isDesktop,
+                      title: '屏幕圆角适配',
+                      subtitle: '动画过程中适配屏幕圆角',
+                      icon: Icons.rounded_corner,
+                      value: _screenRadiusEnabled,
+                      onChanged: (val) {
+                        setState(() => _screenRadiusEnabled = val);
+                        _update(screenRadius: val);
+                      },
                     ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('层级深度',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.w600)),
-                              Text('$_pageLayerDepth%',
-                                  style: TextStyle(
-                                      color: colorScheme.primary,
-                                      fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text('控制背景页缩小、压暗和层级模糊强度',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: colorScheme.onSurfaceVariant)),
-                          const SizedBox(height: 8),
-                          Slider(
-                            value: _pageLayerDepth.toDouble(),
-                            min: 0,
-                            max: 100,
-                            divisions: 10,
-                            label: '$_pageLayerDepth%',
-                            onChanged: (val) {
-                              final next = val.round();
-                              setState(() => _pageLayerDepth = next);
-                              _update(pageLayerDepth: next);
-                            },
-                          ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('轻',
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: colorScheme.onSurfaceVariant)),
-                              Text('强',
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: colorScheme.onSurfaceVariant)),
-                            ],
-                          ),
-                        ],
+                    if (!AppPlatform.isWeb)
+                      _buildToggleCard(
+                        isDesktop: isDesktop,
+                        title: '预测性返回',
+                        subtitle: 'Android 14+ 返回手势',
+                        icon: Icons.swipe_left,
+                        value: _predictiveBackEnabled,
+                        onChanged: (val) {
+                          setState(() => _predictiveBackEnabled = val);
+                          _update(predictiveBack: val);
+                        },
                       ),
+                    _buildToggleCard(
+                      isDesktop: isDesktop,
+                      title: '运动模糊',
+                      subtitle: '滑动动态模糊 (影响性能)',
+                      icon: Icons.blur_linear,
+                      value: _motionBlurEnabled,
+                      onChanged: (val) {
+                        setState(() => _motionBlurEnabled = val);
+                        _update(motionBlur: val);
+                      },
                     ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('元素展开内容显现',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.w600)),
-                              Text('$_containerContentStart%',
-                                  style: TextStyle(
-                                      color: colorScheme.primary,
-                                      fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text('控制从卡片、按钮展开页面时内容出现的早晚',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: colorScheme.onSurfaceVariant)),
-                          const SizedBox(height: 8),
-                          Slider(
-                            value: _containerContentStart.toDouble(),
-                            min: 0,
-                            max: 60,
-                            divisions: 12,
-                            label: '$_containerContentStart%',
-                            onChanged: (val) {
-                              final next = val.round();
-                              setState(() => _containerContentStart = next);
-                              _update(containerContentStart: next);
-                            },
-                          ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('早',
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: colorScheme.onSurfaceVariant)),
-                              Text('晚',
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: colorScheme.onSurfaceVariant)),
-                            ],
-                          ),
-                        ],
-                      ),
+                    _buildToggleCard(
+                      isDesktop: isDesktop,
+                      title: '层级模糊',
+                      subtitle: '背景页面模糊 (影响性能)',
+                      icon: Icons.blur_on,
+                      value: _layerBlurEnabled,
+                      onChanged: (val) {
+                        setState(() => _layerBlurEnabled = val);
+                        _update(layerBlur: val);
+                      },
+                    ),
+                    _buildToggleCard(
+                      isDesktop: isDesktop,
+                      title: 'Liquid Glass',
+                      subtitle: '全应用玻璃材质、折射与半透明层次 (可选)',
+                      icon: Icons.water_drop_rounded,
+                      value: _liquidGlassEnabled,
+                      onChanged: _liquidGlassMutationPending
+                          ? null
+                          : _setLiquidGlassEnabled,
                     ),
                   ],
                 ),
-              ),
-              SizedBox(height: isDesktop ? 24 : 40),
-            ],
-          );
+                const SizedBox(height: 12),
+                AnimatedOpacity(
+                  duration: const Duration(milliseconds: 180),
+                  opacity: _liquidGlassEnabled ? 1 : 0.58,
+                  child: Card(
+                    elevation: 1,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.tune_rounded,
+                                color: colorScheme.primary,
+                              ),
+                              const SizedBox(width: 10),
+                              const Expanded(
+                                child: Text(
+                                  'Liquid Glass 模式',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: SegmentedButton<LiquidGlassEffectMode>(
+                              segments: const [
+                                ButtonSegment(
+                                  value: LiquidGlassEffectMode.standard,
+                                  icon: Icon(Icons.speed_rounded),
+                                  label: Text('标准'),
+                                ),
+                                ButtonSegment(
+                                  value: LiquidGlassEffectMode.enhanced,
+                                  icon: Icon(Icons.auto_awesome_rounded),
+                                  label: Text('增强'),
+                                ),
+                              ],
+                              selected: {_liquidGlassMode},
+                              onSelectionChanged: !_liquidGlassEnabled ||
+                                      _liquidGlassMutationPending
+                                  ? null
+                                  : (selection) =>
+                                      _setLiquidGlassMode(selection.first),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            _liquidGlassMode == LiquidGlassEffectMode.standard
+                                ? '高可读性和低功耗；滚动卡片使用轻量玻璃材质，重点表面保留折射。'
+                                : '更强折射、高光和色散；固定重点表面使用高画质玻璃，滚动卡片启用实时玻璃。',
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 1.4,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          if (!_liquidGlassEnabled) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              '开启 Liquid Glass 后可切换模式',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colorScheme.outline,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding:
+                      const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 32.0),
+                  child: Text('参数微调',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onSurfaceVariant)),
+                ),
+                Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('动画时长',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.w600)),
+                                Text('${_animationDuration}ms',
+                                    style: TextStyle(
+                                        color: colorScheme.primary,
+                                        fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Slider(
+                              value: _animationDuration.toDouble(),
+                              min: 150,
+                              max: 600,
+                              divisions: 9,
+                              label: '${_animationDuration}ms',
+                              onChanged: (val) {
+                                setState(
+                                    () => _animationDuration = val.round());
+                                _update(duration: val.round());
+                              },
+                            ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('快',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: colorScheme.onSurfaceVariant)),
+                                Text('慢',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: colorScheme.onSurfaceVariant)),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            const Text('动画速度预设',
+                                style: TextStyle(fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                _buildSpeedPresetChip(
+                                  preset: AnimationSpeedPreset.elegant,
+                                  title: '优雅',
+                                ),
+                                _buildSpeedPresetChip(
+                                  preset: AnimationSpeedPreset.balanced,
+                                  title: '均衡',
+                                ),
+                                _buildSpeedPresetChip(
+                                  preset: AnimationSpeedPreset.fast,
+                                  title: '快速',
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('层级深度',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.w600)),
+                                Text('$_pageLayerDepth%',
+                                    style: TextStyle(
+                                        color: colorScheme.primary,
+                                        fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text('控制背景页缩小、压暗和层级模糊强度',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: colorScheme.onSurfaceVariant)),
+                            const SizedBox(height: 8),
+                            Slider(
+                              value: _pageLayerDepth.toDouble(),
+                              min: 0,
+                              max: 100,
+                              divisions: 10,
+                              label: '$_pageLayerDepth%',
+                              onChanged: (val) {
+                                final next = val.round();
+                                setState(() => _pageLayerDepth = next);
+                                _update(pageLayerDepth: next);
+                              },
+                            ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('轻',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: colorScheme.onSurfaceVariant)),
+                                Text('强',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: colorScheme.onSurfaceVariant)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('元素展开内容显现',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.w600)),
+                                Text('$_containerContentStart%',
+                                    style: TextStyle(
+                                        color: colorScheme.primary,
+                                        fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text('控制从卡片、按钮展开页面时内容出现的早晚',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: colorScheme.onSurfaceVariant)),
+                            const SizedBox(height: 8),
+                            Slider(
+                              value: _containerContentStart.toDouble(),
+                              min: 0,
+                              max: 60,
+                              divisions: 12,
+                              label: '$_containerContentStart%',
+                              onChanged: (val) {
+                                final next = val.round();
+                                setState(() => _containerContentStart = next);
+                                _update(containerContentStart: next);
+                              },
+                            ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('早',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: colorScheme.onSurfaceVariant)),
+                                Text('晚',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: colorScheme.onSurfaceVariant)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: isDesktop ? 24 : 40),
+              ],
+            );
 
-          return Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: isDesktop ? 1440 : constraints.maxWidth,
+            return Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: isDesktop ? 1440 : constraints.maxWidth,
+                ),
+                child: content,
               ),
-              child: content,
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

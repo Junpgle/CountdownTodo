@@ -4,6 +4,7 @@ import '../login_screen.dart';
 import '../../utils/page_transitions.dart';
 import '../../services/minor_mode_policy.dart';
 import '../../services/minor_mode_service.dart';
+import '../../widgets/floating_glass_control.dart';
 
 class ServerChoicePage extends StatefulWidget {
   final String initialServerChoice;
@@ -37,97 +38,108 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('云端数据接口线路'),
             ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Card(
-            elevation: 2,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.cloud_queue,
-                          size: 20,
-                          color: Theme.of(context).colorScheme.primary),
-                      const SizedBox(width: 8),
-                      Text(
-                        '选择服务器',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange[50],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange[200]!),
-                    ),
-                    child: Row(
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            floatingGlassSettingsContentTopInset(context, extra: 16),
+            16,
+            16,
+          ),
+          children: [
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Icon(Icons.info_outline,
-                            size: 18, color: Colors.orange[700]),
+                        Icon(Icons.cloud_queue,
+                            size: 20,
+                            color: Theme.of(context).colorScheme.primary),
                         const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '切换服务器后需要重新登录，且不同服务器的登录状态不互通',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.orange[800],
-                            ),
+                        Text(
+                          '选择服务器',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildServerOption(
-                    value: 'cloudflare',
-                    title: 'Cloudflare（即将禁用）',
-                    subtitle: _isCloudflareDisabled
-                        ? '已禁用，请使用阿里云ECS'
-                        : '2026/06/01 前仍可登录使用',
-                    icon: Icons.shield_outlined,
-                  ),
-                  const SizedBox(height: 10),
-                  _buildCloudflareWarning(),
-                  const SizedBox(height: 8),
-                  _buildServerOption(
-                    value: 'aliyun',
-                    title: '阿里云ECS',
-                    subtitle: '更快',
-                    icon: Icons.speed_outlined,
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange[200]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                              size: 18, color: Colors.orange[700]),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '切换服务器后需要重新登录，且不同服务器的登录状态不互通',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.orange[800],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildServerOption(
+                      value: 'cloudflare',
+                      title: 'Cloudflare（即将禁用）',
+                      subtitle: _isCloudflareDisabled
+                          ? '已禁用，请使用阿里云ECS'
+                          : '2026/06/01 前仍可登录使用',
+                      icon: Icons.shield_outlined,
+                    ),
+                    const SizedBox(height: 10),
+                    _buildCloudflareWarning(),
+                    const SizedBox(height: 8),
+                    _buildServerOption(
+                      value: 'aliyun',
+                      title: '阿里云ECS',
+                      subtitle: '更快',
+                      icon: Icons.speed_outlined,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: FilledButton.icon(
-              onPressed: () => _handleServerChange(),
-              icon: const Icon(Icons.save),
-              label: const Text('保存设置'),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton.icon(
+                onPressed: () => _handleServerChange(),
+                icon: const Icon(Icons.save),
+                label: const Text('保存设置'),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

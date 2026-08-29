@@ -1,3 +1,4 @@
+import '../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../storage_service.dart';
@@ -135,53 +136,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("题目设置")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("运算类型 (可多选)",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 10,
-              children: [
-                _buildOpCheckbox('+', '加法 (+)'),
-                _buildOpCheckbox('-', '减法 (-)'),
-                _buildOpCheckbox('*', '乘法 (×)'),
-                _buildOpCheckbox('/', '除法 (÷)'),
-              ],
-            ),
-            const Divider(height: 30),
-            _buildRangeRow("第一个数范围", _minN1Ctrl, _maxN1Ctrl),
-            _buildRangeRow("第二个数范围", _minN2Ctrl, _maxN2Ctrl),
-            const Text("结果最大值", style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 5),
-            TextField(
-              controller: _maxResCtrl,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                  hintText: "例如: 100",
-                  border: OutlineInputBorder(),
-                  helperText: "加法和乘法结果不超过此值"),
-            ),
-            const SizedBox(height: 30),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.save),
-                label: const Text("保存配置", style: TextStyle(fontSize: 18)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                ),
-                onPressed: _saveSettings,
+      extendBodyBehindAppBar: true,
+      appBar: FloatingGlassAppBar(
+          flexibleSpace: const FloatingGlassTopBarBackground(),
+          title: const Text("题目设置")),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: true,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            floatingGlassSettingsContentTopInset(context, extra: 20),
+            20,
+            20,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("运算类型 (可多选)",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                children: [
+                  _buildOpCheckbox('+', '加法 (+)'),
+                  _buildOpCheckbox('-', '减法 (-)'),
+                  _buildOpCheckbox('*', '乘法 (×)'),
+                  _buildOpCheckbox('/', '除法 (÷)'),
+                ],
               ),
-            )
-          ],
+              const Divider(height: 30),
+              _buildRangeRow("第一个数范围", _minN1Ctrl, _maxN1Ctrl),
+              _buildRangeRow("第二个数范围", _minN2Ctrl, _maxN2Ctrl),
+              const Text("结果最大值",
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 5),
+              TextField(
+                controller: _maxResCtrl,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(
+                    hintText: "例如: 100",
+                    border: OutlineInputBorder(),
+                    helperText: "加法和乘法结果不超过此值"),
+              ),
+              const SizedBox(height: 30),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.save),
+                  label: const Text("保存配置", style: TextStyle(fontSize: 18)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                  ),
+                  onPressed: _saveSettings,
+                ),
+              )
+            ],
+          ),
         ),
       ),
     );

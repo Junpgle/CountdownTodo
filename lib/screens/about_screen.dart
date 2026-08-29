@@ -17,6 +17,7 @@ import '../services/database_helper.dart';
 import '../services/database_schema_history.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/github_resource_service.dart';
+import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
 class AboutScreen extends StatefulWidget {
@@ -387,15 +388,24 @@ class _AboutScreenState extends State<AboutScreen> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth > 800;
+    final standalone = !widget.isEmbedded && !isWide;
 
     return Scaffold(
+      extendBodyBehindAppBar: standalone,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('关于此应用'),
               centerTitle: true,
             ),
-      body: isWide ? _buildWideLayout(context) : _buildNarrowLayout(context),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: standalone,
+        child: isWide
+            ? _buildWideLayout(context)
+            : _buildNarrowLayout(context, standalone: standalone),
+      ),
     );
   }
 
@@ -548,11 +558,18 @@ class _AboutScreenState extends State<AboutScreen> {
     );
   }
 
-  Widget _buildNarrowLayout(BuildContext context) {
+  Widget _buildNarrowLayout(
+    BuildContext context, {
+    required bool standalone,
+  }) {
     return SingleChildScrollView(
       child: Column(
         children: [
-          const SizedBox(height: 32),
+          SizedBox(
+            height: standalone
+                ? floatingGlassSettingsContentTopInset(context, extra: 32)
+                : 32,
+          ),
           Container(
             width: 100,
             height: 100,
@@ -1618,10 +1635,8 @@ class _DatabaseChangelogSheet extends StatelessWidget {
                     child: ExpansionTile(
                       key: PageStorageKey('database-version-${entry.version}'),
                       initiallyExpanded: isCurrent,
-                      tilePadding:
-                          const EdgeInsets.symmetric(horizontal: 16),
-                      childrenPadding:
-                          const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                      tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
                       title: Row(
                         children: [
                           Container(
@@ -1718,41 +1733,55 @@ class PrivacyPolicyPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: !isEmbedded,
       appBar: isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('隐私政策'),
               centerTitle: true,
             ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : content == null
-              ? const Center(child: Text('加载失败，请检查网络连接'))
-              : Markdown(
-                  data: content!,
-                  padding: const EdgeInsets.all(16),
-                  styleSheet: MarkdownStyleSheet(
-                    h1: const TextStyle(
-                        fontSize: 22, fontWeight: FontWeight.bold),
-                    h2: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold),
-                    h3: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
-                    p: const TextStyle(fontSize: 14, height: 1.6),
-                    listBullet: const TextStyle(fontSize: 14),
-                    blockquote: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                      fontStyle: FontStyle.italic,
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !isEmbedded,
+        child: isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : content == null
+                ? const Center(child: Text('加载失败，请检查网络连接'))
+                : Markdown(
+                    data: content!,
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      isEmbedded
+                          ? 16
+                          : floatingGlassSettingsContentTopInset(context,
+                              extra: 16),
+                      16,
+                      16,
                     ),
-                    code:
-                        const TextStyle(fontSize: 13, fontFamily: 'monospace'),
-                    codeblockDecoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(8),
+                    styleSheet: MarkdownStyleSheet(
+                      h1: const TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.bold),
+                      h2: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold),
+                      h3: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
+                      p: const TextStyle(fontSize: 14, height: 1.6),
+                      listBullet: const TextStyle(fontSize: 14),
+                      blockquote: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                        fontStyle: FontStyle.italic,
+                      ),
+                      code: const TextStyle(
+                          fontSize: 13, fontFamily: 'monospace'),
+                      codeblockDecoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
-                ),
+      ),
     );
   }
 }
