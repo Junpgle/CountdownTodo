@@ -9,72 +9,106 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
 
     return Scaffold(
       backgroundColor: colorScheme.surfaceContainerLowest,
-      appBar: _buildResponsiveAppBar(isDark, colorScheme),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth >= 900) {
-            return _buildWideLayout(
-              isDark,
-              colorScheme,
-            );
-          }
-          return _buildMobileLayout(isDark, colorScheme);
-        },
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth >= 900) {
+                return _buildWideLayout(
+                  isDark,
+                  colorScheme,
+                );
+              }
+              return _buildMobileLayout(isDark, colorScheme);
+            },
+          ),
+          _buildFloatingResponsiveAppBar(isDark, colorScheme),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFloatingResponsiveAppBar(
+    bool isDark,
+    ColorScheme colorScheme,
+  ) {
+    final topInset = MediaQuery.paddingOf(context).top;
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: SizedBox(
+        height: floatingGlassTopBarHeight(context),
+        child: Padding(
+          padding: EdgeInsets.only(top: topInset),
+          child: _buildResponsiveAppBar(isDark, colorScheme),
+        ),
       ),
     );
   }
 
   PreferredSizeWidget _buildResponsiveAppBar(
       bool isDark, ColorScheme colorScheme) {
-    return AppBar(
+    return FloatingGlassAppBar(
+      primary: false,
       elevation: 0,
-      scrolledUnderElevation: 1,
-      backgroundColor: colorScheme.surface,
-      surfaceTintColor: colorScheme.surfaceTint,
+      scrolledUnderElevation: 0,
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: Colors.transparent,
+      forceMaterialTransparency: true,
+      systemOverlayStyle: floatingGlassTopBarSystemOverlayStyle(context),
+      flexibleSpace: const FloatingGlassTopBarBackground(),
       centerTitle: true,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
         onPressed: () => Navigator.pop(context),
         tooltip: '返回',
       ),
-      title: Column(
-        children: [
-          Text(
-            _getCurrentSessionTitle(),
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0,
+      title: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: _isWide ? 320 : 190),
+        child: Column(
+          children: [
+            Text(
+              _getCurrentSessionTitle(),
+              maxLines: 1,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
-            overflow: TextOverflow.ellipsis,
-          ),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, animation) => FadeTransition(
-              opacity: animation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.25),
-                  end: Offset.zero,
-                ).animate(animation),
-                child: child,
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.25),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
+              ),
+              child: Text(
+                _isLoading ? '正在思考...' : 'AI 助手在线',
+                key: ValueKey(_isLoading),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.normal,
+                  color: _isLoading
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
-            child: Text(
-              _isLoading ? '正在思考...' : 'AI 助手在线',
-              key: ValueKey(_isLoading),
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.normal,
-                color: _isLoading
-                    ? colorScheme.primary
-                    : colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
       actions: [
         IconButton(
@@ -150,7 +184,10 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                     constraints: BoxConstraints(
                       maxWidth: useActionRail ? 760 : 920,
                     ),
-                    child: _buildMessageList(isDark, colorScheme),
+                    child: FloatingGlassTopBarContentFade(
+                      topBarHeight: floatingGlassTopBarHeight(context),
+                      child: _buildMessageList(isDark, colorScheme),
+                    ),
                   ),
                 ),
               ),
@@ -434,7 +471,12 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
   Widget _buildMobileLayout(bool isDark, ColorScheme colorScheme) {
     return Column(
       children: [
-        Expanded(child: _buildMessageList(isDark, colorScheme)),
+        Expanded(
+          child: FloatingGlassTopBarContentFade(
+            topBarHeight: floatingGlassTopBarHeight(context),
+            child: _buildMessageList(isDark, colorScheme),
+          ),
+        ),
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 260),
           switchInCurve: Curves.easeOutCubic,
@@ -462,7 +504,12 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     }
     return ListView.builder(
       controller: _scrollCtrl,
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        floatingGlassTopBarHeight(context) + 18,
+        16,
+        20,
+      ),
       itemCount: _messages.length + (_isLoading ? 1 : 0),
       itemBuilder: (context, index) {
         if (_isLoading && index == _messages.length) {

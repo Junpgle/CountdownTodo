@@ -309,18 +309,23 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
 
   Widget _buildInputArea(ColorScheme colorScheme) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
+    final useFloating = floatingBottomBarShouldFloat(context);
+    final content = Container(
       key: _inputKey,
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      decoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha: 0.95),
-        border: Border(
-          top: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.2),
-            width: 0.5,
-          ),
-        ),
-      ),
+      padding: useFloating
+          ? const EdgeInsets.fromLTRB(12, 8, 12, 8)
+          : const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      decoration: useFloating
+          ? null
+          : BoxDecoration(
+              color: colorScheme.surface.withValues(alpha: 0.95),
+              border: Border(
+                top: BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.2),
+                  width: 0.5,
+                ),
+              ),
+            ),
       child: SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -523,8 +528,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
             Container(
               decoration: BoxDecoration(
                 color: isDark
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : colorScheme.surfaceContainerLow,
+                    ? Colors.white.withValues(alpha: useFloating ? 0.08 : 0.05)
+                    : colorScheme.surfaceContainerLow
+                        .withValues(alpha: useFloating ? 0.62 : 1),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
                   color: colorScheme.outlineVariant.withValues(alpha: 0.3),
@@ -637,6 +643,14 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
           ],
         ),
       ),
+    );
+    return FloatingGlassControl(
+      height: null,
+      margin:
+          useFloating ? const EdgeInsets.fromLTRB(8, 4, 8, 8) : EdgeInsets.zero,
+      borderRadius: useFloating ? 28 : 0,
+      mobilePortraitOnly: true,
+      child: content,
     );
   }
 

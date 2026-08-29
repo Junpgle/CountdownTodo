@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../services/liquid_glass_effect_service.dart';
@@ -61,6 +62,199 @@ double _floatingGlassAppBarProgressForFlexibleSpace(
       .clamp(0.0, 1.0);
 }
 
+/// The default feather below a shared top bar.
+const double floatingGlassTopBarDefaultFadeTail = 36.0;
+
+/// Resolves the full top-bar height, including the status-bar inset.
+double floatingGlassTopBarHeight(
+  BuildContext context, {
+  double toolbarHeight = kToolbarHeight,
+  PreferredSizeWidget? bottom,
+  bool primary = true,
+}) {
+  final topInset = primary ? MediaQuery.paddingOf(context).top : 0.0;
+  return topInset + toolbarHeight + (bottom?.preferredSize.height ?? 0.0);
+}
+
+/// Resolves the platform status-bar appearance for a transparent top bar.
+SystemUiOverlayStyle floatingGlassTopBarSystemOverlayStyle(
+  BuildContext context,
+) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  return SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+    statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+  );
+}
+
+/// Computes the reveal progress for a title that lives in the scrollable body.
+///
+/// [contentOffset] is the body's initial distance from the top of the
+/// viewport. The title starts revealing [revealBefore] pixels before it
+/// reaches the toolbar and settles [settleAfter] pixels after that point.
+double floatingGlassTopBarTitleProgress({
+  required double scrollOffset,
+  required double contentOffset,
+  double revealBefore = 36.0,
+  double settleAfter = 10.0,
+}) {
+  final start = contentOffset - revealBefore;
+  final end = contentOffset + settleAfter;
+  return ((scrollOffset - start) / math.max(1.0, end - start)).clamp(0.0, 1.0);
+}
+
+/// Builds the alpha-only fade used when scrollable pixels pass under a fixed
+/// top bar. It deliberately does not blur or paint a tinted rectangle.
+Shader floatingGlassTopBarContentFadeShader(
+  Rect bounds, {
+  required double fadeHeight,
+}) {
+  final height = math.min(bounds.height, math.max(1.0, fadeHeight));
+  return LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    stops: const [0.0, 0.18, 0.78, 1.0],
+    colors: [
+      Colors.transparent,
+      Colors.transparent,
+      Colors.white.withValues(alpha: 0.86),
+      Colors.white,
+    ],
+  ).createShader(Rect.fromLTWH(0.0, 0.0, bounds.width, height));
+}
+
+/// Applies the shared content fade without changing the page background.
+class FloatingGlassTopBarContentFade extends StatelessWidget {
+  const FloatingGlassTopBarContentFade({
+    super.key,
+    required this.child,
+    required this.topBarHeight,
+    this.tailExtent = floatingGlassTopBarDefaultFadeTail,
+  });
+
+  final Widget child;
+  final double topBarHeight;
+  final double tailExtent;
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (bounds) => floatingGlassTopBarContentFadeShader(
+        bounds,
+        fadeHeight: topBarHeight + tailExtent,
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Applies the same alpha fade to a group of slivers while leaving a pinned
+/// [FloatingGlassSliverAppBar] outside the mask.
+class FloatingGlassSliverContentFadeGroup extends StatelessWidget {
+  const FloatingGlassSliverContentFadeGroup({
+    super.key,
+    required this.slivers,
+    required this.topBarHeight,
+    this.tailExtent = floatingGlassTopBarDefaultFadeTail,
+  });
+
+  final List<Widget> slivers;
+  final double topBarHeight;
+  final double tailExtent;
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingGlassSliverContentFade(
+      topBarHeight: topBarHeight,
+      tailExtent: tailExtent,
+      sliver: SliverMainAxisGroup(slivers: slivers),
+    );
+  }
+}
+
+/// Sliver render-object counterpart to [FloatingGlassTopBarContentFade].
+class FloatingGlassSliverContentFade extends SingleChildRenderObjectWidget {
+  const FloatingGlassSliverContentFade({
+    super.key,
+    required this.sliver,
+    required this.topBarHeight,
+    this.tailExtent = floatingGlassTopBarDefaultFadeTail,
+  }) : super(child: sliver);
+
+  final Widget sliver;
+  final double topBarHeight;
+  final double tailExtent;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderFloatingGlassSliverContentFade(
+      fadeHeight: topBarHeight + tailExtent,
+    );
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    RenderObject renderObject,
+  ) {
+    (renderObject as _RenderFloatingGlassSliverContentFade).fadeHeight =
+        topBarHeight + tailExtent;
+  }
+}
+
+class _RenderFloatingGlassSliverContentFade extends RenderProxySliver {
+  _RenderFloatingGlassSliverContentFade({required double fadeHeight})
+      : _fadeHeight = fadeHeight;
+
+  double _fadeHeight;
+
+  double get fadeHeight => _fadeHeight;
+
+  set fadeHeight(double value) {
+    if (_fadeHeight == value) return;
+    _fadeHeight = value;
+    markNeedsPaint();
+  }
+
+  @override
+  bool get alwaysNeedsCompositing => child != null;
+
+  @override
+  ShaderMaskLayer? get layer => super.layer as ShaderMaskLayer?;
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final child = this.child;
+    final geometry = child?.geometry;
+    if (child == null || geometry == null || !geometry.visible) return;
+
+    final viewportWidth = constraints.crossAxisExtent;
+    final viewportHeight = constraints.viewportMainAxisExtent;
+    if (viewportWidth <= 0.0 || viewportHeight <= 0.0) {
+      context.paintChild(child, offset);
+      return;
+    }
+
+    final maskRect = Rect.fromLTWH(
+      offset.dx,
+      0.0,
+      viewportWidth,
+      viewportHeight,
+    );
+    layer ??= ShaderMaskLayer();
+    layer!
+      ..shader = floatingGlassTopBarContentFadeShader(
+        Rect.fromLTWH(0.0, 0.0, viewportWidth, viewportHeight),
+        fadeHeight: fadeHeight,
+      )
+      ..maskRect = maskRect
+      ..blendMode = BlendMode.dstIn;
+    context.pushLayer(layer!, super.paint, offset);
+  }
+}
+
 /// A shared liquid-glass shell for controls that visually float above content.
 ///
 /// The child owns semantics and interaction. This widget owns the visual
@@ -77,7 +271,9 @@ class FloatingGlassControl extends StatelessWidget {
     this.borderRadius = 28,
     this.tint,
     this.haloColor,
+    this.haloOpacity,
     this.backerOpacity,
+    this.useTopBarGlass = false,
     this.isDark,
     this.mobilePortraitOnly = false,
     this.allowChildOverflow = false,
@@ -93,7 +289,9 @@ class FloatingGlassControl extends StatelessWidget {
   final double borderRadius;
   final Color? tint;
   final Color? haloColor;
+  final double? haloOpacity;
   final double? backerOpacity;
+  final bool useTopBarGlass;
   final bool? isDark;
   final bool mobilePortraitOnly;
   final bool allowChildOverflow;
@@ -141,7 +339,9 @@ class FloatingGlassControl extends StatelessWidget {
       borderRadius: borderRadius,
       tint: resolvedTint,
       haloColor: resolvedHalo,
+      haloOpacity: haloOpacity,
       backerOpacity: backerOpacity,
+      useTopBarGlass: useTopBarGlass,
       isDark: dark,
       allowChildOverflow: allowChildOverflow,
       fallback: fallbackWidget,
@@ -203,7 +403,8 @@ class _FloatingGlassAppBarHostState extends State<_FloatingGlassAppBarHost> {
   void didUpdateWidget(covariant _FloatingGlassAppBarHost oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.observeScroll != widget.observeScroll ||
-        oldWidget.notificationPredicate != widget.notificationPredicate) {
+        oldWidget.notificationPredicate != widget.notificationPredicate ||
+        oldWidget.scrollDistance != widget.scrollDistance) {
       final nextObserver = widget.observeScroll
           ? ScrollNotificationObserver.maybeOf(context)
           : null;
@@ -267,18 +468,22 @@ class FloatingGlassScrollAware extends StatelessWidget {
 ///
 /// The body receives the measured header height so it can add equivalent
 /// initial scroll padding. That keeps the first frame unchanged while letting
-/// later content travel underneath the header and its shared blur layer.
+/// later content travel underneath the header and its shared alpha fade.
 class FloatingGlassPinnedHeaderLayout extends StatefulWidget {
   const FloatingGlassPinnedHeaderLayout({
     super.key,
     required this.header,
     required this.bodyBuilder,
     this.initialHeaderExtent = 0.0,
+    this.fadeContent = true,
+    this.fadeTailExtent = floatingGlassTopBarDefaultFadeTail,
   });
 
   final Widget header;
   final Widget Function(BuildContext context, double headerExtent) bodyBuilder;
   final double initialHeaderExtent;
+  final bool fadeContent;
+  final double fadeTailExtent;
 
   @override
   State<FloatingGlassPinnedHeaderLayout> createState() =>
@@ -312,14 +517,22 @@ class _FloatingGlassPinnedHeaderLayoutState
   @override
   Widget build(BuildContext context) {
     _scheduleHeaderMeasurement();
-    final headerExtent =
-        _measuredHeaderExtent ?? widget.initialHeaderExtent.clamp(0.0, 2000.0);
+    final headerExtent = _measuredHeaderExtent ??
+        widget.initialHeaderExtent.clamp(0.0, 2000.0).toDouble();
+    final body = widget.bodyBuilder(context, headerExtent);
+    final fadedBody = widget.fadeContent && headerExtent > 0.0
+        ? FloatingGlassTopBarContentFade(
+            topBarHeight: headerExtent,
+            tailExtent: widget.fadeTailExtent,
+            child: body,
+          )
+        : body;
 
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Positioned.fill(
-          child: widget.bodyBuilder(context, headerExtent),
+          child: fadedBody,
         ),
         Positioned(
           top: 0,
@@ -353,7 +566,7 @@ class FloatingGlassTopBarOverlay extends StatefulWidget {
     this.fadeTailExtent = 28.0,
     this.fadeFromTop = false,
     this.effectStrength = 1.0,
-    this.blur = true,
+    this.blur = false,
     this.excludedRegions = const <Rect>[],
     this.notificationPredicate = defaultScrollNotificationPredicate,
     this.tint,
@@ -366,7 +579,7 @@ class FloatingGlassTopBarOverlay extends StatefulWidget {
   /// Scroll offset at which the first body pixel reaches the pinned toolbar.
   final double overlapStart;
 
-  /// Distance over which the top blur/tint reaches its resting strength.
+  /// Distance over which the top fade reaches its resting strength.
   final double fadeExtent;
 
   /// Extra transparent feather below the toolbar. It lets content fade out
@@ -380,13 +593,14 @@ class FloatingGlassTopBarOverlay extends StatefulWidget {
   /// the bottom of a pinned sliver.
   final bool fadeFromTop;
 
-  /// Scales the blur and tint without changing when the effect starts. Lower
-  /// values are useful over high-contrast wallpapers where a full-strength
-  /// material would hide too much of the content beneath it.
+  /// Scales the fade without changing when the effect starts. Lower values
+  /// are useful over high-contrast wallpapers where a strong surface would
+  /// hide too much of the content beneath it.
   final double effectStrength;
 
-  /// Whether the overlay should blur the content behind it. Set this to false
-  /// for a lightweight gradient-only fade tail.
+  /// Whether the overlay should blur the content behind it. The shared top-bar
+  /// treatment is gradient-only by default; enable this only for a surface
+  /// that explicitly needs the legacy blur treatment.
   final bool blur;
 
   /// Circular holes in the overlay for leading/action controls.
@@ -487,10 +701,10 @@ class _FloatingGlassTopBarOverlayState
         final blur = 3.0 + progress * 13.0 * effectStrength;
         final topAlpha = widget.blur
             ? (0.22 + progress * 0.66) * effectStrength
-            : effectStrength;
+            : (0.04 + progress * 0.12) * effectStrength;
         final middleAlpha = widget.blur
             ? (0.08 + progress * 0.34) * effectStrength
-            : effectStrength * 0.42;
+            : (0.015 + progress * 0.04) * effectStrength;
 
         Widget surface = DecoratedBox(
           decoration: BoxDecoration(
@@ -615,7 +829,9 @@ class FloatingGlassAppBarAction extends StatelessWidget {
     this.margin = EdgeInsets.zero,
     this.tint,
     this.haloColor,
-    this.backerOpacity = 0.32,
+    this.haloOpacity = 0.28,
+    this.backerOpacity,
+    this.useTopBarGlass = false,
     this.isDark,
     this.collapseProgress,
     this.floatingThreshold = _floatingGlassAppBarControlThreshold,
@@ -627,7 +843,9 @@ class FloatingGlassAppBarAction extends StatelessWidget {
   final EdgeInsetsGeometry margin;
   final Color? tint;
   final Color? haloColor;
+  final double? haloOpacity;
   final double? backerOpacity;
+  final bool useTopBarGlass;
   final bool? isDark;
   final ValueListenable<double>? collapseProgress;
   final double floatingThreshold;
@@ -647,7 +865,9 @@ class FloatingGlassAppBarAction extends StatelessWidget {
             margin: margin,
             tint: tint,
             haloColor: haloColor,
+            haloOpacity: haloOpacity,
             backerOpacity: backerOpacity,
+            useTopBarGlass: useTopBarGlass,
             isDark: isDark,
             collapseProgress: standaloneProgress,
             floatingThreshold: floatingThreshold,
@@ -663,7 +883,9 @@ class FloatingGlassAppBarAction extends StatelessWidget {
       margin: margin,
       tint: tint,
       haloColor: haloColor,
+      haloOpacity: haloOpacity,
       backerOpacity: backerOpacity,
+      useTopBarGlass: useTopBarGlass,
       isDark: isDark,
       collapseProgress: progress,
       floatingThreshold: floatingThreshold,
@@ -680,7 +902,9 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
     required this.margin,
     required this.tint,
     required this.haloColor,
+    required this.haloOpacity,
     required this.backerOpacity,
+    required this.useTopBarGlass,
     required this.isDark,
     required this.collapseProgress,
     required this.floatingThreshold,
@@ -692,7 +916,9 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
   final EdgeInsetsGeometry margin;
   final Color? tint;
   final Color? haloColor;
+  final double? haloOpacity;
   final double? backerOpacity;
+  final bool useTopBarGlass;
   final bool? isDark;
   final ValueListenable<double> collapseProgress;
   final double floatingThreshold;
@@ -723,7 +949,7 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
 
   Widget _buildForProgress(BuildContext context, double progress) {
     final colorScheme = Theme.of(context).colorScheme;
-    final resolvedTint = tint ?? colorScheme.surface;
+    final resolvedTint = tint ?? _floatingAppBarTint(colorScheme, null);
 
     return Padding(
       padding: margin,
@@ -751,7 +977,9 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
                           borderRadius: borderRadius,
                           tint: resolvedTint,
                           haloColor: haloColor ?? colorScheme.primary,
+                          haloOpacity: haloOpacity,
                           backerOpacity: backerOpacity,
+                          useTopBarGlass: useTopBarGlass,
                           isDark: isDark,
                           child: const SizedBox.shrink(),
                         ),
@@ -814,6 +1042,7 @@ class FloatingGlassAppBar extends StatelessWidget
     this.animateColor = false,
     this.floatingControlTint,
     this.floatingControlIsDark,
+    this.floatingControlScrollDistance = _floatingGlassAppBarScrollDistance,
   });
 
   final Widget? leading;
@@ -855,6 +1084,7 @@ class FloatingGlassAppBar extends StatelessWidget
   /// backdrop whose brightness cannot be inferred from [backgroundColor].
   final Color? floatingControlTint;
   final bool? floatingControlIsDark;
+  final double floatingControlScrollDistance;
 
   @override
   Size get preferredSize => Size.fromHeight(
@@ -878,6 +1108,7 @@ class FloatingGlassAppBar extends StatelessWidget
         : FloatingGlassAppBarAction(
             tint: glassTint,
             haloColor: colorScheme.primary,
+            useTopBarGlass: true,
             isDark: glassIsDark,
             child: resolvedLeading,
           );
@@ -890,6 +1121,7 @@ class FloatingGlassAppBar extends StatelessWidget
                   margin: const EdgeInsets.symmetric(horizontal: 4),
                   tint: glassTint,
                   haloColor: colorScheme.primary,
+                  useTopBarGlass: true,
                   isDark: glassIsDark,
                   child: action,
                 ),
@@ -898,6 +1130,7 @@ class FloatingGlassAppBar extends StatelessWidget
 
     return _FloatingGlassAppBarHost(
       notificationPredicate: notificationPredicate,
+      scrollDistance: floatingControlScrollDistance,
       builder: (context, collapseProgress) => _FloatingGlassAppBarScope(
         collapseProgress: collapseProgress,
         child: AppBar(
@@ -982,14 +1215,25 @@ const double _floatingAppBarLeadingWidth = 72;
 const EdgeInsets _floatingAppBarActionsPadding = EdgeInsets.only(right: 12);
 
 bool _isFloatingGlassAppBarLayoutOnly(Widget action) {
-  return action is SizedBox || action is Spacer;
+  // Text actions must keep their intrinsic width. The circular glass shell
+  // is reserved for compact controls such as IconButton and PopupMenuButton;
+  // forcing a TextButton into 48 px would clip labels and overflow its row.
+  return action is SizedBox || action is Spacer || action is ButtonStyleButton;
 }
 
 Color _floatingAppBarTint(ColorScheme colorScheme, Color? backgroundColor) {
-  if (backgroundColor == null || backgroundColor.a == 0) {
-    return colorScheme.surface;
-  }
-  return backgroundColor;
+  final base = backgroundColor == null || backgroundColor.a == 0
+      ? colorScheme.surfaceContainerLow
+      : backgroundColor;
+  // Keep the lens in the same tonal family as the page. A very small primary
+  // lift prevents transparent AppBars from falling back to a detached gray
+  // disk while still letting the backdrop show through the glass.
+  return Color.alphaBlend(
+    colorScheme.primary.withValues(
+      alpha: colorScheme.brightness == Brightness.dark ? 0.08 : 0.045,
+    ),
+    base,
+  );
 }
 
 bool _floatingAppBarIsDark(
@@ -1208,6 +1452,7 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
         : FloatingGlassAppBarAction(
             tint: glassTint,
             haloColor: colorScheme.primary,
+            useTopBarGlass: true,
             isDark: glassIsDark,
             child: resolvedLeading,
           );
@@ -1220,6 +1465,7 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
                   margin: const EdgeInsets.symmetric(horizontal: 4),
                   tint: glassTint,
                   haloColor: colorScheme.primary,
+                  useTopBarGlass: true,
                   isDark: glassIsDark,
                   child: action,
                 ),
@@ -1232,21 +1478,14 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
             ? null
             : _floatingAppBarActionsPadding);
 
-    final useScrollDrivenControls = floatingControlScrollDistance != null;
     return _FloatingGlassAppBarHost(
-      observeScroll: useScrollDrivenControls,
+      observeScroll: true,
       scrollDistance:
           floatingControlScrollDistance ?? _floatingGlassAppBarScrollDistance,
       notificationPredicate: defaultScrollNotificationPredicate,
       builder: (context, collapseProgress) {
         final flexibleSpaceChild =
             flexibleSpace ?? const FloatingGlassTopBarBackground();
-        final decoratedFlexibleSpace = useScrollDrivenControls
-            ? flexibleSpaceChild
-            : _FloatingGlassCollapseReporter(
-                collapseProgress: collapseProgress,
-                child: flexibleSpaceChild,
-              );
         return _FloatingGlassAppBarScope(
           collapseProgress: collapseProgress,
           child: switch (_variant) {
@@ -1257,7 +1496,7 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
                 title: title,
                 actions: decoratedActions,
                 automaticallyImplyActions: false,
-                flexibleSpace: decoratedFlexibleSpace,
+                flexibleSpace: flexibleSpaceChild,
                 bottom: bottom,
                 elevation: elevation,
                 scrolledUnderElevation: scrolledUnderElevation,
@@ -1298,7 +1537,7 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
                 title: title,
                 actions: decoratedActions,
                 automaticallyImplyActions: false,
-                flexibleSpace: decoratedFlexibleSpace,
+                flexibleSpace: flexibleSpaceChild,
                 bottom: bottom,
                 elevation: elevation,
                 scrolledUnderElevation: scrolledUnderElevation,
@@ -1339,7 +1578,7 @@ class FloatingGlassSliverAppBar extends StatelessWidget {
                 title: title,
                 actions: decoratedActions,
                 automaticallyImplyActions: false,
-                flexibleSpace: decoratedFlexibleSpace,
+                flexibleSpace: flexibleSpaceChild,
                 bottom: bottom,
                 elevation: elevation,
                 scrolledUnderElevation: scrolledUnderElevation,
@@ -1566,11 +1805,11 @@ class FloatingGlassActionButton extends StatelessWidget {
   }
 }
 
-/// Background used by shared AppBar callsites and custom top toolbars.
+/// Fade used by shared AppBar callsites and custom top toolbars.
 ///
-/// It is deliberately a small bounded blur. The vertical gradient keeps the
-/// status-bar side legible while fading the material into the page content,
-/// matching the reference's soft, floating top-control treatment.
+/// The default treatment is a low-contrast gradient only. It keeps the page
+/// continuous while content moves beneath the toolbar; the optional blur is
+/// reserved for callsites that explicitly opt into a stronger glass surface.
 class FloatingGlassTopBarBackground extends StatelessWidget {
   const FloatingGlassTopBarBackground({
     super.key,
@@ -1578,6 +1817,7 @@ class FloatingGlassTopBarBackground extends StatelessWidget {
     this.tint,
     this.isDark,
     this.unboundedHeight,
+    this.blur = false,
   });
 
   final double fadeExtent;
@@ -1588,6 +1828,7 @@ class FloatingGlassTopBarBackground extends StatelessWidget {
   /// unbounded vertical constraint. Normal Scaffold/SliverAppBar callsites
   /// remain fully constraint-driven.
   final double? unboundedHeight;
+  final bool blur;
 
   @override
   Widget build(BuildContext context) {
@@ -1618,9 +1859,10 @@ class FloatingGlassTopBarBackground extends StatelessWidget {
     final settings = useFlexibleSpaceSettings
         ? context.dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>()
         : null;
-    final resolvedProgress = settings == null
-        ? progress
-        : _floatingGlassAppBarProgressForFlexibleSpace(settings);
+    final resolvedProgress =
+        settings == null || settings.maxExtent <= settings.minExtent
+            ? progress
+            : _floatingGlassAppBarProgressForFlexibleSpace(settings);
 
     return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
       valueListenable: LiquidGlassEffectService.configurationListenable,
@@ -1636,7 +1878,7 @@ class FloatingGlassTopBarBackground extends StatelessWidget {
                         .clamp(0.0, 1000.0),
                   );
 
-            if (!configuration.enabled) return content;
+            if (blur && !configuration.enabled) return content;
 
             final intensity =
                 (resolvedProgress * fadeExtent.clamp(0.0, 1.0)).clamp(0.0, 1.0);
@@ -1649,42 +1891,52 @@ class FloatingGlassTopBarBackground extends StatelessWidget {
               colorScheme.primary.withValues(alpha: dark ? 0.08 : 0.05),
               base,
             );
-            final blur = 10.0 + (intensity * 14.0);
-            final topAlpha = (0.12 + (intensity * 0.74)).clamp(0.0, 1.0);
-            final middleAlpha = (0.06 + (intensity * 0.58)).clamp(0.0, 1.0);
-            final lowerAlpha = (intensity * 0.22).clamp(0.0, 1.0);
+            final blurSigma = 10.0 + (intensity * 14.0);
+            final topAlpha = blur
+                ? (0.12 + (intensity * 0.74)).clamp(0.0, 1.0)
+                : (0.04 + (intensity * 0.12)).clamp(0.0, 1.0);
+            final middleAlpha = blur
+                ? (0.06 + (intensity * 0.58)).clamp(0.0, 1.0)
+                : (0.015 + (intensity * 0.04)).clamp(0.0, 1.0);
+            final lowerAlpha = blur
+                ? (intensity * 0.22).clamp(0.0, 1.0)
+                : (intensity * 0.02).clamp(0.0, 1.0);
 
-            return ClipRect(
-              child: BackdropFilter(
-                filter: ui.ImageFilter.blur(
-                  sigmaX: blur,
-                  sigmaY: blur,
-                  tileMode: TileMode.clamp,
-                ),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      stops: const [0, 0.38, 0.72, 1],
-                      colors: [
-                        topColor.withValues(
-                          alpha: topAlpha * (dark ? 0.94 : 1.0),
-                        ),
-                        topColor.withValues(
-                          alpha: middleAlpha * (dark ? 0.9 : 1.0),
-                        ),
-                        topColor.withValues(
-                          alpha: lowerAlpha * (dark ? 0.9 : 1.0),
-                        ),
-                        topColor.withValues(alpha: 0),
-                      ],
+            Widget surface = DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: const [0, 0.38, 0.72, 1],
+                  colors: [
+                    topColor.withValues(
+                      alpha: topAlpha * (dark ? 0.94 : 1.0),
                     ),
-                  ),
-                  child: content,
+                    topColor.withValues(
+                      alpha: middleAlpha * (dark ? 0.9 : 1.0),
+                    ),
+                    topColor.withValues(
+                      alpha: lowerAlpha * (dark ? 0.9 : 1.0),
+                    ),
+                    topColor.withValues(alpha: 0),
+                  ],
                 ),
               ),
+              child: content,
             );
+
+            if (blur) {
+              surface = BackdropFilter(
+                filter: ui.ImageFilter.blur(
+                  sigmaX: blurSigma,
+                  sigmaY: blurSigma,
+                  tileMode: TileMode.clamp,
+                ),
+                child: surface,
+              );
+            }
+
+            return ClipRect(child: surface);
           },
         );
       },

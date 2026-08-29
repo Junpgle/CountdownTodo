@@ -27,6 +27,7 @@ import '../utils/page_transitions.dart';
 import '../services/feature_tip_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../widgets/coach_mark_overlay.dart';
+import '../widgets/floating_glass_control.dart';
 
 part 'todo_chat_screen_contract.dart';
 part 'todo_chat_screen_lifecycle.dart';

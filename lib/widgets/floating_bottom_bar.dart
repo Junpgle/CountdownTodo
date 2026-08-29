@@ -15,8 +15,16 @@ export 'floating_glass_control.dart'
         FloatingGlassPinnedHeaderLayout,
         FloatingGlassScrollAware,
         FloatingGlassSliverAppBar,
+        FloatingGlassSliverContentFade,
+        FloatingGlassSliverContentFadeGroup,
         FloatingGlassTopBarBackground,
+        FloatingGlassTopBarContentFade,
         FloatingGlassTopBarOverlay,
+        floatingGlassTopBarContentFadeShader,
+        floatingGlassTopBarDefaultFadeTail,
+        floatingGlassTopBarHeight,
+        floatingGlassTopBarSystemOverlayStyle,
+        floatingGlassTopBarTitleProgress,
         floatingBottomBarShouldFloat,
         floatingBottomBarShouldFloatFor;
 
