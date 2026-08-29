@@ -1,3 +1,4 @@
+import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -225,7 +226,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(_isEditing ? '编辑账单' : '记一笔'),
         actions: [
           TextButton(

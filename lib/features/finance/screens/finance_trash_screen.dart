@@ -1,3 +1,4 @@
+import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 
 import '../models/finance_models.dart';
@@ -95,7 +96,9 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('记账回收站')),
+      appBar: FloatingGlassAppBar(
+          flexibleSpace: const FloatingGlassTopBarBackground(),
+          title: const Text('记账回收站')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _transactions.isEmpty &&

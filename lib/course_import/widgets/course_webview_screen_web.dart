@@ -1,3 +1,4 @@
+import '../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -19,7 +20,9 @@ class CourseWebViewScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('网页导入')),
+      appBar: FloatingGlassAppBar(
+          flexibleSpace: const FloatingGlassTopBarBackground(),
+          title: const Text('网页导入')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),

@@ -208,7 +208,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
     final scaffold = Scaffold(
       extendBody: useFloatingBottomBar,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('记账'),
         actions: [
           IconButton(
@@ -306,7 +307,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                 ),
       floatingActionButton: _isLoading || _loadError != null
           ? null
-          : FloatingActionButton.extended(
+          : FloatingGlassActionButton.extended(
               onPressed: _openEntry,
               icon: const Icon(Icons.add),
               label: const Text('记一笔'),

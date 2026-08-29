@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
+import '../../../widgets/floating_glass_control.dart';
 import 'finance_budget_entry_screen.dart';
 
 class FinanceBudgetScreen extends StatefulWidget {
@@ -167,7 +168,10 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('预算')),
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
+        title: const Text('预算'),
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _loadError != null
@@ -226,7 +230,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                 ),
       floatingActionButton: _isLoading || _loadError != null
           ? null
-          : FloatingActionButton.extended(
+          : FloatingGlassActionButton.extended(
               onPressed: () => _openEditor(),
               icon: const Icon(Icons.add),
               label: const Text('新增预算'),

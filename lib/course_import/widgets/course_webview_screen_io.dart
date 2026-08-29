@@ -9,6 +9,7 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 import 'package:webview_win_floating/webview_win_floating.dart';
 import 'dart:convert'; // 🚀 添加了 jsonDecode 必需的包
 import '../../storage_service.dart';
+import '../../widgets/floating_glass_control.dart';
 
 class CourseWebViewScreen extends StatefulWidget {
   final String initialUrl;
@@ -251,7 +252,8 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         titleSpacing: 0,
         title: Container(
           height: 40,
@@ -354,7 +356,7 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingGlassActionButton.extended(
         onPressed: _isLoading ? null : _captureHtml,
         icon: _isLoading
             ? const SizedBox(

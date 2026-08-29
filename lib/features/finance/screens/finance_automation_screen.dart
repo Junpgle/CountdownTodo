@@ -1,3 +1,4 @@
+import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -676,7 +677,8 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('记账自动化'),
         actions: [
           IconButton(

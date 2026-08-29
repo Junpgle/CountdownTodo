@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../widgets/floating_glass_control.dart';
+
 /// 适配请求二级界面 - 经过美化重构
 class CourseAdaptationScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -72,13 +74,14 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
       backgroundColor: colorScheme.surface,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
               title: const Text('学校适配申请',
                   style: TextStyle(fontWeight: FontWeight.bold)),
               centerTitle: true,
-              backgroundColor: colorScheme.surface,
+              backgroundColor: Colors.transparent,
               surfaceTintColor: Colors.transparent,
               elevation: 0,
+              flexibleSpace: const FloatingGlassTopBarBackground(),
             ),
       body: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
