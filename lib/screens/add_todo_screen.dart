@@ -1600,7 +1600,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     return Scaffold(
       extendBody: useFloatingBottomBar,
       backgroundColor: bgColor,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         backgroundColor: bgColor,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -1617,12 +1618,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           ),
         ),
         actions: [
-          KeyedSubtree(
+          TextButton(
             key: _saveButtonKey,
-            child: TextButton(
-              onPressed: _selectedTabIndex == 0 ? _addTodo : _addBatchTodos,
-              child: const Text("完成",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            onPressed: _selectedTabIndex == 0 ? _addTodo : _addBatchTodos,
+            child: const Text(
+              "完成",
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ),
           const SizedBox(width: 8),
@@ -1807,13 +1810,13 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             ],
             // Input Section
             OptionalLiquidGlassCard(
-              borderRadius: 16,
+              borderRadius: 24,
               highContrast: true,
               fallbackDecoration: BoxDecoration(
-                color: colors.surface,
-                borderRadius: BorderRadius.circular(16),
+                color: colors.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(24),
                 border: Border.fromBorderSide(BorderSide(
-                    color: colors.outlineVariant.withValues(alpha: 0.5))),
+                    color: colors.outlineVariant.withValues(alpha: 0.55))),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -1828,8 +1831,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                         hintText: _manualCaptureKind == _ManualCaptureKind.todo
                             ? "准备做些什么？"
                             : "要记录什么日程？",
+                        filled: false,
                         border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
                         isDense: true,
+                        isCollapsed: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 4),
                       ),
                     ),
                     if (_manualCaptureKind == _ManualCaptureKind.todo)
@@ -1842,8 +1851,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                       minLines: 1,
                       decoration: InputDecoration(
                         hintText: "补充细节或备注...",
+                        filled: false,
                         border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
                         isDense: true,
+                        isCollapsed: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 4),
                         hintStyle: TextStyle(
                             color: Colors.grey.withValues(alpha: 0.8)),
                       ),

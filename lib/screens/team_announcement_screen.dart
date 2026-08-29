@@ -5,6 +5,7 @@ import '../models.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/json_value_parser.dart';
 import '../widgets/app_sheet_widgets.dart';
+import '../widgets/floating_glass_control.dart';
 
 class TeamAnnouncementScreen extends StatefulWidget {
   final Team team;
@@ -381,11 +382,12 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
     return Scaffold(
       backgroundColor:
           isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FA),
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
         title: Text('${widget.team.name} 公告',
             style: const TextStyle(fontWeight: FontWeight.bold)),
         elevation: 0,
         backgroundColor: Colors.transparent,
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         actions: [
           IconButton(
               icon: const Icon(Icons.refresh_rounded),
@@ -407,7 +409,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                   ),
                 ),
       floatingActionButton: isAdmin
-          ? FloatingActionButton.extended(
+          ? FloatingGlassActionButton.extended(
               onPressed: _showCreateAnnouncementDialog,
               backgroundColor: Theme.of(context).colorScheme.secondary,
               foregroundColor: Colors.white,

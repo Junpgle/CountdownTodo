@@ -1,3 +1,4 @@
+import '../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
@@ -916,7 +917,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     final currentTodo = hasMoreTodos ? _allTodos[_currentIndex] : null;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(hasMoreTodos
             ? '确认事项 (${_currentIndex + 1}/${_allTodos.length})'
             : '确认完成'),

@@ -1394,7 +1394,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
       PageTransitions.material(
         builder: (context) => Scaffold(
           backgroundColor: Colors.black,
-          appBar: AppBar(
+          appBar: FloatingGlassAppBar(
+            flexibleSpace: const FloatingGlassTopBarBackground(),
             backgroundColor: Colors.black,
             foregroundColor: Colors.white,
             title: const Text("图片预览"),

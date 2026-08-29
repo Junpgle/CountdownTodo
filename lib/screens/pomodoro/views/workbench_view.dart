@@ -1093,7 +1093,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     try {
       final records = await PomodoroService.getRecords()
           .timeout(const Duration(seconds: 2), onTimeout: () => []);
-      return TodoClassificationService.recommendPomodoroTagUuidsForTodo(
+      return await TodoClassificationService.recommendPomodoroTagUuidsForTodo(
         todo: todo,
         tags: _tags,
         history: records,

@@ -1,3 +1,4 @@
+import '../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -165,7 +166,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

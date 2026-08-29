@@ -417,7 +417,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
 
     return Scaffold(
       backgroundColor: bgColor,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(widget.applyToFutureOccurrences ? '编辑后续周期' : '编辑待办'),
         backgroundColor: bgColor,
         elevation: 0,
@@ -503,11 +504,11 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           _buildRelatedRecurrenceSection(colorScheme),
           OptionalLiquidGlassCard(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            borderRadius: 16,
+            borderRadius: 24,
             highContrast: true,
             fallbackDecoration: BoxDecoration(
-              color: colorScheme.surface,
-              borderRadius: BorderRadius.circular(16),
+              color: colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
                     color: Colors.black.withValues(alpha: 0.01), blurRadius: 10)
@@ -520,9 +521,21 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                   style: const TextStyle(
                       fontSize: 18, fontWeight: FontWeight.w600),
                   decoration: const InputDecoration(
-                      hintText: "待办内容", border: InputBorder.none),
+                    hintText: "待办内容",
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    isCollapsed: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 4),
+                  ),
                 ),
-                const Divider(height: 1),
+                Divider(
+                  height: 1,
+                  thickness: 0.8,
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+                ),
                 TextField(
                   controller: _remarkCtrl,
                   maxLines: 3,
@@ -532,10 +545,20 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                     hintText: "备注 (可选)",
                     hintStyle:
                         TextStyle(color: Colors.grey.withValues(alpha: 0.8)),
+                    filled: false,
                     border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    isCollapsed: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 4),
                   ),
                 ),
-                const Divider(height: 1),
+                Divider(
+                  height: 1,
+                  thickness: 0.8,
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+                ),
                 SwitchListTile(
                   key: const ValueKey('todo_edit_completion_switch'),
                   contentPadding: EdgeInsets.zero,
@@ -1896,7 +1919,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       PageTransitions.material(
         builder: (context) => Scaffold(
           backgroundColor: Colors.black,
-          appBar: AppBar(
+          appBar: FloatingGlassAppBar(
+            flexibleSpace: const FloatingGlassTopBarBackground(),
             backgroundColor: Colors.black,
             foregroundColor: Colors.white,
             title: const Text("图片预览"),

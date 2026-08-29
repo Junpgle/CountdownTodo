@@ -326,56 +326,59 @@ class _PomodoroScreenState extends State<PomodoroScreen>
 
     return Scaffold(
       extendBody: useFloatingBottomBar,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            // ── 顶部导航栏：淡入淡出 ──
-            _buildAppBar(isFocusingOrWatching),
+      body: FloatingGlassScrollAware(
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              // ── 顶部导航栏：淡入淡出 ──
+              _buildAppBar(isFocusingOrWatching),
 
-            // ── 主内容区：IndexedStack 保持状态 + AnimatedOpacity 淡入淡出 ──
-            Expanded(
-              child: FadingIndexedStack(
-                index: tabIndex,
-                children: [
-                  // portrait workbench
-                  PomodoroWorkbench(
-                    key: _workbenchKey,
-                    username: widget.username,
-                    onPhaseChanged: (phase) {
-                      if (!_disposed && mounted && _currentPhase != phase) {
-                        setState(() => _currentPhase = phase);
-                      }
-                    },
-                    onReady: () {
-                      if (!_disposed && mounted && !_workbenchReady) {
-                        setState(() => _workbenchReady = true);
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) _checkCoachMarks();
-                        });
-                      }
-                    },
-                    onRecordAdded: () {
-                      if (!_disposed && mounted) {
-                        try {
-                          _statsKey.currentState?.reload();
-                        } catch (_) {}
-                      }
-                    },
-                  ),
-                  PomodoroStats(
-                    key: _statsKey,
-                    username: widget.username,
-                    initialDimension: widget.initialDimension,
-                  ),
-                ],
+              // ── 主内容区：IndexedStack 保持状态 + AnimatedOpacity 淡入淡出 ──
+              Expanded(
+                child: FadingIndexedStack(
+                  index: tabIndex,
+                  children: [
+                    // portrait workbench
+                    PomodoroWorkbench(
+                      key: _workbenchKey,
+                      username: widget.username,
+                      onPhaseChanged: (phase) {
+                        if (!_disposed && mounted && _currentPhase != phase) {
+                          setState(() => _currentPhase = phase);
+                        }
+                      },
+                      onReady: () {
+                        if (!_disposed && mounted && !_workbenchReady) {
+                          setState(() => _workbenchReady = true);
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) _checkCoachMarks();
+                          });
+                        }
+                      },
+                      onRecordAdded: () {
+                        if (!_disposed && mounted) {
+                          try {
+                            _statsKey.currentState?.reload();
+                          } catch (_) {}
+                        }
+                      },
+                    ),
+                    PomodoroStats(
+                      key: _statsKey,
+                      username: widget.username,
+                      initialDimension: widget.initialDimension,
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            // 手机竖屏时底栏挂到 Scaffold 的悬浮层，避免在内容 Column
-            // 中占据一整块底部高度；桌面/横屏保留原有的普通布局。
-            if (!useFloatingBottomBar) _buildBottomTabBar(isFocusingOrWatching),
-          ],
+              // 手机竖屏时底栏挂到 Scaffold 的悬浮层，避免在内容 Column
+              // 中占据一整块底部高度；桌面/横屏保留原有的普通布局。
+              if (!useFloatingBottomBar)
+                _buildBottomTabBar(isFocusingOrWatching),
+            ],
+          ),
         ),
       ),
       bottomNavigationBar: useFloatingBottomBar
@@ -391,32 +394,41 @@ class _PomodoroScreenState extends State<PomodoroScreen>
       height: isFocusingOrWatching ? 0 : kToolbarHeight,
       clipBehavior: Clip.hardEdge,
       decoration: const BoxDecoration(),
-      child: AnimatedOpacity(
-        opacity: isFocusingOrWatching ? 0.0 : 1.0,
-        duration: const Duration(milliseconds: 300),
-        child: SizedBox(
-          height: kToolbarHeight,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
-              children: [
-                if (Navigator.canPop(context))
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                const Expanded(
-                  child: Center(
-                    child: Text('🍅 番茄钟',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                  ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const Positioned.fill(child: FloatingGlassTopBarBackground()),
+          AnimatedOpacity(
+            opacity: isFocusingOrWatching ? 0.0 : 1.0,
+            duration: const Duration(milliseconds: 300),
+            child: SizedBox(
+              height: kToolbarHeight,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Row(
+                  children: [
+                    if (Navigator.canPop(context))
+                      FloatingGlassAppBarAction(
+                        child: IconButton(
+                          tooltip: '返回',
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ),
+                    const Expanded(
+                      child: Center(
+                        child: Text('🍅 番茄钟',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    if (Navigator.canPop(context)) const SizedBox(width: 48),
+                  ],
                 ),
-                if (Navigator.canPop(context)) const SizedBox(width: 48),
-              ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

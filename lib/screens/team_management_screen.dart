@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:ui';
 import 'dart:async';
 import '../models.dart';
 import '../services/api_service.dart';
@@ -22,6 +21,7 @@ import '../services/storage/habit_storage.dart';
 import '../features/habits/models/habit_goal.dart';
 import '../features/habits/models/habit_goal_rule.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
 String? normalizeInviteCode(String? code) {
@@ -773,7 +773,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             ),
           ],
         ),
-        floatingActionButton: FloatingActionButton(
+        floatingActionButton: FloatingGlassActionButton.small(
           backgroundColor: Theme.of(context).colorScheme.secondary,
           onPressed: _showSpeedDialMenu,
           child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
@@ -789,25 +789,30 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             parent: AlwaysScrollableScrollPhysics()),
         slivers: [
           _buildSliverAppBar(isDark),
-          SliverToBoxAdapter(child: _buildScanProgressBanner()),
-          _buildQuickActionsSliver(isWide),
-          if (_myInvitations.isNotEmpty)
-            SliverToBoxAdapter(child: _buildInvitationsSection()),
-          if (_isLoading && _teams.isEmpty && _myInvitations.isEmpty)
-            _buildInitialLoadingState(isDark)
-          else if (_teams.isEmpty && _myInvitations.isEmpty)
-            SliverFillRemaining(
-                hasScrollBody: false, child: _buildEmptyState(isDark))
-          else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) => _buildTeamCard(_teams[index], isDark),
-                  childCount: _teams.length,
+          FloatingGlassSliverContentFadeGroup(
+            topBarHeight: floatingGlassTopBarHeight(context),
+            slivers: [
+              SliverToBoxAdapter(child: _buildScanProgressBanner()),
+              _buildQuickActionsSliver(isWide),
+              if (_myInvitations.isNotEmpty)
+                SliverToBoxAdapter(child: _buildInvitationsSection()),
+              if (_isLoading && _teams.isEmpty && _myInvitations.isEmpty)
+                _buildInitialLoadingState(isDark)
+              else if (_teams.isEmpty && _myInvitations.isEmpty)
+                SliverFillRemaining(
+                    hasScrollBody: false, child: _buildEmptyState(isDark))
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => _buildTeamCard(_teams[index], isDark),
+                      childCount: _teams.length,
+                    ),
+                  ),
                 ),
-              ),
-            ),
+            ],
+          ),
         ],
       ),
       floatingActionButton: _buildSpeedDial(context, isDark),
@@ -815,20 +820,13 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   }
 
   Widget _buildSliverAppBar(bool isDark) {
-    return SliverAppBar(
+    return FloatingGlassSliverAppBar(
       floating: true,
       pinned: true,
       expandedHeight: 60,
       elevation: 0,
-      backgroundColor: isDark
-          ? Colors.black.withValues(alpha: 0.65)
-          : Colors.white.withValues(alpha: 0.65),
-      flexibleSpace: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(color: Colors.transparent),
-        ),
-      ),
+      backgroundColor: Colors.transparent,
+      flexibleSpace: const FloatingGlassTopBarBackground(),
       title: const Text('团队协作',
           style: TextStyle(
               fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
@@ -1058,89 +1056,97 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   Widget _buildMasterList(bool isDark) {
     return CustomScrollView(
       slivers: [
-        SliverAppBar(
+        FloatingGlassSliverAppBar(
           pinned: true,
           title: const Text('团队列表',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
           actions: [_buildMessageCenterAction()],
           backgroundColor: Colors.transparent,
           elevation: 0,
+          flexibleSpace: const FloatingGlassTopBarBackground(),
         ),
-        _buildQuickActionsSliver(true), // 🚀 新增：宽屏模式下显示全景汇聚和冲突中心
-        if (_myInvitations.isNotEmpty)
-          SliverToBoxAdapter(child: _buildInvitationsSection()),
-        SliverPadding(
-          padding: const EdgeInsets.all(16),
-          sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final team = _teams[index];
-                final isSelected = _selectedTeam?.uuid == team.uuid;
-                final pendingCount = _teamPendingCounts[team.uuid] ?? 0;
-                final conflictCount = _teamConflictCounts[team.uuid] ?? 0;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: InkWell(
-                    onTap: () => setState(() => _selectedTeam = team),
-                    borderRadius: BorderRadius.circular(20),
-                    child: OptionalLiquidGlassCard(
-                      padding: const EdgeInsets.all(16),
-                      borderRadius: 20,
-                      highContrast: true,
-                      fallbackDecoration: BoxDecoration(
-                        color: isSelected
-                            ? Theme.of(context)
-                                .colorScheme
-                                .secondary
-                                .withValues(alpha: 0.1)
-                            : (isDark
-                                ? Colors.white.withValues(alpha: 0.05)
-                                : Colors.white),
+        FloatingGlassSliverContentFadeGroup(
+          topBarHeight: floatingGlassTopBarHeight(context),
+          slivers: [
+            _buildQuickActionsSliver(true),
+            if (_myInvitations.isNotEmpty)
+              SliverToBoxAdapter(child: _buildInvitationsSection()),
+            SliverPadding(
+              padding: const EdgeInsets.all(16),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final team = _teams[index];
+                    final isSelected = _selectedTeam?.uuid == team.uuid;
+                    final pendingCount = _teamPendingCounts[team.uuid] ?? 0;
+                    final conflictCount = _teamConflictCounts[team.uuid] ?? 0;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: InkWell(
+                        onTap: () => setState(() => _selectedTeam = team),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
+                        child: OptionalLiquidGlassCard(
+                          padding: const EdgeInsets.all(16),
+                          borderRadius: 20,
+                          highContrast: true,
+                          fallbackDecoration: BoxDecoration(
                             color: isSelected
                                 ? Theme.of(context)
                                     .colorScheme
                                     .secondary
-                                    .withValues(alpha: 0.3)
-                                : Colors.transparent),
-                      ),
-                      child: Row(
-                        children: [
-                          _buildTeamAvatar(team),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(team.name,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15),
-                                    overflow: TextOverflow.ellipsis),
-                                Text('${team.memberCount} 位成员',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey.shade500)),
-                              ],
-                            ),
+                                    .withValues(alpha: 0.1)
+                                : (isDark
+                                    ? Colors.white.withValues(alpha: 0.05)
+                                    : Colors.white),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                                color: isSelected
+                                    ? Theme.of(context)
+                                        .colorScheme
+                                        .secondary
+                                        .withValues(alpha: 0.3)
+                                    : Colors.transparent),
                           ),
-                          if (conflictCount > 0) ...[
-                            _buildCountBadge(conflictCount, Colors.orangeAccent,
-                                icon: Icons.schedule_rounded),
-                            const SizedBox(width: 6),
-                          ],
-                          if (pendingCount > 0)
-                            _buildCountBadge(pendingCount, Colors.redAccent),
-                        ],
+                          child: Row(
+                            children: [
+                              _buildTeamAvatar(team),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(team.name,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15),
+                                        overflow: TextOverflow.ellipsis),
+                                    Text('${team.memberCount} 位成员',
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey.shade500)),
+                                  ],
+                                ),
+                              ),
+                              if (conflictCount > 0) ...[
+                                _buildCountBadge(
+                                    conflictCount, Colors.orangeAccent,
+                                    icon: Icons.schedule_rounded),
+                                const SizedBox(width: 6),
+                              ],
+                              if (pendingCount > 0)
+                                _buildCountBadge(
+                                    pendingCount, Colors.redAccent),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                );
-              },
-              childCount: _teams.length,
+                    );
+                  },
+                  childCount: _teams.length,
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ],
     );
@@ -1994,8 +2000,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
           topRadius: 32,
           fallbackDecoration: BoxDecoration(
             color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(32)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
           ),
           child: _TeamMembersView(
               team: team,
@@ -2082,7 +2087,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   }
 
   Widget _buildSpeedDial(BuildContext context, bool isDark) {
-    return FloatingActionButton(
+    return FloatingGlassActionButton.small(
       backgroundColor: Theme.of(context).colorScheme.secondary,
       onPressed: () {
         showAppModalBottomSheet(
@@ -2774,10 +2779,7 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
       child: ListTile(
         leading: CircleAvatar(
             backgroundColor: isAdmin
-                ? Theme.of(context)
-                    .colorScheme
-                    .secondary
-                    .withValues(alpha: 0.1)
+                ? Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1)
                 : Colors.grey.withValues(alpha: 0.1),
             child: Text(m['username']?[0]?.toUpperCase() ?? '?',
                 style: TextStyle(

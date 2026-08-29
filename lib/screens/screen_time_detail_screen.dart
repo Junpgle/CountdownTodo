@@ -520,13 +520,14 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     return Scaffold(
       extendBody: useFloatingBottomBar,
       backgroundColor: cs.surfaceContainerLowest,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
         title: const Text("详细统计",
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
+        flexibleSpace: const FloatingGlassTopBarBackground(),
       ),
       bottomNavigationBar: useFloatingBottomBar
           ? FloatingBottomNavigationBar(
@@ -1375,13 +1376,14 @@ class CategoryDetailScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: cs.surfaceContainerLowest,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
         title: Text(categoryName,
             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
+        flexibleSpace: const FloatingGlassTopBarBackground(),
       ),
       body: Center(
         child: ConstrainedBox(
@@ -1641,13 +1643,14 @@ class AppDetailScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: cs.surfaceContainerLowest,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
         title: const Text("应用详情",
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
+        flexibleSpace: const FloatingGlassTopBarBackground(),
       ),
       body: Center(
         child: ConstrainedBox(

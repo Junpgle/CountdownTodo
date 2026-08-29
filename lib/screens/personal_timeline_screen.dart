@@ -1322,7 +1322,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final isWide = MediaQuery.of(context).size.width > 900;
     final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
     final topPadding = MediaQuery.paddingOf(context).top;
-    final topBarHeight = topPadding + kToolbarHeight;
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
       extendBody: useFloatingBottomBar,
       bottomNavigationBar: useFloatingBottomBar
@@ -1355,7 +1355,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       body: Stack(
         children: [
           _buildBackground(colorScheme),
-          _buildTimelineContentFade(
+          FloatingGlassTopBarContentFade(
             topBarHeight: topBarHeight,
             child: CustomScrollView(
               controller: _timelineScrollController,
@@ -1547,16 +1547,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             right: 0,
             height: topBarHeight,
             child: AnnotatedRegion<SystemUiOverlayStyle>(
-              value: SystemUiOverlayStyle(
-                statusBarColor: Colors.transparent,
-                statusBarIconBrightness:
-                    colorScheme.brightness == Brightness.dark
-                        ? Brightness.light
-                        : Brightness.dark,
-                statusBarBrightness: colorScheme.brightness == Brightness.dark
-                    ? Brightness.dark
-                    : Brightness.light,
-              ),
+              value: floatingGlassTopBarSystemOverlayStyle(context),
               child: Padding(
                 padding: EdgeInsets.only(top: topPadding),
                 child: SizedBox(
@@ -1654,39 +1645,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     );
   }
 
-  Widget _buildTimelineContentFade({
-    required double topBarHeight,
-    required Widget child,
-  }) {
-    return ShaderMask(
-      blendMode: BlendMode.dstIn,
-      shaderCallback: (bounds) {
-        final fadeExtent = math.min(
-          bounds.height,
-          topBarHeight + 36.0,
-        );
-        final fadeHeight = math.max(1.0, fadeExtent);
-        return LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          // Fade the scrolling pixels themselves instead of painting a
-          // tinted rectangle over them. This keeps the background continuous
-          // and leaves no visible edge at the bottom of the toolbar.
-          stops: const [0.0, 0.18, 0.78, 1.0],
-          colors: [
-            Colors.transparent,
-            Colors.transparent,
-            Colors.white.withValues(alpha: 0.86),
-            Colors.white,
-          ],
-        ).createShader(
-          Rect.fromLTWH(0, 0, bounds.width, fadeHeight),
-        );
-      },
-      child: child,
-    );
-  }
-
   Widget _buildTimelineToolbar(ColorScheme cs) {
     final isDark = cs.brightness == Brightness.dark;
 
@@ -1749,9 +1707,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
     final scrollOffset = math.max(0.0, _timelineScrollController.offset);
     final labelOffset = _timelinePeriodLabelOffset(context);
-    final titleProgress = ((scrollOffset - (labelOffset - 36.0)) /
-            math.max(1.0, labelOffset + 10.0 - (labelOffset - 36.0)))
-        .clamp(0.0, 1.0);
+    final titleProgress = floatingGlassTopBarTitleProgress(
+      scrollOffset: scrollOffset,
+      contentOffset: labelOffset,
+    );
     if ((titleProgress - _timelineTitleProgress.value).abs() > 0.001) {
       _timelineTitleProgress.value = titleProgress;
     }

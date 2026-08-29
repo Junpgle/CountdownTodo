@@ -19,6 +19,7 @@ import 'dart:ui' as ui;
 import 'pomodoro_screen.dart';
 import '../services/feature_tip_service.dart';
 import '../widgets/coach_mark_overlay.dart';
+import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import 'pomodoro/unified_tag_manager_screen.dart';
 
@@ -40,6 +41,11 @@ const int kTotalCols = 24 * kColsPerH; // 总列数 = 240
 // 周视图常量
 const double kWeekTimeW = 44.0;
 const double kWeekDayW = 100.0;
+
+// 时间日志的浮动操作区采用同一套柔和圆角，避免外层胶囊和内层方形按钮
+// 叠在一起后产生割裂感。
+const double _timeLogActionBarRadius = 20.0;
+const double _timeLogActionChipRadius = 12.0;
 
 const List<String> kPalette = [
   '#EF4444',
@@ -354,15 +360,24 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
   void _goWeek() => setState(() => _view = _ViewMode.week);
 
+  Widget _buildTitleChevron(IconData icon, VoidCallback onPressed) {
+    return IconButton(
+      icon: Icon(icon, size: 20),
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 24, height: 32),
+      visualDensity: VisualDensity.compact,
+      splashRadius: 16,
+      onPressed: onPressed,
+    );
+  }
+
   Widget _buildTitle() {
     if (_view == _ViewMode.week) {
       final we = _weekStart.add(const Duration(days: 6));
       return Row(mainAxisSize: MainAxisSize.min, children: [
-        IconButton(
-            icon: const Icon(Icons.chevron_left),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            onPressed: () => setState(() =>
+        _buildTitleChevron(
+            Icons.chevron_left,
+            () => setState(() =>
                 _weekStart = _weekStart.subtract(const Duration(days: 7)))),
         const SizedBox(width: 4),
         GestureDetector(
@@ -374,20 +389,16 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                   const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         ),
         const SizedBox(width: 4),
-        IconButton(
-            icon: const Icon(Icons.chevron_right),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            onPressed: () => setState(
+        _buildTitleChevron(
+            Icons.chevron_right,
+            () => setState(
                 () => _weekStart = _weekStart.add(const Duration(days: 7)))),
       ]);
     }
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      IconButton(
-          icon: const Icon(Icons.chevron_left, size: 20),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(),
-          onPressed: () => setState(() =>
+      _buildTitleChevron(
+          Icons.chevron_left,
+          () => setState(() =>
               _focusedDate = _focusedDate.subtract(const Duration(days: 1)))),
       GestureDetector(
         onTap: () async {
@@ -401,11 +412,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         child: Text(AppTimeFormats.monthDayCn(_focusedDate),
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       ),
-      IconButton(
-          icon: const Icon(Icons.chevron_right, size: 20),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(),
-          onPressed: () => setState(
+      _buildTitleChevron(
+          Icons.chevron_right,
+          () => setState(
               () => _focusedDate = _focusedDate.add(const Duration(days: 1)))),
     ]);
   }
@@ -481,7 +490,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       },
       child: Scaffold(
         backgroundColor: _TC.surface(context),
-        appBar: AppBar(
+        appBar: FloatingGlassAppBar(
+          flexibleSpace: const FloatingGlassTopBarBackground(),
           leading: _view == _ViewMode.day
               ? IconButton(
                   icon: const Icon(Icons.arrow_back_ios_new, size: 18),
@@ -872,7 +882,7 @@ class _ViewTab extends StatelessWidget {
                     color: selected
                         ? accent.withValues(alpha: 0.4)
                         : Colors.transparent),
-                borderRadius: BorderRadius.circular(18)),
+                borderRadius: BorderRadius.circular(_timeLogActionChipRadius)),
             child: Text(label,
                 style: TextStyle(
                     fontSize: 13,
@@ -985,9 +995,11 @@ class _WeekViewState extends State<_WeekView>
     });
   }
 
-  Widget _buildTopBar(BuildContext ctx, int todayMin) => Container(
+  Widget _buildTopBar(BuildContext ctx, int todayMin) {
+    final useFloating = floatingBottomBarShouldFloat(ctx);
+    final child = Container(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-        color: _TC.topBar(ctx),
+        decoration: useFloating ? null : BoxDecoration(color: _TC.topBar(ctx)),
         child: Row(children: [
           // 今日统计
           _TopBarChip(
@@ -1041,8 +1053,16 @@ class _WeekViewState extends State<_WeekView>
                       }
                     },
                   )),
-        ]),
-      );
+        ]));
+    return FloatingGlassControl(
+      height: useFloating ? 60 : 52,
+      margin:
+          useFloating ? const EdgeInsets.fromLTRB(8, 8, 8, 4) : EdgeInsets.zero,
+      borderRadius: useFloating ? _timeLogActionBarRadius : 0,
+      mobilePortraitOnly: true,
+      child: child,
+    );
+  }
 
   Widget _buildGrid(BuildContext ctx, List<DateTime> days, double availW) {
     const totalW = kWeekTimeW + kWeekDayW * 7;
@@ -1224,72 +1244,73 @@ class _WeekViewState extends State<_WeekView>
               border: Border(left: BorderSide(color: _TC.divider(ctx)))),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-            padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
-            child: Text('本周标签',
-                style: TextStyle(
-                    fontSize: 10,
-                    color: _TC.textHint(ctx),
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.5))),
-        Expanded(
-            child: ListView(
-                padding: const EdgeInsets.only(bottom: 8),
-                children: widget.tags.map((t) {
-                  int tw = widget.logs
-                      .where((l) =>
-                          l.tagUuids.contains(t.uuid) &&
-                          l.endTime > ws &&
-                          l.startTime < we)
-                      .fold(
-                          0, (s, l) => s + (l.endTime - l.startTime) ~/ 60000);
-                  tw += widget.pomodoros
-                      .where((p) =>
-                          p.tagUuids.contains(t.uuid) &&
-                          p.startTime < we &&
-                          (p.endTime ??
-                                  p.startTime + p.effectiveDuration * 1000) >
-                              ws)
-                      .fold(0, (s, p) => s + p.effectiveDuration ~/ 60);
-                  final c = hexColor(t.color);
-                  return GestureDetector(
-                      onTap: () => widget.onTagTap(t),
-                      child: Container(
-                          margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 10),
-                          decoration: BoxDecoration(
-                              color: c.withValues(alpha: 0.07),
-                              border:
-                                  Border.all(color: c.withValues(alpha: 0.25)),
-                              borderRadius: BorderRadius.circular(10)),
-                          child: Row(children: [
-                            Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                    color: c, shape: BoxShape.circle)),
-                            const SizedBox(width: 8),
-                            Expanded(
-                                child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                  Text(t.name,
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          color: c,
-                                          fontWeight: FontWeight.w700),
-                                      overflow: TextOverflow.ellipsis),
-                                  Text('${(tw / 60).toStringAsFixed(1)}h',
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          color: _TC.text(ctx),
-                                          fontWeight: FontWeight.w700)),
-                                ])),
-                          ])));
-                }).toList())),
-      ])));
+            Padding(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
+                child: Text('本周标签',
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: _TC.textHint(ctx),
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.5))),
+            Expanded(
+                child: ListView(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    children: widget.tags.map((t) {
+                      int tw = widget.logs
+                          .where((l) =>
+                              l.tagUuids.contains(t.uuid) &&
+                              l.endTime > ws &&
+                              l.startTime < we)
+                          .fold(0,
+                              (s, l) => s + (l.endTime - l.startTime) ~/ 60000);
+                      tw += widget.pomodoros
+                          .where((p) =>
+                              p.tagUuids.contains(t.uuid) &&
+                              p.startTime < we &&
+                              (p.endTime ??
+                                      p.startTime +
+                                          p.effectiveDuration * 1000) >
+                                  ws)
+                          .fold(0, (s, p) => s + p.effectiveDuration ~/ 60);
+                      final c = hexColor(t.color);
+                      return GestureDetector(
+                          onTap: () => widget.onTagTap(t),
+                          child: Container(
+                              margin: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                  color: c.withValues(alpha: 0.07),
+                                  border: Border.all(
+                                      color: c.withValues(alpha: 0.25)),
+                                  borderRadius: BorderRadius.circular(10)),
+                              child: Row(children: [
+                                Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                        color: c, shape: BoxShape.circle)),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                    child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                      Text(t.name,
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              color: c,
+                                              fontWeight: FontWeight.w700),
+                                          overflow: TextOverflow.ellipsis),
+                                      Text('${(tw / 60).toStringAsFixed(1)}h',
+                                          style: TextStyle(
+                                              fontSize: 13,
+                                              color: _TC.text(ctx),
+                                              fontWeight: FontWeight.w700)),
+                                    ])),
+                              ])));
+                    }).toList())),
+          ])));
 
   Widget _buildTagChips(BuildContext ctx, int ws, int we) => Container(
       height: 56,

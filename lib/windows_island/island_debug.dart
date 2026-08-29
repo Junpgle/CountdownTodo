@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/floating_glass_control.dart';
 import 'island_ui.dart';
 
 class IslandDebugPage extends StatefulWidget {
@@ -14,7 +15,10 @@ class _IslandDebugPageState extends State<IslandDebugPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Island Debug')),
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
+        title: const Text('Island Debug'),
+      ),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

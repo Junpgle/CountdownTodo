@@ -4,6 +4,7 @@ import 'dart:async';
 import '../models.dart';
 import '../services/api_service.dart';
 import '../services/team_share_link.dart';
+import '../widgets/floating_glass_control.dart';
 
 class TeamShareManageScreen extends StatefulWidget {
   final Team team;
@@ -108,7 +109,8 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text('${widget.team.name} · 分享管理'),
         actions: [
           IconButton(
@@ -122,7 +124,7 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
           : _shares.isEmpty
               ? _buildEmptyState()
               : _buildSharesList(),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingGlassActionButton.extended(
         onPressed: _showCreateShareDialog,
         icon: const Icon(Icons.add_link),
         label: const Text('创建分享'),
@@ -441,7 +443,8 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('创建分享链接'),
       ),
       body: SingleChildScrollView(

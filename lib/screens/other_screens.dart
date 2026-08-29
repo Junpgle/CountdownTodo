@@ -1,3 +1,4 @@
+import '../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import '../storage_service.dart';
 import '../services/api_service.dart';
@@ -29,7 +30,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text("排行榜"),
         bottom: TabBar(
           controller: _tabController,
@@ -164,7 +166,9 @@ class HistoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("$username 的答题记录")),
+      appBar: FloatingGlassAppBar(
+          flexibleSpace: const FloatingGlassTopBarBackground(),
+          title: Text("$username 的答题记录")),
       body: FutureBuilder<List<String>>(
         future: StorageService.getHistory(username),
         builder: (context, snapshot) {

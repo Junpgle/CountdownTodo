@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import '../widgets/floating_glass_control.dart';
 
 class DefaultSplashScreen extends StatefulWidget {
   final VoidCallback onComplete;
@@ -72,16 +73,17 @@ class _DefaultSplashScreenState extends State<DefaultSplashScreen>
               top: 48,
               right: 16,
               child: SafeArea(
-                child: TextButton(
-                  onPressed: _skip,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surface.withValues(alpha: 0.76),
-                      borderRadius: BorderRadius.circular(999),
+                child: FloatingGlassControl(
+                  height: 48,
+                  borderRadius: 24,
+                  tint: colorScheme.surface,
+                  haloColor: colorScheme.primary,
+                  child: TextButton(
+                    onPressed: _skip,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(72, 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     child: Text(
                       '跳过',

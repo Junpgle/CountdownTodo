@@ -5,6 +5,7 @@ import '../models.dart';
 import '../services/course_service.dart';
 import '../services/pomodoro_service.dart';
 import '../storage_service.dart';
+import '../widgets/floating_glass_control.dart';
 
 class PlanBlockStatsScreen extends StatefulWidget {
   final String username;
@@ -223,7 +224,8 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title:
             const Text('规划统计', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,

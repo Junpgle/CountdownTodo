@@ -250,7 +250,8 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
     final bool isDesktop = MediaQuery.of(context).size.width >= 768;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: LayoutBuilder(
           builder: (context, constraints) {
             final navigationWidth =

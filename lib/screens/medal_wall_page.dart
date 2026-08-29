@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/medal_recommendation_service.dart';
 import '../services/timeline_service.dart';
+import '../widgets/floating_glass_control.dart';
 import '../utils/app_dialogs.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import 'package:intl/intl.dart';
@@ -50,96 +51,106 @@ class _MedalWallPageState extends State<MedalWallPage>
     return Scaffold(
       backgroundColor:
           isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
-      body: Stack(
-        children: [
-          // Background Decorative Elements
-          Positioned(
-            top: -100,
-            right: -100,
-            child: _buildBackgroundCircle(
-              colorScheme.primary.withValues(alpha: 0.15),
-              300,
+      body: FloatingGlassScrollAware(
+        child: Stack(
+          children: [
+            // Background Decorative Elements
+            Positioned(
+              top: -100,
+              right: -100,
+              child: _buildBackgroundCircle(
+                colorScheme.primary.withValues(alpha: 0.15),
+                300,
+              ),
             ),
-          ),
-          Positioned(
-            bottom: 100,
-            left: -50,
-            child: _buildBackgroundCircle(
-              colorScheme.secondary.withValues(alpha: 0.1),
-              200,
+            Positioned(
+              bottom: 100,
+              left: -50,
+              child: _buildBackgroundCircle(
+                colorScheme.secondary.withValues(alpha: 0.1),
+                200,
+              ),
             ),
-          ),
 
-          SafeArea(
-            child: Column(
-              children: [
-                _buildHeader(context),
-                _buildTabBar(context),
-                Expanded(
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1200),
-                      child: TabBarView(
-                        controller: _tabController,
-                        children: [
-                          // Tab 0: 推荐
-                          _buildMedalTab(
-                            context,
-                            widget.recommendation.topRecommendations,
-                            isEmpty: widget
-                                .recommendation.topRecommendations.isEmpty,
-                            emptyMessage: '恭喜！已获得所有推荐勋章',
-                            showFeatured: true,
-                            isML: widget.recommendation.isML,
-                            reasons: widget.recommendation.recommendReasons,
-                          ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: MediaQuery.paddingOf(context).top + kToolbarHeight,
+              child: const FloatingGlassTopBarBackground(),
+            ),
+            SafeArea(
+              child: Column(
+                children: [
+                  _buildHeader(context),
+                  _buildTabBar(context),
+                  Expanded(
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1200),
+                        child: TabBarView(
+                          controller: _tabController,
+                          children: [
+                            // Tab 0: 推荐
+                            _buildMedalTab(
+                              context,
+                              widget.recommendation.topRecommendations,
+                              isEmpty: widget
+                                  .recommendation.topRecommendations.isEmpty,
+                              emptyMessage: '恭喜！已获得所有推荐勋章',
+                              showFeatured: true,
+                              isML: widget.recommendation.isML,
+                              reasons: widget.recommendation.recommendReasons,
+                            ),
 
-                          // Tab 1: 本周新获
-                          _buildMedalTab(
-                            context,
-                            widget.earnedThisSession,
-                            isEmpty: widget.earnedThisSession.isEmpty,
-                            emptyMessage: '本周还没有获得新勋章',
-                          ),
+                            // Tab 1: 本周新获
+                            _buildMedalTab(
+                              context,
+                              widget.earnedThisSession,
+                              isEmpty: widget.earnedThisSession.isEmpty,
+                              emptyMessage: '本周还没有获得新勋章',
+                            ),
 
-                          // Tab 2: 已获得
-                          _buildMedalTab(
-                            context,
-                            widget.recommendation.earnedMedals,
-                            isEmpty: widget.recommendation.earnedMedals.isEmpty,
-                            emptyMessage: '还没有获得任何勋章',
-                          ),
+                            // Tab 2: 已获得
+                            _buildMedalTab(
+                              context,
+                              widget.recommendation.earnedMedals,
+                              isEmpty:
+                                  widget.recommendation.earnedMedals.isEmpty,
+                              emptyMessage: '还没有获得任何勋章',
+                            ),
 
-                          // Tab 3: 未获得（按进度排序）
-                          _buildMedalTab(
-                            context,
-                            widget.recommendation.allMedals
-                                .where((m) => !m.earned)
-                                .toList()
-                              ..sort(
-                                  (a, b) => b.progress.compareTo(a.progress)),
-                            isEmpty: widget.recommendation.allMedals
-                                .where((m) => !m.earned)
-                                .isEmpty,
-                            emptyMessage: '全部勋章已获得！',
-                          ),
+                            // Tab 3: 未获得（按进度排序）
+                            _buildMedalTab(
+                              context,
+                              widget.recommendation.allMedals
+                                  .where((m) => !m.earned)
+                                  .toList()
+                                ..sort(
+                                    (a, b) => b.progress.compareTo(a.progress)),
+                              isEmpty: widget.recommendation.allMedals
+                                  .where((m) => !m.earned)
+                                  .isEmpty,
+                              emptyMessage: '全部勋章已获得！',
+                            ),
 
-                          // Tab 4: 全部
-                          _buildMedalTab(
-                            context,
-                            widget.recommendation.allMedals,
-                            isEmpty: widget.recommendation.allMedals.isEmpty,
-                            emptyMessage: '暂无勋章数据',
-                          ),
-                        ],
+                            // Tab 4: 全部
+                            _buildMedalTab(
+                              context,
+                              widget.recommendation.allMedals,
+                              isEmpty: widget.recommendation.allMedals.isEmpty,
+                              emptyMessage: '暂无勋章数据',
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -170,9 +181,13 @@ class _MedalWallPageState extends State<MedalWallPage>
               EdgeInsets.fromLTRB(isWide ? 32 : 24, 16, isWide ? 32 : 24, 8),
           child: Row(
             children: [
-              IconButton.filledTonal(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back),
+              FloatingGlassAppBarAction(
+                size: 48,
+                borderRadius: 24,
+                child: IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.arrow_back),
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -219,41 +234,40 @@ class _MedalWallPageState extends State<MedalWallPage>
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 600),
-        child: Container(
+        child: FloatingGlassControl(
+          height: 56,
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest
-                .withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: TabBar(
-            controller: _tabController,
-            dividerColor: Colors.transparent,
-            indicatorSize: TabBarIndicatorSize.tab,
-            indicator: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              color: theme.colorScheme.surface,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
+          borderRadius: 20,
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: TabBar(
+              controller: _tabController,
+              dividerColor: Colors.transparent,
+              indicatorSize: TabBarIndicatorSize.tab,
+              indicator: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: theme.colorScheme.surface,
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.colorScheme.shadow.withValues(alpha: 0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              labelColor: theme.colorScheme.primary,
+              unselectedLabelColor:
+                  theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              labelStyle:
+                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              tabs: [
+                const Tab(text: '推荐'),
+                Tab(text: '本周(${widget.earnedThisSession.length})'),
+                const Tab(text: '已获'),
+                const Tab(text: '未获'),
+                const Tab(text: '全部'),
               ],
             ),
-            labelColor: theme.colorScheme.primary,
-            unselectedLabelColor:
-                theme.colorScheme.onSurface.withValues(alpha: 0.6),
-            labelStyle:
-                const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            tabs: [
-              const Tab(text: '推荐'),
-              Tab(text: '本周(${widget.earnedThisSession.length})'),
-              const Tab(text: '已获'),
-              const Tab(text: '未获'),
-              const Tab(text: '全部'),
-            ],
           ),
         ),
       ),

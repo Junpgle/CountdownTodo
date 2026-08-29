@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../services/api_service.dart';
+import '../widgets/floating_glass_control.dart';
 import '../widgets/share_readonly_widgets.dart';
 
 class ShareViewScreen extends StatefulWidget {
@@ -442,7 +443,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
           physics: const BouncingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics()),
           slivers: [
-            SliverAppBar(
+            FloatingGlassSliverAppBar(
               expandedHeight: isDesktop ? 236 : 204,
               floating: false,
               pinned: true,
@@ -464,11 +465,24 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                background: _buildHeroBackground(
-                  teamName: teamName,
-                  shareCode: widget.shareCode,
-                  contentWidth: contentWidth,
-                  colorScheme: colorScheme,
+                // Keep the branded hero visible while adding the same soft
+                // status-bar fade used by the rest of the app.
+                background: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _buildHeroBackground(
+                      teamName: teamName,
+                      shareCode: widget.shareCode,
+                      contentWidth: contentWidth,
+                      colorScheme: colorScheme,
+                    ),
+                    Positioned.fill(
+                      child: FloatingGlassTopBarBackground(
+                        tint: colorScheme.primary,
+                        isDark: !isLight,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               actions: [
@@ -479,47 +493,52 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                 ),
               ],
             ),
-            SliverToBoxAdapter(
-              child: _buildCenteredContent(
-                _buildSummaryCard(
-                  teamName: teamName,
-                  announcementsCount: announcements.length,
-                  isDesktop: isDesktop,
-                  colorScheme: colorScheme,
+            FloatingGlassSliverContentFadeGroup(
+              topBarHeight: floatingGlassTopBarHeight(context),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _buildCenteredContent(
+                    _buildSummaryCard(
+                      teamName: teamName,
+                      announcementsCount: announcements.length,
+                      isDesktop: isDesktop,
+                      colorScheme: colorScheme,
+                    ),
+                    contentWidth: contentWidth,
+                    top: isDesktop ? 24 : 16,
+                  ),
                 ),
-                contentWidth: contentWidth,
-                top: isDesktop ? 24 : 16,
-              ),
+                if (hasContent)
+                  SliverToBoxAdapter(
+                    child: _buildCenteredContent(
+                      isDesktop
+                          ? _buildDesktopSections(
+                              announcements: announcements,
+                              isLight: isLight,
+                            )
+                          : _buildMobileSections(
+                              announcements: announcements,
+                              isLight: isLight,
+                            ),
+                      contentWidth: contentWidth,
+                      top: 16,
+                    ),
+                  )
+                else
+                  SliverToBoxAdapter(
+                    child: _buildCenteredContent(
+                      _buildEmptyPanel(colorScheme),
+                      contentWidth: contentWidth,
+                      top: 16,
+                    ),
+                  ),
+                const SliverToBoxAdapter(child: SizedBox(height: 112)),
+              ],
             ),
-            if (hasContent)
-              SliverToBoxAdapter(
-                child: _buildCenteredContent(
-                  isDesktop
-                      ? _buildDesktopSections(
-                          announcements: announcements,
-                          isLight: isLight,
-                        )
-                      : _buildMobileSections(
-                          announcements: announcements,
-                          isLight: isLight,
-                        ),
-                  contentWidth: contentWidth,
-                  top: 16,
-                ),
-              )
-            else
-              SliverToBoxAdapter(
-                child: _buildCenteredContent(
-                  _buildEmptyPanel(colorScheme),
-                  contentWidth: contentWidth,
-                  top: 16,
-                ),
-              ),
-            const SliverToBoxAdapter(child: SizedBox(height: 112)),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingGlassActionButton.extended(
         onPressed: _showJoinDialog,
         backgroundColor: colorScheme.secondaryContainer,
         foregroundColor: colorScheme.onSecondaryContainer,

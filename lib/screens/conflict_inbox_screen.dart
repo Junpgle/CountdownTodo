@@ -11,6 +11,7 @@ import '../services/ai_todo_action_executor.dart';
 import '../services/pomodoro_service.dart';
 import '../services/conflict_visibility_service.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/floating_glass_control.dart';
 import 'package:intl/intl.dart';
 import '../widgets/todo_section_widget.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
@@ -469,33 +470,35 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
     return Scaffold(
       extendBodyBehindAppBar: true,
-      body: Stack(
-        children: [
-          // 🚀 1. 现代沉浸式背景
-          _buildModernBackground(isDark),
+      body: FloatingGlassScrollAware(
+        child: Stack(
+          children: [
+            // 🚀 1. 现代沉浸式背景
+            _buildModernBackground(isDark),
 
-          // 🚀 2. 主内容区域
-          SafeArea(
-            child: Column(
-              children: [
-                _buildModernAppBar(isDark),
-                _buildScanProgressBanner(),
-                _buildGhostConflictBanner(),
-                if (!_isLoading) _buildConflictStats(),
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      if (constraints.maxWidth > 900) {
-                        return _buildWideLayout(isDark);
-                      }
-                      return _buildMobileLayout(isDark);
-                    },
+            // 🚀 2. 主内容区域
+            SafeArea(
+              child: Column(
+                children: [
+                  _buildModernAppBar(isDark),
+                  _buildScanProgressBanner(),
+                  _buildGhostConflictBanner(),
+                  if (!_isLoading) _buildConflictStats(),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        if (constraints.maxWidth > 900) {
+                          return _buildWideLayout(isDark);
+                        }
+                        return _buildMobileLayout(isDark);
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -509,120 +512,134 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   Widget _buildModernAppBar(bool isDark) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
+    final compactActions = MediaQuery.sizeOf(context).width < 380;
+    final actionGap = compactActions ? 4.0 : 12.0;
+    return ClipRect(
+      child: Stack(
         children: [
-          if (_isBatchMode) ...[
-            IconButton(
-              onPressed: () => setState(() {
-                _isBatchMode = false;
-                _selectedConflictIds.clear();
-              }),
-              icon: const Icon(Icons.close_rounded),
-              color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
-              tooltip: '取消批量模式',
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '已选择 ${_selectedConflictIds.length} 项',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.blueGrey.shade900,
-                ),
-              ),
-            ),
-          ] else ...[
-            IconButton(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.arrow_back_rounded),
-              color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
-              tooltip: '返回',
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '冲突对齐中心',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.blueGrey.shade900,
+          const Positioned.fill(child: FloatingGlassTopBarBackground()),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                if (_isBatchMode) ...[
+                  IconButton(
+                    onPressed: () => setState(() {
+                      _isBatchMode = false;
+                      _selectedConflictIds.clear();
+                    }),
+                    icon: const Icon(Icons.close_rounded),
+                    color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
+                    tooltip: '取消批量模式',
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '已选择 ${_selectedConflictIds.length} 项',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.blueGrey.shade900,
+                      ),
                     ),
                   ),
-                  Text(
-                    'Uni-Sync 4.0 智能数据对齐引擎',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark ? Colors.white54 : Colors.blueGrey.shade500,
-                      fontWeight: FontWeight.w500,
+                ] else ...[
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
+                    tooltip: '返回',
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '冲突对齐中心',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: isDark
+                                ? Colors.white
+                                : Colors.blueGrey.shade900,
+                          ),
+                        ),
+                        Text(
+                          'Uni-Sync 4.0 智能数据对齐引擎',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark
+                                ? Colors.white54
+                                : Colors.blueGrey.shade500,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
-              ),
+                SizedBox(width: compactActions ? 8 : 16),
+                if (!_isBatchMode) ...[
+                  _buildAppBarAction(
+                    icon: Icons.smart_toy_outlined,
+                    onTap: _openAiAssistant,
+                    tooltip: 'AI冲突助手',
+                  ),
+                  SizedBox(width: actionGap),
+                  _buildAppBarAction(
+                    icon: _isScanning ? null : Icons.radar_rounded,
+                    loading: _isScanning,
+                    onTap: _isScanning ? null : _scanAllTodoConflicts,
+                    tooltip: '扫描全部冲突',
+                  ),
+                  SizedBox(width: actionGap),
+                  _buildAppBarAction(
+                    icon: Icons.refresh_rounded,
+                    onTap: _loadConflicts,
+                    tooltip: '刷新列表',
+                  ),
+                  SizedBox(width: actionGap),
+                  _buildAppBarAction(
+                    icon: Icons.help_outline_rounded,
+                    onTap: _showConflictHelp,
+                    tooltip: '查看帮助',
+                  ),
+                  SizedBox(width: actionGap),
+                  _buildAppBarAction(
+                    icon: Icons.checklist_rounded,
+                    onTap: _conflictItems.isNotEmpty
+                        ? () => setState(() => _isBatchMode = true)
+                        : null,
+                    tooltip: '批量管理',
+                  ),
+                ] else ...[
+                  _buildAppBarAction(
+                    icon: Icons.select_all_rounded,
+                    onTap: _selectedConflictIds.length ==
+                            _visibleConflictItems.length
+                        ? () => setState(() => _selectedConflictIds.clear())
+                        : () => setState(() {
+                              _selectedConflictIds.clear();
+                              for (final item in _visibleConflictItems) {
+                                _selectedConflictIds.add(_getConflictId(item));
+                              }
+                            }),
+                    tooltip: _selectedConflictIds.length ==
+                            _visibleConflictItems.length
+                        ? '取消全选'
+                        : '全选',
+                  ),
+                ]
+              ],
             ),
-          ],
-          const SizedBox(width: 16),
-          if (!_isBatchMode) ...[
-            _buildAppBarAction(
-              icon: Icons.smart_toy_outlined,
-              onTap: _openAiAssistant,
-              tooltip: 'AI冲突助手',
-            ),
-            const SizedBox(width: 12),
-            _buildAppBarAction(
-              icon: _isScanning ? null : Icons.radar_rounded,
-              loading: _isScanning,
-              onTap: _isScanning ? null : _scanAllTodoConflicts,
-              tooltip: '扫描全部冲突',
-            ),
-            const SizedBox(width: 12),
-            _buildAppBarAction(
-              icon: Icons.refresh_rounded,
-              onTap: _loadConflicts,
-              tooltip: '刷新列表',
-            ),
-            const SizedBox(width: 12),
-            _buildAppBarAction(
-              icon: Icons.help_outline_rounded,
-              onTap: _showConflictHelp,
-              tooltip: '查看帮助',
-            ),
-            const SizedBox(width: 12),
-            _buildAppBarAction(
-              icon: Icons.checklist_rounded,
-              onTap: _conflictItems.isNotEmpty
-                  ? () => setState(() => _isBatchMode = true)
-                  : null,
-              tooltip: '批量管理',
-            ),
-          ] else ...[
-            _buildAppBarAction(
-              icon: Icons.select_all_rounded,
-              onTap: _selectedConflictIds.length == _visibleConflictItems.length
-                  ? () => setState(() => _selectedConflictIds.clear())
-                  : () => setState(() {
-                        _selectedConflictIds.clear();
-                        for (final item in _visibleConflictItems) {
-                          _selectedConflictIds.add(_getConflictId(item));
-                        }
-                      }),
-              tooltip:
-                  _selectedConflictIds.length == _visibleConflictItems.length
-                      ? '取消全选'
-                      : '全选',
-            ),
-          ]
+          ),
         ],
       ),
     );
@@ -634,7 +651,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     VoidCallback? onTap,
     required String tooltip,
   }) {
-    return Tooltip(
+    final colorScheme = Theme.of(context).colorScheme;
+    final size = MediaQuery.sizeOf(context).width < 380 ? 40.0 : 44.0;
+    final content = Tooltip(
       message: tooltip,
       child: InkWell(
         onTap: onTap,
@@ -654,6 +673,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
               : Icon(icon, size: 20),
         ),
       ),
+    );
+
+    return FloatingGlassAppBarAction(
+      size: size,
+      borderRadius: size / 2,
+      tint: colorScheme.surface.withValues(alpha: 0.24),
+      haloColor: colorScheme.primary,
+      child: content,
     );
   }
 
@@ -1147,80 +1174,77 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   Widget _buildBatchActionBar(bool isDark) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? Colors.black26 : Colors.white,
-        border: Border(
-          top: BorderSide(
-            color: isDark ? Colors.white10 : Colors.grey.withValues(alpha: 0.1),
-          ),
-        ),
-      ),
-      padding: EdgeInsets.fromLTRB(
-          16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
-                  label: const Text('推荐方案'),
-                  onPressed: _isBatchApplying ? null : _batchApplyRecommended,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Theme.of(context).colorScheme.primary,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    side: BorderSide(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: 0.3)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.phone_android_rounded, size: 18),
-                  label: const Text('保留本地'),
-                  onPressed: _isBatchApplying ? null : _batchKeepLocal,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.orange,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    side:
-                        BorderSide(color: Colors.orange.withValues(alpha: 0.3)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.cloud_done_rounded, size: 18),
-                  label: const Text('使用服务器'),
-                  onPressed: _isBatchApplying ? null : _batchAcceptServer,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+    return FloatingGlassControl(
+      height: _isBatchApplying ? 120 : 96,
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      borderRadius: 28,
+      mobilePortraitOnly: true,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                    label: const Text('推荐方案'),
+                    onPressed: _isBatchApplying ? null : _batchApplyRecommended,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: BorderSide(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withValues(alpha: 0.3)),
                     ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.phone_android_rounded, size: 18),
+                    label: const Text('保留本地'),
+                    onPressed: _isBatchApplying ? null : _batchKeepLocal,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.orange,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: BorderSide(
+                          color: Colors.orange.withValues(alpha: 0.3)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.cloud_done_rounded, size: 18),
+                    label: const Text('使用服务器'),
+                    onPressed: _isBatchApplying ? null : _batchAcceptServer,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (_isBatchApplying) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(),
             ],
-          ),
-          if (_isBatchApplying) ...[
-            const SizedBox(height: 12),
-            const LinearProgressIndicator(),
           ],
-        ],
+        ),
       ),
     );
   }

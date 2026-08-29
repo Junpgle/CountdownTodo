@@ -1,3 +1,4 @@
+import '../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -485,7 +486,8 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(
           _editing && _seriesItems.where((entry) => !entry.isDeleted).length > 1
               ? '编辑重复日程系列'

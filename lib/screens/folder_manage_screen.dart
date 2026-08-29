@@ -4,6 +4,7 @@ import '../models.dart';
 import 'package:intl/intl.dart';
 import 'add_todo_screen.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/floating_glass_control.dart';
 import '../utils/app_dialogs.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
@@ -372,7 +373,8 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('文件夹管理'),
         actions: [
           IconButton(

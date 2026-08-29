@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../services/course_calendar_adjustment_service.dart';
 import '../utils/app_dialogs.dart';
+import '../widgets/floating_glass_control.dart';
 
 class CourseCalendarAdjustmentScreen extends StatefulWidget {
   final String? initialOfficialHolidayKey;
@@ -203,34 +204,48 @@ class _CourseCalendarAdjustmentScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('放假与调休'),
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => Navigator.pop(context),
               ),
             ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              children: [
-                Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1000),
-                    child: Column(
-                      children: [
-                        _buildTopBar(),
-                        const SizedBox(height: 12),
-                        _buildCurrentPanel(),
-                      ],
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  widget.isEmbedded
+                      ? 12
+                      : floatingGlassSettingsContentTopInset(context,
+                          extra: 12),
+                  16,
+                  24,
+                ),
+                children: [
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1000),
+                      child: Column(
+                        children: [
+                          _buildTopBar(),
+                          const SizedBox(height: 12),
+                          _buildCurrentPanel(),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+      ),
     );
   }
 

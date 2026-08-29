@@ -17,6 +17,7 @@ import '../utils/todo_recurrence_picker.dart';
 import 'todo_chat_screen.dart';
 import '../services/feature_tip_service.dart';
 import '../widgets/coach_mark_overlay.dart';
+import '../widgets/floating_glass_control.dart';
 
 // 复用 TimeLog 的颜色和基础常量
 const double kTimeAxisW = 46.0;
@@ -329,7 +330,8 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
