@@ -102,16 +102,17 @@ class PreferenceSection extends StatelessWidget {
         _buildTile(
           context: context,
           targetId: 'conflict_detection',
-          child: ListTile(
-            leading: Icon(Icons.warning_amber_outlined,
-                color: colorScheme.cdtWarning),
-            title: const Text('冲突检测'),
-            subtitle: const Text('检测待办时间重叠；关闭后首页不弹冲突提醒'),
-            trailing: LiquidGlassSwitch(
-              value: conflictDetectionEnabled,
-              activeThumbColor: colorScheme.cdtWarning,
-              onChanged: onConflictDetectionChanged,
-            ),
+          child: _buildToggleCard(
+            context: context,
+            title: '冲突检测',
+            subtitle: '检测待办时间重叠；关闭后首页不弹冲突提醒',
+            icon: Icons.warning_amber_outlined,
+            value: conflictDetectionEnabled,
+            onChanged: (val) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                onConflictDetectionChanged?.call(val ?? false);
+              });
+            },
           ),
         ),
         const AppSettingsDivider(),
@@ -320,24 +321,24 @@ class PreferenceSection extends StatelessWidget {
             ),
           ),
           const AppSettingsDivider(),
-          _buildTile(
+        _buildTile(
+          context: context,
+          targetId: 'float_window_style',
+          child: _buildToggleCard(
             context: context,
-            targetId: 'float_window_style',
-            child: ListTile(
-              leading: Icon(Icons.layers_outlined, color: colorScheme.primary),
-              title: const Text('灵动岛'),
-              subtitle: const Text('开启灵动岛式浮动窗口'),
-              trailing: LiquidGlassSwitch(
-                value: floatWindowStyle != 2,
-                activeThumbColor: colorScheme.primary,
-                onChanged: (val) {
-                  if (onFloatWindowStyleChanged != null) {
-                    onFloatWindowStyleChanged!(val ? 1 : 2);
-                  }
-                },
-              ),
-            ),
+            title: '灵动岛',
+            subtitle: '开启灵动岛式浮动窗口',
+            icon: Icons.layers_outlined,
+            value: floatWindowStyle != 2,
+            onChanged: (val) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (onFloatWindowStyleChanged != null) {
+                  onFloatWindowStyleChanged!((val ?? false) ? 1 : 2);
+                }
+              });
+            },
           ),
+        ),
           const AppSettingsDivider(),
           _buildTile(
             context: context,
@@ -368,6 +369,104 @@ class PreferenceSection extends StatelessWidget {
           ],
         ],
       ],
+    );
+  }
+
+  Widget _buildToggleCard({
+    required BuildContext context,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool value,
+    required ValueChanged<bool?> onChanged,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isSelected = value;
+    final iconWidget = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      switchInCurve: Curves.easeOutBack,
+      switchOutCurve: Curves.easeInBack,
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        return ScaleTransition(
+          scale: animation,
+          child: RotationTransition(
+            turns: Tween<double>(begin: -0.1, end: 0.0).animate(animation),
+            child: child,
+          ),
+        );
+      },
+      child: Icon(
+        icon,
+        key: ValueKey<bool>(isSelected),
+        color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+        size: 32,
+      ),
+    );
+    final switchWidget = SizedBox(
+      height: 24,
+      child: FittedBox(
+        fit: BoxFit.fill,
+        child: LiquidGlassSwitch(
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: colorScheme.primary,
+        ),
+      ),
+    );
+    final titleWidget = AnimatedDefaultTextStyle(
+      duration: const Duration(milliseconds: 300),
+      style: TextStyle(
+        fontWeight: FontWeight.bold,
+        fontSize: 14,
+        color: isSelected
+            ? colorScheme.primary
+            : theme.textTheme.bodyMedium?.color,
+        fontFamily: theme.textTheme.bodyMedium?.fontFamily,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      child: Text(title),
+    );
+    final subtitleWidget = Text(
+      subtitle,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+    );
+
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? colorScheme.primary.withValues(alpha: 0.1)
+              : (theme.brightness == Brightness.dark
+                  ? Colors.grey.shade900
+                  : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? colorScheme.primary : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [iconWidget, switchWidget],
+            ),
+            const SizedBox(height: 8),
+            titleWidget,
+            const SizedBox(height: 2),
+            subtitleWidget,
+          ],
+        ),
+      ),
     );
   }
 }

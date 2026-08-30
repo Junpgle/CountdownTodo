@@ -262,6 +262,103 @@ class _PlatformSpecificSettingsPageState
     );
   }
 
+  Widget _buildToggleCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool value,
+    required ValueChanged<bool?>? onChanged,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isSelected = value;
+    final iconWidget = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      switchInCurve: Curves.easeOutBack,
+      switchOutCurve: Curves.easeInBack,
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        return ScaleTransition(
+          scale: animation,
+          child: RotationTransition(
+            turns: Tween<double>(begin: -0.1, end: 0.0).animate(animation),
+            child: child,
+          ),
+        );
+      },
+      child: Icon(
+        icon,
+        key: ValueKey<bool>(isSelected),
+        color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+        size: 32,
+      ),
+    );
+    final switchWidget = SizedBox(
+      height: 24,
+      child: FittedBox(
+        fit: BoxFit.fill,
+        child: LiquidGlassSwitch(
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: colorScheme.primary,
+        ),
+      ),
+    );
+    final titleWidget = AnimatedDefaultTextStyle(
+      duration: const Duration(milliseconds: 300),
+      style: TextStyle(
+        fontWeight: FontWeight.bold,
+        fontSize: 14,
+        color: isSelected
+            ? colorScheme.primary
+            : theme.textTheme.bodyMedium?.color,
+        fontFamily: theme.textTheme.bodyMedium?.fontFamily,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      child: Text(title),
+    );
+    final subtitleWidget = Text(
+      subtitle,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+    );
+
+    return GestureDetector(
+      onTap: onChanged == null ? null : () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? colorScheme.primary.withValues(alpha: 0.1)
+              : (theme.brightness == Brightness.dark
+                  ? Colors.grey.shade900
+                  : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? colorScheme.primary : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [iconWidget, switchWidget],
+            ),
+            const SizedBox(height: 8),
+            titleWidget,
+            const SizedBox(height: 2),
+            subtitleWidget,
+          ],
+        ),
+      ),
+    );
+  }
+
   // --- Windows Methods ---
   Future<void> _pickTaiDatabase() async {
     final result = await FilePicker.platform.pickFiles(
@@ -428,46 +525,45 @@ class _PlatformSpecificSettingsPageState
                   children: [
                     _buildTile(
                       targetId: 'float_window_style',
-                      child: ListTile(
-                        leading: Icon(Icons.layers_outlined,
-                            color: colorScheme.primary),
-                        title: const Text('桌面灵动岛'),
-                        subtitle: const Text('开启灵动岛式浮动窗口'),
-                        trailing: LiquidGlassSwitch(
-                          value: _floatWindowStyle != 2,
-                          activeThumbColor: colorScheme.primary,
-                          onChanged: (val) async {
-                            int newStyle = val ? 1 : 2;
-                            setState(() => _floatWindowStyle = newStyle);
-                            final prefs = await SharedPreferences.getInstance();
-                            await prefs.setInt('float_window_style', newStyle);
-                            if (newStyle == 2) {
-                              try {
-                                IslandDataProvider().invalidateCache();
-                                IslandManagerBridge.clearIslandCache(
-                                    'island-1');
-                              } catch (_) {
-                                // Ignore cleanup failures; the setting value was saved.
-                              }
-                            } else {
-                              try {
-                                IslandDataProvider().invalidateCache();
-                                IslandManagerBridge.clearIslandCache(
-                                    'island-1');
-                                await IslandManagerBridge.createIsland(
-                                    'island-1');
-                              } catch (_) {
-                                // Ignore stale island window errors during style changes.
-                              }
-                              try {
-                                await FloatWindowService.update(
-                                    forceReset: true);
-                              } catch (_) {
-                                // The next island refresh will retry if this update fails.
-                              }
+                      child: _buildToggleCard(
+                        title: '桌面灵动岛',
+                        subtitle: '开启灵动岛式浮动窗口',
+                        icon: Icons.layers_outlined,
+                        value: _floatWindowStyle != 2,
+                        onChanged: (val) async {
+                          int newStyle = (val ?? false) ? 1 : 2;
+                          if (!mounted) return;
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) setState(() => _floatWindowStyle = newStyle);
+                          });
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setInt('float_window_style', newStyle);
+                          if (newStyle == 2) {
+                            try {
+                              IslandDataProvider().invalidateCache();
+                              IslandManagerBridge.clearIslandCache(
+                                  'island-1');
+                            } catch (_) {
+                              // Ignore cleanup failures; the setting value was saved.
                             }
-                          },
-                        ),
+                          } else {
+                            try {
+                              IslandDataProvider().invalidateCache();
+                              IslandManagerBridge.clearIslandCache(
+                                  'island-1');
+                              await IslandManagerBridge.createIsland(
+                                  'island-1');
+                            } catch (_) {
+                              // Ignore stale island window errors during style changes.
+                            }
+                            try {
+                              await FloatWindowService.update(
+                                  forceReset: true);
+                            } catch (_) {
+                              // The next island refresh will retry if this update fails.
+                            }
+                          }
+                        },
                       ),
                     ),
                     const AppSettingsDivider(),
@@ -573,32 +669,32 @@ class _PlatformSpecificSettingsPageState
                   children: [
                     _buildTile(
                       targetId: 'mac_status_bar',
-                      child: ListTile(
-                        leading: Icon(Icons.call_to_action_rounded,
-                            color: colorScheme.primary),
-                        title: const Text('启用刘海灵动岛'),
-                        subtitle: const Text('专注时在屏幕顶部显示倒计时，菜单栏不再显示应用图标'),
-                        trailing: LiquidGlassSwitch(
-                          value: _macIslandEnabled,
-                          activeThumbColor: colorScheme.primary,
-                          onChanged: (val) async {
-                            setState(() => _macIslandEnabled = val);
-                            final prefs = await SharedPreferences.getInstance();
-                            await prefs.setBool('macos_island_enabled', val);
-                            await prefs.setBool(
-                                'macos_tray_icon_enabled', false);
-                            await WindowService.configureMacIsland();
-                            if (!val) {
-                              MacPomodoroStatusBarService.clearNative();
-                            } else {
-                              await MacPomodoroStatusBarService
-                                  .syncCurrentStatus();
-                            }
-                            if (!context.mounted) return;
-                            AppSnackBars.success(
-                                context, val ? 'Mac 灵动岛已开启' : 'Mac 灵动岛已关闭');
-                          },
-                        ),
+                      child: _buildToggleCard(
+                        title: '启用刘海灵动岛',
+                        subtitle: '专注时在屏幕顶部显示倒计时，菜单栏不再显示应用图标',
+                        icon: Icons.call_to_action_rounded,
+                        value: _macIslandEnabled,
+                        onChanged: (val) async {
+                          final isEnabled = val ?? false;
+                          if (!mounted) return;
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) setState(() => _macIslandEnabled = isEnabled);
+                          });
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool('macos_island_enabled', isEnabled);
+                          await prefs.setBool(
+                              'macos_tray_icon_enabled', false);
+                          await WindowService.configureMacIsland();
+                          if (!isEnabled) {
+                            MacPomodoroStatusBarService.clearNative();
+                          } else {
+                            await MacPomodoroStatusBarService
+                                .syncCurrentStatus();
+                          }
+                          if (!context.mounted) return;
+                          AppSnackBars.success(
+                              context, isEnabled ? 'Mac 灵动岛已开启' : 'Mac 灵动岛已关闭');
+                        },
                       ),
                     ),
                     const AppSettingsDivider(),
@@ -630,70 +726,63 @@ class _PlatformSpecificSettingsPageState
                     const AppSettingsDivider(),
                     _buildTile(
                       targetId: 'mac_island_reminders',
-                      child: ListTile(
-                        leading: Icon(Icons.notifications_active_outlined,
-                            color: colorScheme.primary),
-                        title: const Text('在灵动岛显示提醒'),
-                        subtitle: const Text('待办、课程和计划到点时自动展开，支持稍后提醒'),
-                        trailing: LiquidGlassSwitch(
-                          value: _macIslandRemindersEnabled,
-                          activeThumbColor: colorScheme.primary,
-                          onChanged: _macIslandEnabled
-                              ? (val) async {
-                                  setState(
-                                      () => _macIslandRemindersEnabled = val);
-                                  final prefs =
-                                      await SharedPreferences.getInstance();
-                                  await prefs.setBool(
-                                      'macos_island_reminders_enabled', val);
-                                  await WindowService.configureMacIsland();
-                                  if (val) {
-                                    final reminders = await NotificationService
-                                        .getScheduledReminders();
-                                    await MacPomodoroStatusBarService
-                                        .scheduleIslandReminders(
-                                      reminders,
-                                      clearFirst: true,
-                                      restoring: true,
-                                    );
-                                  } else {
-                                    MacPomodoroStatusBarService
-                                        .clearIslandReminders();
-                                  }
+                      child: _buildToggleCard(
+                        title: '在灵动岛显示提醒',
+                        subtitle: '待办、课程和计划到点时自动展开，支持稍后提醒',
+                        icon: Icons.notifications_active_outlined,
+                        value: _macIslandRemindersEnabled,
+                        onChanged: _macIslandEnabled
+                            ? (val) async {
+                                final isEnabled = val ?? false;
+                                if (!mounted) return;
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  if (mounted) setState(() => _macIslandRemindersEnabled = isEnabled);
+                                });
+                                final prefs =
+                                    await SharedPreferences.getInstance();
+                                await prefs.setBool(
+                                    'macos_island_reminders_enabled', isEnabled);
+                                await WindowService.configureMacIsland();
+                                if (isEnabled) {
+                                  final reminders = await NotificationService
+                                      .getScheduledReminders();
+                                  await MacPomodoroStatusBarService
+                                      .scheduleIslandReminders(
+                                    reminders,
+                                    clearFirst: true,
+                                    restoring: true,
+                                  );
+                                } else {
+                                  MacPomodoroStatusBarService
+                                      .clearIslandReminders();
                                 }
-                              : null,
-                        ),
+                              }
+                            : null,
                       ),
                     ),
                     const AppSettingsDivider(),
                     _buildTile(
                       targetId: 'mac_island_clipboard_links',
-                      child: ListTile(
-                        enabled: _macIslandEnabled,
-                        leading: Icon(
-                          Icons.link_rounded,
-                          color: _macIslandEnabled
-                              ? colorScheme.primary
-                              : colorScheme.onSurfaceVariant,
-                        ),
-                        title: const Text('检测剪贴板网址'),
-                        subtitle: const Text('复制网页链接时短暂展开灵动岛，可确认后用浏览器打开'),
-                        trailing: LiquidGlassSwitch(
-                          value: _macIslandClipboardLinksEnabled,
-                          activeThumbColor: colorScheme.primary,
-                          onChanged: _macIslandEnabled
-                              ? (val) async {
-                                  setState(() =>
-                                      _macIslandClipboardLinksEnabled = val);
-                                  final prefs =
-                                      await SharedPreferences.getInstance();
-                                  await prefs.setBool(
-                                      'macos_island_clipboard_links_enabled',
-                                      val);
-                                  await WindowService.configureMacIsland();
-                                }
-                              : null,
-                        ),
+                      child: _buildToggleCard(
+                        title: '检测剪贴板网址',
+                        subtitle: '复制网页链接时短暂展开灵动岛，可确认后用浏览器打开',
+                        icon: Icons.link_rounded,
+                        value: _macIslandClipboardLinksEnabled,
+                        onChanged: _macIslandEnabled
+                            ? (val) async {
+                                final isEnabled = val ?? false;
+                                if (!mounted) return;
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  if (mounted) setState(() => _macIslandClipboardLinksEnabled = isEnabled);
+                                });
+                                final prefs =
+                                    await SharedPreferences.getInstance();
+                                await prefs.setBool(
+                                    'macos_island_clipboard_links_enabled',
+                                    isEnabled);
+                                await WindowService.configureMacIsland();
+                              }
+                            : null,
                       ),
                     ),
                     const AppSettingsDivider(),
@@ -768,26 +857,25 @@ class _PlatformSpecificSettingsPageState
                     const AppSettingsDivider(),
                     _buildTile(
                       targetId: 'mac_island_without_notch',
-                      child: ListTile(
-                        leading: Icon(Icons.desktop_mac_rounded,
-                            color: colorScheme.primary),
-                        title: const Text('无刘海屏幕也显示'),
-                        subtitle: const Text('在外接显示器或无刘海 Mac 顶部显示居中胶囊'),
-                        trailing: LiquidGlassSwitch(
-                          value: _macIslandShowWithoutNotch,
-                          activeThumbColor: colorScheme.primary,
-                          onChanged: _macIslandEnabled
-                              ? (val) async {
-                                  setState(
-                                      () => _macIslandShowWithoutNotch = val);
-                                  final prefs =
-                                      await SharedPreferences.getInstance();
-                                  await prefs.setBool(
-                                      'macos_island_show_without_notch', val);
-                                  await WindowService.configureMacIsland();
-                                }
-                              : null,
-                        ),
+                      child: _buildToggleCard(
+                        title: '无刘海屏幕也显示',
+                        subtitle: '在外接显示器或无刘海 Mac 顶部显示居中胶囊',
+                        icon: Icons.desktop_mac_rounded,
+                        value: _macIslandShowWithoutNotch,
+                        onChanged: _macIslandEnabled
+                            ? (val) async {
+                                final isEnabled = val ?? false;
+                                if (!mounted) return;
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  if (mounted) setState(() => _macIslandShowWithoutNotch = isEnabled);
+                                });
+                                final prefs =
+                                    await SharedPreferences.getInstance();
+                                await prefs.setBool(
+                                    'macos_island_show_without_notch', isEnabled);
+                                await WindowService.configureMacIsland();
+                              }
+                            : null,
                       ),
                     ),
                   ],

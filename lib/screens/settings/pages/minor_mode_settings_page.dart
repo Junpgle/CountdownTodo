@@ -509,16 +509,18 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
           highlightTarget: _highlightTarget,
           itemKeys: _itemKeys,
           borderRadius: BorderRadius.zero,
-          child: LiquidGlassSwitchListTile(
-            secondary: Icon(Icons.tune, color: colorScheme.primary),
-            title: const Text('手动开启'),
-            subtitle: Text(
-              state.systemEnabled
-                  ? '系统模式已开启，App 不能将有效模式关闭'
-                  : '用于系统联动不可用或系统模式关闭时的兜底保护',
-            ),
+          child: _buildToggleCard(
+            title: '手动开启',
+            subtitle: state.systemEnabled
+                ? '系统模式已开启，App 不能将有效模式关闭'
+                : '用于系统联动不可用或系统模式关闭时的兜底保护',
+            icon: Icons.tune,
             value: state.manualEnabled,
-            onChanged: state.systemEnabled ? null : _setManualEnabled,
+            onChanged: state.systemEnabled ? null : (val) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _setManualEnabled(val ?? false);
+              });
+            },
           ),
         ),
         const AppSettingsDivider(),
@@ -539,6 +541,103 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
           onTap: _pickManualBirthDate,
         ),
       ],
+    );
+  }
+
+  Widget _buildToggleCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool value,
+    required ValueChanged<bool?>? onChanged,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isSelected = value;
+    final iconWidget = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      switchInCurve: Curves.easeOutBack,
+      switchOutCurve: Curves.easeInBack,
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        return ScaleTransition(
+          scale: animation,
+          child: RotationTransition(
+            turns: Tween<double>(begin: -0.1, end: 0.0).animate(animation),
+            child: child,
+          ),
+        );
+      },
+      child: Icon(
+        icon,
+        key: ValueKey<bool>(isSelected),
+        color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+        size: 32,
+      ),
+    );
+    final switchWidget = SizedBox(
+      height: 24,
+      child: FittedBox(
+        fit: BoxFit.fill,
+        child: LiquidGlassSwitch(
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: colorScheme.primary,
+        ),
+      ),
+    );
+    final titleWidget = AnimatedDefaultTextStyle(
+      duration: const Duration(milliseconds: 300),
+      style: TextStyle(
+        fontWeight: FontWeight.bold,
+        fontSize: 14,
+        color: isSelected
+            ? colorScheme.primary
+            : theme.textTheme.bodyMedium?.color,
+        fontFamily: theme.textTheme.bodyMedium?.fontFamily,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      child: Text(title),
+    );
+    final subtitleWidget = Text(
+      subtitle,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+    );
+
+    return GestureDetector(
+      onTap: onChanged == null ? null : () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? colorScheme.primary.withValues(alpha: 0.1)
+              : (theme.brightness == Brightness.dark
+                  ? Colors.grey.shade900
+                  : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? colorScheme.primary : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [iconWidget, switchWidget],
+            ),
+            const SizedBox(height: 8),
+            titleWidget,
+            const SizedBox(height: 2),
+            subtitleWidget,
+          ],
+        ),
+      ),
     );
   }
 }
