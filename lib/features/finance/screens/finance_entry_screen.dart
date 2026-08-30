@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../services/finance_storage.dart';
+import '../services/finance_text_parser.dart';
 
 class FinanceEntryScreen extends StatefulWidget {
   final FinanceTransaction? transaction;
@@ -27,6 +28,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   late final TextEditingController _amountController;
   late final TextEditingController _merchantController;
   late final TextEditingController _noteController;
+  late final TextEditingController _oneSentenceController;
 
   FinanceTransactionType _type = FinanceTransactionType.expense;
   DateTime _date = DateTime.now();
@@ -74,6 +76,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     _noteController = TextEditingController(
       text: transaction?.note ?? draft?.note ?? template?.note ?? '',
     );
+    _oneSentenceController = TextEditingController();
     _categoryUuid = transaction?.categoryUuid ??
         draft?.categoryUuid ??
         template?.categoryUuid;
@@ -89,6 +92,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     _amountController.dispose();
     _merchantController.dispose();
     _noteController.dispose();
+    _oneSentenceController.dispose();
     super.dispose();
   }
 
@@ -118,6 +122,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   void _resolveDraftSelections() {
     final draft = widget.initialDraft;
     if (draft == null || widget.transaction != null) return;
+    _resolveSelectionsFromDraft(draft);
+  }
+
+  void _resolveSelectionsFromDraft(FinanceEntryDraft draft) {
     if (_categoryUuid == null && draft.categoryName != null) {
       final wanted = _normalizeOptionName(draft.categoryName!);
       _categoryUuid = _categories
@@ -207,6 +215,36 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     if (picked != null && mounted) setState(() => _date = picked);
   }
 
+  void _applyOneSentence() {
+    if (_isSaving) return;
+    final input = _oneSentenceController.text.trim();
+    if (input.isEmpty) {
+      _showError('请先输入一句话，例如：今天午餐花了 28.5 元，微信支付，分类餐饮');
+      return;
+    }
+    final draft = FinanceTextParser.parseOneSentence(input);
+    if (draft == null) {
+      _showError('没有识别到金额，请说清楚金额，例如：今天午餐花了 28.5 元');
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _type = draft.type;
+      _date = dateFromKey(draft.transactionDate);
+      _amountController.text =
+          formatFinanceAmount(draft.amountMinor, withSymbol: false);
+      _merchantController.text = draft.merchant ?? '';
+      _noteController.text = draft.note ?? '';
+      _categoryUuid = draft.categoryUuid;
+      _paymentMethodUuid = draft.paymentMethodUuid;
+      _selectedTemplateUuid = null;
+      _resolveSelectionsFromDraft(draft);
+      _normalizeSelections(notify: false);
+    });
+    _showMessage('已填入表单，请核对后保存');
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     final amount = parseFinanceAmount(_amountController.text);
@@ -273,6 +311,12 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -295,6 +339,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                 children: [
                   _buildTypeSelector(colorScheme),
+                  if (!_isEditing) ...[
+                    const SizedBox(height: 12),
+                    _buildOneSentenceEntry(colorScheme),
+                  ],
                   if (!_isEditing && _templates.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Align(
@@ -458,6 +506,72 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       style: ButtonStyle(
         visualDensity: VisualDensity.compact,
         foregroundColor: WidgetStatePropertyAll(colorScheme.onSurface),
+      ),
+    );
+  }
+
+  Widget _buildOneSentenceEntry(ColorScheme colorScheme) {
+    return Card(
+      margin: EdgeInsets.zero,
+      color: colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.auto_awesome_rounded, color: colorScheme.primary),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    '一句话记账',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Text(
+                  '自动填入',
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              FinanceTextParser.oneSentenceHelp,
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _oneSentenceController,
+              textInputAction: TextInputAction.done,
+              maxLength: 200,
+              onSubmitted: (_) => _applyOneSentence(),
+              decoration: InputDecoration(
+                labelText: '输入一句话',
+                hintText: FinanceTextParser.oneSentenceExample,
+                prefixIcon: const Icon(Icons.edit_note_rounded),
+                counterText: '',
+                filled: true,
+                fillColor: colorScheme.surface,
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _isSaving ? null : _applyOneSentence,
+                icon: const Icon(Icons.arrow_downward_rounded),
+                label: const Text('解析并填入'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
