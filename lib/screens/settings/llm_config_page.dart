@@ -48,6 +48,8 @@ class VisionModelInfo {
   });
 }
 
+enum _ModelSelectionTarget { text, vision }
+
 class LLMConfigPage extends StatefulWidget {
   final bool isEmbedded;
   const LLMConfigPage({super.key, this.isEmbedded = false});
@@ -1309,7 +1311,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     );
   }
 
-  Future<void> _fetchProviderModels(String provider) async {
+  Future<void> _fetchProviderModels(
+    String provider, {
+    required _ModelSelectionTarget target,
+  }) async {
     if (!await _ensureLlmConfigurationAllowed()) return;
     final apiKey = switch (provider) {
       'mimo' => _mimoApiKey,
@@ -1350,16 +1355,19 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       if (!mounted) return;
 
       setState(() {
-        _selectedTextModelProvider = provider;
-        _selectedVisionModelProvider = provider;
         final fetchedTextModels = _fetchedTextModelsByProvider[provider] ?? [];
         final fetchedVisionModels =
             _fetchedVisionModelsByProvider[provider] ?? [];
-        if (_selectedTextModel == null && fetchedTextModels.isNotEmpty) {
-          _selectedTextModel = fetchedTextModels.first.id;
-        }
-        if (_selectedVisionModel == null && fetchedVisionModels.isNotEmpty) {
-          _selectedVisionModel = fetchedVisionModels.first.id;
+        if (target == _ModelSelectionTarget.text) {
+          _selectedTextModelProvider = provider;
+          if (_selectedTextModel == null && fetchedTextModels.isNotEmpty) {
+            _selectedTextModel = fetchedTextModels.first.id;
+          }
+        } else {
+          _selectedVisionModelProvider = provider;
+          if (_selectedVisionModel == null && fetchedVisionModels.isNotEmpty) {
+            _selectedVisionModel = fetchedVisionModels.first.id;
+          }
         }
       });
 
@@ -1392,10 +1400,13 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                           onPressed: () {
                             Navigator.pop(ctx);
                             setState(() {
-                              _selectedTextModel = id;
-                              _selectedTextModelProvider = provider;
-                              _selectedVisionModel = id;
-                              _selectedVisionModelProvider = provider;
+                              if (target == _ModelSelectionTarget.text) {
+                                _selectedTextModel = id;
+                                _selectedTextModelProvider = provider;
+                              } else {
+                                _selectedVisionModel = id;
+                                _selectedVisionModelProvider = provider;
+                              }
                             });
                           },
                           child: const Text('选用'),
@@ -1429,6 +1440,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         final wide = _useWideLayout(constraints.maxWidth);
         final textModelSection = _buildModelSection(
           title: '文本模型',
+          selectionTarget: _ModelSelectionTarget.text,
           selectedProvider: _selectedTextModelProvider,
           onProviderChanged: (provider) {
             setState(() {
@@ -1460,6 +1472,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         );
         final visionModelSection = _buildModelSection(
           title: '视觉模型',
+          selectionTarget: _ModelSelectionTarget.vision,
           selectedProvider: _selectedVisionModelProvider,
           onProviderChanged: (provider) {
             setState(() {
@@ -1613,6 +1626,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
 
   Widget _buildModelSection({
     required String title,
+    required _ModelSelectionTarget selectionTarget,
     required String selectedProvider,
     required ValueChanged<String> onProviderChanged,
     required List models,
@@ -1726,7 +1740,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           Align(
             alignment: Alignment.centerRight,
             child: OutlinedButton.icon(
-              onPressed: () => _fetchProviderModels(selectedProvider),
+              onPressed: () => _fetchProviderModels(
+                selectedProvider,
+                target: selectionTarget,
+              ),
               icon: const Icon(Icons.cloud_download_outlined, size: 16),
               label: Text(
                 '拉取${providers[selectedProvider]?['name'] ?? selectedProvider}模型列表',

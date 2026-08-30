@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../models/chat_message.dart';
 import 'storage/user_session_storage.dart';
 import 'storage/storage_key_scope.dart';
+import 'secure_storage_service.dart';
 
 class ChatSession {
   final String id;
@@ -236,29 +237,29 @@ class ChatStorageService {
     await prefs.setString(hKey, jsonEncode(jsonList));
   }
 
-  static Future<void> addMessage(ChatMessage message) async {
-    final history = await loadHistory();
+  static Future<void> addMessage(
+    ChatMessage message, {
+    String? sessionId,
+  }) async {
+    final sid = sessionId ?? await getActiveSessionId();
+    if (sid == null) return;
+    final history = await loadHistory(sid);
     history.add(message);
-    await saveHistory(history);
+    await saveHistory(history, sid);
     if (history.length == 2 && message.role == ChatRole.assistant) {
       final sessions = await loadSessions();
-      final activeId = await getActiveSessionId();
-      if (activeId != null) {
-        final session = sessions.firstWhere(
-          (s) => s.id == activeId,
-          orElse: () => throw Exception('Session not found'),
+      final session =
+          sessions.where((session) => session.id == sid).firstOrNull;
+      if (session != null && session.title == '新对话') {
+        final firstUserMsg = history.firstWhere(
+          (m) => m.role == ChatRole.user,
+          orElse: () => message,
         );
-        if (session.title == '新对话') {
-          final firstUserMsg = history.firstWhere(
-            (m) => m.role == ChatRole.user,
-            orElse: () => message,
-          );
-          session.title = firstUserMsg.content.length > 20
-              ? '${firstUserMsg.content.substring(0, 20)}...'
-              : firstUserMsg.content;
-          session.updatedAt = DateTime.now();
-          await saveSessions(sessions);
-        }
+        session.title = firstUserMsg.content.length > 20
+            ? '${firstUserMsg.content.substring(0, 20)}...'
+            : firstUserMsg.content;
+        session.updatedAt = DateTime.now();
+        await saveSessions(sessions);
       }
     }
   }
@@ -314,7 +315,8 @@ class ChatStorageService {
     final pKey = await _getScopedKey(_chatProviderKey);
 
     String? model = prefs.getString(mKey);
-    String? apiKey = prefs.getString(kKey);
+    String? legacyApiKey = prefs.getString(kKey);
+    String? apiKey = await SecureStorageService.read(kKey);
     String? apiUrl = prefs.getString(uKey);
     String? provider = prefs.getString(pKey);
 
@@ -325,15 +327,25 @@ class ChatStorageService {
         final markerKey = "${_chatModelKey}_${username}_migrated";
         if (!(prefs.getBool(markerKey) ?? false)) {
           model = prefs.getString(_chatModelKey);
-          apiKey = prefs.getString(_chatApiKeyKey);
+          legacyApiKey = prefs.getString(_chatApiKeyKey);
           apiUrl = prefs.getString(_chatApiUrlKey);
           if (model != null) {
             await prefs.setString(mKey, model);
-            if (apiKey != null) await prefs.setString(kKey, apiKey);
             if (apiUrl != null) await prefs.setString(uKey, apiUrl);
             await prefs.setBool(markerKey, true);
           }
         }
+      }
+    }
+
+    if (legacyApiKey != null && legacyApiKey.isNotEmpty) {
+      final migrated = apiKey != null && apiKey.isNotEmpty
+          ? true
+          : await SecureStorageService.write(kKey, legacyApiKey);
+      if (apiKey == null || apiKey.isEmpty) apiKey = legacyApiKey;
+      if (migrated) {
+        await prefs.remove(kKey);
+        await prefs.remove(_chatApiKeyKey);
       }
     }
 
@@ -361,13 +373,15 @@ class ChatStorageService {
 
     if (model.isEmpty) {
       await prefs.remove(mKey);
+      await SecureStorageService.delete(kKey);
       await prefs.remove(kKey);
       await prefs.remove(uKey);
       await prefs.remove(pKey);
     } else {
       await prefs.setString(mKey, model);
       if (apiKey.isNotEmpty) {
-        await prefs.setString(kKey, apiKey);
+        await SecureStorageService.write(kKey, apiKey);
+        await prefs.remove(kKey);
       }
       if (apiUrl != null && apiUrl.isNotEmpty) {
         await prefs.setString(uKey, apiUrl);
@@ -385,6 +399,7 @@ class ChatStorageService {
     final uKey = await _getScopedKey(_chatApiUrlKey);
     final pKey = await _getScopedKey(_chatProviderKey);
     await prefs.remove(mKey);
+    await SecureStorageService.delete(kKey);
     await prefs.remove(kKey);
     await prefs.remove(uKey);
     await prefs.remove(pKey);

@@ -69,6 +69,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     }
 
     if (apiUrl.isEmpty) apiUrl = AiChatService.defaultApiUrl;
+    final sessionId = _activeSessionId;
+    if (sessionId == null) return;
 
     final userMsg = ChatMessage(
       role: ChatRole.user,
@@ -80,7 +82,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       _streamingContent = '';
       _isLoading = true;
     });
-    await ChatStorageService.addMessage(userMsg);
+    await ChatStorageService.addMessage(userMsg, sessionId: sessionId);
     _inputCtrl.clear();
     _scrollToBottom();
 
@@ -168,7 +170,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             _streamingReasoning = '';
             _isLoading = false;
             _cancelGeneration = null;
-            ChatStorageService.addMessage(assistantMsg);
+            ChatStorageService.addMessage(assistantMsg, sessionId: sessionId);
           });
         } else {
           setState(() {
@@ -239,10 +241,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         if (todoActions.isNotEmpty) {
           _actionRailCollapsed = false;
         }
-        ChatStorageService.addMessage(assistantMsg);
+        ChatStorageService.addMessage(assistantMsg, sessionId: sessionId);
       });
       _scrollToBottom();
-      _generateSessionTitle();
+      _generateSessionTitle(sessionId: sessionId);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -269,6 +271,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       source: FinanceEntrySource.import,
     );
     if (drafts.isEmpty) return false;
+    final sessionId = _activeSessionId;
+    if (sessionId == null) return false;
 
     final userMsg = ChatMessage(role: ChatRole.user, content: text);
     final assistantMsg = ChatMessage(
@@ -284,10 +288,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       _inputCtrl.clear();
       _suggestions = _getSmartSuggestions();
     });
-    await ChatStorageService.addMessage(userMsg);
-    await ChatStorageService.addMessage(assistantMsg);
+    await ChatStorageService.addMessage(userMsg, sessionId: sessionId);
+    await ChatStorageService.addMessage(assistantMsg, sessionId: sessionId);
     _scrollToBottom();
-    _generateSessionTitle();
+    _generateSessionTitle(sessionId: sessionId);
     return true;
   }
 
@@ -355,6 +359,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   }
 
   Future<void> _importManualAiReply(String fullContent) async {
+    final sessionId = _activeSessionId;
+    if (sessionId == null) return;
     final originalText = _pendingManualOriginalText.isNotEmpty
         ? _pendingManualOriginalText
         : (_inputCtrl.text.trim().isNotEmpty
@@ -422,10 +428,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       _pendingManualSmartContext = '';
     });
     for (final message in newMessages) {
-      await ChatStorageService.addMessage(message);
+      await ChatStorageService.addMessage(message, sessionId: sessionId);
     }
     _scrollToBottom();
-    _generateSessionTitle();
+    _generateSessionTitle(sessionId: sessionId);
   }
 
   String _lastUserContent() {
@@ -456,10 +462,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     _sendMessage();
   }
 
-  Future<void> _generateSessionTitle() async {
-    if (_messages.isEmpty) return;
+  Future<void> _generateSessionTitle({required String sessionId}) async {
     final session = _sessions.firstWhere(
-      (s) => s.id == _activeSessionId,
+      (s) => s.id == sessionId,
       orElse: () => ChatSession(title: '新对话'),
     );
     if (session.title != '新对话') return;
@@ -484,9 +489,11 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
 
       if (apiUrl.isEmpty) apiUrl = AiChatService.defaultApiUrl;
 
-      final firstUserMsg = _messages.firstWhere(
+      final history = await ChatStorageService.loadHistory(sessionId);
+      if (history.isEmpty) return;
+      final firstUserMsg = history.firstWhere(
         (m) => m.role == ChatRole.user,
-        orElse: () => _messages.first,
+        orElse: () => history.first,
       );
 
       String title = await AiChatService.completeChat(

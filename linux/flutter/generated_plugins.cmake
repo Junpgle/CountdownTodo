@@ -6,6 +6,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   desktop_multi_window
   dynamic_color
   file_selector_linux
+  flutter_secure_storage_linux
   fullscreen_window
   open_file_linux
   screen_retriever_linux

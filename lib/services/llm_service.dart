@@ -5,6 +5,8 @@ import '../utils/image_input_reader.dart';
 import 'ai_chat_service.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
+import 'secure_storage_service.dart';
+import '../features/finance/services/ai_usage_cost_service.dart';
 
 class LLMConfig {
   final String provider;
@@ -303,6 +305,27 @@ class LLMService {
   static const String _customVisionModelsKey = 'custom_vision_models';
   static const String _nvidiaNimModelsKey = 'nvidia_nim_models';
   static const String _providerModelsPrefix = 'provider_models_';
+  static const String _configApiKeyStorageKey = 'llm_config_api_key';
+  static const String _providerApiKeyStoragePrefix = 'llm_provider_api_key_';
+  static const String _customTextApiKeyStoragePrefix =
+      'llm_custom_text_api_key_';
+  static const String _customVisionApiKeyStoragePrefix =
+      'llm_custom_vision_api_key_';
+
+  static String _providerApiKeyStorageKey(String provider) =>
+      '$_providerApiKeyStoragePrefix$provider';
+
+  static String _customTextApiKeyStorageKey(String id) =>
+      '$_customTextApiKeyStoragePrefix$id';
+
+  static String _customVisionApiKeyStorageKey(String id) =>
+      '$_customVisionApiKeyStoragePrefix$id';
+
+  static Map<String, dynamic> _withoutApiKey(Map<String, dynamic> json) {
+    final copy = Map<String, dynamic>.from(json);
+    copy.remove('api_key');
+    return copy;
+  }
 
   static const Map<String, String> _visionModelProviders = {
     'glm-4.6v-flash': 'zhipu',
@@ -411,7 +434,30 @@ class LLMService {
     final configStr = prefs.getString(_configKey);
     if (configStr == null || configStr.isEmpty) return null;
     try {
-      final json = jsonDecode(configStr) as Map<String, dynamic>;
+      final json = Map<String, dynamic>.from(
+        jsonDecode(configStr) as Map<String, dynamic>,
+      );
+      final legacyApiKey = json['api_key']?.toString() ?? '';
+      final secureApiKey =
+          await SecureStorageService.read(_configApiKeyStorageKey);
+      final apiKey = secureApiKey != null && secureApiKey.isNotEmpty
+          ? secureApiKey
+          : legacyApiKey;
+      if (legacyApiKey.isNotEmpty) {
+        final migrated = secureApiKey != null && secureApiKey.isNotEmpty
+            ? true
+            : await SecureStorageService.write(
+                _configApiKeyStorageKey,
+                legacyApiKey,
+              );
+        if (migrated) {
+          await prefs.setString(
+            _configKey,
+            jsonEncode(_withoutApiKey(json)),
+          );
+        }
+      }
+      json['api_key'] = apiKey;
       return LLMConfig.fromJson(json);
     } catch (_) {
       return null;
@@ -420,12 +466,21 @@ class LLMService {
 
   static Future<void> saveConfig(LLMConfig config) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_configKey, jsonEncode(config.toJson()));
+    if (config.apiKey.isEmpty) {
+      await SecureStorageService.delete(_configApiKeyStorageKey);
+    } else {
+      await SecureStorageService.write(_configApiKeyStorageKey, config.apiKey);
+    }
+    await prefs.setString(
+      _configKey,
+      jsonEncode(_withoutApiKey(config.toJson())),
+    );
   }
 
   static Future<void> clearConfig() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_configKey);
+    await SecureStorageService.delete(_configApiKeyStorageKey);
     await prefs.remove(_nvidiaNimModelsKey);
     for (final provider in [
       'zhipu',
@@ -448,28 +503,39 @@ class LLMService {
 
   static Future<String> getProviderApiKey(String provider) async {
     final prefs = await SharedPreferences.getInstance();
-    // 优先读取新的 provider key
-    final providerKey = prefs.getString('$_providerApiKeyPrefix$provider');
-    if (providerKey != null && providerKey.isNotEmpty) return providerKey;
-    // 向后兼容：zhipu 从旧 key 迁移
-    if (provider == 'zhipu') {
-      final legacy = prefs.getString(_zhipuApiKeyKey);
-      if (legacy != null && legacy.isNotEmpty) {
-        // 自动迁移到新 key
-        await prefs.setString('$_providerApiKeyPrefix$provider', legacy);
-        return legacy;
+    final secureKey = _providerApiKeyStorageKey(provider);
+    final secureApiKey = await SecureStorageService.read(secureKey);
+    final providerPreferenceKey = '$_providerApiKeyPrefix$provider';
+    final legacyApiKey = prefs.getString(providerPreferenceKey) ??
+        (provider == 'zhipu' ? prefs.getString(_zhipuApiKeyKey) : null) ??
+        '';
+    if (secureApiKey != null && secureApiKey.isNotEmpty) {
+      if (legacyApiKey.isNotEmpty) {
+        await prefs.remove(providerPreferenceKey);
+        if (provider == 'zhipu') await prefs.remove(_zhipuApiKeyKey);
       }
+      return secureApiKey;
     }
-    return '';
+    if (legacyApiKey.isEmpty) return '';
+
+    final migrated = await SecureStorageService.write(secureKey, legacyApiKey);
+    if (migrated) {
+      await prefs.remove(providerPreferenceKey);
+      if (provider == 'zhipu') await prefs.remove(_zhipuApiKeyKey);
+    }
+    return legacyApiKey;
   }
 
   static Future<void> saveProviderApiKey(String provider, String apiKey) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('$_providerApiKeyPrefix$provider', apiKey);
-    // 保持 zhipu 旧 key 同步（向后兼容）
-    if (provider == 'zhipu') {
-      await prefs.setString(_zhipuApiKeyKey, apiKey);
+    final secureKey = _providerApiKeyStorageKey(provider);
+    if (apiKey.isEmpty) {
+      await SecureStorageService.delete(secureKey);
+    } else {
+      await SecureStorageService.write(secureKey, apiKey);
     }
+    await prefs.remove('$_providerApiKeyPrefix$provider');
+    if (provider == 'zhipu') await prefs.remove(_zhipuApiKeyKey);
   }
 
   static Future<List<String>> getNvidiaNimModels() async {
@@ -508,10 +574,41 @@ class LLMService {
   static Future<List<CustomTextModel>> getCustomTextModels() async {
     final prefs = await SharedPreferences.getInstance();
     final list = prefs.getStringList(_customTextModelsKey) ?? [];
-    return list
-        .map((e) =>
-            CustomTextModel.fromJson(jsonDecode(e) as Map<String, dynamic>))
-        .toList();
+    var needsSanitizing = false;
+    final models = <CustomTextModel>[];
+    for (final entry in list) {
+      final model = CustomTextModel.fromJson(
+        jsonDecode(entry) as Map<String, dynamic>,
+      );
+      final secureApiKey = await SecureStorageService.read(
+        _customTextApiKeyStorageKey(model.id),
+      );
+      final apiKey = secureApiKey ?? model.apiKey;
+      if (model.apiKey.isNotEmpty) {
+        final migrated = secureApiKey != null ||
+            await SecureStorageService.write(
+              _customTextApiKeyStorageKey(model.id),
+              model.apiKey,
+            );
+        needsSanitizing = needsSanitizing || migrated;
+      }
+      models.add(CustomTextModel(
+        id: model.id,
+        name: model.name,
+        modelId: model.modelId,
+        apiUrl: model.apiUrl,
+        apiKey: apiKey,
+      ));
+    }
+    if (needsSanitizing) {
+      await prefs.setStringList(
+        _customTextModelsKey,
+        models
+            .map((model) => jsonEncode(_withoutApiKey(model.toJson())))
+            .toList(),
+      );
+    }
+    return models;
   }
 
   static Future<void> saveCustomTextModel(CustomTextModel model) async {
@@ -523,25 +620,69 @@ class LLMService {
     } else {
       models.add(model);
     }
-    await prefs.setStringList(_customTextModelsKey,
-        models.map((e) => jsonEncode(e.toJson())).toList());
+    if (model.apiKey.isEmpty) {
+      await SecureStorageService.delete(_customTextApiKeyStorageKey(model.id));
+    } else {
+      await SecureStorageService.write(
+        _customTextApiKeyStorageKey(model.id),
+        model.apiKey,
+      );
+    }
+    await prefs.setStringList(
+      _customTextModelsKey,
+      models.map((e) => jsonEncode(_withoutApiKey(e.toJson()))).toList(),
+    );
   }
 
   static Future<void> deleteCustomTextModel(String id) async {
     final prefs = await SharedPreferences.getInstance();
     final models = await getCustomTextModels();
     models.removeWhere((m) => m.id == id);
-    await prefs.setStringList(_customTextModelsKey,
-        models.map((e) => jsonEncode(e.toJson())).toList());
+    await SecureStorageService.delete(_customTextApiKeyStorageKey(id));
+    await prefs.setStringList(
+      _customTextModelsKey,
+      models.map((e) => jsonEncode(_withoutApiKey(e.toJson()))).toList(),
+    );
   }
 
   static Future<List<CustomVisionModel>> getCustomVisionModels() async {
     final prefs = await SharedPreferences.getInstance();
     final list = prefs.getStringList(_customVisionModelsKey) ?? [];
-    return list
-        .map((e) =>
-            CustomVisionModel.fromJson(jsonDecode(e) as Map<String, dynamic>))
-        .toList();
+    var needsSanitizing = false;
+    final models = <CustomVisionModel>[];
+    for (final entry in list) {
+      final model = CustomVisionModel.fromJson(
+        jsonDecode(entry) as Map<String, dynamic>,
+      );
+      final secureApiKey = await SecureStorageService.read(
+        _customVisionApiKeyStorageKey(model.id),
+      );
+      final apiKey = secureApiKey ?? model.apiKey;
+      if (model.apiKey.isNotEmpty) {
+        final migrated = secureApiKey != null ||
+            await SecureStorageService.write(
+              _customVisionApiKeyStorageKey(model.id),
+              model.apiKey,
+            );
+        needsSanitizing = needsSanitizing || migrated;
+      }
+      models.add(CustomVisionModel(
+        id: model.id,
+        name: model.name,
+        modelId: model.modelId,
+        apiUrl: model.apiUrl,
+        apiKey: apiKey,
+      ));
+    }
+    if (needsSanitizing) {
+      await prefs.setStringList(
+        _customVisionModelsKey,
+        models
+            .map((model) => jsonEncode(_withoutApiKey(model.toJson())))
+            .toList(),
+      );
+    }
+    return models;
   }
 
   static Future<void> saveCustomVisionModel(CustomVisionModel model) async {
@@ -553,16 +694,30 @@ class LLMService {
     } else {
       models.add(model);
     }
-    await prefs.setStringList(_customVisionModelsKey,
-        models.map((e) => jsonEncode(e.toJson())).toList());
+    if (model.apiKey.isEmpty) {
+      await SecureStorageService.delete(
+          _customVisionApiKeyStorageKey(model.id));
+    } else {
+      await SecureStorageService.write(
+        _customVisionApiKeyStorageKey(model.id),
+        model.apiKey,
+      );
+    }
+    await prefs.setStringList(
+      _customVisionModelsKey,
+      models.map((e) => jsonEncode(_withoutApiKey(e.toJson()))).toList(),
+    );
   }
 
   static Future<void> deleteCustomVisionModel(String id) async {
     final prefs = await SharedPreferences.getInstance();
     final models = await getCustomVisionModels();
     models.removeWhere((m) => m.id == id);
-    await prefs.setStringList(_customVisionModelsKey,
-        models.map((e) => jsonEncode(e.toJson())).toList());
+    await SecureStorageService.delete(_customVisionApiKeyStorageKey(id));
+    await prefs.setStringList(
+      _customVisionModelsKey,
+      models.map((e) => jsonEncode(_withoutApiKey(e.toJson()))).toList(),
+    );
   }
 
   static Future<String> testConnection() async {
@@ -609,6 +764,22 @@ class LLMService {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final usage = AiTokenUsage.fromJson(data['usage']);
+    try {
+      final usageProvider =
+          AiChatService.effectiveProvider(config.provider, config.apiUrl);
+      await AiUsageCostService.recordUsage(
+        provider: usageProvider.isEmpty ? 'custom' : usageProvider,
+        model: config.model,
+        operation: 'connection_test',
+        promptTokens: usage?.promptTokens ?? 0,
+        completionTokens: usage?.completionTokens ?? 0,
+        totalTokens: usage?.totalTokens ?? 0,
+        usageAvailable: usage != null,
+      );
+    } catch (_) {
+      // Cost tracking must not invalidate a successful text recognition.
+    }
     final choices = data['choices'] as List?;
     if (choices == null || choices.isEmpty) {
       // print('完整响应: ${response.body}');
@@ -682,6 +853,22 @@ class LLMService {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final usage = AiTokenUsage.fromJson(data['usage']);
+    try {
+      final usageProvider =
+          AiChatService.effectiveProvider(config.provider, config.apiUrl);
+      await AiUsageCostService.recordUsage(
+        provider: usageProvider.isEmpty ? 'custom' : usageProvider,
+        model: config.model,
+        operation: 'todo_text',
+        promptTokens: usage?.promptTokens ?? 0,
+        completionTokens: usage?.completionTokens ?? 0,
+        totalTokens: usage?.totalTokens ?? 0,
+        usageAvailable: usage != null,
+      );
+    } catch (_) {
+      // Cost tracking must not invalidate a successful text recognition.
+    }
     final choices = data['choices'] as List?;
     if (choices == null || choices.isEmpty) {
       throw Exception('API返回数据格式异常');
@@ -709,6 +896,7 @@ class LLMService {
       String imagePath) {
     return _parseImageWithPrompt(
       imagePath,
+      operation: 'vision_todo',
       promptBuilder: (config, nowStr) =>
           '${config.visionPrompt.replaceAll('{now}', nowStr)}\n\n'
           '${LLMConfig.itemSemanticGuardrailPrompt}',
@@ -722,6 +910,7 @@ class LLMService {
       String imagePath) {
     return _parseImageWithPrompt(
       imagePath,
+      operation: 'vision_finance',
       promptBuilder: (_, nowStr) =>
           LLMConfig.defaultFinanceVisionPrompt.replaceAll('{now}', nowStr),
     );
@@ -729,6 +918,7 @@ class LLMService {
 
   static Future<List<Map<String, dynamic>>> _parseImageWithPrompt(
     String imagePath, {
+    required String operation,
     required String Function(LLMConfig config, String nowStr) promptBuilder,
   }) async {
     await _ensureAiInteractionAllowed();
@@ -801,6 +991,25 @@ class LLMService {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final usage = AiTokenUsage.fromJson(data['usage']);
+    try {
+      final usageProvider = AiChatService.effectiveProvider(
+        visionProvider ?? config.provider,
+        visionUrl,
+      );
+      await AiUsageCostService.recordUsage(
+        provider: usageProvider.isEmpty ? 'custom' : usageProvider,
+        model: config.visionModel,
+        operation: operation,
+        promptTokens: usage?.promptTokens ?? 0,
+        completionTokens: usage?.completionTokens ?? 0,
+        totalTokens: usage?.totalTokens ?? 0,
+        imageCount: 1,
+        usageAvailable: usage != null,
+      );
+    } catch (_) {
+      // Cost tracking must not invalidate a successful image recognition.
+    }
     final choices = data['choices'] as List?;
     if (choices == null || choices.isEmpty) {
       throw Exception('API返回数据格式异常');

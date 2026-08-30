@@ -37,6 +37,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   final GlobalKey _newSessionKey = GlobalKey();
   final GlobalKey _settingsKey = GlobalKey();
   final GlobalKey _inputKey = GlobalKey();
+  final GlobalKey _tutorialButtonKey = GlobalKey();
   bool _showCoachMarks = false;
 
   List<TodoPlanBlock> _planBlocks = [];
@@ -108,7 +109,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   String _lastUserContent();
   void _stopGeneration();
   void _retryLastMessage();
-  Future<void> _generateSessionTitle();
+  Future<void> _generateSessionTitle({required String sessionId});
   Future<void> _clearHistory();
   Future<void> _showPromptSettings();
   void _showPromptPreview(String prompt, bool enabled);

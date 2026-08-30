@@ -1,6 +1,16 @@
 part of 'todo_chat_screen.dart';
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
+Widget _keepTodoChatButtonBackground(
+  BuildContext context,
+  Set<WidgetState> states,
+  Widget? child,
+) {
+  // The surrounding FloatingGlassControl owns the only glass surface. The
+  // app-wide button theme must not add another GlassContainer inside it.
+  return child ?? const SizedBox.shrink();
+}
+
 mixin _TodoChatLayout on _TodoChatScreenStateBase {
   @override
   Widget build(BuildContext context) {
@@ -129,7 +139,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
         IconButton(
           key: _newSessionKey,
           icon: const Icon(Icons.add_comment_rounded, size: 22),
-          onPressed: _newSession,
+          onPressed: _isLoading ? null : _newSession,
           tooltip: '新建对话',
         ),
         IconButton(
@@ -597,20 +607,31 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
               const SizedBox(height: 28),
               _StaggeredFadeSlide(
                 delay: const Duration(milliseconds: 200),
-                child: OutlinedButton.icon(
-                  onPressed: _openTutorialPage,
-                  icon: const Icon(Icons.menu_book_rounded, size: 18),
-                  label: const Text('查看使用教程'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    side: BorderSide(
-                      color: colorScheme.primary.withValues(alpha: 0.5),
+                child: FloatingGlassControl(
+                  key: _tutorialButtonKey,
+                  height: 48,
+                  borderRadius: 16,
+                  tint: colorScheme.primaryContainer,
+                  haloColor: colorScheme.primary,
+                  child: OutlinedButton.icon(
+                    onPressed: _openTutorialPage,
+                    icon: const Icon(Icons.menu_book_rounded, size: 18),
+                    label: const Text('查看使用教程'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      backgroundBuilder: _keepTodoChatButtonBackground,
+                      backgroundColor: Colors.transparent,
+                      foregroundColor: colorScheme.primary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      side: BorderSide(
+                        color: colorScheme.primary.withValues(alpha: 0.5),
+                      ),
                     ),
                   ),
                 ),
@@ -827,10 +848,12 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                           trailing: IconButton(
                             icon: const Icon(Icons.delete_outline, size: 18),
                             color: colorScheme.onSurfaceVariant,
-                            onPressed: () {
-                              if (!isWideMode) Navigator.pop(context);
-                              _deleteSession(session.id);
-                            },
+                            onPressed: _isLoading
+                                ? null
+                                : () {
+                                    if (!isWideMode) Navigator.pop(context);
+                                    _deleteSession(session.id);
+                                  },
                             tooltip: '删除对话',
                           ),
                           selected: isActive,
@@ -838,10 +861,12 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          onTap: () {
-                            if (!isWideMode) Navigator.pop(context);
-                            _switchSession(session.id);
-                          },
+                          onTap: _isLoading
+                              ? null
+                              : () {
+                                  if (!isWideMode) Navigator.pop(context);
+                                  _switchSession(session.id);
+                                },
                         ),
                       ),
                     );
@@ -913,37 +938,44 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
         ? _chatModel
         : '$labelPrefix$inheritedModel$labelSuffix';
 
+    final modelColor = _chatModel.isNotEmpty
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).colorScheme.onSurfaceVariant;
+
     return PopupMenuButton<String>(
       tooltip: '模型配置',
-      icon: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 230),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.model_training_outlined,
-              size: 18,
-              color: _chatModel.isNotEmpty
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: _chatModel.isNotEmpty
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
+      // Using [child] avoids PopupMenuButton's internal IconButton, whose
+      // global glass style both clips this wide label and adds a second glass
+      // surface inside the composer shell.
+      borderRadius: BorderRadius.circular(18),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 320),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.model_training_outlined,
+                size: 18,
+                color: modelColor,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: modelColor,
+                  ),
                 ),
               ),
-            ),
-            const Icon(Icons.arrow_drop_down, size: 18),
-          ],
+              Icon(Icons.arrow_drop_down, size: 18, color: modelColor),
+            ],
+          ),
         ),
       ),
       itemBuilder: (ctx) => [
