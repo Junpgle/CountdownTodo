@@ -93,7 +93,7 @@ class FloatingBottomBar extends StatelessWidget {
     required this.child,
     this.height = 88,
     this.margin = const EdgeInsets.fromLTRB(16, 8, 16, 12),
-    this.borderRadius = 34,
+    this.borderRadius = floatingBottomNavigationBorderRadius,
     this.tint,
     this.haloColor,
     this.isDark,
@@ -141,6 +141,7 @@ class FloatingBottomNavigationBar extends StatefulWidget {
     this.selectedBackgroundColor,
     this.height,
     this.margin,
+    this.borderRadius = floatingBottomNavigationBorderRadius,
     this.tint,
     this.haloColor,
     this.isDark,
@@ -156,6 +157,7 @@ class FloatingBottomNavigationBar extends StatefulWidget {
   final Color? selectedBackgroundColor;
   final double? height;
   final EdgeInsetsGeometry? margin;
+  final double borderRadius;
   final Color? tint;
   final Color? haloColor;
   final bool? isDark;
@@ -210,11 +212,12 @@ class _FloatingBottomNavigationBarState
       onTabSelected: widget.onTabSelected,
       onDragStretchChanged: (stretch) => _stretchNotifier.value = stretch,
       keyPrefix: widget.keyPrefix,
+      borderRadius: widget.borderRadius,
     );
     final surface = FloatingBottomBar(
       height: height,
       margin: margin,
-      borderRadius: 34,
+      borderRadius: widget.borderRadius,
       tint: tint,
       haloColor: widget.haloColor ?? primaryColor,
       isDark: dark,

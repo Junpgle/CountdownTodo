@@ -113,6 +113,7 @@ void main() {
     expect(indicatorFill.indicatorColor, selectedBackground);
     expect(indicatorFill.paintBackground, isTrue);
     expect(indicatorFill.paintGlass, isFalse);
+    expect(indicator.borderRadius, floatingBottomNavigationBorderRadius);
     expect(
       indicator.expansion,
       const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
@@ -125,8 +126,8 @@ void main() {
       ),
     );
     expect(overflowLayer.transform.getTranslation().y, 0);
-    expect(overflowLayer.transform.storage[0], closeTo(1.1, 0.001));
-    expect(overflowLayer.transform.storage[5], closeTo(1.02, 0.001));
+    expect(overflowLayer.transform.storage[0], closeTo(1.04, 0.001));
+    expect(overflowLayer.transform.storage[5], closeTo(0.92, 0.001));
 
     final gestureFinder = find.byKey(
       const ValueKey<String>('home-bottom-navigation-gesture-layer'),
@@ -193,6 +194,127 @@ void main() {
       tester.widget<AnimatedGlassIndicator>(indicatorFinder).alignment,
       const Alignment(-1, 0),
     );
+    semantics.dispose();
+  });
+
+  testWidgets('supports five home slots without selecting action slots',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    final weeklyKey = GlobalKey();
+    final addKey = GlobalKey();
+    final pomodoroKey = GlobalKey();
+    var selectedIndex = 0;
+    var weeklyPressed = false;
+    var addPressed = false;
+    var pomodoroPressed = false;
+
+    await tester.pumpWidget(
+      StatefulBuilder(
+        builder: (context, setState) {
+          return MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: SizedBox(
+                  width: 360,
+                  height: 60,
+                  child: FloatingBottomNavigationContent(
+                    items: [
+                      const FloatingBottomNavigationItem(
+                        icon: Icons.dashboard_rounded,
+                        label: '首页',
+                      ),
+                      FloatingBottomNavigationItem(
+                        key: weeklyKey,
+                        label: '周视图',
+                        icon: Icons.calendar_today_rounded,
+                        selectable: false,
+                        onPressed: () => weeklyPressed = true,
+                        semanticsLabel: '周视图',
+                      ),
+                      FloatingBottomNavigationItem(
+                        label: '新增',
+                        selectable: false,
+                        onPressed: () => addPressed = true,
+                        builder: (context, selectedLayer, interactive) =>
+                            Center(
+                          child: HomeBottomNavigationActionButton(
+                            buttonKey: selectedLayer ? null : addKey,
+                            primaryColor: Colors.green,
+                            interactive: interactive,
+                            onPressed: () => addPressed = true,
+                            semanticsLabel: '新增',
+                            child: const Icon(Icons.add_rounded),
+                          ),
+                        ),
+                      ),
+                      FloatingBottomNavigationItem(
+                        key: pomodoroKey,
+                        label: '番茄钟',
+                        iconWidget: const Text('🍅'),
+                        selectable: false,
+                        onPressed: () => pomodoroPressed = true,
+                        semanticsLabel: '番茄钟',
+                      ),
+                      const FloatingBottomNavigationItem(
+                        icon: Icons.adjust_rounded,
+                        label: '专注',
+                      ),
+                    ],
+                    selectedIndex: selectedIndex,
+                    primaryColor: Colors.green,
+                    inactiveColor: Colors.black87,
+                    selectedBackgroundColor: const Color(0x339E9E9E),
+                    onTabSelected: (index) {
+                      setState(() => selectedIndex = index);
+                    },
+                    keyPrefix: 'home-five',
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    expect(find.byKey(weeklyKey), findsOneWidget);
+    expect(find.byKey(addKey), findsOneWidget);
+    expect(find.byKey(pomodoroKey), findsOneWidget);
+    expect(find.bySemanticsLabel('周视图'), findsOneWidget);
+    expect(find.bySemanticsLabel('新增'), findsOneWidget);
+    expect(find.bySemanticsLabel('番茄钟'), findsOneWidget);
+
+    final fiveGestureFinder = find.byKey(
+      const ValueKey<String>('home-five-navigation-gesture-layer'),
+    );
+    final fiveSelectedClipFinder = find
+        .descendant(of: fiveGestureFinder, matching: find.byType(ClipPath))
+        .last;
+    final fiveClipSize = tester.getSize(fiveSelectedClipFinder);
+    final fiveClipBounds = tester
+        .widget<ClipPath>(fiveSelectedClipFinder)
+        .clipper!
+        .getClip(fiveClipSize)
+        .getBounds();
+    final expectedFirstSlotCenter = 4 + (fiveClipSize.width - 8) / (2 * 5);
+    expect(
+      fiveClipBounds.center.dx,
+      closeTo(expectedFirstSlotCenter, 0.01),
+    );
+
+    await tester.tap(find.byKey(weeklyKey));
+    await tester.tap(find.byKey(addKey));
+    await tester.tap(find.byKey(pomodoroKey));
+    expect(weeklyPressed, isTrue);
+    expect(addPressed, isTrue);
+    expect(pomodoroPressed, isTrue);
+    expect(selectedIndex, 0);
+
+    final focusRect = tester.getRect(find.bySemanticsLabel('专注'));
+    await tester.tapAt(focusRect.center);
+    await tester.pumpAndSettle();
+    expect(selectedIndex, 4);
+
     semantics.dispose();
   });
 }

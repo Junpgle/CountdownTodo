@@ -5,6 +5,12 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../services/liquid_glass_effect_service.dart';
 
+/// The radius shared by the floating navigation shell and its selection lens.
+///
+/// Keeping this in one place prevents the inner selected state from becoming a
+/// fully rounded pill while the outer glass shell uses a softer corner.
+const double floatingBottomNavigationBorderRadius = 34.0;
+
 double homeBottomBarHorizontalMarginFor(double screenWidth) {
   final responsiveMargin = screenWidth >= 430
       ? 78.0
@@ -44,21 +50,26 @@ Color homeBottomBarSelectedBackgroundColor({
 /// Builds one destination in [FloatingBottomNavigationContent].
 ///
 /// A destination can either use the built-in icon/label presentation or supply
-/// [builder] for a custom action (the home screen's centre calendar button is
-/// one example). Custom actions may set [selectable] to false so they do not
-/// move the selection lens.
+/// [builder] for a custom action (the home screen's centre add button is one
+/// example). Custom actions may set [selectable] to false so they do not move
+/// the selection lens.
 class FloatingBottomNavigationItem {
   const FloatingBottomNavigationItem({
     required this.label,
     this.icon,
+    this.iconWidget,
     this.builder,
     this.selectable = true,
     this.onPressed,
     this.semanticsLabel,
     this.key,
   })  : assert(
-          builder != null || icon != null,
-          'Provide either an icon or a custom builder.',
+          builder != null || icon != null || iconWidget != null,
+          'Provide an icon, icon widget, or a custom builder.',
+        ),
+        assert(
+          icon == null || iconWidget == null,
+          'Provide either icon or iconWidget, not both.',
         ),
         assert(
           selectable || onPressed != null || builder != null,
@@ -67,6 +78,7 @@ class FloatingBottomNavigationItem {
 
   final String label;
   final IconData? icon;
+  final Widget? iconWidget;
   final Widget Function(
       BuildContext context, bool selectedLayer, bool interactive)? builder;
   final bool selectable;
@@ -93,6 +105,7 @@ class FloatingBottomNavigationContent extends StatefulWidget {
     required this.onTabSelected,
     this.onDragStretchChanged,
     this.keyPrefix = 'floating-bottom',
+    this.borderRadius = floatingBottomNavigationBorderRadius,
   })  : assert(items.length > 0, 'At least one bottom-bar item is required.'),
         assert(
           selectedIndex >= 0 && selectedIndex < items.length,
@@ -107,6 +120,7 @@ class FloatingBottomNavigationContent extends StatefulWidget {
   final ValueChanged<int> onTabSelected;
   final ValueChanged<double>? onDragStretchChanged;
   final String keyPrefix;
+  final double borderRadius;
 
   @override
   State<FloatingBottomNavigationContent> createState() =>
@@ -124,12 +138,11 @@ class _FloatingBottomNavigationContentState
     horizontal: 6,
     vertical: 6,
   );
-  // Keep the resting lens compact horizontally, while a restrained vertical
-  // scale lets its rim cross the bar by only a pixel or two. The content stays
-  // centered on the same baseline as every inactive item.
-  static const double _indicatorHorizontalScale = 1.1;
-  static const double _indicatorVerticalScale = 1.02;
-  static const double _indicatorRadius = 9999;
+  // Keep the resting lens inside its slot with a balanced breathing room on
+  // all four sides. The vertical inset is intentional: without it the lens
+  // touches the shell at the top and bottom while remaining inset sideways.
+  static const double _indicatorHorizontalScale = 1.04;
+  static const double _indicatorVerticalScale = 0.92;
   static const LiquidGlassSettings _indicatorSettings = LiquidGlassSettings(
     glassColor: Color(0x3DFFFFFF),
     thickness: 28,
@@ -455,7 +468,8 @@ class _FloatingBottomNavigationContentState
         final content = custom ??
             _FloatingBottomTabItem(
               index: index,
-              icon: item.icon!,
+              icon: item.icon,
+              iconWidget: item.iconWidget,
               label: item.label,
               selected: selectedLayer,
               semanticsSelected: widget.selectedIndex == index,
@@ -491,52 +505,58 @@ class _FloatingBottomNavigationContentState
   }) {
     return Positioned.fill(
       child: IgnorePointer(
-        child: Transform(
-          key: paintGlass
-              ? ValueKey<String>(_keyName('selection-overflow-layer'))
-              : null,
-          alignment: Alignment(
-            alignment.x * (1 - 1 / _slotCount),
-            0,
-          ),
-          transform: Matrix4.diagonal3Values(
-            _indicatorHorizontalScale,
-            _indicatorVerticalScale,
-            1,
-          ),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              AnimatedGlassIndicator(
-                key: key,
-                velocity: velocity,
-                itemCount: _slotCount,
-                alignment: alignment,
-                thickness: thickness,
-                quality: quality,
-                indicatorColor: widget.selectedBackgroundColor,
-                isBackgroundIndicator: false,
-                paintBackground: paintBackground,
-                paintGlass: paintGlass,
-                padding: _indicatorPadding,
-                expansion: _indicatorExpansion,
-                settings: _indicatorSettings,
-                borderRadius: _indicatorRadius,
-                pinchStrength: 0.85,
-                shadows: paintBackground
-                    ? <BoxShadow>[
-                        BoxShadow(
-                          color: widget.primaryColor.withValues(alpha: 0.08),
-                          blurRadius: 16,
-                          offset: const Offset(0, 3),
-                        ),
-                      ]
-                    : null,
-                backgroundKey: paintGlass && quality != GlassQuality.minimal
-                    ? _indicatorBackgroundKey
-                    : null,
-              ),
-            ],
+        child: Padding(
+          // Apply the inset before the slot layout so the selected lens and
+          // the icon row resolve their centers from the same padded width.
+          padding: _indicatorPadding,
+          child: Transform(
+            key: paintGlass
+                ? ValueKey<String>(_keyName('selection-overflow-layer'))
+                : null,
+            alignment: Alignment(
+              alignment.x * (1 - 1 / _slotCount),
+              0,
+            ),
+            transform: Matrix4.diagonal3Values(
+              _indicatorHorizontalScale,
+              _indicatorVerticalScale,
+              1,
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              clipBehavior: Clip.none,
+              children: [
+                AnimatedGlassIndicator(
+                  key: key,
+                  velocity: velocity,
+                  itemCount: _slotCount,
+                  alignment: alignment,
+                  thickness: thickness,
+                  quality: quality,
+                  indicatorColor: widget.selectedBackgroundColor,
+                  isBackgroundIndicator: false,
+                  paintBackground: paintBackground,
+                  paintGlass: paintGlass,
+                  padding: EdgeInsets.zero,
+                  expansion: _indicatorExpansion,
+                  settings: _indicatorSettings,
+                  borderRadius: widget.borderRadius,
+                  pinchStrength: 0.85,
+                  shadows: paintBackground
+                      ? <BoxShadow>[
+                          BoxShadow(
+                            color: widget.primaryColor.withValues(alpha: 0.08),
+                            blurRadius: 16,
+                            offset: const Offset(0, 3),
+                          ),
+                        ]
+                      : null,
+                  backgroundKey: paintGlass && quality != GlassQuality.minimal
+                      ? _indicatorBackgroundKey
+                      : null,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -593,7 +613,7 @@ class _FloatingBottomNavigationContentState
                 Positioned.fill(
                   child: IgnorePointer(
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(34),
+                      borderRadius: BorderRadius.circular(widget.borderRadius),
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: RadialGradient(
@@ -642,7 +662,7 @@ class _FloatingBottomNavigationContentState
                                 thickness: thickness,
                                 expansion: _indicatorExpansion,
                                 transform: jellyTransform,
-                                borderRadius: _indicatorRadius,
+                                borderRadius: widget.borderRadius,
                                 horizontalScale: _indicatorHorizontalScale,
                                 verticalScale: _indicatorVerticalScale,
                                 inverse: true,
@@ -662,7 +682,7 @@ class _FloatingBottomNavigationContentState
                                     thickness: thickness,
                                     expansion: _indicatorExpansion,
                                     transform: jellyTransform,
-                                    borderRadius: _indicatorRadius,
+                                    borderRadius: widget.borderRadius,
                                     horizontalScale: _indicatorHorizontalScale,
                                     verticalScale: _indicatorVerticalScale,
                                   ),
@@ -773,9 +793,10 @@ class HomeBottomNavigationContent extends StatelessWidget {
   }
 }
 
-/// Expands the package's jelly path around its vertical center without
-/// expanding the full-size inverse region. Only the glass crosses the bar's
-/// bounds; the selected content remains centered on the standard baseline.
+/// Builds the same padded slot geometry as [AnimatedGlassIndicator], then
+/// applies the extra overflow scale around that slot's own center. Keeping
+/// both layers on the same rect prevents the selected content from drifting
+/// toward one side of the lens.
 class _OverflowingJellyClipper extends CustomClipper<Path> {
   _OverflowingJellyClipper({
     required this.itemCount,
@@ -801,14 +822,33 @@ class _OverflowingJellyClipper extends CustomClipper<Path> {
 
   @override
   Path getClip(Size size) {
-    final basePath = JellyClipper(
-      itemCount: itemCount,
-      alignment: alignment,
-      thickness: thickness,
-      expansion: expansion,
-      transform: transform,
-      borderRadius: borderRadius,
-    ).getClip(size);
+    // AnimatedGlassIndicator applies its padding before dividing the
+    // available width into slots. JellyClipper's legacy helper divides first
+    // and pads each slot, which makes a five-item bar visibly asymmetric.
+    const padding = 4.0;
+    final paddedWidth = math.max(0.0, size.width - padding * 2);
+    final slotWidth = paddedWidth / itemCount;
+    final availableWidth = math.max(0.0, paddedWidth - slotWidth);
+    final left = padding + (alignment.x + 1) / 2 * availableWidth;
+    final inflatedRect = Rect.fromLTRB(
+      left - expansion.left * thickness,
+      padding - expansion.top * thickness,
+      left + slotWidth + expansion.right * thickness,
+      size.height - padding + expansion.bottom * thickness,
+    );
+    final maxRadius = (inflatedRect.shortestSide / 2) - 0.1;
+    final safeRadius = borderRadius > maxRadius ? maxRadius : borderRadius;
+    final path = Path()
+      ..addRRect(RRect.fromRectAndRadius(
+        inflatedRect,
+        Radius.circular(safeRadius > 0 ? safeRadius : 0),
+      ));
+    final baseCenter = inflatedRect.center;
+    final centeredTransform = Matrix4.identity()
+      ..translateByDouble(baseCenter.dx, baseCenter.dy, 0, 1)
+      ..multiply(transform)
+      ..translateByDouble(-baseCenter.dx, -baseCenter.dy, 0, 1);
+    final basePath = path.transform(centeredTransform.storage);
     final center = basePath.getBounds().center;
     final shapeTransform = Matrix4.identity()
       ..translateByDouble(center.dx, center.dy, 0, 1)
@@ -888,10 +928,72 @@ class HomeBottomCalendarButton extends StatelessWidget {
   }
 }
 
+/// A compact, filled action used by the home bar's non-tab destinations.
+///
+/// The action is rendered in the same slot as the selectable tabs, but it does
+/// not participate in the moving selection lens. This keeps the weekly view,
+/// add menu, and pomodoro entry points visually stable while the home/focus
+/// tabs retain the existing spring interaction.
+class HomeBottomNavigationActionButton extends StatelessWidget {
+  const HomeBottomNavigationActionButton({
+    super.key,
+    required this.buttonKey,
+    required this.primaryColor,
+    required this.interactive,
+    required this.onPressed,
+    required this.semanticsLabel,
+    required this.child,
+    this.width = 56,
+  });
+
+  final Key? buttonKey;
+  final Color primaryColor;
+  final bool interactive;
+  final VoidCallback onPressed;
+  final String semanticsLabel;
+  final Widget child;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final visual = Container(
+      key: buttonKey,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: primaryColor,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: primaryColor.withValues(alpha: 0.24),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: child,
+    );
+
+    return SizedBox(
+      width: width,
+      height: 44,
+      child: interactive
+          ? Semantics(
+              button: true,
+              label: semanticsLabel,
+              excludeSemantics: true,
+              onTap: onPressed,
+              child: visual,
+            )
+          : visual,
+    );
+  }
+}
+
 class _FloatingBottomTabItem extends StatelessWidget {
   const _FloatingBottomTabItem({
     required this.index,
     required this.icon,
+    required this.iconWidget,
     required this.label,
     required this.selected,
     required this.semanticsSelected,
@@ -904,7 +1006,8 @@ class _FloatingBottomTabItem extends StatelessWidget {
   });
 
   final int index;
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget;
   final String label;
   final bool selected;
   final bool semanticsSelected;
@@ -930,12 +1033,13 @@ class _FloatingBottomTabItem extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            TweenAnimationBuilder<Color?>(
-              tween: ColorTween(end: foregroundColor),
-              duration: duration,
-              builder: (context, color, _) =>
-                  Icon(icon, color: color, size: 24),
-            ),
+            iconWidget ??
+                TweenAnimationBuilder<Color?>(
+                  tween: ColorTween(end: foregroundColor),
+                  duration: duration,
+                  builder: (context, color, _) =>
+                      Icon(icon!, color: color, size: 24),
+                ),
             const SizedBox(height: 2),
             AnimatedDefaultTextStyle(
               duration: duration,
