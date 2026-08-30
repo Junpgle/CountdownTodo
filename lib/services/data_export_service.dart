@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../features/finance/services/finance_storage.dart';
 import '../models/data_export_models.dart';
 import '../storage_service.dart';
 import 'api_service.dart';
@@ -26,6 +27,23 @@ class DataExportService {
     final courses = await CourseService.getAllCourses(username);
     final tags = await PomodoroService.getTags();
     final records = await PomodoroService.getRecords();
+    final financeBundle = await FinanceStorage.getExportBundle();
+    final financeTransactions =
+        (financeBundle['transactions'] as List<dynamic>? ?? const [])
+            .where((item) => item is Map && item['is_deleted'] != 1)
+            .toList();
+    final financeBudgets =
+        (financeBundle['budgets'] as List<dynamic>? ?? const [])
+            .where((item) => item is Map && item['is_deleted'] != 1)
+            .toList();
+    final financeRecurringRules =
+        (financeBundle['recurring_rules'] as List<dynamic>? ?? const [])
+            .where((item) => item is Map && item['is_deleted'] != 1)
+            .toList();
+    final financeTemplates =
+        (financeBundle['templates'] as List<dynamic>? ?? const [])
+            .where((item) => item is Map && item['is_deleted'] != 1)
+            .toList();
 
     return [
       ExportTypeOption(
@@ -90,6 +108,16 @@ class DataExportService {
         icon: Icons.timer,
         count: records.where((r) => !r.isDeleted).length,
         description: '番茄钟专注记录',
+      ),
+      ExportTypeOption(
+        key: 'finance',
+        label: '记账数据',
+        icon: Icons.account_balance_wallet_outlined,
+        count: financeTransactions.length +
+            financeBudgets.length +
+            financeRecurringRules.length +
+            financeTemplates.length,
+        description: '账单、预算、周期账单、模板、分类和付款方式',
       ),
       ExportTypeOption(
         key: 'settings',
@@ -276,6 +304,34 @@ class DataExportService {
         }
         data['pomodoro_records'] = items.map((e) => e.toJson()).toList();
         totalItems += items.length;
+      }
+
+      if (selectedTypes.contains('finance')) {
+        final bundle = await FinanceStorage.getExportBundle();
+        if (options.removeDeviceId) {
+          for (final key in [
+            'transactions',
+            'categories',
+            'payment_methods',
+            'budgets',
+            'recurring_rules',
+            'templates',
+          ]) {
+            final items = bundle[key];
+            if (items is! List) continue;
+            for (final item in items) {
+              if (item is Map<String, dynamic>) item['device_id'] = null;
+            }
+          }
+        }
+        data['finance'] = bundle;
+        totalItems +=
+            (bundle['transactions'] as List<dynamic>? ?? const []).length;
+        totalItems += (bundle['budgets'] as List<dynamic>? ?? const []).length;
+        totalItems +=
+            (bundle['recurring_rules'] as List<dynamic>? ?? const []).length;
+        totalItems +=
+            (bundle['templates'] as List<dynamic>? ?? const []).length;
       }
 
       if (selectedTypes.contains('settings')) {

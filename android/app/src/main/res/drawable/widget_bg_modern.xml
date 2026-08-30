@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 动态载入浅/深色背景色 -->
-    <solid android:color="@color/widget_bg" />
-    <!-- 24dp 圆润超大圆角，贴合最新系统的圆角趋势 -->
-    <corners android:radius="24dp" />
-    <!-- 动态微透发光边框，强化边界的品质感 -->
-    <stroke android:width="1.5dp" android:color="@color/widget_stroke" />
-</shape>
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetTop="16dp">
+    <shape>
+        <!-- 动态载入浅/深色背景色 -->
+        <solid android:color="@color/widget_bg" />
+        <!-- 24dp 圆润超大圆角，贴合最新系统的圆角趋势 -->
+        <corners android:radius="24dp" />
+        <!-- 动态微透发光边框，强化边界的品质感 -->
+        <stroke android:width="1.5dp" android:color="@color/widget_stroke" />
+    </shape>
+</inset>

@@ -110,19 +110,8 @@ class TodoWidgetProvider : HomeWidgetProvider() {
         }
         localPrefs.edit().putString("last_widget_mode", widgetMode).apply()
 
-        // 🚀 使用系统动态色彩配置，完全与暗色模式逻辑解耦
-        val tabActiveColor = context.getColor(R.color.widget_tab_active_text)
-        val tabInactiveColor = context.getColor(R.color.widget_text_secondary)
-        val bgColor = context.getColor(R.color.widget_bg)
-
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_todo)
-
-            // 背景变色
-            val bgImageId = context.resources.getIdentifier("widget_bg_image", "id", context.packageName)
-            if (bgImageId != 0) {
-                views.setInt(bgImageId, "setColorFilter", bgColor)
-            }
 
             // Tabs 颜色与交互
             views.setOnClickPendingIntent(R.id.tab_todo, getTabIntent(context, 0, appWidgetIds))
@@ -136,10 +125,30 @@ class TodoWidgetProvider : HomeWidgetProvider() {
             views.setInt(R.id.tab_countdown, "setBackgroundResource", if (currentTab == 2) R.drawable.widget_tab_active_pill else 0)
             views.setInt(R.id.tab_timelog, "setBackgroundResource", if (currentTab == 3) R.drawable.widget_tab_active_pill else 0)
 
-            views.setTextColor(R.id.tab_todo, if (currentTab == 0) tabActiveColor else tabInactiveColor)
-            views.setTextColor(R.id.tab_course, if (currentTab == 1) tabActiveColor else tabInactiveColor)
-            views.setTextColor(R.id.tab_countdown, if (currentTab == 2) tabActiveColor else tabInactiveColor)
-            views.setTextColor(R.id.tab_timelog, if (currentTab == 3) tabActiveColor else tabInactiveColor)
+            WidgetProviderSupport.setTextColor(
+                context,
+                views,
+                R.id.tab_todo,
+                if (currentTab == 0) R.color.widget_tab_active_text else R.color.widget_text_secondary
+            )
+            WidgetProviderSupport.setTextColor(
+                context,
+                views,
+                R.id.tab_course,
+                if (currentTab == 1) R.color.widget_tab_active_text else R.color.widget_text_secondary
+            )
+            WidgetProviderSupport.setTextColor(
+                context,
+                views,
+                R.id.tab_countdown,
+                if (currentTab == 2) R.color.widget_tab_active_text else R.color.widget_text_secondary
+            )
+            WidgetProviderSupport.setTextColor(
+                context,
+                views,
+                R.id.tab_timelog,
+                if (currentTab == 3) R.color.widget_tab_active_text else R.color.widget_text_secondary
+            )
 
             // 控制页面显示
             views.setViewVisibility(R.id.page_todos, if (currentTab == 0) View.VISIBLE else View.GONE)
@@ -172,7 +181,7 @@ class TodoWidgetProvider : HomeWidgetProvider() {
             views.setPendingIntentTemplate(R.id.list_courses, appPendingIntent)
             views.setPendingIntentTemplate(R.id.list_countdowns, appPendingIntent)
             views.setPendingIntentTemplate(R.id.list_timelogs, appPendingIntent)
-            views.setOnClickPendingIntent(R.id.widget_root, PendingIntent.getActivity(context, 0, appIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+            views.setOnClickPendingIntent(android.R.id.background, PendingIntent.getActivity(context, 0, appIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
 
             // 专注状态栏静态处理
             val focusActiveLayoutId = context.resources.getIdentifier("focus_active_layout", "id", context.packageName)

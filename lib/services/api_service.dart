@@ -7,11 +7,15 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static String baseUrl = "https://mathquiz.junpgle.me";
   static const String cloudflareUrl = 'https://mathquiz.junpgle.me';
   static const String webAliyunProxyUrl = 'https://api-cdt.junpgle.me';
   static const String aliyunProdUrl = 'http://101.200.13.100:8082';
   static const String aliyunTestUrl = 'http://101.200.13.100:8084';
+
+  // Web must never start against the retired Cloudflare Worker. Share pages
+  // intentionally skip the normal app initialization sequence, so the
+  // default must already be the current API proxy before the first request.
+  static String baseUrl = kIsWeb ? webAliyunProxyUrl : cloudflareUrl;
   static String? _baseUrlOverride;
 
   // 🛡️ 全局使用的、跳过 SSL 证书验证的 HTTP 客户端
@@ -66,7 +70,10 @@ class ApiService {
     _baseUrlOverride = null;
   }
 
-  static String get _effectiveBaseUrl => _baseUrlOverride ?? baseUrl;
+  // Web 分享页必须始终走当前 Alibaba Zero Trust 代理。环境初始化、旧版
+  // 本地设置或迁移工具都不应把浏览器请求重新指向已弃用的 Worker。
+  static String get _effectiveBaseUrl =>
+      kIsWeb ? webAliyunProxyUrl : (_baseUrlOverride ?? baseUrl);
   static String get effectiveBaseUrl => _effectiveBaseUrl;
 
   /// Stable namespace for sync watermarks. Test/custom endpoints must not
@@ -363,6 +370,15 @@ class ApiService {
     bool habitFullSync = false,
     int? habitLastSyncTime,
     bool syncHabits = true,
+    List<Map<String, dynamic>> financeCategoryChanges = const [],
+    List<Map<String, dynamic>> financePaymentMethodChanges = const [],
+    List<Map<String, dynamic>> financeTransactionChanges = const [],
+    List<Map<String, dynamic>> financeBudgetChanges = const [],
+    List<Map<String, dynamic>> financeRecurringRuleChanges = const [],
+    List<Map<String, dynamic>> financeTemplateChanges = const [],
+    bool financeFullSync = false,
+    int? financeLastSyncTime,
+    bool syncFinance = true,
   }) async {
     try {
       final Map<String, dynamic> body = {
@@ -384,11 +400,23 @@ class ApiService {
         'habit_sleep_coaching_plans_changes': habitSleepCoachingPlanChanges,
         'habit_full_sync': habitFullSync,
         'sync_habits': syncHabits,
+        'finance_categories_changes': financeCategoryChanges,
+        'finance_payment_methods_changes': financePaymentMethodChanges,
+        'finance_transactions_changes': financeTransactionChanges,
+        'finance_budgets_changes': financeBudgetChanges,
+        'finance_recurring_rules_changes': financeRecurringRuleChanges,
+        'finance_entry_templates_changes': financeTemplateChanges,
+        'finance_full_sync': financeFullSync,
+        'sync_finance': syncFinance,
         'force_full_sync': forceFullSync,
       };
 
       if (habitLastSyncTime != null) {
         body['habit_last_sync_time'] = habitLastSyncTime;
+      }
+
+      if (financeLastSyncTime != null) {
+        body['finance_last_sync_time'] = financeLastSyncTime;
       }
 
       if (screenTime != null) {
@@ -421,6 +449,24 @@ class ApiService {
           'server_habit_sleep_coaching_plans':
               data['server_habit_sleep_coaching_plans'] ?? [],
           'new_habit_sync_time': data['new_habit_sync_time'],
+          'server_finance_categories': data['server_finance_categories'] ?? [],
+          'server_finance_payment_methods':
+              data['server_finance_payment_methods'] ?? [],
+          'server_finance_transactions':
+              data['server_finance_transactions'] ?? [],
+          'server_finance_budgets': data['server_finance_budgets'] ?? [],
+          'server_finance_recurring_rules':
+              data['server_finance_recurring_rules'] ?? [],
+          'server_finance_entry_templates':
+              data['server_finance_entry_templates'] ?? [],
+          'new_finance_sync_time': data['new_finance_sync_time'],
+          // Keep a missing acknowledgement field distinguishable from an
+          // empty acknowledgement list. This prevents a partially deployed
+          // server from advancing the finance cursor or clearing pending rows.
+          'finance_acknowledged_changes': data['finance_acknowledged_changes'],
+          'finance_conflicts': data['finance_conflicts'] ?? [],
+          'finance_full_sync_required':
+              data['finance_full_sync_required'] == true,
           'sync_capabilities': data['sync_capabilities'],
           'joined_team_uuids': data['joined_team_uuids'],
           'independent_completions':
@@ -1292,6 +1338,7 @@ class ApiService {
     String? title,
     String? description,
     bool shareTodos = true,
+    bool shareSchedules = true,
     bool shareCountdowns = true,
     bool shareAnnouncements = true,
     String? password,
@@ -1301,6 +1348,7 @@ class ApiService {
       final body = <String, dynamic>{
         'team_uuid': teamUuid,
         'share_todos': shareTodos,
+        'share_schedules': shareSchedules,
         'share_countdowns': shareCountdowns,
         'share_announcements': shareAnnouncements,
       };

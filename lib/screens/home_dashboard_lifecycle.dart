@@ -95,6 +95,20 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
           Navigator.of(context).popUntil((route) => route.isFirst);
         }
       }));
+      _notifSubs.add(
+        NotificationService.listen('windowConfigurationChanged', (call) {
+          if (!mounted) return;
+
+          // HyperOS 迷你窗在失去焦点后可能停在仅绘制壁纸的中间帧。
+          // 原生窗口与 Surface 尺寸稳定后，显式重建首页并刷新各卡片层。
+          setState(() {});
+          _scheduleRevision.value++;
+          _timelineRevision.value++;
+          _pomodoroRevision.value++;
+          _habitsRevision.value++;
+          WidgetsBinding.instance.scheduleFrame();
+        }),
+      );
       // 习惯目标提醒：点击打开习惯中心。
       _notifSubs.add(NotificationService.listen('openHabitCenter', (call) {
         if (!mounted) return;
@@ -146,6 +160,9 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
               _navigateToTodoConfirm(results, imagePath, null);
             }
           });
+        },
+        onFinanceRecognized: (drafts, imagePath) async {
+          await _openRecognizedFinanceDrafts(drafts);
         },
       );
 

@@ -7,6 +7,7 @@ import '../../services/permission_request_coordinator.dart';
 import '../../storage_service.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/app_dialogs.dart';
+import '../../widgets/floating_bottom_bar.dart';
 
 class CalendarSyncPage extends StatefulWidget {
   final bool isEmbedded;
@@ -337,10 +338,15 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
 
   @override
   Widget build(BuildContext context) {
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+    final standalone = !widget.isEmbedded;
     return Scaffold(
+      extendBody: useFloatingBottomBar,
+      extendBodyBehindAppBar: standalone,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: Text(AppPlatform.isWeb ? '导出日历文件' : '写入系统日历'),
               actions: [
                 IconButton(
@@ -350,58 +356,66 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                 ),
               ],
             ),
-      body: _buildBody(),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: standalone,
+        child: _buildBody(standalone: standalone),
+      ),
       bottomNavigationBar: _loading || _error != null
           ? null
-          : SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: Row(
-                  children: [
-                    if (!AppPlatform.isWeb) ...[
+          : FloatingBottomBar(
+              height: 100,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Row(
+                    children: [
+                      if (!AppPlatform.isWeb) ...[
+                        OutlinedButton.icon(
+                          onPressed: _working ? null : _clearAll,
+                          icon: const Icon(Icons.delete_sweep_outlined),
+                          label: const Text('一键清除'),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
                       OutlinedButton.icon(
-                        onPressed: _working ? null : _clearAll,
-                        icon: const Icon(Icons.delete_sweep_outlined),
-                        label: const Text('一键清除'),
+                        onPressed: _working ? null : _previewSelected,
+                        icon: const Icon(Icons.visibility_outlined),
+                        label: const Text('预览'),
                       ),
                       const SizedBox(width: 12),
-                    ],
-                    OutlinedButton.icon(
-                      onPressed: _working ? null : _previewSelected,
-                      icon: const Icon(Icons.visibility_outlined),
-                      label: const Text('预览'),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _working
-                            ? null
-                            : (AppPlatform.isWeb
-                                ? _exportSelectedIcs
-                                : _writeSelected),
-                        icon: _working
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Icon(AppPlatform.isWeb
-                                ? Icons.download_outlined
-                                : Icons.event_available_outlined),
-                        label: Text(AppPlatform.isWeb
-                            ? '导出所选 ${_selectedIds.length} 项'
-                            : '写入所选 ${_selectedIds.length} 项'),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: _working
+                              ? null
+                              : (AppPlatform.isWeb
+                                  ? _exportSelectedIcs
+                                  : _writeSelected),
+                          icon: _working
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Icon(AppPlatform.isWeb
+                                  ? Icons.download_outlined
+                                  : Icons.event_available_outlined),
+                          label: Text(AppPlatform.isWeb
+                              ? '导出所选 ${_selectedIds.length} 项'
+                              : '写入所选 ${_selectedIds.length} 项'),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody({required bool standalone}) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -415,7 +429,14 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
     }
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        standalone
+            ? floatingGlassSettingsContentTopInset(context, extra: 12)
+            : 12,
+        16,
+        100,
+      ),
       children: [
         ListTile(
           contentPadding: EdgeInsets.zero,
@@ -428,7 +449,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
               : '下面列表会显示系统识别到的日历，当前只保留这一处选择入口'),
         ),
         if (!AppPlatform.isWeb)
-          SwitchListTile(
+          LiquidGlassSwitchListTile(
             contentPadding: EdgeInsets.zero,
             value: _clearBeforeWrite,
             title: const Text('写入前清除本软件已写入内容'),

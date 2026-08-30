@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../storage_service.dart';
+import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
 
 class GreetingTimeSlot {
@@ -465,17 +466,22 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('首页文字自定义')),
+        appBar: FloatingGlassAppBar(
+            flexibleSpace: const FloatingGlassTopBarBackground(),
+            title: const Text('首页文字自定义')),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     final isWideScreen = MediaQuery.of(context).size.width > 768;
+    final standalone = !widget.isEmbedded && !isWideScreen;
 
     return Scaffold(
+      extendBodyBehindAppBar: standalone,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('首页文字自定义'),
               actions: [
                 TextButton(
@@ -484,9 +490,15 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                 ),
               ],
             ),
-      body: isWideScreen ? _buildWideLayout() : _buildNarrowLayout(),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: standalone,
+        child: isWideScreen
+            ? _buildWideLayout()
+            : _buildNarrowLayout(standalone: standalone),
+      ),
       floatingActionButton: widget.isEmbedded
-          ? FloatingActionButton.extended(
+          ? FloatingGlassActionButton.extended(
               onPressed: _saveConfig,
               icon: const Icon(Icons.save),
               label: const Text('保存配置'),
@@ -549,9 +561,16 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
     );
   }
 
-  Widget _buildNarrowLayout() {
+  Widget _buildNarrowLayout({required bool standalone}) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        standalone
+            ? floatingGlassSettingsContentTopInset(context, extra: 16)
+            : 16,
+        16,
+        16,
+      ),
       children: [
         _buildOverallPreviewCard(),
         const SizedBox(height: 16),

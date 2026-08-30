@@ -137,6 +137,11 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   Widget _buildMonthDaySidebar(DateTime day);
   Widget _buildDetailSidebarItem(BuildContext context, dynamic item);
   void _handleFilterSelection(String value);
+  double _filterMenuWidth(BuildContext context);
+  int get _selectedFilterCount;
+  Widget _buildFilterMenuHeader();
+  Widget _buildFilterMenuDivider();
+  Widget _buildFilterSectionLabel(String label);
   Widget _buildCheckableMenuItem(String key, String label);
   Widget _buildFilterActionItem(
       String value, String label, IconData icon, Color color);

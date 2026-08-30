@@ -19,6 +19,8 @@ import '../services/timeline_ml_service.dart';
 import '../services/timeline_statistics_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/floating_bottom_bar.dart';
+import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import 'medal_wall_page.dart';
 
@@ -54,6 +56,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   bool _isLoadingAllTimeMedals = false;
   int _loadGeneration = 0;
   late AnimationController _animationController;
+  late final ScrollController _timelineScrollController;
+  final ValueNotifier<double> _timelineTitleProgress =
+      ValueNotifier<double>(0.0);
 
   // Data points
   List<TimelineEvent> _events = [];
@@ -109,11 +114,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     );
+    _timelineScrollController = ScrollController()
+      ..addListener(_handleTimelineScroll);
     _loadData();
   }
 
   @override
   void dispose() {
+    _timelineScrollController.dispose();
+    _timelineTitleProgress.dispose();
     _animationController.dispose();
     super.dispose();
   }
@@ -1312,182 +1321,242 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final colorScheme = theme.colorScheme;
 
     final isWide = MediaQuery.of(context).size.width > 900;
-
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+    final topPadding = MediaQuery.paddingOf(context).top;
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBody: useFloatingBottomBar,
+      bottomNavigationBar: useFloatingBottomBar
+          ? FloatingBottomNavigationBar(
+              items: const [
+                FloatingBottomNavigationItem(
+                  icon: Icons.today_outlined,
+                  label: '日',
+                ),
+                FloatingBottomNavigationItem(
+                  icon: Icons.date_range_outlined,
+                  label: '周',
+                ),
+                FloatingBottomNavigationItem(
+                  icon: Icons.calendar_month_outlined,
+                  label: '月',
+                ),
+                FloatingBottomNavigationItem(
+                  icon: Icons.event_note_outlined,
+                  label: '年',
+                ),
+              ],
+              selectedIndex: _dimension.index,
+              onTabSelected: (index) {
+                setState(() => _dimension = TimelineDimension.values[index]);
+                _loadData();
+              },
+            )
+          : null,
       body: Stack(
         children: [
           _buildBackground(colorScheme),
-          CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              _buildAppBar(context, colorScheme),
-              SliverToBoxAdapter(
-                child: Center(
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 1400),
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Animated Content Area
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 600),
-                          switchInCurve: Curves.easeOutQuart,
-                          switchOutCurve: Curves.easeInQuart,
-                          transitionBuilder:
-                              (Widget child, Animation<double> animation) {
-                            return FadeTransition(
-                              opacity: animation,
-                              child: SlideTransition(
-                                position: Tween<Offset>(
-                                  begin: const Offset(0, 0.02),
-                                  end: Offset.zero,
-                                ).animate(animation),
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: _isLoading
-                              ? _buildSkeleton(colorScheme)
-                              : Column(
-                                  key: ValueKey(
-                                      'content_${_dimension}_${_selectedDate.millisecondsSinceEpoch}'),
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _buildStatsOverview(colorScheme, isWide),
-                                    const SizedBox(height: 40),
-                                    if (isWide)
-                                      Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          // Left Side: Main Content
-                                          Expanded(
-                                            flex: 2,
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                _buildSectionTitle(
-                                                    '概览回顾',
-                                                    Icons.insights_rounded,
-                                                    colorScheme),
-                                                const SizedBox(height: 16),
-                                                _buildRangeSummary(
-                                                    colorScheme, isWide),
-                                                _buildOverviewInsightPanels(
-                                                    colorScheme, isWide),
-                                                if (_mlInsights.isNotEmpty) ...[
-                                                  const SizedBox(height: 36),
+          FloatingGlassTopBarContentFade(
+            topBarHeight: topBarHeight,
+            child: CustomScrollView(
+              controller: _timelineScrollController,
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                _buildAppBar(context),
+                SliverToBoxAdapter(
+                  child: _buildGreeting(colorScheme),
+                ),
+                SliverToBoxAdapter(
+                  child: Center(
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 1400),
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Animated Content Area
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 600),
+                            switchInCurve: Curves.easeOutQuart,
+                            switchOutCurve: Curves.easeInQuart,
+                            transitionBuilder:
+                                (Widget child, Animation<double> animation) {
+                              return FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: Tween<Offset>(
+                                    begin: const Offset(0, 0.02),
+                                    end: Offset.zero,
+                                  ).animate(animation),
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: _isLoading
+                                ? _buildSkeleton(colorScheme)
+                                : Column(
+                                    key: ValueKey(
+                                        'content_${_dimension}_${_selectedDate.millisecondsSinceEpoch}'),
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _buildStatsOverview(colorScheme, isWide),
+                                      const SizedBox(height: 40),
+                                      if (isWide)
+                                        Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            // Left Side: Main Content
+                                            Expanded(
+                                              flex: 2,
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
                                                   _buildSectionTitle(
-                                                      'AI 深度洞察',
-                                                      Icons
-                                                          .auto_awesome_rounded,
+                                                      '概览回顾',
+                                                      Icons.insights_rounded,
                                                       colorScheme),
                                                   const SizedBox(height: 16),
-                                                  _buildMLInsightsSection(
-                                                      colorScheme),
+                                                  _buildRangeSummary(
+                                                      colorScheme, isWide),
+                                                  _buildOverviewInsightPanels(
+                                                      colorScheme, isWide),
+                                                  if (_mlInsights
+                                                      .isNotEmpty) ...[
+                                                    const SizedBox(height: 36),
+                                                    _buildSectionTitle(
+                                                        'AI 深度洞察',
+                                                        Icons
+                                                            .auto_awesome_rounded,
+                                                        colorScheme),
+                                                    const SizedBox(height: 16),
+                                                    _buildMLInsightsSection(
+                                                        colorScheme),
+                                                  ],
+                                                  _buildMedalWall(
+                                                      colorScheme, isWide),
+                                                  if (_dimension ==
+                                                      TimelineDimension
+                                                          .daily) ...[
+                                                    const SizedBox(height: 40),
+                                                    _buildSectionTitle(
+                                                        '时光足迹',
+                                                        Icons
+                                                            .auto_stories_outlined,
+                                                        colorScheme),
+                                                    const SizedBox(height: 16),
+                                                    _buildTimelineFlow(
+                                                        colorScheme),
+                                                  ],
                                                 ],
-                                                _buildMedalWall(
-                                                    colorScheme, isWide),
-                                                if (_dimension ==
-                                                    TimelineDimension
-                                                        .daily) ...[
+                                              ),
+                                            ),
+                                            const SizedBox(width: 48),
+                                            // Right Side: Sidebar
+                                            SizedBox(
+                                              width: 320,
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  _buildSectionTitle(
+                                                      '数据深度洞察',
+                                                      Icons.analytics_outlined,
+                                                      colorScheme),
+                                                  const SizedBox(height: 20),
+                                                  _buildSideHighlights(
+                                                      colorScheme),
                                                   const SizedBox(height: 40),
                                                   _buildSectionTitle(
-                                                      '时光足迹',
-                                                      Icons
-                                                          .auto_stories_outlined,
+                                                      '感悟与思考',
+                                                      Icons.edit_note_rounded,
                                                       colorScheme),
                                                   const SizedBox(height: 16),
-                                                  _buildTimelineFlow(
-                                                      colorScheme),
+                                                  _buildReflection(colorScheme),
                                                 ],
-                                              ],
+                                              ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 48),
-                                          // Right Side: Sidebar
-                                          SizedBox(
-                                            width: 320,
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                _buildSectionTitle(
-                                                    '数据深度洞察',
-                                                    Icons.analytics_outlined,
-                                                    colorScheme),
-                                                const SizedBox(height: 20),
-                                                _buildSideHighlights(
-                                                    colorScheme),
-                                                const SizedBox(height: 40),
-                                                _buildSectionTitle(
-                                                    '感悟与思考',
-                                                    Icons.edit_note_rounded,
-                                                    colorScheme),
-                                                const SizedBox(height: 16),
-                                                _buildReflection(colorScheme),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      )
-                                    else ...[
-                                      // Mobile Layout (Existing)
-                                      _buildSectionTitle(
-                                          _dimension == TimelineDimension.daily
-                                              ? '概览回顾'
-                                              : '阶段回顾',
-                                          Icons.insights_rounded,
-                                          colorScheme),
-                                      const SizedBox(height: 16),
-                                      _buildRangeSummary(colorScheme, isWide),
-                                      _buildOverviewInsightPanels(
-                                          colorScheme, isWide),
-                                      if (_mlInsights.isNotEmpty) ...[
-                                        const SizedBox(height: 36),
+                                          ],
+                                        )
+                                      else ...[
+                                        // Mobile Layout (Existing)
                                         _buildSectionTitle(
-                                            'AI 深度洞察',
-                                            Icons.auto_awesome_rounded,
+                                            _dimension ==
+                                                    TimelineDimension.daily
+                                                ? '概览回顾'
+                                                : '阶段回顾',
+                                            Icons.insights_rounded,
                                             colorScheme),
                                         const SizedBox(height: 16),
-                                        _buildMLInsightsSection(colorScheme),
-                                      ],
-                                      _buildMedalWall(colorScheme, isWide),
-                                      if (_dimension ==
-                                          TimelineDimension.daily) ...[
+                                        _buildRangeSummary(colorScheme, isWide),
+                                        _buildOverviewInsightPanels(
+                                            colorScheme, isWide),
+                                        if (_mlInsights.isNotEmpty) ...[
+                                          const SizedBox(height: 36),
+                                          _buildSectionTitle(
+                                              'AI 深度洞察',
+                                              Icons.auto_awesome_rounded,
+                                              colorScheme),
+                                          const SizedBox(height: 16),
+                                          _buildMLInsightsSection(colorScheme),
+                                        ],
+                                        _buildMedalWall(colorScheme, isWide),
+                                        if (_dimension ==
+                                            TimelineDimension.daily) ...[
+                                          const SizedBox(height: 40),
+                                          _buildSectionTitle(
+                                              '时光足迹',
+                                              Icons.auto_stories_outlined,
+                                              colorScheme),
+                                          const SizedBox(height: 16),
+                                          _buildTimelineFlow(colorScheme),
+                                        ],
                                         const SizedBox(height: 40),
                                         _buildSectionTitle(
-                                            '时光足迹',
-                                            Icons.auto_stories_outlined,
+                                            '数据深度洞察',
+                                            Icons.analytics_outlined,
                                             colorScheme),
                                         const SizedBox(height: 16),
-                                        _buildTimelineFlow(colorScheme),
+                                        _buildSideHighlights(colorScheme),
+                                        const SizedBox(height: 40),
+                                        _buildSectionTitle(
+                                            '感悟与思考',
+                                            Icons.edit_note_rounded,
+                                            colorScheme),
+                                        const SizedBox(height: 16),
+                                        _buildReflection(colorScheme),
                                       ],
-                                      const SizedBox(height: 40),
-                                      _buildSectionTitle(
-                                          '数据深度洞察',
-                                          Icons.analytics_outlined,
-                                          colorScheme),
-                                      const SizedBox(height: 16),
-                                      _buildSideHighlights(colorScheme),
-                                      const SizedBox(height: 40),
-                                      _buildSectionTitle('感悟与思考',
-                                          Icons.edit_note_rounded, colorScheme),
-                                      const SizedBox(height: 16),
-                                      _buildReflection(colorScheme),
+                                      const SizedBox(height: 60),
                                     ],
-                                    const SizedBox(height: 60),
-                                  ],
-                                ),
-                        ),
-                      ],
+                                  ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
+              ],
+            ),
+          ),
+          // The foreground AppBar is deliberately above the mask: its title
+          // and actions must stay crisp while only the scrolling body fades.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: topBarHeight,
+            child: AnnotatedRegion<SystemUiOverlayStyle>(
+              value: floatingGlassTopBarSystemOverlayStyle(context),
+              child: Padding(
+                padding: EdgeInsets.only(top: topPadding),
+                child: SizedBox(
+                  height: kToolbarHeight,
+                  child: _buildTimelineToolbar(colorScheme),
+                ),
               ),
-            ],
+            ),
           ),
         ],
       ),
@@ -1566,92 +1635,126 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     );
   }
 
-  Widget _buildAppBar(BuildContext context, ColorScheme cs) {
-    final isCompact = MediaQuery.of(context).size.width < 600;
-    final extraHeight = _dimension != TimelineDimension.daily ? 36.0 : 0.0;
+  Widget _buildAppBar(BuildContext context) {
+    // The visible toolbar lives in the fixed foreground layer below. This
+    // sliver only reserves its height in the scrollable content; an empty
+    // SliverAppBar would still introduce a material/shadow boundary.
+    return SliverToBoxAdapter(
+      child: SizedBox(
+        height: MediaQuery.paddingOf(context).top + kToolbarHeight,
+      ),
+    );
+  }
 
-    return SliverAppBar(
-      expandedHeight: (isCompact ? 280.0 : 240.0) + extraHeight,
+  Widget _buildTimelineToolbar(ColorScheme cs) {
+    final isDark = cs.brightness == Brightness.dark;
+
+    return FloatingGlassAppBar(
+      primary: false,
+      automaticallyImplyLeading: false,
+      automaticallyImplyActions: false,
       backgroundColor: Colors.transparent,
       elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: Colors.transparent,
+      foregroundColor: cs.onSurface,
+      forceMaterialTransparency: true,
+      clipBehavior: Clip.hardEdge,
+      centerTitle: true,
+      // Do not use FloatingGlassAppBar's default full-width glass backdrop.
+      // The timeline owns a separate paint-only fade mask below this
+      // foreground toolbar.
+      flexibleSpace: const SizedBox.shrink(),
+      leadingWidth: 64,
+      title: ValueListenableBuilder<double>(
+        valueListenable: _timelineTitleProgress,
+        builder: (context, progress, _) =>
+            _buildTimelineAppBarTitle(cs, progress),
+      ),
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded),
+        tooltip: '返回',
+        style: floatingGlassPlainIconButtonStyle(),
+        icon: const Icon(Icons.arrow_back_rounded),
+        iconSize: 22,
         onPressed: () => Navigator.pop(context),
       ),
+      actionsPadding: const EdgeInsets.only(right: 8),
       actions: [
         IconButton(
           tooltip: '保存分享长图',
+          style: floatingGlassPlainIconButtonStyle(),
           icon: _isExportingPoster
-              ? const SizedBox(
+              ? SizedBox(
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: cs.primary,
+                  ),
                 )
-              : const Icon(Icons.ios_share_rounded),
+              : const Icon(Icons.ios_share_outlined),
+          iconSize: 22,
           onPressed: _isLoading || _isExportingPoster
               ? null
               : _chooseAndExportTimelinePoster,
         ),
-        const SizedBox(width: 8),
       ],
-      flexibleSpace: FlexibleSpaceBar(
-        background: Stack(
-          children: [
-            // Subtle Pattern or Illustration (Fixed)
-            Positioned(
-              right: -60,
-              top: -40,
-              child: Container(
-                width: 250,
-                height: 250,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      cs.primary.withValues(alpha: 0.12),
-                      cs.primary.withValues(alpha: 0.0),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            _buildGreeting(cs),
-          ],
+      floatingControlTint: cs.surface,
+      floatingControlIsDark: isDark,
+    );
+  }
+
+  void _handleTimelineScroll() {
+    if (!_timelineScrollController.hasClients) return;
+
+    final scrollOffset = math.max(0.0, _timelineScrollController.offset);
+    final labelOffset = _timelinePeriodLabelOffset(context);
+    final titleProgress = floatingGlassTopBarTitleProgress(
+      scrollOffset: scrollOffset,
+      contentOffset: labelOffset,
+    );
+    if ((titleProgress - _timelineTitleProgress.value).abs() > 0.001) {
+      _timelineTitleProgress.value = titleProgress;
+    }
+  }
+
+  double _timelinePeriodLabelOffset(BuildContext context) {
+    return _timelineGreetingTopPadding(context) + 21.0;
+  }
+
+  double _timelineGreetingTopPadding(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 600;
+    return isCompact ? 24.0 : 32.0;
+  }
+
+  Widget _buildTimelineAppBarTitle(ColorScheme cs, double titleProgress) {
+    return Opacity(
+      opacity: titleProgress,
+      child: Text(
+        _timelinePeriodLabel(),
+        style: TextStyle(
+          color: cs.onSurface,
+          fontSize: 17,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.2,
         ),
       ),
     );
   }
 
   Widget _buildGreeting(ColorScheme cs) {
-    String label;
-    String sub;
-    switch (_dimension) {
-      case TimelineDimension.daily:
-        label = DateFormat('yyyy年MM月dd日').format(_selectedDate);
-        sub = DateFormat('EEEE', 'zh_CN').format(_selectedDate);
-        break;
-      case TimelineDimension.weekly:
-        final start =
-            _selectedDate.subtract(Duration(days: _selectedDate.weekday - 1));
-        final end = start.add(const Duration(days: 6));
-        label =
-            '${DateFormat('MM/dd').format(start)} - ${DateFormat('MM/dd').format(end)}';
-        sub = '本周回顾';
-        break;
-      case TimelineDimension.monthly:
-        label = DateFormat('yyyy年MM月').format(_selectedDate);
-        sub = '月度总结';
-        break;
-      case TimelineDimension.yearly:
-        label = '${_selectedDate.year}年';
-        sub = '年度回顾';
-        break;
-    }
-
-    final isCompact = MediaQuery.of(context).size.width < 600;
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+    final label = _timelinePeriodLabel();
+    final sub = _timelinePeriodSubtitle();
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(24, isCompact ? 92 : 64, 24, 8),
+      padding: EdgeInsets.fromLTRB(
+        24,
+        _timelineGreetingTopPadding(context),
+        24,
+        8,
+      ),
       child: Row(
         children: [
           Expanded(
@@ -1694,18 +1797,16 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                   ),
                 ],
                 const SizedBox(height: 10),
-                _buildDimensionToggle(cs),
+                if (!useFloatingBottomBar) _buildDimensionToggle(cs),
                 const SizedBox(height: 8),
-                Flexible(
-                  child: Text(
-                    _getMotivationText(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: cs.onSurfaceVariant.withValues(alpha: 0.6),
-                        fontStyle: FontStyle.italic),
-                  ),
+                Text(
+                  _getMotivationText(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                      fontStyle: FontStyle.italic),
                 ),
               ],
             ),
@@ -1720,6 +1821,35 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         ],
       ),
     );
+  }
+
+  String _timelinePeriodLabel() {
+    switch (_dimension) {
+      case TimelineDimension.daily:
+        return DateFormat('yyyy年MM月dd日').format(_selectedDate);
+      case TimelineDimension.weekly:
+        final start =
+            _selectedDate.subtract(Duration(days: _selectedDate.weekday - 1));
+        final end = start.add(const Duration(days: 6));
+        return '${DateFormat('MM/dd').format(start)} - ${DateFormat('MM/dd').format(end)}';
+      case TimelineDimension.monthly:
+        return DateFormat('yyyy年MM月').format(_selectedDate);
+      case TimelineDimension.yearly:
+        return '${_selectedDate.year}年';
+    }
+  }
+
+  String _timelinePeriodSubtitle() {
+    switch (_dimension) {
+      case TimelineDimension.daily:
+        return DateFormat('EEEE', 'zh_CN').format(_selectedDate);
+      case TimelineDimension.weekly:
+        return '本周回顾';
+      case TimelineDimension.monthly:
+        return '月度总结';
+      case TimelineDimension.yearly:
+        return '年度回顾';
+    }
   }
 
   Widget _buildNavButton(IconData icon, VoidCallback onTap) {
@@ -1758,11 +1888,13 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     _loadData();
   }
 
-  Widget _buildDimensionToggle(ColorScheme cs) {
+  Widget _buildDimensionToggle(ColorScheme cs, {bool floating = false}) {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.3),
+        color: floating
+            ? cs.surface.withValues(alpha: 0)
+            : cs.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -1774,12 +1906,18 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                 setState(() => _dimension = d);
                 _loadData();
               },
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
-                  color: isSelected ? cs.surface : Colors.transparent,
+                  color: isSelected
+                      ? (floating
+                          ? cs.surfaceContainerHighest.withValues(alpha: 0.72)
+                          : cs.surface)
+                      : cs.surface.withValues(alpha: 0),
                   borderRadius: BorderRadius.circular(12),
-                  boxShadow: isSelected
+                  boxShadow: isSelected && !floating
                       ? [
                           BoxShadow(
                               color: Colors.black.withValues(alpha: 0.05),

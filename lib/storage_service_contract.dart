@@ -456,6 +456,7 @@ abstract class _StorageServiceBase {
     bool syncPlanBlocks = true,
     bool syncFixedSchedules = true,
     bool syncHabits = true,
+    bool syncFinance = true,
   });
   bool recomputeLocalTodoScheduleConflictsForTest(
     List<TodoItem> todos,
@@ -561,6 +562,7 @@ abstract class _StorageServiceBase {
   Future<void> savePendingTodoConfirm({
     required String imagePath,
     List<Map<String, dynamic>> results = const [],
+    List<Map<String, dynamic>> financeResults = const [],
     String status = 'success',
     String? compressedPath,
     int currentAttempt = 1,
@@ -573,6 +575,7 @@ abstract class _StorageServiceBase {
     int? maxAttempts,
     String? errorMsg,
     List<Map<String, dynamic>>? results,
+    List<Map<String, dynamic>>? financeResults,
   });
   Future<Map<String, dynamic>?> getPendingTodoConfirm();
   Future<void> clearPendingTodoConfirm();

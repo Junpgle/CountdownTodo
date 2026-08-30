@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
 class AiAssistantTutorialScreen extends StatefulWidget {
@@ -117,7 +118,13 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
       backgroundColor: colorScheme.surface,
       body: CustomScrollView(
         slivers: [
-          SliverAppBar.large(
+          FloatingGlassSliverAppBar.large(
+            flexibleSpace: const FloatingGlassLargeFlexibleSpace(
+              title: Text(
+                'AI 助手教程',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
             title: const Text(
               'AI 助手教程',
               style: TextStyle(fontWeight: FontWeight.bold),
@@ -125,40 +132,55 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
             floating: true,
             pinned: true,
             stretch: true,
-            backgroundColor: colorScheme.surface,
+            backgroundColor: Colors.transparent,
+            foregroundColor: colorScheme.onSurface,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            surfaceTintColor: Colors.transparent,
+            shadowColor: Colors.transparent,
+            forceMaterialTransparency: true,
           ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  return AnimatedBuilder(
-                    animation: _controller,
-                    builder: (context, child) {
-                      const stagger = 0.03;
-                      final startTime = index * stagger;
-                      const animationDuration = 0.6;
-                      final value = Curves.easeOutQuart.transform(
-                        ((_controller.value - startTime) / animationDuration)
-                            .clamp(0.0, 1.0),
-                      );
-                      return IgnorePointer(
-                        ignoring: value == 0,
-                        child: Opacity(
-                          opacity: value,
-                          child: Transform.translate(
-                            offset: Offset(0, 40 * (1 - value)),
-                            child: child,
-                          ),
-                        ),
+          FloatingGlassSliverContentFadeGroup(
+            topBarHeight: floatingGlassTopBarHeight(
+              context,
+              toolbarHeight: 64.0,
+            ),
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      return AnimatedBuilder(
+                        animation: _controller,
+                        builder: (context, child) {
+                          const stagger = 0.03;
+                          final startTime = index * stagger;
+                          const animationDuration = 0.6;
+                          final value = Curves.easeOutQuart.transform(
+                            ((_controller.value - startTime) /
+                                    animationDuration)
+                                .clamp(0.0, 1.0),
+                          );
+                          return IgnorePointer(
+                            ignoring: value == 0,
+                            child: Opacity(
+                              opacity: value,
+                              child: Transform.translate(
+                                offset: Offset(0, 40 * (1 - value)),
+                                child: child,
+                              ),
+                            ),
+                          );
+                        },
+                        child: children[index],
                       );
                     },
-                    child: children[index],
-                  );
-                },
-                childCount: children.length,
+                    childCount: children.length,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ],
       ),

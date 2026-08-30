@@ -10,6 +10,26 @@ import '../update_service.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'platform_backdrop_filter.dart';
 
+const double _homeWideDrawerMaxWidth = 360.0;
+
+/// Returns the horizontal space reserved for the home drawer when it opens.
+///
+/// Phones keep the existing proportional drawer, while wide layouts use a
+/// compact proportional width with a desktop-friendly maximum. Keeping this
+/// calculation outside the dashboard makes the width constraint easy to
+/// verify without building the whole home screen.
+double homeDrawerSlideWidthFor({
+  required double screenWidth,
+  required bool isWide,
+}) {
+  if (!isWide) return screenWidth * 0.72;
+
+  final proportionalWidth = screenWidth * 0.4;
+  return proportionalWidth < _homeWideDrawerMaxWidth
+      ? proportionalWidth
+      : _homeWideDrawerMaxWidth;
+}
+
 DateTime? _parseRegistrationDate(dynamic raw) {
   if (raw is num) {
     final value = raw.toInt();
@@ -85,6 +105,7 @@ class HomeDrawerMenu extends StatefulWidget {
   final VoidCallback onSettings;
   final VoidCallback onAiAssistant;
   final VoidCallback onTeams;
+  final VoidCallback onFinance;
   final VoidCallback onChangelog;
   final VoidCallback onChallengeCenter;
   final VoidCallback onUpdate;
@@ -104,6 +125,7 @@ class HomeDrawerMenu extends StatefulWidget {
     required this.onSettings,
     required this.onAiAssistant,
     required this.onTeams,
+    required this.onFinance,
     required this.onChangelog,
     required this.onChallengeCenter,
     required this.onUpdate,
@@ -171,6 +193,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
     final definition = SidebarMenuService.definition(key);
     final VoidCallback? onTap = switch (key) {
       'teams' => widget.onTeams,
+      'finance' => widget.onFinance,
       'aiAssistant' => widget.onAiAssistant,
       'timeline' => widget.onTimeline,
       'journal' => widget.onJournal,

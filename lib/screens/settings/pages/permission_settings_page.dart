@@ -6,6 +6,7 @@ import '../../../utils/app_platform.dart';
 import '../../../widgets/app_state_views.dart';
 import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
+import '../../../widgets/floating_glass_control.dart';
 import '../handlers/permission_handler.dart' as handlers;
 import '../widgets/permission_section.dart';
 
@@ -150,23 +151,31 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
   Widget build(BuildContext context) {
     if (AppPlatform.isWeb) {
       return Scaffold(
+        extendBodyBehindAppBar: !widget.isEmbedded,
         appBar: widget.isEmbedded
             ? null
-            : AppBar(
+            : FloatingGlassAppBar(
+                flexibleSpace: const FloatingGlassTopBarBackground(),
                 title: const Text('权限管理'),
               ),
-        body: const AppEmptyState(
-          icon: Icons.security_outlined,
-          title: '网页版没有原生权限管理',
-          message: '文件导入、下载和剪贴板等能力由浏览器在使用时单独授权；存储、精确闹钟、未知来源安装等原生权限不适用于 Web。',
+        body: floatingGlassSettingsBody(
+          context,
+          standalone: !widget.isEmbedded,
+          child: const AppEmptyState(
+            icon: Icons.security_outlined,
+            title: '网页版没有原生权限管理',
+            message: '文件导入、下载和剪贴板等能力由浏览器在使用时单独授权；存储、精确闹钟、未知来源安装等原生权限不适用于 Web。',
+          ),
         ),
       );
     }
 
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('权限管理'),
               actions: [
                 IconButton(
@@ -176,17 +185,28 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
                 ),
               ],
             ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Container(
-          key: _itemKeys['permissions'],
-          child: PermissionSection(
-            permissionDefs: handlers.PermissionHandler.permissionDefs,
-            permissionStatuses: _permissionStatuses,
-            isCheckingPermissions: _isCheckingPermissions,
-            onCheckAllPermissions: _permissionHandler.checkAllPermissions,
-            onRequestOrOpenPermission: _requestOrOpenPermission,
-            onRevokeAll: _revokeAllPermissions,
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            widget.isEmbedded
+                ? 16
+                : floatingGlassSettingsContentTopInset(context, extra: 16),
+            16,
+            16,
+          ),
+          child: Container(
+            key: _itemKeys['permissions'],
+            child: PermissionSection(
+              permissionDefs: handlers.PermissionHandler.permissionDefs,
+              permissionStatuses: _permissionStatuses,
+              isCheckingPermissions: _isCheckingPermissions,
+              onCheckAllPermissions: _permissionHandler.checkAllPermissions,
+              onRequestOrOpenPermission: _requestOrOpenPermission,
+              onRevokeAll: _revokeAllPermissions,
+            ),
           ),
         ),
       ),

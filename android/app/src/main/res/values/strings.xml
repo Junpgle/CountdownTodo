@@ -28,6 +28,7 @@
     <string name="widget_label_focus_only">CountdownTodo - 专注计时</string>
     <string name="widget_label_recurrence">CountdownTodo - 循环待办</string>
     <string name="widget_label_habit">CountdownTodo - 今日习惯</string>
+    <string name="widget_label_finance">CountdownTodo - 本月记账</string>
 
     <!-- Desktop Widgets Descriptions -->
     <string name="widget_desc_todo">包含待办、课程、倒数及专注计时的多功能组合快捷小部件。</string>
@@ -37,6 +38,7 @@
     <string name="widget_desc_focus_only">沉浸式的番茄钟专注计时与今日专注日志记录卡片。</string>
     <string name="widget_desc_recurrence">选择一个循环待办固定在桌面，持续查看本期状态、下次排期与完成记录。</string>
     <string name="widget_desc_habit">直观展示今日习惯打卡进度与达标状态，点击打开应用。</string>
+    <string name="widget_desc_finance">查看本月收支、最近账单，并快速记一笔。</string>
 
     <string name="widget_recurrence_select_prompt">选择一个循环待办固定在桌面</string>
     <string name="widget_recurrence_missing_selection">原循环待办已不可用，请重新选择</string>

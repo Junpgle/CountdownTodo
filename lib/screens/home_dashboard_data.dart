@@ -626,12 +626,14 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         context: context,
         steps: [
           CoachMarkStep(
-            targetKey: _fabTodoKey,
-            title: '创建待办',
-            description: '点击此处记下你的第一个待办事项，支持设置提醒和截止日期。',
+            targetKey: _homeAddActionKey,
+            title: isTablet ? '创建待办' : '新增入口',
+            description: isTablet
+                ? '点击此处记下你的第一个待办事项，支持设置提醒和截止日期。'
+                : '点击中间的加号，可选择增加待办、倒计时或记账。',
           ),
           CoachMarkStep(
-            targetKey: _fabPomodoroKey,
+            targetKey: _homePomodoroActionKey,
             title: '开始专注',
             description: '点击此处开始番茄钟专注计时，可绑定待办任务。',
           ),
@@ -667,10 +669,8 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
           ),
           CoachMarkStep(
             targetKey: _menuKey,
-            title: isTablet ? '菜单栏' : '侧边栏',
-            description: isTablet
-                ? '点击这里，即可浏览各项功能，设置也从这里进入哦~'
-                : '点击这里，即可调出侧栏，涵盖多个功能的快捷入口，设置也从这里进入哦~',
+            title: '侧边栏',
+            description: '点击这里，即可调出侧栏，涵盖多个功能的快捷入口，设置也从这里进入哦~',
           ),
         ],
         onFinish: () {

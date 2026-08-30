@@ -26,7 +26,7 @@ class AiTodoContextBuilder {
 所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算。
 
 【动作输出规则】
-当用户明确要求管理待办、固定日程、规划块、专注记录、番茄钟、倒计时或标签时，回复末尾必须附 [ACTION_START]...[ACTION_END] JSON 数组。
+当用户明确要求管理待办、固定日程、规划块、专注记录、番茄钟、倒计时、标签或记账时，回复末尾必须附对应的结构化结果。待办等使用 [ACTION_START]...[ACTION_END] JSON 数组；新增记账使用 [FINANCE_START]...[FINANCE_END] JSON 数组；查询、修改或删除已有账单使用 [FINANCE_ACTION_START]...[FINANCE_ACTION_END] JSON 数组。
 每个操作对象必须包含 action 字段；禁止旧标记与 Markdown 代码块。
 具体可用动作与字段约束会按当前问题动态提供。''';
   }
@@ -54,6 +54,9 @@ class AiTodoContextBuilder {
     final requestsScheduleAction =
         _shouldInjectFixedScheduleContext(userMessage) ||
             _matchesAny(userMessage, _fixedScheduleKeywords);
+    final requestsFinanceAction = _matchesAny(userMessage, _financeKeywords) ||
+        userMessage.contains('#记账') ||
+        userMessage.contains('账单');
     if (requestsTodoAction) {
       add(
         '- create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","timeMode":"unscheduled|dateOnly|deadline","dueDate":null,"groupId":null,"reminderMinutes":5,"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}',
@@ -77,6 +80,29 @@ class AiTodoContextBuilder {
       );
       add(
         '- cancel_schedule / delete_schedule: 必须带scheduleId；默认只操作本期，只有用户明确说本期及以后时才用recurrenceScope="future"',
+      );
+    }
+    if (requestsFinanceAction) {
+      add(
+        '- 记账草案：回复正文末尾追加 [FINANCE_START]...[FINANCE_END]，其中必须是JSON数组；每笔使用 {"type":"expense|income|refund","amount":28.50,"category":"餐饮","merchant":"午餐","date":"YYYY-MM-DD","paymentMethod":"微信","note":"备注"}，金额单位为元，缺失的可选字段用null；只生成草案，不要声称已保存',
+      );
+      add(
+        '- 记账与取餐码双识别：同一条消息同时包含账单和取餐/取件信息时，两者都保留，记账放FINANCE块，取餐放ACTION块，禁止二选一',
+      );
+      add(
+        '- 只记账时不要为了凑协议生成空的ACTION块；FINANCE块独立于ACTION块，账单只作为待确认草案，不要声称已保存',
+      );
+      add(
+        '- finance_summary / finance_list：查询已有账单时使用 [FINANCE_ACTION_START]...[FINANCE_ACTION_END]，分别输出 {"action":"finance_summary","from":"YYYY-MM-DD","to":"YYYY-MM-DD"} 或 {"action":"finance_list","from":"YYYY-MM-DD","to":"YYYY-MM-DD","keyword":null,"type":null,"limit":20}；上下文已有汇总和明细时，正文要直接回答用户，不要假装执行了写入',
+      );
+      add(
+        '- update_finance：只允许引用记账上下文里的真实transactionId，使用 {"action":"update_finance","transactionId":"真实ID","type":"expense|income|refund","amount":28.50,"category":"餐饮","merchant":"商家","date":"YYYY-MM-DD","paymentMethod":"微信","note":"备注"}；只填写用户要改的字段，先生成待确认修改，不得直接保存',
+      );
+      add(
+        '- delete_finance：只允许引用记账上下文里的真实transactionId，使用 {"action":"delete_finance","transactionId":"真实ID","reason":"用户要求删除"}；先生成待确认删除，不得直接删除；找不到唯一账单时先追问日期、商家或金额',
+      );
+      add(
+        '- 记账操作安全：绝不编造transactionId；查询只读，修改/删除必须等用户在确认卡中操作；同一消息既有新增账单又有已有账单操作时，分别放FINANCE块和FINANCE_ACTION块',
       );
     }
     if (_matchesAny(userMessage, _planKeywords) ||
@@ -151,6 +177,11 @@ ${actions.join('\n')}
 [{"action":"..."}]
 [ACTION_END]
 
+记账动作块格式（查询/修改/删除已有账单时使用）：
+[FINANCE_ACTION_START]
+[{"action":"finance_summary|finance_list|update_finance|delete_finance"}]
+[FINANCE_ACTION_END]
+
 字段约束（必须）：
 - 仅操作已有对象时必须携带对应ID（todoId / scheduleId / groupId / countdownId / tagId / planBlockId / logId）
 - 时间字段统一使用 yyyy-MM-dd HH:mm（如 startTime / dueDate）
@@ -166,7 +197,9 @@ ${actions.join('\n')}
 - 新建循环待办必须提供首次发生日期/截止点；recurrenceEndDate是最后一期日期，不是普通待办截止时间
 - 上下文中同一recurrenceSeriesId下的每一条都是可独立寻址的真实期次；待办用todoId，日程用scheduleId，绝不能把seriesId当期次ID
 - 用户没有明确“本期及以后/后续所有周期”时，循环待办和循环日程动作必须使用recurrenceScope="occurrence"
-- 危险操作（删除/取消日程、完成待办、停止）仅在用户明确要求时输出''';
+- 危险操作（删除/取消日程、完成待办、停止）仅在用户明确要求时输出
+- 账单查询可以直接回答上下文中的只读数据；修改和删除必须输出FINANCE_ACTION块并等待确认，不得直接保存或删除
+- FINANCE_ACTION中的transactionId只能复制上下文中已有的真实ID，不能使用商家名、系列名或临时编号代替''';
   }
 
   static String buildSystemPrompt({
@@ -678,6 +711,25 @@ JSON操作块必须且只能使用以下协议：
     '番茄标签',
     'tag',
   ];
+  static const _financeKeywords = [
+    '记账',
+    '账单',
+    '支出',
+    '收入',
+    '退款',
+    '消费',
+    '记一笔',
+    '花钱',
+    '买了',
+    '付款',
+    '支付',
+    '花了',
+    '花费',
+    '进账',
+    '收款',
+    '余额',
+    '预算',
+  ];
   static const _planKeywords = [
     '规划',
     '时间块',
@@ -763,7 +815,7 @@ JSON操作块必须且只能使用以下协议：
     final buffer = StringBuffer()
       ..writeln('请按下面的对话内容扮演效率助手，只回复 assistant 的最终内容。')
       ..writeln(
-          '必须遵守 system 中的所有规则；如果需要创建、修改、规划或删除数据，必须输出可被应用识别的 [ACTION_START] JSON 操作块。')
+          '必须遵守 system 中的所有规则；如果需要创建、修改、规划或删除待办等数据，必须输出 [ACTION_START] JSON 操作块；如果需要新增记账，输出 [FINANCE_START]；如果需要查询、修改或删除已有账单，输出 [FINANCE_ACTION_START]。')
       ..writeln('不要解释这些包装文本，不要使用 Markdown 代码块包裹操作 JSON。');
 
     for (final message in messages) {

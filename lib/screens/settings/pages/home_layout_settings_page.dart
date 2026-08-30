@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../services/home_layout_service.dart';
+import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 
 class HomeLayoutSettingsPage extends StatefulWidget {
@@ -20,6 +21,7 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
     'todos': '待办',
     'timeline': '时间轴',
     'pomodoro': '今日专注',
+    'finance': '记账',
     'habits': '今日习惯',
     'screenTime': '屏幕时间',
     'math': '数学测验',
@@ -32,6 +34,7 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
     'todos': Icons.checklist_rounded,
     'timeline': Icons.timeline_rounded,
     'pomodoro': Icons.adjust_rounded,
+    'finance': Icons.account_balance_wallet_outlined,
     'habits': Icons.auto_awesome_outlined,
     'screenTime': Icons.timer_outlined,
     'math': Icons.functions,
@@ -370,51 +373,67 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
     final targets = _visibleTargets;
 
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('首页布局'),
               actions: [_buildResetButton()],
             ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-              children: [
-                if (widget.isEmbedded)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: _buildResetButton(),
-                  ),
-                Text(
-                  isWide
-                      ? '当前为宽屏设备，仅显示宽屏布局。组件可在左右栏之间迁移。'
-                      : '当前为手机端，仅显示手机布局。组件可在首页和专注之间迁移。',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  widget.isEmbedded
+                      ? 16
+                      : floatingGlassSettingsContentTopInset(context,
+                          extra: 16),
+                  16,
+                  32,
                 ),
-                const SizedBox(height: 16),
-                _buildHabitDisplayLimitSetting(context),
-                const SizedBox(height: 16),
-                if (isWide)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                          child: _buildGroup(context, targets[0], targets[1])),
-                      const SizedBox(width: 16),
-                      Expanded(
-                          child: _buildGroup(context, targets[1], targets[0])),
-                    ],
-                  )
-                else ...[
-                  _buildGroup(context, targets[0], targets[1]),
+                children: [
+                  if (widget.isEmbedded)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _buildResetButton(),
+                    ),
+                  Text(
+                    isWide
+                        ? '当前为宽屏设备，仅显示宽屏布局。组件可在左右栏之间迁移。'
+                        : '当前为手机端，仅显示手机布局。组件可在首页和专注之间迁移。',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                   const SizedBox(height: 16),
-                  _buildGroup(context, targets[1], targets[0]),
+                  _buildHabitDisplayLimitSetting(context),
+                  const SizedBox(height: 16),
+                  if (isWide)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                            child:
+                                _buildGroup(context, targets[0], targets[1])),
+                        const SizedBox(width: 16),
+                        Expanded(
+                            child:
+                                _buildGroup(context, targets[1], targets[0])),
+                      ],
+                    )
+                  else ...[
+                    _buildGroup(context, targets[0], targets[1]),
+                    const SizedBox(height: 16),
+                    _buildGroup(context, targets[1], targets[0]),
+                  ],
                 ],
-              ],
-            ),
+              ),
+      ),
     );
   }
 

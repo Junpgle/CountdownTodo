@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../../../models.dart';
@@ -14,6 +12,7 @@ import '../services/habit_reminder_service.dart';
 import '../services/habit_rule_resolver.dart';
 import '../widgets/habit_adaptation_panel.dart';
 import '../widgets/habit_water_target_picker.dart';
+import '../../../widgets/floating_glass_control.dart';
 
 /// 新建 / 编辑习惯。
 ///
@@ -741,6 +740,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 800;
+        final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
         final content = switch (_step) {
           0 => _buildCreationStep(),
           1 => _buildTypeStep(),
@@ -770,7 +770,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
 
         if (isWide) {
           return Scaffold(
-            appBar: AppBar(
+            appBar: FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: Text(widget.goal == null ? '新建习惯' : '编辑习惯'),
               centerTitle: false,
             ),
@@ -821,28 +822,21 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         }
 
         return Scaffold(
-          appBar: AppBar(
+          extendBody: useFloatingBottomBar,
+          appBar: FloatingGlassAppBar(
+            flexibleSpace: const FloatingGlassTopBarBackground(),
             title: Text(widget.goal == null ? '新建习惯' : '编辑习惯'),
             centerTitle: true,
           ),
-          body: Stack(
+          bottomNavigationBar: _buildBottomBar(isWide: false),
+          body: Column(
             children: [
-              Column(
-                children: [
-                  _buildStepIndicator(),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                      child: formArea,
-                    ),
-                  ),
-                ],
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: _buildBottomBar(isWide: false),
+              _buildStepIndicator(),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                  child: formArea,
+                ),
               ),
             ],
           ),
@@ -999,88 +993,98 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     final lastStep = 3;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final useFloating = !isWide && floatingBottomBarShouldFloat(context);
 
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          padding: EdgeInsets.fromLTRB(16, 12, 16,
-              isWide ? 12 : (bottomPadding > 0 ? bottomPadding : 12)),
-          decoration: BoxDecoration(
+    final child = Container(
+      padding: EdgeInsets.fromLTRB(
+          16, 12, 16, isWide ? 12 : (bottomPadding > 0 ? bottomPadding : 12)),
+      decoration: useFloating
+          ? null
+          : BoxDecoration(
               color: colorScheme.surface.withValues(alpha: 0.8),
               border: Border(
-                  top: BorderSide(
-                      color:
-                          colorScheme.outlineVariant.withValues(alpha: 0.3))),
+                top: BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                ),
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
+                  color: colorScheme.shadow.withValues(alpha: 0.08),
                   blurRadius: 10,
                   offset: const Offset(0, -4),
-                )
-              ]),
-          child: Row(
-            children: [
-              if (_step > 0)
-                OutlinedButton.icon(
-                  onPressed: _saving ? null : () => setState(() => _step--),
-                  icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                  label: const Text('上一步'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                )
-              else
-                const SizedBox(width: 0),
-              const Spacer(),
-              if (_step < lastStep)
-                FilledButton.icon(
-                  onPressed: _saving
-                      ? null
-                      : () {
-                          final error = _validateStep(_step);
-                          if (error != null) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                content: Text(error),
-                                behavior: SnackBarBehavior.floating));
-                            return;
-                          }
-                          setState(() => _step++);
-                        },
-                  icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-                  label: const Text('下一步'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                )
-              else
-                FilledButton.icon(
-                  onPressed: _saving ? null : _save,
-                  icon: _saving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.check_rounded, size: 18),
-                  label: Text(_saving ? '保存中…' : '完成'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
                 ),
-            ],
-          ),
-        ),
+              ],
+            ),
+      child: Row(
+        children: [
+          if (_step > 0)
+            OutlinedButton.icon(
+              onPressed: _saving ? null : () => setState(() => _step--),
+              icon: const Icon(Icons.arrow_back_rounded, size: 18),
+              label: const Text('上一步'),
+              style: OutlinedButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            )
+          else
+            const SizedBox(width: 0),
+          const Spacer(),
+          if (_step < lastStep)
+            FilledButton.icon(
+              onPressed: _saving
+                  ? null
+                  : () {
+                      final error = _validateStep(_step);
+                      if (error != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(error),
+                            behavior: SnackBarBehavior.floating));
+                        return;
+                      }
+                      setState(() => _step++);
+                    },
+              icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+              label: const Text('下一步'),
+              style: FilledButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            )
+          else
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.check_rounded, size: 18),
+              label: Text(_saving ? '保存中…' : '完成'),
+              style: FilledButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+        ],
       ),
+    );
+
+    return FloatingGlassControl(
+      height: useFloating ? 100 : 88,
+      margin: useFloating
+          ? const EdgeInsets.fromLTRB(16, 8, 16, 24)
+          : EdgeInsets.zero,
+      borderRadius: useFloating ? 28 : 0,
+      mobilePortraitOnly: true,
+      child: child,
     );
   }
 
@@ -2815,7 +2819,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           ),
         ],
         const SizedBox(height: 12),
-        SwitchListTile(
+        LiquidGlassSwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('跨午夜习惯（04:00 前算当天）'),
           subtitle: const Text('如早睡：晚上 11 点半打卡，次日 4 点前仍算当天'),
@@ -2939,7 +2943,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SwitchListTile(
+        LiquidGlassSwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('启用提醒'),
           value: _reminderEnabled,
@@ -2989,21 +2993,21 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          SwitchListTile(
+          LiquidGlassSwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('进度提醒'),
             subtitle: const Text('完成 50% / 100% 时提醒'),
             value: _progressReminder,
             onChanged: (v) => setState(() => _progressReminder = v),
           ),
-          SwitchListTile(
+          LiquidGlassSwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('临近结束提醒'),
             subtitle: const Text('周期快结束时提醒未完成'),
             value: _nearEndReminder,
             onChanged: (v) => setState(() => _nearEndReminder = v),
           ),
-          SwitchListTile(
+          LiquidGlassSwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('当日汇总'),
             subtitle: const Text('每晚汇总当天习惯完成情况'),
@@ -3044,7 +3048,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SwitchListTile(
+        LiquidGlassSwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: Text(title),
           subtitle: const Text('目标前 30 分钟和 5 分钟各提醒一次'),
@@ -3072,7 +3076,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             ),
           ),
         const SizedBox(height: 12),
-        SwitchListTile(
+        LiquidGlassSwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('当日汇总'),
           subtitle: const Text('每晚汇总当天习惯完成情况'),

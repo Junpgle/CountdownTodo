@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'floating_glass_control.dart';
 
 import 'optional_liquid_glass_surface.dart';
 
@@ -371,7 +372,8 @@ class AppDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: backgroundColor,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(appBarTitle),
         actions: appBarActions,
       ),

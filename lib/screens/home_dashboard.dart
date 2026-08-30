@@ -10,7 +10,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:ui';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/search_service.dart';
@@ -75,6 +74,10 @@ import '../widgets/todo_section_widget.dart';
 import '../widgets/pomodoro_today_section.dart';
 import '../widgets/plan_block_today_section.dart';
 import '../features/habits/screens/habit_center_screen.dart';
+import '../features/finance/screens/finance_home_screen.dart';
+import '../features/finance/screens/finance_entry_screen.dart';
+import '../features/finance/models/finance_models.dart';
+import '../features/finance/widgets/finance_today_section.dart';
 import '../features/habits/services/habit_reminder_service.dart';
 import '../features/habits/widgets/habit_today_section.dart';
 import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
@@ -97,6 +100,7 @@ import '../widgets/home_quick_action_button.dart';
 import '../widgets/app_status_toast.dart';
 import '../services/feature_tip_service.dart';
 import '../services/home_layout_service.dart';
+import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
 part 'home_dashboard_ai.dart';
@@ -109,6 +113,8 @@ part 'home_dashboard_data.dart';
 part 'home_dashboard_persistence.dart';
 part 'home_dashboard_wallpaper.dart';
 part 'home_dashboard_view.dart';
+
+const _homeFocusTabIndex = 4;
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -125,7 +131,6 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     with WidgetsBindingObserver, _HomeDashboardContract {
   late final PermissionRequestCoordinator _permissionCoordinator;
   final GitHubResourceService _githubResourceService = GitHubResourceService();
-
   // === 状态变量 ===
   List<CountdownItem> _countdowns = [];
   List<TodoItem> _todos = [];
@@ -164,7 +169,8 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     'countdowns',
     'screenTime',
     'timeline',
-    'pomodoro'
+    'pomodoro',
+    'finance',
   ];
   List<String> _mobileHomeSections =
       HomeLayoutService.defaultOrder(HomeLayoutTarget.mobileHome);
@@ -182,6 +188,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     'pomodoro': true,
     'timeline': true,
     'habits': true,
+    'finance': true,
   };
   Timer? _courseTimer;
   final Set<String> _coursesWithScheduledAlarms = {};
@@ -204,8 +211,10 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final GlobalKey _screenTimeCardKey = GlobalKey();
   final GlobalKey _habitsCardKey = GlobalKey();
   final GlobalKey _focusBannerKey = GlobalKey();
-  final GlobalKey _fabPomodoroKey = GlobalKey();
-  final GlobalKey _fabTodoKey = GlobalKey();
+  final GlobalKey _homePomodoroActionKey = GlobalKey();
+  final GlobalKey _homeFinanceActionKey = GlobalKey();
+  final GlobalKey _financeCardKey = GlobalKey();
+  final GlobalKey _homeAddActionKey = GlobalKey();
   final GlobalKey _courseButtonKey = GlobalKey();
 
   // 🚀 新增：首页引导用的新增 Keys
@@ -252,6 +261,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
 
   // 待确认的事项数据（从图片识别来）
   Map<String, dynamic>? _pendingTodoConfirm;
+  bool _isOpeningPendingFinance = false;
 
   // ── 跨端专注感知 ──
   CrossDevicePomodoroState? _remotePomodoro; // 其他设备正在进行的专注

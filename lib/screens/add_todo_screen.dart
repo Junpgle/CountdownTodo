@@ -19,6 +19,7 @@ import '../services/feature_tip_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../widgets/coach_mark_overlay.dart';
+import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import '../utils/persistent_image_storage.dart';
 import '../utils/page_transitions.dart';
@@ -1147,13 +1148,16 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     required List<String> labels,
     required int selectedIndex,
     required ValueChanged<int> onChanged,
+    bool floating = false,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
       height: 36,
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: colorScheme.onSurface.withValues(alpha: 0.08),
+        color: floating
+            ? colorScheme.surface.withValues(alpha: 0)
+            : colorScheme.onSurface.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -1169,9 +1173,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 curve: Curves.easeOut,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: isSelected ? colorScheme.surface : Colors.transparent,
+                  color: isSelected
+                      ? (floating
+                          ? colorScheme.surfaceContainerHighest
+                              .withValues(alpha: 0.72)
+                          : colorScheme.surface)
+                      : colorScheme.surface.withValues(alpha: 0),
                   borderRadius: BorderRadius.circular(6),
-                  boxShadow: isSelected
+                  boxShadow: isSelected && !floating
                       ? [
                           BoxShadow(
                               color: Colors.black.withValues(alpha: 0.05),
@@ -1586,10 +1595,13 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final bgColor = theme.brightness == Brightness.light
         ? const Color(0xFFF2F2F7)
         : theme.colorScheme.surface;
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
 
     return Scaffold(
+      extendBody: useFloatingBottomBar,
       backgroundColor: bgColor,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         backgroundColor: bgColor,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -1606,17 +1618,22 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           ),
         ),
         actions: [
-          KeyedSubtree(
+          TextButton(
             key: _saveButtonKey,
-            child: TextButton(
-              onPressed: _selectedTabIndex == 0 ? _addTodo : _addBatchTodos,
-              child: const Text("完成",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            onPressed: _selectedTabIndex == 0 ? _addTodo : _addBatchTodos,
+            child: const Text(
+              "完成",
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ),
           const SizedBox(width: 8),
         ],
       ),
+      bottomNavigationBar: useFloatingBottomBar && _selectedTabIndex == 0
+          ? _buildManualKindBottomBar()
+          : null,
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
         child: _selectedTabIndex == 0
@@ -1768,6 +1785,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   Widget _buildManualInputTab({Key? key}) {
     final colors = Theme.of(context).colorScheme;
     return LayoutBuilder(builder: (context, constraints) {
+      final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
       return SingleChildScrollView(
         key: key,
         physics: const AlwaysScrollableScrollPhysics(),
@@ -1776,27 +1794,29 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Type Switcher
-            Center(
-              child: SizedBox(
-                width: 200,
-                child: _buildCustomSegmentedControl(
-                  labels: const ["待办", "日程"],
-                  selectedIndex:
-                      _manualCaptureKind == _ManualCaptureKind.todo ? 0 : 1,
-                  onChanged: _selectManualCaptureKind,
+            if (!useFloatingBottomBar) ...[
+              Center(
+                child: SizedBox(
+                  width: 200,
+                  child: _buildCustomSegmentedControl(
+                    labels: const ["待办", "日程"],
+                    selectedIndex:
+                        _manualCaptureKind == _ManualCaptureKind.todo ? 0 : 1,
+                    onChanged: _selectManualCaptureKind,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
+            ],
             // Input Section
             OptionalLiquidGlassCard(
-              borderRadius: 16,
+              borderRadius: 24,
               highContrast: true,
               fallbackDecoration: BoxDecoration(
-                color: colors.surface,
-                borderRadius: BorderRadius.circular(16),
+                color: colors.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(24),
                 border: Border.fromBorderSide(BorderSide(
-                    color: colors.outlineVariant.withValues(alpha: 0.5))),
+                    color: colors.outlineVariant.withValues(alpha: 0.55))),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -1811,8 +1831,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                         hintText: _manualCaptureKind == _ManualCaptureKind.todo
                             ? "准备做些什么？"
                             : "要记录什么日程？",
+                        filled: false,
                         border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
                         isDense: true,
+                        isCollapsed: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 4),
                       ),
                     ),
                     if (_manualCaptureKind == _ManualCaptureKind.todo)
@@ -1825,8 +1851,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                       minLines: 1,
                       decoration: InputDecoration(
                         hintText: "补充细节或备注...",
+                        filled: false,
                         border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
                         isDense: true,
+                        isCollapsed: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 4),
                         hintStyle: TextStyle(
                             color: Colors.grey.withValues(alpha: 0.8)),
                       ),
@@ -1903,7 +1935,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                   child: _buildResponsiveGrid(
                     [
                       if (_manualCaptureKind == _ManualCaptureKind.todo) ...[
-                        SwitchListTile(
+                        LiquidGlassSwitchListTile(
                           title: const Text("某天内完成"),
                           subtitle: const Text("不指定具体时刻"),
                           value: _isAllDay,
@@ -1970,7 +2002,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                             children: [
                               const Text('时间待定'),
                               const SizedBox(width: 6),
-                              Switch(
+                              LiquidGlassSwitch(
                                 key: const ValueKey('fixed-schedule-time-tbd'),
                                 value: _scheduleTimeTbd,
                                 onChanged: (value) =>
@@ -2002,7 +2034,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                               children: [
                                 const Text('待定'),
                                 const SizedBox(width: 6),
-                                Switch(
+                                LiquidGlassSwitch(
                                   key: const ValueKey(
                                       'fixed-schedule-end-time-tbd'),
                                   value: _scheduleEndTimeTbd,
@@ -2280,6 +2312,23 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         ),
       );
     });
+  }
+
+  Widget _buildManualKindBottomBar() {
+    return FloatingBottomNavigationBar(
+      items: const [
+        FloatingBottomNavigationItem(
+          icon: Icons.check_circle_outline_rounded,
+          label: '待办',
+        ),
+        FloatingBottomNavigationItem(
+          icon: Icons.event_note_outlined,
+          label: '日程',
+        ),
+      ],
+      selectedIndex: _manualCaptureKind == _ManualCaptureKind.todo ? 0 : 1,
+      onTabSelected: _selectManualCaptureKind,
+    );
   }
 
   // ================= 待确认图片识别事项卡片 =================

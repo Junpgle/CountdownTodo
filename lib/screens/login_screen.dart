@@ -301,7 +301,13 @@ class _BrandLogo extends StatelessWidget {
           ),
         ],
       ),
-      child: Icon(Icons.bolt_rounded, color: t.onPrimary, size: size * 0.52),
+      child: Image.asset(
+        'assets/icon/app_icon.png',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+      ),
     );
   }
 }

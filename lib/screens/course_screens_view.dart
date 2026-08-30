@@ -250,7 +250,8 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
     final bool isDesktop = MediaQuery.of(context).size.width >= 768;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: LayoutBuilder(
           builder: (context, constraints) {
             final navigationWidth =
@@ -264,6 +265,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
+                    style: floatingGlassPlainIconButtonStyle(),
                     icon: const Icon(Icons.arrow_back_ios, size: 13),
                     onPressed: () {
                       if (_viewMode == 2) {
@@ -300,6 +302,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
+                    style: floatingGlassPlainIconButtonStyle(),
                     icon: const Icon(Icons.arrow_forward_ios, size: 13),
                     onPressed: () {
                       if (_viewMode == 2) {
@@ -322,6 +325,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
           IconButton(
             key: _viewModeKey,
             visualDensity: const VisualDensity(horizontal: -2),
+            style: floatingGlassPlainIconButtonStyle(),
             icon: Icon(
                 _viewMode == 2
                     ? Icons.view_week
@@ -336,6 +340,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
             IconButton(
               key: _timeLogKey,
               visualDensity: const VisualDensity(horizontal: -2),
+              style: floatingGlassPlainIconButtonStyle(),
               icon: const Icon(Icons.edit_calendar, size: 20),
               tooltip: '记录时间日志',
               onPressed: () async {
@@ -353,16 +358,50 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
             ),
           MenuAnchor(
             key: _filterKey,
+            alignmentOffset: const Offset(0, 8),
+            animated: true,
+            crossAxisUnconstrained: false,
+            style: MenuStyle(
+              fixedSize: WidgetStatePropertyAll(
+                Size.fromWidth(_filterMenuWidth(context)),
+              ),
+              padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+              backgroundColor: WidgetStatePropertyAll(
+                Theme.of(context).colorScheme.surfaceContainerHigh,
+              ),
+              surfaceTintColor: WidgetStatePropertyAll(
+                Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+              ),
+              shadowColor: WidgetStatePropertyAll(
+                Theme.of(context).colorScheme.shadow.withValues(alpha: 0.22),
+              ),
+              elevation: const WidgetStatePropertyAll(10),
+              shape: WidgetStatePropertyAll(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(22),
+                  side: BorderSide(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .outlineVariant
+                        .withValues(alpha: 0.5),
+                  ),
+                ),
+              ),
+            ),
             menuChildren: [
+              _buildFilterMenuHeader(),
+              _buildFilterMenuDivider(),
+              _buildFilterSectionLabel('显示内容'),
               _buildCheckableMenuItem('courses', '课表'),
               _buildCheckableMenuItem('todos', '待办'),
               _buildCheckableMenuItem('timeLogs', '时间日志'),
               _buildCheckableMenuItem('plans', '今日规划'),
               _buildCheckableMenuItem('pomodoros', '番茄钟'),
-              const Divider(height: 1),
+              _buildFilterMenuDivider(),
+              _buildFilterSectionLabel('日历选项'),
               _buildCheckableMenuItem('hideCrossDay', '隐藏跨天待办'),
               _buildCheckableMenuItem('disableFreeTimeCollapse', '不折叠空余时间'),
-              const Divider(height: 1),
+              _buildFilterMenuDivider(),
               _buildFilterActionItem(
                 'selectAll',
                 '一键全选',
@@ -377,9 +416,53 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
               ),
             ],
             builder: (context, controller, child) {
+              final colorScheme = Theme.of(context).colorScheme;
+              final selectedCount = _selectedFilterCount;
+              final hasFilterChanges = selectedCount != 5 ||
+                  _activeDataViews.contains('hideCrossDay') ||
+                  !_collapseFreeTime;
               return IconButton(
                 visualDensity: const VisualDensity(horizontal: -2),
-                icon: const Icon(Icons.filter_list, size: 20),
+                style: floatingGlassPlainIconButtonStyle(),
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(
+                      controller.isOpen
+                          ? Icons.filter_alt_rounded
+                          : Icons.filter_list_rounded,
+                      size: 20,
+                    ),
+                    if (hasFilterChanges)
+                      Positioned(
+                        top: -6,
+                        right: -7,
+                        child: Container(
+                          constraints:
+                              const BoxConstraints(minWidth: 14, minHeight: 14),
+                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: colorScheme.surface,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Text(
+                            '$selectedCount',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: colorScheme.onPrimary,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              height: 1.1,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
                 tooltip: '筛选显示内容',
                 onPressed: () {
                   if (controller.isOpen) {

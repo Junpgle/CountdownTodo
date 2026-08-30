@@ -10,6 +10,7 @@ import '../../utils/app_platform.dart';
 import '../../utils/time_utils.dart';
 import '../../widgets/app_sheet_widgets.dart';
 import '../../widgets/app_state_views.dart';
+import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
 
 class NotificationSettingsPage extends StatefulWidget {
@@ -35,6 +36,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
   bool _pomodoroEndEnabled = true;
   bool _reminderEnabled = true;
+  bool _financeBudgetEnabled = true;
 
   int _courseReminderMinutes = 15;
   List<TodoGroup> _todoGroups = [];
@@ -71,6 +73,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         await AppSettingsStorage.isPomodoroEndNotificationEnabled();
     final reminderEnabled =
         await AppSettingsStorage.isReminderNotificationEnabled();
+    final financeBudgetEnabled =
+        await AppSettingsStorage.isFinanceBudgetAlertEnabled();
     final reminderMinutes = await AppSettingsStorage.getCourseReminderMinutes();
 
     setState(() {
@@ -85,6 +89,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       _todoLiveEnabled = todoLiveEnabled;
       _pomodoroEndEnabled = pomodoroEndEnabled;
       _reminderEnabled = reminderEnabled;
+      _financeBudgetEnabled = financeBudgetEnabled;
       _courseReminderMinutes = reminderMinutes;
     });
 
@@ -188,15 +193,18 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       if (!enabled) {
         _pomodoroEndEnabled = false;
         _reminderEnabled = false;
+        _financeBudgetEnabled = false;
       }
     });
     if (enabled) {
       await AppSettingsStorage.setPomodoroEndNotificationEnabled(true);
       await AppSettingsStorage.setReminderNotificationEnabled(true);
+      await AppSettingsStorage.setFinanceBudgetAlertEnabled(true);
       _triggerReschedule();
     } else {
       await AppSettingsStorage.setPomodoroEndNotificationEnabled(false);
       await AppSettingsStorage.setReminderNotificationEnabled(false);
+      await AppSettingsStorage.setFinanceBudgetAlertEnabled(false);
       await NotificationService.scheduleReminders([], clearFirst: true);
     }
   }
@@ -228,241 +236,309 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       return _buildWebSettingsScaffold();
     }
 
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('通知与提醒设置'),
               centerTitle: true,
             ),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          _buildMasterSwitch(
-            title: '实时活动通知',
-            subtitle: '在状态栏实时更新进度（课程、测验、待办、番茄钟等）',
-            icon: Icons.notifications_active,
-            color: Colors.blue,
-            value: _liveActivityEnabled,
-            onChanged: _toggleLiveActivityMaster,
-          ),
-          const SizedBox(height: 8),
-          _buildSubSection(
-            enabled: _liveActivityEnabled,
-            children: [
-              _buildSwitchTile(
-                title: '课程实时通知',
-                subtitle: '显示课程名称、教室、时间等信息',
-                icon: Icons.school,
-                value: _courseEnabled,
-                onChanged: (v) => _toggleSubNotification(
-                  'course',
-                  v,
-                  (val) => _courseEnabled = val,
-                  AppSettingsStorage.setCourseNotificationEnabled,
-                ),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isDesktop = constraints.maxWidth >= 800;
+            return ListView(
+              padding: EdgeInsets.fromLTRB(
+                isDesktop ? 24 : 16,
+                widget.isEmbedded
+                    ? (isDesktop ? 20 : 16)
+                    : floatingGlassSettingsContentTopInset(
+                        context,
+                        extra: isDesktop ? 20 : 16,
+                      ),
+                isDesktop ? 24 : 16,
+                isDesktop ? 32 : 16,
               ),
-              _buildSwitchTile(
-                title: '测验进度通知',
-                subtitle: '答题过程中显示当前进度和分数',
-                icon: Icons.quiz,
-                value: _quizEnabled,
-                onChanged: (v) => _toggleSubNotification(
-                  'quiz',
-                  v,
-                  (val) => _quizEnabled = val,
-                  AppSettingsStorage.setQuizNotificationEnabled,
+              children: [
+                GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: isDesktop ? 3 : 2,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: isDesktop ? 2.45 : 1.3,
+                  children: [
+                    _buildMasterSwitch(
+                      title: '实时活动通知',
+                      subtitle: '在状态栏实时更新进度（课程、测验、待办、番茄钟等）',
+                      icon: Icons.notifications_active,
+                      color: colorScheme.primary,
+                      value: _liveActivityEnabled,
+                      onChanged: _toggleLiveActivityMaster,
+                      isDesktop: isDesktop,
+                    ),
+                  ],
                 ),
-              ),
-              _buildSwitchTile(
-                title: '待办汇总通知',
-                subtitle: '显示今日待办完成进度',
-                icon: Icons.checklist,
-                value: _todoSummaryEnabled,
-                onChanged: (v) => _toggleSubNotification(
-                  'todo_summary',
-                  v,
-                  (val) => _todoSummaryEnabled = val,
-                  AppSettingsStorage.setTodoSummaryNotificationEnabled,
-                ),
-              ),
-              _buildSwitchTile(
-                title: '特殊待办通知',
-                subtitle: '快递、奶茶、餐饮等类型待办提醒',
-                icon: Icons.local_shipping,
-                value: _specialTodoEnabled,
-                onChanged: (v) => _toggleSubNotification(
-                  'special_todo',
-                  v,
-                  (val) => _specialTodoEnabled = val,
-                  AppSettingsStorage.setSpecialTodoNotificationEnabled,
-                ),
-              ),
-              _buildSwitchTile(
-                title: '番茄钟倒计时通知',
-                subtitle: '专注/休息倒计时进度显示',
-                icon: Icons.timer,
-                value: _pomodoroEnabled,
-                onChanged: (v) => _toggleSubNotification(
-                  'pomodoro',
-                  v,
-                  (val) => _pomodoroEnabled = val,
-                  AppSettingsStorage.setPomodoroNotificationEnabled,
-                ),
-              ),
-              _buildSwitchTile(
-                title: '图片识别通知',
-                subtitle: '图片识别事项的进度、成功、失败通知',
-                icon: Icons.image_search,
-                value: _todoRecognizeEnabled,
-                onChanged: (v) => _toggleSubNotification(
-                  'todo_recognize',
-                  v,
-                  (val) => _todoRecognizeEnabled = val,
-                  AppSettingsStorage.setTodoRecognizeNotificationEnabled,
-                ),
-              ),
-              _buildSwitchTile(
-                title: '待办实时通知',
-                subtitle: '由闹钟触发，实时显示即将开始的待办进度',
-                icon: Icons.event_available,
-                value: _todoLiveEnabled,
-                onChanged: (v) => _toggleSubNotification(
-                  'todo_live',
-                  v,
-                  (val) => _todoLiveEnabled = val,
-                  AppSettingsStorage.setTodoLiveNotificationEnabled,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildMasterSwitch(
-            title: '普通通知',
-            subtitle: '一次性触发的提醒通知（番茄钟结束、定时闹钟等）',
-            icon: Icons.notifications,
-            color: Colors.orange,
-            value: _normalEnabled,
-            onChanged: _toggleNormalMaster,
-          ),
-          const SizedBox(height: 8),
-          _buildSubSection(
-            enabled: _normalEnabled,
-            children: [
-              _buildSwitchTile(
-                title: '番茄钟结束提醒',
-                subtitle: '专注或休息阶段结束时提醒',
-                icon: Icons.event_note,
-                value: _pomodoroEndEnabled,
-                onChanged: (v) => _toggleSubNotification(
-                  'pomodoro_end',
-                  v,
-                  (val) => _pomodoroEndEnabled = val,
-                  AppSettingsStorage.setPomodoroEndNotificationEnabled,
-                ),
-              ),
-              _buildSwitchTile(
-                title: '定时闹钟提醒',
-                subtitle: '课程/待办的定时闹钟提醒',
-                icon: Icons.alarm,
-                value: _reminderEnabled,
-                onChanged: (v) => _toggleSubNotification(
-                  'reminder',
-                  v,
-                  (val) => _reminderEnabled = val,
-                  AppSettingsStorage.setReminderNotificationEnabled,
-                ),
-              ),
-              if (_reminderEnabled) ...[
-                _buildCourseReminderTile(),
-              ],
-            ],
-          ),
-          const SizedBox(height: 24),
-          Card(
-            elevation: 1,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline, color: Colors.grey[600]),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '关闭总开关将同时关闭该类别下所有子通知。单独开启某个子通知不会自动开启总开关。',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[700],
+                const SizedBox(height: 8),
+                _buildSubSection(
+                  enabled: _liveActivityEnabled,
+                  isDesktop: isDesktop,
+                  children: [
+                    _buildSwitchTile(
+                      title: '课程实时通知',
+                      subtitle: '显示课程名称、教室、时间等信息',
+                      icon: Icons.school,
+                      value: _courseEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'course',
+                        v,
+                        (val) => _courseEnabled = val,
+                        AppSettingsStorage.setCourseNotificationEnabled,
                       ),
                     ),
-                  ),
-                ],
+                    _buildSwitchTile(
+                      title: '测验进度通知',
+                      subtitle: '答题过程中显示当前进度和分数',
+                      icon: Icons.quiz,
+                      value: _quizEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'quiz',
+                        v,
+                        (val) => _quizEnabled = val,
+                        AppSettingsStorage.setQuizNotificationEnabled,
+                      ),
+                    ),
+                    _buildSwitchTile(
+                      title: '待办汇总通知',
+                      subtitle: '显示今日待办完成进度',
+                      icon: Icons.checklist,
+                      value: _todoSummaryEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'todo_summary',
+                        v,
+                        (val) => _todoSummaryEnabled = val,
+                        AppSettingsStorage.setTodoSummaryNotificationEnabled,
+                      ),
+                    ),
+                    _buildSwitchTile(
+                      title: '特殊待办通知',
+                      subtitle: '快递、奶茶、餐饮等类型待办提醒',
+                      icon: Icons.local_shipping,
+                      value: _specialTodoEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'special_todo',
+                        v,
+                        (val) => _specialTodoEnabled = val,
+                        AppSettingsStorage.setSpecialTodoNotificationEnabled,
+                      ),
+                    ),
+                    _buildSwitchTile(
+                      title: '番茄钟倒计时通知',
+                      subtitle: '专注/休息倒计时进度显示',
+                      icon: Icons.timer,
+                      value: _pomodoroEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'pomodoro',
+                        v,
+                        (val) => _pomodoroEnabled = val,
+                        AppSettingsStorage.setPomodoroNotificationEnabled,
+                      ),
+                    ),
+                    _buildSwitchTile(
+                      title: '图片识别通知',
+                      subtitle: '图片识别事项的进度、成功、失败通知',
+                      icon: Icons.image_search,
+                      value: _todoRecognizeEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'todo_recognize',
+                        v,
+                        (val) => _todoRecognizeEnabled = val,
+                        AppSettingsStorage.setTodoRecognizeNotificationEnabled,
+                      ),
+                    ),
+                    _buildSwitchTile(
+                      title: '待办实时通知',
+                      subtitle: '由闹钟触发，实时显示即将开始的待办进度',
+                      icon: Icons.event_available,
+                      value: _todoLiveEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'todo_live',
+                        v,
+                        (val) => _todoLiveEnabled = val,
+                        AppSettingsStorage.setTodoLiveNotificationEnabled,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: isDesktop ? 3 : 2,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: isDesktop ? 2.45 : 1.3,
+                  children: [
+                    _buildMasterSwitch(
+                      title: '普通通知',
+                      subtitle: '一次性触发的提醒通知（番茄钟结束、定时闹钟等）',
+                      icon: Icons.notifications,
+                      color: colorScheme.secondary,
+                      value: _normalEnabled,
+                      onChanged: _toggleNormalMaster,
+                      isDesktop: isDesktop,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _buildSubSection(
+                  enabled: _normalEnabled,
+                  isDesktop: isDesktop,
+                  children: [
+                    _buildSwitchTile(
+                      title: '番茄钟结束提醒',
+                      subtitle: '专注或休息阶段结束时提醒',
+                      icon: Icons.event_note,
+                      value: _pomodoroEndEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'pomodoro_end',
+                        v,
+                        (val) => _pomodoroEndEnabled = val,
+                        AppSettingsStorage.setPomodoroEndNotificationEnabled,
+                      ),
+                    ),
+                    _buildSwitchTile(
+                      title: '定时闹钟提醒',
+                      subtitle: '课程/待办的定时闹钟提醒',
+                      icon: Icons.alarm,
+                      value: _reminderEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'reminder',
+                        v,
+                        (val) => _reminderEnabled = val,
+                        AppSettingsStorage.setReminderNotificationEnabled,
+                      ),
+                    ),
+                    _buildSwitchTile(
+                      title: '预算提醒',
+                      subtitle: '预算达到 80% 或超支时提醒',
+                      icon: Icons.track_changes_outlined,
+                      value: _financeBudgetEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'finance_budget',
+                        v,
+                        (val) => _financeBudgetEnabled = val,
+                        AppSettingsStorage.setFinanceBudgetAlertEnabled,
+                      ),
+                    ),
+                    if (_reminderEnabled) ...[
+                      _buildCourseReminderTile(),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 24),
+            Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          OptionalLiquidGlassCard(
-            borderRadius: 16,
-            margin: EdgeInsets.zero,
-            fallbackDecoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.grey.shade900
-                  : Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.fromBorderSide(
-                  const BorderSide(color: Colors.transparent, width: 1.5)),
-            ),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(16),
-              onTap: _showScheduledReminders,
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16.0, vertical: 16.0),
+                padding: const EdgeInsets.all(16.0),
                 child: Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.teal.withValues(alpha: 0.15),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.manage_search,
-                          color: Colors.teal, size: 28),
-                    ),
-                    const SizedBox(width: 16),
+                    Icon(Icons.info_outline, color: Colors.grey[600]),
+                    const SizedBox(width: 12),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            '定时闹钟管理',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 16),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '查看当前已注册到系统的精确闹钟提醒',
-                            style: TextStyle(
-                                fontSize: 12, color: Colors.grey[600]),
-                          ),
-                        ],
+                      child: Text(
+                        '关闭总开关将同时关闭该类别下所有子通知。单独开启某个子通知不会自动开启总开关。',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[700],
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    const Icon(Icons.chevron_right, color: Colors.grey),
                   ],
                 ),
               ),
             ),
-          ),
-          if (_reminderEnabled && _todoGroups.isNotEmpty) ...[
             const SizedBox(height: 16),
-            _buildCategoryRemindersSection(),
+            OptionalLiquidGlassCard(
+              borderRadius: 16,
+              margin: EdgeInsets.zero,
+              fallbackDecoration: BoxDecoration(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey.shade900
+                    : Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.fromBorderSide(
+                    const BorderSide(color: Colors.transparent, width: 1.5)),
+              ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: _showScheduledReminders,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16.0, vertical: 16.0),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.teal.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.manage_search,
+                            color: Colors.teal, size: 28),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              '定时闹钟管理',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '查看当前已注册到系统的精确闹钟提醒',
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.grey[600]),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      const Icon(Icons.chevron_right, color: Colors.grey),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (_reminderEnabled && _todoGroups.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _buildCategoryRemindersSection(),
+            ],
           ],
-        ],
+        );
+          },
+        ),
       ),
     );
   }
@@ -471,77 +547,116 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('浏览器通知设置'),
               centerTitle: true,
             ),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          _buildWebPermissionCard(),
-          const SizedBox(height: 16),
-          _buildMasterSwitch(
-            title: '浏览器通知',
-            subtitle: '授权后弹出番茄钟、待办、课程和同步提醒',
-            icon: Icons.notifications_active_outlined,
-            color: colorScheme.primary,
-            value: _normalEnabled,
-            onChanged: _toggleNormalMaster,
-          ),
-          const SizedBox(height: 8),
-          _buildSubSection(
-            enabled: _normalEnabled,
-            children: [
-              _buildSwitchTile(
-                title: '番茄钟结束提醒',
-                subtitle: '专注或休息阶段结束时弹出浏览器通知',
-                icon: Icons.event_note_outlined,
-                value: _pomodoroEndEnabled,
-                onChanged: (v) => _toggleSubNotification(
-                  'pomodoro_end',
-                  v,
-                  (val) => _pomodoroEndEnabled = val,
-                  AppSettingsStorage.setPomodoroEndNotificationEnabled,
-                ),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isDesktop = constraints.maxWidth >= 800;
+            return ListView(
+              padding: EdgeInsets.fromLTRB(
+                isDesktop ? 24 : 16,
+                widget.isEmbedded
+                    ? (isDesktop ? 20 : 16)
+                    : floatingGlassSettingsContentTopInset(
+                        context,
+                        extra: isDesktop ? 20 : 16,
+                      ),
+                isDesktop ? 24 : 16,
+                isDesktop ? 32 : 16,
               ),
-              _buildSwitchTile(
-                title: '待办/课程提醒',
-                subtitle: '页面或 PWA 运行期间预约未来 7 天的提醒',
-                icon: Icons.alarm_outlined,
-                value: _reminderEnabled,
-                onChanged: (v) => _toggleSubNotification(
-                  'reminder',
-                  v,
-                  (val) => _reminderEnabled = val,
-                  AppSettingsStorage.setReminderNotificationEnabled,
+              children: [
+                _buildWebPermissionCard(),
+                const SizedBox(height: 16),
+                _buildMasterSwitch(
+                  title: '浏览器通知',
+                  subtitle: '授权后弹出番茄钟、待办、课程和同步提醒',
+                  icon: Icons.notifications_active_outlined,
+                  color: colorScheme.primary,
+                  value: _normalEnabled,
+                  onChanged: _toggleNormalMaster,
+                  isDesktop: isDesktop,
                 ),
-              ),
-              if (_reminderEnabled) _buildCourseReminderTile(),
-              _buildSwitchTile(
-                title: '图片识别结果',
-                subtitle: '识别完成、失败或重试状态通过浏览器通知提示',
-                icon: Icons.image_search_outlined,
-                value: _todoRecognizeEnabled,
-                onChanged: (v) => _toggleSubNotification(
-                  'todo_recognize',
-                  v,
-                  (val) => _todoRecognizeEnabled = val,
-                  AppSettingsStorage.setTodoRecognizeNotificationEnabled,
+                const SizedBox(height: 8),
+                _buildSubSection(
+                  enabled: _normalEnabled,
+                  isDesktop: isDesktop,
+                  children: [
+                    _buildSwitchTile(
+                      title: '番茄钟结束提醒',
+                      subtitle: '专注或休息阶段结束时弹出浏览器通知',
+                      icon: Icons.event_note_outlined,
+                      value: _pomodoroEndEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'pomodoro_end',
+                        v,
+                        (val) => _pomodoroEndEnabled = val,
+                        AppSettingsStorage.setPomodoroEndNotificationEnabled,
+                      ),
+                    ),
+                    _buildSwitchTile(
+                      title: '待办/课程提醒',
+                      subtitle: '页面或 PWA 运行期间预约未来 7 天的提醒',
+                      icon: Icons.alarm_outlined,
+                      value: _reminderEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'reminder',
+                        v,
+                        (val) => _reminderEnabled = val,
+                        AppSettingsStorage.setReminderNotificationEnabled,
+                      ),
+                    ),
+                    _buildSwitchTile(
+                      title: '预算提醒',
+                      subtitle: '预算达到 80% 或超支时弹出浏览器通知',
+                      icon: Icons.track_changes_outlined,
+                      value: _financeBudgetEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'finance_budget',
+                        v,
+                        (val) => _financeBudgetEnabled = val,
+                        AppSettingsStorage.setFinanceBudgetAlertEnabled,
+                      ),
+                    ),
+                    if (_reminderEnabled) _buildCourseReminderTile(),
+                    _buildSwitchTile(
+                      title: '图片识别结果',
+                      subtitle: '识别完成、失败或重试状态通过浏览器通知提示',
+                      icon: Icons.image_search_outlined,
+                      value: _todoRecognizeEnabled,
+                      isDesktop: isDesktop,
+                      onChanged: (v) => _toggleSubNotification(
+                        'todo_recognize',
+                        v,
+                        (val) => _todoRecognizeEnabled = val,
+                        AppSettingsStorage.setTodoRecognizeNotificationEnabled,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _buildWebReminderManagerCard(),
-          if (_reminderEnabled && _todoGroups.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _buildCategoryRemindersSection(),
-          ],
-          const SizedBox(height: 16),
-          _buildWebNotificationLimitCard(),
-        ],
+                const SizedBox(height: 8),
+                _buildWebReminderManagerCard(),
+                if (_reminderEnabled && _todoGroups.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _buildCategoryRemindersSection(),
+                ],
+                const SizedBox(height: 16),
+                _buildWebNotificationLimitCard(),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -751,85 +866,34 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     required Color color,
     required bool value,
     required ValueChanged<bool?> onChanged,
+    bool isDesktop = false,
   }) {
-    return OptionalLiquidGlassCard(
-      borderRadius: 16,
-      margin: EdgeInsets.zero,
-      fallbackDecoration: BoxDecoration(
-        color: value
-            ? color.withValues(alpha: 0.1)
-            : (Theme.of(context).brightness == Brightness.dark
-                ? Colors.grey.shade900
-                : Colors.grey.shade100),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.fromBorderSide(
-          BorderSide(
-            color: value ? color.withValues(alpha: 0.5) : Colors.transparent,
-            width: 1.5,
-          ),
-        ),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => onChanged(!value),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: color, size: 28),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Switch(
-                value: value,
-                onChanged: onChanged,
-                activeThumbColor: color,
-              ),
-            ],
-          ),
-        ),
-      ),
+    return _buildToggleCard(
+      isDesktop: isDesktop,
+      title: title,
+      subtitle: subtitle,
+      icon: icon,
+      value: value,
+      onChanged: onChanged,
     );
   }
 
   Widget _buildSubSection({
     required bool enabled,
+    required bool isDesktop,
     required List<Widget> children,
   }) {
     return AnimatedCrossFade(
       firstChild: const SizedBox(width: double.infinity, height: 0),
       secondChild: Padding(
         padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
-        child: GridView.extent(
-          maxCrossAxisExtent: 220,
+        child: GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          crossAxisSpacing: 12,
+          crossAxisCount: isDesktop ? 3 : 2,
           mainAxisSpacing: 12,
-          childAspectRatio: 0.95,
+          crossAxisSpacing: 12,
+          childAspectRatio: isDesktop ? 2.45 : 0.95,
           children: children,
         ),
       ),
@@ -845,81 +909,132 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     required IconData icon,
     required bool value,
     required ValueChanged<bool> onChanged,
+    bool isDesktop = false,
   }) {
-    return OptionalLiquidGlassCard(
-      borderRadius: 16,
-      margin: EdgeInsets.zero,
-      fallbackDecoration: BoxDecoration(
-        color: Theme.of(context).brightness == Brightness.dark
-            ? Colors.grey.shade900
-            : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.fromBorderSide(
-          BorderSide(
-            color: value
-                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)
-                : Colors.transparent,
-            width: 1.5,
+    return _buildToggleCard(
+      isDesktop: isDesktop,
+      title: title,
+      subtitle: subtitle,
+      icon: icon,
+      value: value,
+      onChanged: (v) => onChanged(v ?? false),
+    );
+  }
+
+  Widget _buildToggleCard({
+    required bool isDesktop,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool value,
+    required ValueChanged<bool?> onChanged,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isSelected = value;
+    final iconWidget = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      switchInCurve: Curves.easeOutBack,
+      switchOutCurve: Curves.easeInBack,
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        return ScaleTransition(
+          scale: animation,
+          child: RotationTransition(
+            turns: Tween<double>(begin: -0.1, end: 0.0).animate(animation),
+            child: child,
           ),
+        );
+      },
+      child: Icon(
+        icon,
+        key: ValueKey<bool>(isSelected),
+        color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+        size: isDesktop ? 28 : 32,
+      ),
+    );
+    final switchWidget = SizedBox(
+      height: 24,
+      child: FittedBox(
+        fit: BoxFit.fill,
+        child: LiquidGlassSwitch(
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: colorScheme.primary,
         ),
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => onChanged(!value),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: value
-                          ? Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.1)
-                          : Colors.grey.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(icon,
-                        color: value
-                            ? Theme.of(context).colorScheme.primary
-                            : Colors.grey,
-                        size: 24),
-                  ),
-                  Switch(
-                    value: value,
-                    onChanged: onChanged,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                style:
-                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-              Expanded(
-                child: Text(
-                  subtitle,
-                  style: TextStyle(
-                      fontSize: 11, color: Colors.grey[600], height: 1.2),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
+    );
+    final titleWidget = AnimatedDefaultTextStyle(
+      duration: const Duration(milliseconds: 300),
+      style: TextStyle(
+        fontWeight: FontWeight.bold,
+        fontSize: 14,
+        color: isSelected
+            ? colorScheme.primary
+            : theme.textTheme.bodyMedium?.color,
+        fontFamily: theme.textTheme.bodyMedium?.fontFamily,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      child: Text(title),
+    );
+    final subtitleWidget = Text(
+      subtitle,
+      maxLines: isDesktop ? 1 : 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+    );
+
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.all(isDesktop ? 16 : 12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? colorScheme.primary.withValues(alpha: 0.1)
+              : (theme.brightness == Brightness.dark
+                  ? Colors.grey.shade900
+                  : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? colorScheme.primary : Colors.transparent,
+            width: 2,
           ),
         ),
+        child: isDesktop
+            ? Row(
+                children: [
+                  iconWidget,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        titleWidget,
+                        const SizedBox(height: 3),
+                        subtitleWidget,
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  switchWidget,
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [iconWidget, switchWidget],
+                  ),
+                  const Spacer(),
+                  titleWidget,
+                  const SizedBox(height: 2),
+                  subtitleWidget,
+                ],
+              ),
       ),
     );
   }

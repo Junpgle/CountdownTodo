@@ -24,9 +24,17 @@ import '../screens/ai_assistant_tutorial_screen.dart';
 import '../screens/settings/llm_config_page.dart';
 import '../storage_service.dart';
 import '../utils/page_transitions.dart';
+import '../utils/app_platform.dart';
 import '../services/feature_tip_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../widgets/coach_mark_overlay.dart';
+import '../widgets/floating_glass_control.dart';
+import '../features/finance/models/finance_models.dart';
+import '../features/finance/models/finance_ai_action.dart';
+import '../features/finance/screens/finance_entry_screen.dart';
+import '../features/finance/services/finance_repository.dart';
+import '../features/finance/services/finance_ai_context_service.dart';
+import '../features/finance/services/finance_text_parser.dart';
 
 part 'todo_chat_screen_contract.dart';
 part 'todo_chat_screen_lifecycle.dart';

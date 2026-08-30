@@ -7,6 +7,7 @@ import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
 import '../../../utils/app_platform.dart';
 import '../../../widgets/app_settings_widgets.dart';
+import '../../../widgets/floating_glass_control.dart';
 
 class MinorModeSettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -100,40 +101,56 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
           valueListenable: MinorModeService.instance.googleAgeSignalNotifier,
           builder: (context, googleAgeSignal, _) {
             return Scaffold(
+              extendBodyBehindAppBar: !widget.isEmbedded,
               appBar: widget.isEmbedded
                   ? null
-                  : AppBar(title: const Text('未成年人模式')),
-              body: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                children: [
-                  _buildStatusSection(context, state, googleAgeSignal),
-                  const SizedBox(height: 16),
-                  _buildManualSection(context, state),
-                  if (AppPlatform.isAndroid) ...[
-                    const SizedBox(height: 16),
-                    _buildGoogleAgeSignalsSection(context, googleAgeSignal),
-                  ],
-                  if (state.systemSupported) ...[
-                    const SizedBox(height: 16),
-                    AppSettingsSection(
-                      title: '系统设置',
-                      children: [
-                        ListTile(
-                          leading: Icon(
-                            Icons.open_in_new,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          title: const Text('打开手机系统设置'),
-                          subtitle: const Text('系统模式由手机系统管理'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: _openSystemSettings,
-                        ),
-                      ],
+                  : FloatingGlassAppBar(
+                      flexibleSpace: const FloatingGlassTopBarBackground(),
+                      title: const Text('未成年人模式'),
                     ),
+              body: floatingGlassSettingsBody(
+                context,
+                standalone: !widget.isEmbedded,
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    widget.isEmbedded
+                        ? 8
+                        : floatingGlassSettingsContentTopInset(context,
+                            extra: 8),
+                    16,
+                    32,
+                  ),
+                  children: [
+                    _buildStatusSection(context, state, googleAgeSignal),
+                    const SizedBox(height: 16),
+                    _buildManualSection(context, state),
+                    if (AppPlatform.isAndroid) ...[
+                      const SizedBox(height: 16),
+                      _buildGoogleAgeSignalsSection(context, googleAgeSignal),
+                    ],
+                    if (state.systemSupported) ...[
+                      const SizedBox(height: 16),
+                      AppSettingsSection(
+                        title: '系统设置',
+                        children: [
+                          ListTile(
+                            leading: Icon(
+                              Icons.open_in_new,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            title: const Text('打开手机系统设置'),
+                            subtitle: const Text('系统模式由手机系统管理'),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: _openSystemSettings,
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    _buildCapabilityMatrix(context, state, googleAgeSignal),
                   ],
-                  const SizedBox(height: 16),
-                  _buildCapabilityMatrix(context, state, googleAgeSignal),
-                ],
+                ),
               ),
             );
           },
@@ -492,16 +509,18 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
           highlightTarget: _highlightTarget,
           itemKeys: _itemKeys,
           borderRadius: BorderRadius.zero,
-          child: SwitchListTile(
-            secondary: Icon(Icons.tune, color: colorScheme.primary),
-            title: const Text('手动开启'),
-            subtitle: Text(
-              state.systemEnabled
-                  ? '系统模式已开启，App 不能将有效模式关闭'
-                  : '用于系统联动不可用或系统模式关闭时的兜底保护',
-            ),
+          child: _buildToggleCard(
+            title: '手动开启',
+            subtitle: state.systemEnabled
+                ? '系统模式已开启，App 不能将有效模式关闭'
+                : '用于系统联动不可用或系统模式关闭时的兜底保护',
+            icon: Icons.tune,
             value: state.manualEnabled,
-            onChanged: state.systemEnabled ? null : _setManualEnabled,
+            onChanged: state.systemEnabled ? null : (val) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _setManualEnabled(val ?? false);
+              });
+            },
           ),
         ),
         const AppSettingsDivider(),
@@ -522,6 +541,103 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
           onTap: _pickManualBirthDate,
         ),
       ],
+    );
+  }
+
+  Widget _buildToggleCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool value,
+    required ValueChanged<bool?>? onChanged,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isSelected = value;
+    final iconWidget = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      switchInCurve: Curves.easeOutBack,
+      switchOutCurve: Curves.easeInBack,
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        return ScaleTransition(
+          scale: animation,
+          child: RotationTransition(
+            turns: Tween<double>(begin: -0.1, end: 0.0).animate(animation),
+            child: child,
+          ),
+        );
+      },
+      child: Icon(
+        icon,
+        key: ValueKey<bool>(isSelected),
+        color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+        size: 32,
+      ),
+    );
+    final switchWidget = SizedBox(
+      height: 24,
+      child: FittedBox(
+        fit: BoxFit.fill,
+        child: LiquidGlassSwitch(
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: colorScheme.primary,
+        ),
+      ),
+    );
+    final titleWidget = AnimatedDefaultTextStyle(
+      duration: const Duration(milliseconds: 300),
+      style: TextStyle(
+        fontWeight: FontWeight.bold,
+        fontSize: 14,
+        color: isSelected
+            ? colorScheme.primary
+            : theme.textTheme.bodyMedium?.color,
+        fontFamily: theme.textTheme.bodyMedium?.fontFamily,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      child: Text(title),
+    );
+    final subtitleWidget = Text(
+      subtitle,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+    );
+
+    return GestureDetector(
+      onTap: onChanged == null ? null : () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? colorScheme.primary.withValues(alpha: 0.1)
+              : (theme.brightness == Brightness.dark
+                  ? Colors.grey.shade900
+                  : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? colorScheme.primary : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [iconWidget, switchWidget],
+            ),
+            const SizedBox(height: 8),
+            titleWidget,
+            const SizedBox(height: 2),
+            subtitleWidget,
+          ],
+        ),
+      ),
     );
   }
 }

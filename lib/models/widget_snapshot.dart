@@ -8,6 +8,7 @@ class WidgetSnapshot {
   final WidgetFocusState focus;
   final List<WidgetRecurrenceSeriesItem> recurrenceSeries;
   final List<WidgetHabitItem> habits;
+  final WidgetFinanceSummary finance;
 
   const WidgetSnapshot({
     required this.updatedAt,
@@ -17,6 +18,7 @@ class WidgetSnapshot {
     this.focus = const WidgetFocusState(),
     this.recurrenceSeries = const [],
     this.habits = const [],
+    this.finance = const WidgetFinanceSummary(),
   });
 
   Map<String, dynamic> toJson() {
@@ -28,6 +30,7 @@ class WidgetSnapshot {
       'focus': focus.toJson(),
       'recurrenceSeries': recurrenceSeries.map((e) => e.toJson()).toList(),
       'habits': habits.map((e) => e.toJson()).toList(),
+      'finance': finance.toJson(),
     };
   }
 
@@ -62,6 +65,11 @@ class WidgetSnapshot {
               ?.map((e) => WidgetHabitItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      finance: json['finance'] is Map
+          ? WidgetFinanceSummary.fromJson(
+              Map<String, dynamic>.from(json['finance'] as Map),
+            )
+          : const WidgetFinanceSummary(),
     );
   }
 
@@ -69,6 +77,101 @@ class WidgetSnapshot {
 
   static WidgetSnapshot empty() {
     return WidgetSnapshot(updatedAt: DateTime.now());
+  }
+}
+
+/// 小组件中的本月记账摘要。
+///
+/// 金额统一使用人民币分，平台侧只负责展示，录入和数据变更仍由 Flutter
+/// 记账模块处理。
+class WidgetFinanceSummary {
+  final String monthLabel;
+  final int incomeMinor;
+  final int netExpenseMinor;
+  final int balanceMinor;
+  final int transactionCount;
+  final String latestTitle;
+  final int latestAmountMinor;
+  final String latestType;
+  final String latestDate;
+
+  const WidgetFinanceSummary({
+    this.monthLabel = '',
+    this.incomeMinor = 0,
+    this.netExpenseMinor = 0,
+    this.balanceMinor = 0,
+    this.transactionCount = 0,
+    this.latestTitle = '',
+    this.latestAmountMinor = 0,
+    this.latestType = '',
+    this.latestDate = '',
+  });
+
+  bool get hasData =>
+      transactionCount > 0 ||
+      incomeMinor != 0 ||
+      netExpenseMinor != 0 ||
+      balanceMinor != 0;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'monthLabel': monthLabel,
+      'incomeMinor': incomeMinor,
+      'netExpenseMinor': netExpenseMinor,
+      'balanceMinor': balanceMinor,
+      'transactionCount': transactionCount,
+      'latestTitle': latestTitle,
+      'latestAmountMinor': latestAmountMinor,
+      'latestType': latestType,
+      'latestDate': latestDate,
+    };
+  }
+
+  factory WidgetFinanceSummary.fromJson(Map<String, dynamic> json) {
+    return WidgetFinanceSummary(
+      monthLabel: json['monthLabel'] as String? ?? '',
+      incomeMinor: (json['incomeMinor'] as num?)?.toInt() ?? 0,
+      netExpenseMinor: (json['netExpenseMinor'] as num?)?.toInt() ?? 0,
+      balanceMinor: (json['balanceMinor'] as num?)?.toInt() ?? 0,
+      transactionCount: (json['transactionCount'] as num?)?.toInt() ?? 0,
+      latestTitle: json['latestTitle'] as String? ?? '',
+      latestAmountMinor: (json['latestAmountMinor'] as num?)?.toInt() ?? 0,
+      latestType: json['latestType'] as String? ?? '',
+      latestDate: json['latestDate'] as String? ?? '',
+    );
+  }
+
+  Map<String, dynamic> toAndroidWidgetData() {
+    final latestSign = latestType == 'expense' ? '-' : '+';
+    final latestAmount = latestAmountMinor == 0
+        ? ''
+        : '$latestSign${_formatAmount(latestAmountMinor)}';
+    return {
+      'finance_month_label': monthLabel,
+      'finance_income': _formatAmount(incomeMinor),
+      'finance_expense': _formatSignedAmount(netExpenseMinor),
+      'finance_balance': _formatSignedAmount(balanceMinor),
+      'finance_transaction_count': '$transactionCount 笔',
+      'finance_latest_title': latestTitle.isEmpty ? '本月还没有账单' : latestTitle,
+      'finance_latest_amount': latestAmount,
+      'finance_latest_date': latestDate,
+    };
+  }
+
+  String _formatAmount(int amountMinor) {
+    final amount = (amountMinor.abs() / 100).toStringAsFixed(2);
+    final parts = amount.split('.');
+    final whole = parts.first;
+    final grouped = whole.replaceAllMapped(
+      RegExp(r'(?<=\d)(?=(\d{3})+$)'),
+      (match) => ',',
+    );
+    return '¥$grouped.${parts.last}';
+  }
+
+  String _formatSignedAmount(int amountMinor) {
+    final sign = amountMinor < 0 ? '-' : '';
+    return '$sign${_formatAmount(amountMinor)}';
   }
 }
 

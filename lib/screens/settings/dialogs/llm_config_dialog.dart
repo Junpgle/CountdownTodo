@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../services/ai_chat_service.dart';
 import '../../../services/llm_service.dart';
 import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
@@ -65,7 +66,11 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
     setState(() => _isTesting = true);
     try {
       // 先保存当前配置
+      final provider =
+          AiChatService.inferProviderFromApiUrl(_apiUrlCtrl.text.trim());
       final config = LLMConfig(
+        provider: provider.isEmpty ? 'zhipu' : provider,
+        visionProvider: provider.isEmpty ? null : provider,
         apiKey: _apiKeyCtrl.text.trim(),
         model: _modelCtrl.text.trim(),
         visionModel: _visionModelCtrl.text.trim(),
@@ -345,7 +350,11 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
               );
               return;
             }
+            final provider =
+                AiChatService.inferProviderFromApiUrl(_apiUrlCtrl.text.trim());
             final config = LLMConfig(
+              provider: provider.isEmpty ? 'zhipu' : provider,
+              visionProvider: provider.isEmpty ? null : provider,
               apiKey: _apiKeyCtrl.text.trim(),
               model: _modelCtrl.text.trim(),
               visionModel: _visionModelCtrl.text.trim().isEmpty

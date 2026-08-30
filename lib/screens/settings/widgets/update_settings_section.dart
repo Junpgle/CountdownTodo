@@ -12,6 +12,7 @@ import '../../../update_service.dart';
 import '../../../utils/app_platform.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/app_state_views.dart';
+import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 
 /// Settings block for the installed version, release notes and update flow.
@@ -1124,7 +1125,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         ),
         child: Material(
           color: Colors.transparent,
-          child: SwitchListTile(
+          child: LiquidGlassSwitchListTile(
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
             secondary: Container(

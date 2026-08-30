@@ -1,3 +1,4 @@
+import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -98,7 +99,8 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(DateFormat('yyyy年MM月dd日').format(_entry.occurredAt)),
         actions: [
           IconButton(
@@ -243,7 +245,8 @@ class _JournalGalleryViewerState extends State<_JournalGalleryViewer> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
         title: Text('${_index + 1}/${widget.attachments.length}'),

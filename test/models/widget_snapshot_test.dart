@@ -121,4 +121,52 @@ void main() {
 
     expect(restored.habits, isEmpty);
   });
+
+  test('finance summary survives a widget snapshot JSON round trip', () {
+    const summary = WidgetFinanceSummary(
+      monthLabel: '2026年8月',
+      incomeMinor: 120000,
+      netExpenseMinor: 38650,
+      balanceMinor: 81350,
+      transactionCount: 12,
+      latestTitle: '咖啡',
+      latestAmountMinor: 2800,
+      latestType: 'expense',
+      latestDate: '2026-08-29',
+    );
+    final snapshot = WidgetSnapshot(
+      updatedAt: DateTime(2026, 8, 29, 9),
+      finance: summary,
+    );
+
+    final restored = WidgetSnapshot.fromJson(snapshot.toJson());
+
+    expect(restored.finance.monthLabel, '2026年8月');
+    expect(restored.finance.incomeMinor, 120000);
+    expect(restored.finance.netExpenseMinor, 38650);
+    expect(restored.finance.balanceMinor, 81350);
+    expect(restored.finance.transactionCount, 12);
+    expect(restored.finance.latestTitle, '咖啡');
+    expect(
+      restored.finance.toAndroidWidgetData(),
+      containsPair('finance_latest_amount', '-¥28.00'),
+    );
+    expect(
+      restored.finance.toAndroidWidgetData(),
+      containsPair('finance_balance', '¥813.50'),
+    );
+  });
+
+  test('older widget snapshots decode with an empty finance summary', () {
+    final restored = WidgetSnapshot.fromJson({
+      'updatedAt': '2026-07-30T09:00:00.000',
+      'countdowns': <dynamic>[],
+      'todos': <dynamic>[],
+      'courses': <dynamic>[],
+      'focus': <String, dynamic>{},
+    });
+
+    expect(restored.finance.hasData, isFalse);
+    expect(restored.finance.transactionCount, 0);
+  });
 }

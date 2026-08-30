@@ -6,6 +6,7 @@ import '../../band_sync_screen.dart';
 import '../lan_sync_screen.dart';
 import '../calendar_sync_page.dart';
 import '../batch_tag_page.dart';
+import '../../../widgets/floating_glass_control.dart';
 import 'data_export_page.dart';
 import 'data_import_page.dart';
 import 'mcp_introduction_page.dart';
@@ -299,50 +300,63 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
     ];
 
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('数据与互联'),
             ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16.0, left: 4.0),
-              child: Text(isWeb ? '浏览器数据工具' : '设备互联向导',
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
-            ),
-            if (isWeb) ...[
-              Card(
-                elevation: 0,
-                margin: const EdgeInsets.only(bottom: 16),
-                color: Theme.of(context).colorScheme.secondaryContainer,
-                child: ListTile(
-                  leading: Icon(Icons.info_outline_rounded,
-                      color:
-                          Theme.of(context).colorScheme.onSecondaryContainer),
-                  title: const Text('浏览器沙盒限制'),
-                  subtitle: const Text(
-                    '局域网直连、系统日历写入和手环快应用同步需要原生系统权限；网页版可通过导出 ICS 文件导入系统日历。',
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            widget.isEmbedded
+                ? 16
+                : floatingGlassSettingsContentTopInset(context, extra: 16),
+            16,
+            16,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16.0, left: 4.0),
+                child: Text(isWeb ? '浏览器数据工具' : '设备互联向导',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              ),
+              if (isWeb) ...[
+                Card(
+                  elevation: 0,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  child: ListTile(
+                    leading: Icon(Icons.info_outline_rounded,
+                        color:
+                            Theme.of(context).colorScheme.onSecondaryContainer),
+                    title: const Text('浏览器沙盒限制'),
+                    subtitle: const Text(
+                      '局域网直连、系统日历写入和手环快应用同步需要原生系统权限；网页版可通过导出 ICS 文件导入系统日历。',
+                    ),
                   ),
                 ),
+              ],
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
+                mainAxisSpacing: 16,
+                crossAxisSpacing: 16,
+                childAspectRatio: 0.95,
+                children: featureCards,
               ),
             ],
-            GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 16,
-              childAspectRatio: 0.95,
-              children: featureCards,
-            ),
-          ],
+          ),
         ),
       ),
     );

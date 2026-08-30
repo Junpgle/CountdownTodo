@@ -1,3 +1,4 @@
+import '../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
@@ -342,7 +343,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                     minLines: 1,
                   ),
                   const SizedBox(height: 12),
-                  SwitchListTile(
+                  LiquidGlassSwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('某天内完成'),
                     value: isAllDay,
@@ -916,7 +917,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     final currentTodo = hasMoreTodos ? _allTodos[_currentIndex] : null;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(hasMoreTodos
             ? '确认事项 (${_currentIndex + 1}/${_allTodos.length})'
             : '确认完成'),

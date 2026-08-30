@@ -73,6 +73,33 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     );
   }
 
+  Future<void> _openRecognizedFinanceDrafts(
+    List<FinanceEntryDraft> drafts,
+  ) async {
+    if (drafts.isEmpty) return;
+    var savedCount = 0;
+    for (final draft in drafts) {
+      if (!mounted) return;
+      final saved = await Navigator.of(context).push<FinanceTransaction>(
+        PageTransitions.slideHorizontal(
+          FinanceEntryScreen(initialDraft: draft),
+        ),
+      );
+      if (saved != null) {
+        draft.isAdded = true;
+        savedCount++;
+      } else {
+        draft.isIgnored = true;
+      }
+    }
+    await ExternalShareHandler.clearPendingFinanceRecognized();
+    if (mounted && savedCount > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已保存 $savedCount 笔识别账单')),
+      );
+    }
+  }
+
   /// 批量添加待办 (支持团队上下文关联)
   Future<void> _batchAddTodos(List<Map<String, dynamic>> todosData,
       [String? teamUuid, String? teamName]) async {
@@ -197,13 +224,37 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
 
   /// 检查是否有待确认的事项数据（从通知点击进入）
   Future<void> _checkPendingTodoConfirm() async {
-    final pendingData = await ExternalShareHandler.getPendingTodoConfirm();
+    var pendingData = await ExternalShareHandler.getPendingTodoConfirm();
     if (!mounted) return;
 
     if (pendingData != null) {
+      final rawFinanceResults = pendingData['financeResults'];
+      final financeDrafts = rawFinanceResults is List
+          ? rawFinanceResults
+              .whereType<Map>()
+              .map((item) =>
+                  FinanceEntryDraft.fromJson(Map<String, dynamic>.from(item)))
+              .where((draft) => !draft.isAdded && !draft.isIgnored)
+              .toList()
+          : const <FinanceEntryDraft>[];
+      if (financeDrafts.isNotEmpty && !_isOpeningPendingFinance) {
+        _isOpeningPendingFinance = true;
+        try {
+          await _openRecognizedFinanceDrafts(financeDrafts);
+        } finally {
+          _isOpeningPendingFinance = false;
+        }
+        pendingData = await ExternalShareHandler.getPendingTodoConfirm();
+        if (!mounted) return;
+        if (pendingData == null) return;
+      }
+
       final imagePath = pendingData['imagePath'] as String?;
+      final status = pendingData['status'] as String? ?? 'success';
+      final results = pendingData['results'] as List<dynamic>?;
       // 只要有 imagePath 就显示卡片（支持 processing/retrying/failed/success 状态）
-      if (imagePath != null) {
+      if (imagePath != null &&
+          (status != 'success' || (results?.isNotEmpty ?? false))) {
         // 保存待确认数据，显示入口卡片
         setState(() {
           _pendingTodoConfirm = pendingData;
@@ -224,7 +275,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
       PageTransitions.material(
         builder: (context) => Scaffold(
           backgroundColor: Colors.black,
-          appBar: AppBar(
+          appBar: FloatingGlassAppBar(
+            flexibleSpace: const FloatingGlassTopBarBackground(),
             backgroundColor: Colors.black,
             foregroundColor: Colors.white,
             title: const Text("原本分析图片"),

@@ -29,6 +29,7 @@ import 'features/habits/models/habit_goal.dart';
 import 'features/habits/models/habit_goal_rule.dart';
 import 'features/habits/models/habit_sleep_coaching_plan.dart';
 import 'features/habits/services/habit_sync_conflict_service.dart';
+import 'features/finance/services/finance_sync_service.dart';
 
 part 'storage_service_fixed.dart';
 part 'storage_service_core.dart';
@@ -49,6 +50,7 @@ enum DataRefreshDomain {
   timeLogs,
   pomodoro,
   habits,
+  finance,
   teams,
   all,
 }
@@ -635,6 +637,7 @@ class StorageService {
     bool syncPlanBlocks = true,
     bool syncFixedSchedules = true,
     bool syncHabits = true,
+    bool syncFinance = true,
   }) =>
       _storage.syncData(username,
           syncTodos: syncTodos,
@@ -647,7 +650,8 @@ class StorageService {
           syncPomodoro: syncPomodoro,
           syncPlanBlocks: syncPlanBlocks,
           syncFixedSchedules: syncFixedSchedules,
-          syncHabits: syncHabits);
+          syncHabits: syncHabits,
+          syncFinance: syncFinance);
 
   static bool recomputeLocalTodoScheduleConflictsForTest(
     List<TodoItem> todos,
@@ -748,6 +752,7 @@ class StorageService {
   static Future<void> savePendingTodoConfirm({
     required String imagePath,
     List<Map<String, dynamic>> results = const [],
+    List<Map<String, dynamic>> financeResults = const [],
     String status = 'success',
     String? compressedPath,
     int currentAttempt = 1,
@@ -757,6 +762,7 @@ class StorageService {
       _storage.savePendingTodoConfirm(
           imagePath: imagePath,
           results: results,
+          financeResults: financeResults,
           status: status,
           compressedPath: compressedPath,
           currentAttempt: currentAttempt,
@@ -769,13 +775,15 @@ class StorageService {
     int? maxAttempts,
     String? errorMsg,
     List<Map<String, dynamic>>? results,
+    List<Map<String, dynamic>>? financeResults,
   }) =>
       _storage.updatePendingTodoConfirmStatus(
           status: status,
           currentAttempt: currentAttempt,
           maxAttempts: maxAttempts,
           errorMsg: errorMsg,
-          results: results);
+          results: results,
+          financeResults: financeResults);
 
   static Future<Map<String, dynamic>?> getPendingTodoConfirm() =>
       _storage.getPendingTodoConfirm();

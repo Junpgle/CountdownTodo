@@ -16,6 +16,7 @@ import '../utils/theme_color_tokens.dart';
 import '../utils/todo_recurrence_calendar_index.dart';
 import '../services/feature_tip_service.dart';
 import '../widgets/coach_mark_overlay.dart';
+import '../widgets/floating_glass_control.dart';
 
 // --- 二级界面：按周查看课表 (全屏自适应压缩视图) ---
 

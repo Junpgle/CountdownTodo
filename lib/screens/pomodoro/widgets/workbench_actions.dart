@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 import '../../../models.dart';
 import '../../../services/pomodoro_service.dart';
 
+/// The workbench buttons own their fill treatment, so do not inherit the
+/// app-wide glass background builder as a second surface.
+Widget _keepButtonBackground(
+    BuildContext context, Set<WidgetState> states, Widget? child) {
+  return child ?? const SizedBox.shrink();
+}
+
 class WorkbenchActions extends StatefulWidget {
   final bool isIdle;
   final bool isFocusing;
@@ -181,94 +188,105 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
     }
 
     if (widget.isIdle) {
+      final actionButtonHeight = widget.isCompact ? 40.0 : 48.0;
       return Padding(
         padding: EdgeInsets.only(bottom: widget.isCompact ? 6 : 8),
         child: Row(
           children: [
             Expanded(
-              child: OutlinedButton.icon(
-                key: widget.bindKey,
-                onPressed: widget.onShowBindTodo,
-                icon: Icon(
-                  widget.boundTodo != null ? Icons.task_alt : Icons.add_task,
-                  size: widget.isCompact ? 18 : 20,
-                  color: widget.boundTodo != null
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                label: Text(
-                  widget.boundTodo?.title ?? '绑定任务',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: widget.isCompact ? 13 : 14,
-                    fontWeight: widget.boundTodo != null
-                        ? FontWeight.w600
-                        : FontWeight.normal,
+              child: SizedBox(
+                height: actionButtonHeight,
+                child: OutlinedButton.icon(
+                  key: widget.bindKey,
+                  onPressed: widget.onShowBindTodo,
+                  icon: Icon(
+                    widget.boundTodo != null ? Icons.task_alt : Icons.add_task,
+                    size: widget.isCompact ? 18 : 20,
                     color: widget.boundTodo != null
                         ? Theme.of(context).colorScheme.primary
                         : Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  padding: EdgeInsets.symmetric(
-                      horizontal: widget.isCompact ? 10 : 12,
-                      vertical: widget.isCompact ? 10 : 14),
-                  side: BorderSide(
-                    color: widget.boundTodo != null
-                        ? Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: 0.6)
-                        : Theme.of(context).colorScheme.outlineVariant,
+                  label: Text(
+                    widget.boundTodo?.title ?? '绑定任务',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: widget.isCompact ? 13 : 14,
+                      fontWeight: widget.boundTodo != null
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                      color: widget.boundTodo != null
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
+                  style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(
+                        horizontal: widget.isCompact ? 10 : 12,
+                        vertical: widget.isCompact ? 10 : 14),
+                    side: BorderSide(
+                      color: widget.boundTodo != null
+                          ? Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withValues(alpha: 0.6)
+                          : Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                    backgroundBuilder: _keepButtonBackground,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                  ),
                 ),
               ),
             ),
             SizedBox(width: widget.isCompact ? 8 : 12),
             Expanded(
-              child: AnimatedBuilder(
-                animation: _pressAnimation,
-                builder: (context, child) {
-                  return Transform.scale(
-                    scale: _pressAnimation.value,
-                    child: TweenAnimationBuilder<Color?>(
-                      tween: ColorTween(
-                        begin: const Color(0xFFFF6B6B),
-                        end: widget.phase == PomodoroPhase.finished
-                            ? const Color(0xFF4ECDC4)
-                            : const Color(0xFFFF6B6B),
+              child: SizedBox(
+                height: actionButtonHeight,
+                child: AnimatedBuilder(
+                  animation: _pressAnimation,
+                  builder: (context, child) {
+                    return Transform.scale(
+                      scale: _pressAnimation.value,
+                      child: TweenAnimationBuilder<Color?>(
+                        tween: ColorTween(
+                          begin: const Color(0xFFFF6B6B),
+                          end: widget.phase == PomodoroPhase.finished
+                              ? const Color(0xFF4ECDC4)
+                              : const Color(0xFFFF6B6B),
+                        ),
+                        duration: const Duration(milliseconds: 400),
+                        builder: (context, color, child) {
+                          return FilledButton.icon(
+                            key: const ValueKey('start_btn'),
+                            onPressed: _onStartFocusPressed,
+                            icon: Icon(Icons.play_arrow_rounded,
+                                size: widget.isCompact ? 18 : 20),
+                            label: Text(
+                              widget.phase == PomodoroPhase.finished
+                                  ? '再来一轮'
+                                  : '开始专注',
+                              style: TextStyle(
+                                  fontSize: widget.isCompact ? 13 : 14,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                            style: FilledButton.styleFrom(
+                              alignment: Alignment.center,
+                              iconAlignment: IconAlignment.start,
+                              padding: EdgeInsets.symmetric(
+                                  vertical: widget.isCompact ? 8 : 10),
+                              backgroundColor: color ?? const Color(0xFFFF6B6B),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16)),
+                              backgroundBuilder: _keepButtonBackground,
+                              elevation: 2,
+                            ),
+                          );
+                        },
                       ),
-                      duration: const Duration(milliseconds: 400),
-                      builder: (context, color, child) {
-                        return FilledButton.icon(
-                          key: const ValueKey('start_btn'),
-                          onPressed: _onStartFocusPressed,
-                          icon: Icon(Icons.play_arrow_rounded,
-                              size: widget.isCompact ? 20 : 24),
-                          label: Text(
-                            widget.phase == PomodoroPhase.finished
-                                ? '再来一轮'
-                                : '开始专注',
-                            style: TextStyle(
-                                fontSize: widget.isCompact ? 14 : 16,
-                                fontWeight: FontWeight.bold),
-                          ),
-                          style: FilledButton.styleFrom(
-                            padding: EdgeInsets.symmetric(
-                                vertical: widget.isCompact ? 12 : 14),
-                            backgroundColor: color ?? const Color(0xFFFF6B6B),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16)),
-                            elevation: 2,
-                          ),
-                        );
-                      },
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
           ],

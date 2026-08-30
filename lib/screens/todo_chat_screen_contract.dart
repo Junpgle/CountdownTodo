@@ -37,6 +37,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   final GlobalKey _newSessionKey = GlobalKey();
   final GlobalKey _settingsKey = GlobalKey();
   final GlobalKey _inputKey = GlobalKey();
+  final GlobalKey _tutorialButtonKey = GlobalKey();
   bool _showCoachMarks = false;
 
   List<TodoPlanBlock> _planBlocks = [];
@@ -96,6 +97,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   List<Map<String, String>> _buildApiMessages({
     String? pendingUserText,
     bool trackSmartContext = true,
+    String financeContext = '',
   });
   String _latestUserTextFromHistory();
   String _injectContext(List<Map<String, String>> apiMessages);
@@ -107,7 +109,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   String _lastUserContent();
   void _stopGeneration();
   void _retryLastMessage();
-  Future<void> _generateSessionTitle();
+  Future<void> _generateSessionTitle({required String sessionId});
   Future<void> _clearHistory();
   Future<void> _showPromptSettings();
   void _showPromptPreview(String prompt, bool enabled);
@@ -145,6 +147,13 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   String _getTodoCurrentFolderName(String? todoId);
   String _getRecurrenceText(String recurrence);
   Widget _buildMessageTodoActions(ChatMessage msg, bool isDark);
+  Widget _buildMessageFinanceDrafts(ChatMessage msg, bool isDark);
+  Future<void> _editFinanceDraft(FinanceEntryDraft draft);
+  Future<void> _ignoreFinanceDraft(FinanceEntryDraft draft);
+  Widget _buildMessageFinanceActions(ChatMessage msg, bool isDark);
+  Future<void> _editFinanceAction(FinanceAiAction action);
+  Future<void> _deleteFinanceAction(FinanceAiAction action);
+  Future<void> _ignoreFinanceAction(FinanceAiAction action);
   Widget _buildClassificationMetadata(AiTodoAction action);
   Widget _buildMiniMetaChip(IconData icon, String label, Color color);
   Widget _buildActionBadge(AiTodoAction action);

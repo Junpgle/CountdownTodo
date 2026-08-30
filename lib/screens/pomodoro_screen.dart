@@ -7,6 +7,7 @@ import '../services/pomodoro_service.dart';
 import 'pomodoro/views/workbench_view.dart';
 import 'pomodoro/views/stats_view.dart';
 import '../widgets/coach_mark_overlay.dart';
+import '../widgets/floating_bottom_bar.dart';
 import '../services/feature_tip_service.dart';
 
 // ══════════════════════════════════════════════════════════════
@@ -204,6 +205,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     final int tabIndex = _tabController.index;
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
 
     // Landscape: use a two-column layout (big timer/workbench left, stats/controls right)
     if (isLandscape) {
@@ -323,57 +325,65 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     }
 
     return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            // ── 顶部导航栏：淡入淡出 ──
-            _buildAppBar(isFocusingOrWatching),
+      extendBody: useFloatingBottomBar,
+      body: FloatingGlassScrollAware(
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              // ── 顶部导航栏：淡入淡出 ──
+              _buildAppBar(isFocusingOrWatching),
 
-            // ── 主内容区：IndexedStack 保持状态 + AnimatedOpacity 淡入淡出 ──
-            Expanded(
-              child: FadingIndexedStack(
-                index: tabIndex,
-                children: [
-                  // portrait workbench
-                  PomodoroWorkbench(
-                    key: _workbenchKey,
-                    username: widget.username,
-                    onPhaseChanged: (phase) {
-                      if (!_disposed && mounted && _currentPhase != phase) {
-                        setState(() => _currentPhase = phase);
-                      }
-                    },
-                    onReady: () {
-                      if (!_disposed && mounted && !_workbenchReady) {
-                        setState(() => _workbenchReady = true);
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) _checkCoachMarks();
-                        });
-                      }
-                    },
-                    onRecordAdded: () {
-                      if (!_disposed && mounted) {
-                        try {
-                          _statsKey.currentState?.reload();
-                        } catch (_) {}
-                      }
-                    },
-                  ),
-                  PomodoroStats(
-                    key: _statsKey,
-                    username: widget.username,
-                    initialDimension: widget.initialDimension,
-                  ),
-                ],
+              // ── 主内容区：IndexedStack 保持状态 + AnimatedOpacity 淡入淡出 ──
+              Expanded(
+                child: FadingIndexedStack(
+                  index: tabIndex,
+                  children: [
+                    // portrait workbench
+                    PomodoroWorkbench(
+                      key: _workbenchKey,
+                      username: widget.username,
+                      onPhaseChanged: (phase) {
+                        if (!_disposed && mounted && _currentPhase != phase) {
+                          setState(() => _currentPhase = phase);
+                        }
+                      },
+                      onReady: () {
+                        if (!_disposed && mounted && !_workbenchReady) {
+                          setState(() => _workbenchReady = true);
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) _checkCoachMarks();
+                          });
+                        }
+                      },
+                      onRecordAdded: () {
+                        if (!_disposed && mounted) {
+                          try {
+                            _statsKey.currentState?.reload();
+                          } catch (_) {}
+                        }
+                      },
+                    ),
+                    PomodoroStats(
+                      key: _statsKey,
+                      username: widget.username,
+                      initialDimension: widget.initialDimension,
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            // ── 底部 Tab 导航：淡入淡出 ──
-            _buildBottomTabBar(isFocusingOrWatching),
-          ],
+              // 手机竖屏时底栏挂到 Scaffold 的悬浮层，避免在内容 Column
+              // 中占据一整块底部高度；桌面/横屏保留原有的普通布局。
+              if (!useFloatingBottomBar)
+                _buildBottomTabBar(isFocusingOrWatching),
+            ],
+          ),
         ),
       ),
+      bottomNavigationBar: useFloatingBottomBar
+          ? _buildBottomTabBar(isFocusingOrWatching)
+          : null,
     );
   }
 
@@ -384,80 +394,115 @@ class _PomodoroScreenState extends State<PomodoroScreen>
       height: isFocusingOrWatching ? 0 : kToolbarHeight,
       clipBehavior: Clip.hardEdge,
       decoration: const BoxDecoration(),
-      child: AnimatedOpacity(
-        opacity: isFocusingOrWatching ? 0.0 : 1.0,
-        duration: const Duration(milliseconds: 300),
-        child: SizedBox(
-          height: kToolbarHeight,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
-              children: [
-                if (Navigator.canPop(context))
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                const Expanded(
-                  child: Center(
-                    child: Text('🍅 番茄钟',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                  ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const Positioned.fill(child: FloatingGlassTopBarBackground()),
+          AnimatedOpacity(
+            opacity: isFocusingOrWatching ? 0.0 : 1.0,
+            duration: const Duration(milliseconds: 300),
+            child: SizedBox(
+              height: kToolbarHeight,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Row(
+                  children: [
+                    if (Navigator.canPop(context))
+                      FloatingGlassAppBarAction(
+                        child: IconButton(
+                          tooltip: '返回',
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ),
+                    const Expanded(
+                      child: Center(
+                        child: Text('🍅 番茄钟',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    if (Navigator.canPop(context)) const SizedBox(width: 48),
+                  ],
                 ),
-                if (Navigator.canPop(context)) const SizedBox(width: 48),
-              ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 
   Widget _buildBottomTabBar(bool isFocusingOrWatching) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+
+    final Widget navigation = useFloatingBottomBar
+        ? FloatingBottomNavigationBar(
+            mobilePortraitOnly: false,
+            items: [
+              const FloatingBottomNavigationItem(
+                icon: Icons.timer_outlined,
+                label: '工作台',
+              ),
+              FloatingBottomNavigationItem(
+                key: _statsTabKey,
+                icon: Icons.bar_chart_rounded,
+                label: '统计看板',
+              ),
+            ],
+            selectedIndex: _tabController.index,
+            onTabSelected: (index) => _tabController.animateTo(index),
+          )
+        : SafeArea(
+            top: false,
+            left: false,
+            right: false,
+            child: FloatingBottomBar(
+              height: 96,
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: TabBar(
+                  controller: _tabController,
+                  indicatorSize: TabBarIndicatorSize.label,
+                  dividerColor: colorScheme.surface.withValues(alpha: 0),
+                  tabs: [
+                    const Tab(
+                      icon: Icon(Icons.timer_outlined),
+                      text: '工作台',
+                      iconMargin: EdgeInsets.only(bottom: 2),
+                    ),
+                    Tab(
+                      key: _statsTabKey,
+                      icon: const Icon(Icons.bar_chart_rounded),
+                      text: '统计看板',
+                      iconMargin: const EdgeInsets.only(bottom: 2),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
       height: isFocusingOrWatching ? 0 : null,
-      clipBehavior: Clip.hardEdge,
+      clipBehavior: useFloatingBottomBar && !isFocusingOrWatching
+          ? Clip.none
+          : Clip.hardEdge,
       decoration: const BoxDecoration(),
       child: AnimatedOpacity(
         opacity: isFocusingOrWatching ? 0.0 : 1.0,
         duration: const Duration(milliseconds: 300),
-        child: SafeArea(
-          top: false,
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border(
-                top: BorderSide(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .outlineVariant
-                      .withValues(alpha: 0.5),
-                  width: 1,
-                ),
-              ),
-            ),
-            child: TabBar(
-              controller: _tabController,
-              indicatorSize: TabBarIndicatorSize.label,
-              dividerColor: Colors.transparent,
-              tabs: [
-                const Tab(
-                  icon: Icon(Icons.timer_outlined),
-                  text: '工作台',
-                  iconMargin: EdgeInsets.only(bottom: 2),
-                ),
-                Tab(
-                  key: _statsTabKey,
-                  icon: const Icon(Icons.bar_chart_rounded),
-                  text: '统计看板',
-                  iconMargin: const EdgeInsets.only(bottom: 2),
-                ),
-              ],
-            ),
-          ),
-        ),
+        child: navigation,
       ),
     );
   }

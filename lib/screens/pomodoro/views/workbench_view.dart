@@ -1093,7 +1093,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     try {
       final records = await PomodoroService.getRecords()
           .timeout(const Duration(seconds: 2), onTimeout: () => []);
-      return TodoClassificationService.recommendPomodoroTagUuidsForTodo(
+      return await TodoClassificationService.recommendPomodoroTagUuidsForTodo(
         todo: todo,
         tags: _tags,
         history: records,
@@ -2970,12 +2970,11 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     IconData icon;
     Color color;
     String message;
-    bool canRetry = false;
 
     switch (_syncConnState) {
       case SyncConnectionState.connected:
         icon = Icons.link_rounded;
-        color = Colors.green;
+        color = Theme.of(context).colorScheme.tertiary;
         message = '跨端同步已连接';
         break;
       case SyncConnectionState.connecting:
@@ -2986,64 +2985,38 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       case SyncConnectionState.error:
       case SyncConnectionState.disconnected:
         icon = Icons.link_off_rounded;
-        color = Colors.redAccent.withValues(alpha: 0.8);
+        color = Theme.of(context).colorScheme.error;
         message = '同步连接已断开，点击重试';
-        canRetry = true;
     }
 
-    return Tooltip(
+    return IconButton(
       key: serverConnKey,
-      message: message,
-      child: InkWell(
-        onTap: () {
-          // 🚀 强制触发重连
-          _syncService.manualReconnect();
-          if (_syncConnState != SyncConnectionState.connected) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('正在尝试重新连接同步服务器...'),
-                duration: Duration(seconds: 1),
+      tooltip: message,
+      visualDensity: MediaQuery.of(context).orientation == Orientation.landscape
+          ? VisualDensity.compact
+          : VisualDensity.standard,
+      onPressed: () {
+        // 🚀 强制触发重连
+        _syncService.manualReconnect();
+        if (_syncConnState != SyncConnectionState.connected) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('正在尝试重新连接同步服务器...'),
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
+      },
+      icon: _syncConnState == SyncConnectionState.connecting
+          ? SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: color,
               ),
-            );
-          }
-        },
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_syncConnState == SyncConnectionState.connecting)
-                SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Theme.of(context).colorScheme.secondary,
-                  ),
-                )
-              else
-                Icon(icon, size: 18, color: color),
-              if (canRetry) ...[
-                const SizedBox(width: 6),
-                Text(
-                  '点击重连',
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
+            )
+          : Icon(icon, color: color),
     );
   }
 

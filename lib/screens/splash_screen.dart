@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../utils/local_image_provider.dart';
+import '../widgets/floating_glass_control.dart';
 
 class SplashScreen extends StatefulWidget {
   final VoidCallback onComplete;
@@ -55,6 +56,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
+    final colorScheme = Theme.of(context).colorScheme;
     final isWide = size.width > 600;
     final imagePath = widget.content['imagePath'] as String?;
     final hasImage = imagePath != null && localImageExists(imagePath);
@@ -88,20 +90,24 @@ class _SplashScreenState extends State<SplashScreen>
               top: 48,
               right: 16,
               child: SafeArea(
-                child: TextButton(
-                  onPressed: _skip,
-                  child: Text(
-                    '跳过',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white.withValues(alpha: 0.8),
-                      shadows: const [
-                        Shadow(
-                          color: Colors.black54,
-                          blurRadius: 6,
-                          offset: Offset(0, 1),
-                        ),
-                      ],
+                child: FloatingGlassControl(
+                  height: 48,
+                  borderRadius: 24,
+                  tint: colorScheme.surface,
+                  haloColor: colorScheme.primary,
+                  child: TextButton(
+                    onPressed: _skip,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(72, 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      '跳过',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: colorScheme.onSurface,
+                      ),
                     ),
                   ),
                 ),

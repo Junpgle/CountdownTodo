@@ -1,10 +1,10 @@
 {
-  "version_code": 50809,
-  "version_name": "5.8.9",
+  "version_code": 60100,
+  "version_name": "6.1.0",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 5.8.9",
-    "description": "【新增】全局可选的 Liquid Glass 视觉效果，支持标准/增强模式，并覆盖首页、待办、课程、时间线、统计、设置和挑战等主要界面\n【优化】统一玻璃材质与滚动优化策略，在保留折射层次的同时提升可读性和滚动流畅度\n【新增】动画设置新增性能预设和动画速度预设，速度分为优雅、均衡、快速，并支持手动微调\n【新增】页面转场新增懒加载占位遮罩，先完成目标页面构建后平滑揭示内容\n【修复】修复预测式返回手势拖动与提交阶段的圆角表现，跟随屏幕实际圆角和设置开关\n【适配】优化 Android 沉浸式系统栏、底部弹层手势安全区，并在启动时请求最高刷新率\n【新增】支持自定义侧边栏功能的显示与排序\n【优化】首页底部导航组件化，主页与专注页签切换增加淡入过渡\n【新增】提供统一的操作状态轻提示 Toast",
+    "title": "版本更新 6.1.0",
+    "description": "【新增】新增个人记账与离线同步，支持收入、支出、退款、分类、支付方式、统计、搜索筛选、导入导出和软删除恢复。\n【新增】记账支持一句话解析，并完善 AI 草稿确认、图片识别与 MiMo Token Plan API 适配。\n【新增】新增 AI 调用用量与费用统计，支持按模型配置单价并将已定价费用自动写入个人账单。\n【优化】重构悬浮底栏公共组件，覆盖首页、专注、习惯、时间轴、屏幕时间、待办等页面，统一交互、宽度和选中态。\n【优化】持续完善 Liquid Glass 顶栏、按钮、筛选面板与设置页面视觉层级，并优化宽屏布局。\n【新增】首页新增快捷入口收纳与宽屏抽屉布局，支持快速进入待办、记账等功能。\n【修复】修复 AI 对话切换会话时的消息归属和请求取消问题，并将 API 密钥迁移到系统安全存储。\n【优化】改进 AI 模型选择与连接测试，文本模型与视觉模型可独立选择。\n【修复】修正 Android AI 输入框玻璃层、Web 通知设置和多页面异步加载问题。\n【适配】完善 Android 小组件与 HyperOS 自由窗、macOS 功能引导与桌面入口。\n【优化】优化番茄钟操作区和设置开关卡片，提升横屏与桌面端可用性。",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "mac_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
@@ -25,6 +25,20 @@
           "operation_count": 22,
           "copied_bytes": 16055633,
           "embedded_bytes": 23278277,
+          "algorithm": "apk-zip-local-spans",
+          "recommended": true
+        },
+        {
+          "from_version": "5.8.9",
+          "from_sha256": "b5a4aede8fbfd803ee0eddb79712dc047e9b1adffd2b84ef42c33a74fa995724",
+          "to_version": "6.1.0",
+          "to_sha256": "0e6004145cb836083ee7215640a10c262d72035a2849e29180af83d8b960f8a9",
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-5.8.9_to_6.1.0.patch",
+          "patch_size": 39063268,
+          "full_apk_size": 41376962,
+          "operation_count": 311,
+          "copied_bytes": 2317773,
+          "embedded_bytes": 39059189,
           "algorithm": "apk-zip-local-spans",
           "recommended": true
         }
@@ -54,6 +68,23 @@
     "image_url": "https://gitee.com/Junpgle/CountdownTodo/raw/master/wallpapergitee/15.jpg"
   },
   "changelog_history": [
+    {
+      "version_name": "6.1.0",
+      "date": "2026-08-30",
+      "items": [
+        "【新增】新增个人记账与离线同步，支持收入、支出、退款、分类、支付方式、统计、搜索筛选、导入导出和软删除恢复。",
+        "【新增】记账支持一句话解析，并完善 AI 草稿确认、图片识别与 MiMo Token Plan API 适配。",
+        "【新增】新增 AI 调用用量与费用统计，支持按模型配置单价并将已定价费用自动写入个人账单。",
+        "【优化】重构悬浮底栏公共组件，覆盖首页、专注、习惯、时间轴、屏幕时间、待办等页面，统一交互、宽度和选中态。",
+        "【优化】持续完善 Liquid Glass 顶栏、按钮、筛选面板与设置页面视觉层级，并优化宽屏布局。",
+        "【新增】首页新增快捷入口收纳与宽屏抽屉布局，支持快速进入待办、记账等功能。",
+        "【修复】修复 AI 对话切换会话时的消息归属和请求取消问题，并将 API 密钥迁移到系统安全存储。",
+        "【优化】改进 AI 模型选择与连接测试，文本模型与视觉模型可独立选择。",
+        "【修复】修正 Android AI 输入框玻璃层、Web 通知设置和多页面异步加载问题。",
+        "【适配】完善 Android 小组件与 HyperOS 自由窗、macOS 功能引导与桌面入口。",
+        "【优化】优化番茄钟操作区和设置开关卡片，提升横屏与桌面端可用性。"
+      ]
+    },
     {
       "version_name": "5.8.9",
       "date": "2026-08-26",

@@ -16,6 +16,8 @@ import '../features/habits/repositories/habit_repository.dart';
 import '../features/habits/services/habit_progress_calculator.dart';
 import '../features/habits/services/habit_rule_resolver.dart';
 import '../features/habits/services/habit_widget_checkin.dart';
+import '../features/finance/models/finance_models.dart';
+import '../features/finance/services/finance_repository.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
 
@@ -74,6 +76,7 @@ class WidgetService {
   static const String focusOnlyWidgetName = 'FocusOnlyWidgetProvider';
   static const String recurrenceWidgetName = 'RecurrenceWidgetProvider';
   static const String habitWidgetName = 'HabitWidgetProvider';
+  static const String financeOnlyWidgetName = 'FinanceOnlyWidgetProvider';
   static bool _initialized = false;
   static final bool _widgetUpdateDisabled = false;
   static const int maxWidgetItems = 8;
@@ -186,6 +189,7 @@ class WidgetService {
       StorageService.getTimeLogs(username),
       PomodoroService.getTodayRecords(),
       PomodoroService.getTags(),
+      _buildFinanceWidgetSummary(),
     ]);
 
     final List<TodoItem> allTodos = results[0] as List<TodoItem>;
@@ -194,6 +198,8 @@ class WidgetService {
     final List<TimeLogItem> tlogsRaw = results[3] as List<TimeLogItem>;
     final List<PomodoroRecord> pomsRaw = results[4] as List<PomodoroRecord>;
     final List<PomodoroTag> allTags = results[5] as List<PomodoroTag>;
+    final WidgetFinanceSummary financeSummary =
+        results[6] as WidgetFinanceSummary;
     final widgetTodos = selectTodosForWidget(
       allTodos,
       now: now,
@@ -322,6 +328,7 @@ class WidgetService {
 
     final Map<String, dynamic> widgetData =
         await compute(_prepareWidgetDataIsolate, rawInput);
+    widgetData.addAll(financeSummary.toAndroidWidgetData());
 
     if (Platform.isAndroid) {
       final recurrenceSeries = buildWidgetRecurrenceSeries(allTodos, now: now);
@@ -345,8 +352,40 @@ class WidgetService {
         now,
         today,
         habitItems: habitItems,
+        finance: financeSummary,
       );
       await _updateMacOSWidget(macSnapshot);
+    }
+  }
+
+  static Future<WidgetFinanceSummary> _buildFinanceWidgetSummary() async {
+    final now = DateTime.now();
+    final from = DateTime(now.year, now.month);
+    final to = DateTime(now.year, now.month + 1);
+    try {
+      final values = await Future.wait<dynamic>([
+        FinanceRepository.getSummary(from: from, to: to),
+        FinanceRepository.getTransactions(from: from, to: to, limit: 1),
+      ]);
+      final summary = values[0] as FinanceSummary;
+      final transactions = values[1] as List<FinanceTransaction>;
+      final latest = transactions.isEmpty ? null : transactions.first;
+      final latestTitle = latest?.merchant?.trim().isNotEmpty == true
+          ? latest!.merchant!.trim()
+          : latest?.type.label ?? '';
+      return WidgetFinanceSummary(
+        monthLabel: '${now.year}年${now.month}月',
+        incomeMinor: summary.incomeMinor,
+        netExpenseMinor: summary.netExpenseMinor,
+        balanceMinor: summary.balanceMinor,
+        transactionCount: summary.transactionCount,
+        latestTitle: latestTitle,
+        latestAmountMinor: latest?.amountMinor ?? 0,
+        latestType: latest?.type.name ?? '',
+        latestDate: latest?.transactionDate ?? '',
+      );
+    } catch (_) {
+      return WidgetFinanceSummary(monthLabel: '${now.year}年${now.month}月');
     }
   }
 
@@ -402,6 +441,7 @@ class WidgetService {
     DateTime now,
     DateTime today, {
     List<WidgetHabitItem> habitItems = const [],
+    WidgetFinanceSummary finance = const WidgetFinanceSummary(),
   }) async {
     // 1. 倒数日：未删除、未过期，按目标日期排序
     final countdownItems = countdownsRaw
@@ -548,6 +588,7 @@ class WidgetService {
       focus: focusState,
       recurrenceSeries: buildWidgetRecurrenceSeries(allTodos, now: now),
       habits: habitItems,
+      finance: finance,
     );
   }
 
@@ -606,6 +647,12 @@ class WidgetService {
           }),
           HomeWidget.updateWidget(
                   qualifiedAndroidName: '$_widgetPackage.$habitWidgetName')
+              .catchError((e) {
+            return false;
+          }),
+          HomeWidget.updateWidget(
+                  qualifiedAndroidName:
+                      '$_widgetPackage.$financeOnlyWidgetName')
               .catchError((e) {
             return false;
           }),

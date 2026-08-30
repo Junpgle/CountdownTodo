@@ -19,6 +19,7 @@ import '../dialogs/migration_dialog.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/app_state_views.dart';
+import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 
 class PreferenceSettingsPage extends StatefulWidget {
@@ -237,126 +238,138 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
       return const Scaffold(body: AppLoadingView());
     }
     return Scaffold(
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('系统与外观'),
             ),
-      body: ListView(
-        children: [
-          const SizedBox(height: 16),
-          _buildWallpaperSection(),
-          const AppSettingsDivider(),
-          _buildHomeTextSection(),
-          _buildAppearanceSection(),
-          _buildHomeLayoutSection(),
-          _buildSidebarMenuSection(),
-          _buildColorSection(),
-          AppSettingsSectionHeader(
-            title: isWeb ? '浏览器与存储' : '系统与存储',
-            padding: const EdgeInsets.only(left: 16, bottom: 8, top: 24),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        child: ListView(
+          padding: EdgeInsets.only(
+            top: widget.isEmbedded
+                ? 16
+                : floatingGlassSettingsContentTopInset(context, extra: 16),
           ),
-          _buildTile(
-            targetId: 'cache',
-            child: ListTile(
-              leading: Icon(Icons.cleaning_services_outlined,
-                  color: colorScheme.secondary),
-              title: Text(isWeb ? '清理页面图片缓存' : '深度清理缓存与冗余'),
-              subtitle: Text(isWeb ? '清理当前浏览器页面的图片缓存' : '包含更新残留包与深度图片缓存'),
-              trailing: Text(_cacheSizeStr,
-                  style: TextStyle(
-                      fontSize: 12, color: colorScheme.onSurfaceVariant)),
-              onTap: _storageManagementHandler.clearCache,
+          children: [
+            _buildWallpaperSection(),
+            const AppSettingsDivider(),
+            _buildHomeTextSection(),
+            _buildAppearanceSection(),
+            _buildHomeLayoutSection(),
+            _buildSidebarMenuSection(),
+            _buildColorSection(),
+            AppSettingsSectionHeader(
+              title: isWeb ? '浏览器与存储' : '系统与存储',
+              padding: const EdgeInsets.only(left: 16, bottom: 8, top: 24),
             ),
-          ),
-          if (!isWeb) ...[
+            _buildTile(
+              targetId: 'cache',
+              child: ListTile(
+                leading: Icon(Icons.cleaning_services_outlined,
+                    color: colorScheme.secondary),
+                title: Text(isWeb ? '清理页面图片缓存' : '深度清理缓存与冗余'),
+                subtitle: Text(isWeb ? '清理当前浏览器页面的图片缓存' : '包含更新残留包与深度图片缓存'),
+                trailing: Text(_cacheSizeStr,
+                    style: TextStyle(
+                        fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                onTap: _storageManagementHandler.clearCache,
+              ),
+            ),
+            if (!isWeb) ...[
+              const AppSettingsDivider(indent: 72),
+              _buildTile(
+                targetId: 'storage',
+                child: ListTile(
+                  leading:
+                      Icon(Icons.data_usage, color: colorScheme.cdtWarning),
+                  title: const Text('存储空间深度分析'),
+                  subtitle: const Text('找出占用数百MB的隐藏文件'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _storageManagementHandler.showStorageAnalysis,
+                ),
+              ),
+            ],
+            const AppSettingsSectionHeader(
+              title: '其他工具',
+              padding: EdgeInsets.only(left: 16, bottom: 8, top: 24),
+            ),
+            _buildTile(
+              targetId: 'help_center',
+              child: ListTile(
+                leading: Icon(Icons.help_outline_rounded,
+                    color: colorScheme.primary),
+                title: const Text('帮助与反馈'),
+                subtitle: const Text('使用指南、快速上手、常见问题'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(HelpCenterScreen(
+                      username: _username,
+                    )),
+                  );
+                },
+              ),
+            ),
             const AppSettingsDivider(indent: 72),
             _buildTile(
-              targetId: 'storage',
+              targetId: 'changelog',
               child: ListTile(
-                leading: Icon(Icons.data_usage, color: colorScheme.cdtWarning),
-                title: const Text('存储空间深度分析'),
-                subtitle: const Text('找出占用数百MB的隐藏文件'),
+                leading: Icon(Icons.system_update_outlined,
+                    color: colorScheme.primary),
+                title: const Text('更新日志'),
+                subtitle: const Text('查看当前版本及历史更新内容'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: _storageManagementHandler.showStorageAnalysis,
+                onTap: () {
+                  Navigator.of(context, rootNavigator: true).push(
+                    PageTransitions.slideHorizontal(FeatureGuideScreen(
+                      mode: FeatureGuideMode.changelog,
+                      loggedInUser: _username,
+                    )),
+                  );
+                },
               ),
             ),
-          ],
-          const AppSettingsSectionHeader(
-            title: '其他工具',
-            padding: EdgeInsets.only(left: 16, bottom: 8, top: 24),
-          ),
-          _buildTile(
-            targetId: 'help_center',
-            child: ListTile(
-              leading:
-                  Icon(Icons.help_outline_rounded, color: colorScheme.primary),
-              title: const Text('帮助与反馈'),
-              subtitle: const Text('使用指南、快速上手、常见问题'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(HelpCenterScreen(
-                    username: _username,
-                  )),
-                );
-              },
-            ),
-          ),
-          const AppSettingsDivider(indent: 72),
-          _buildTile(
-            targetId: 'changelog',
-            child: ListTile(
-              leading: Icon(Icons.system_update_outlined,
-                  color: colorScheme.primary),
-              title: const Text('更新日志'),
-              subtitle: const Text('查看当前版本及历史更新内容'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.of(context, rootNavigator: true).push(
-                  PageTransitions.slideHorizontal(FeatureGuideScreen(
-                    mode: FeatureGuideMode.changelog,
-                    loggedInUser: _username,
-                  )),
-                );
-              },
-            ),
-          ),
-          const AppSettingsDivider(indent: 72),
-          _buildTile(
-            targetId: 'feature_guide',
-            child: ListTile(
-              leading: Icon(Icons.school_outlined, color: colorScheme.tertiary),
-              title: const Text('版本引导'),
-              subtitle: const Text('查看新版本功能介绍与使用引导'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.of(context, rootNavigator: true).push(
-                  PageTransitions.slideHorizontal(FeatureGuideScreen(
-                    mode: FeatureGuideMode.guide,
-                    loggedInUser: _username,
-                  )),
-                );
-              },
-            ),
-          ),
-          const AppSettingsDivider(indent: 72),
-          if (!isWeb)
+            const AppSettingsDivider(indent: 72),
             _buildTile(
-              targetId: 'migration',
+              targetId: 'feature_guide',
               child: ListTile(
                 leading:
-                    Icon(Icons.move_to_inbox, color: colorScheme.secondary),
-                title: const Text('旧版本地数据一键迁移'),
-                subtitle: const Text('包含待办、课程、课表与习惯数据'),
+                    Icon(Icons.school_outlined, color: colorScheme.tertiary),
+                title: const Text('版本引导'),
+                subtitle: const Text('查看新版本功能介绍与使用引导'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: _showMigrationDialog,
+                onTap: () {
+                  Navigator.of(context, rootNavigator: true).push(
+                    PageTransitions.slideHorizontal(FeatureGuideScreen(
+                      mode: FeatureGuideMode.guide,
+                      loggedInUser: _username,
+                    )),
+                  );
+                },
               ),
             ),
-          if (!isWeb) const AppSettingsDivider(indent: 72),
-          const SizedBox(height: 32),
-        ],
+            const AppSettingsDivider(indent: 72),
+            if (!isWeb)
+              _buildTile(
+                targetId: 'migration',
+                child: ListTile(
+                  leading:
+                      Icon(Icons.move_to_inbox, color: colorScheme.secondary),
+                  title: const Text('旧版本地数据一键迁移'),
+                  subtitle: const Text('包含待办、课程、课表与习惯数据'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _showMigrationDialog,
+                ),
+              ),
+            if (!isWeb) const AppSettingsDivider(indent: 72),
+            const SizedBox(height: 32),
+          ],
+        ),
       ),
     );
   }

@@ -1,3 +1,4 @@
+import '../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../storage_service.dart';
@@ -417,20 +418,25 @@ class _QuizScreenState extends State<QuizScreen>
   Widget build(BuildContext context) {
     if (isLoading) {
       return Scaffold(
-        appBar: AppBar(title: const Text("准备中...")),
+        appBar: FloatingGlassAppBar(
+            flexibleSpace: const FloatingGlassTopBarBackground(),
+            title: const Text("准备中...")),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (questions.isEmpty) {
       return Scaffold(
-        appBar: AppBar(title: const Text("错误")),
+        appBar: FloatingGlassAppBar(
+            flexibleSpace: const FloatingGlassTopBarBackground(),
+            title: const Text("错误")),
         body: const Center(child: Text("无法生成题目，请调整设置范围")),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text("第 ${currentIndex + 1} / ${questions.length} 题"),
         actions: [
           IconButton(

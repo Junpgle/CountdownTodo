@@ -132,6 +132,12 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                       msg.todoActions != null &&
                       msg.todoActions!.isNotEmpty)
                     _buildMessageTodoActions(msg, isDark),
+                  if (msg.financeDrafts != null &&
+                      msg.financeDrafts!.isNotEmpty)
+                    _buildMessageFinanceDrafts(msg, isDark),
+                  if (msg.financeActions != null &&
+                      msg.financeActions!.isNotEmpty)
+                    _buildMessageFinanceActions(msg, isDark),
                   Padding(
                     padding: const EdgeInsets.only(top: 4, left: 4, right: 4),
                     child: Row(
@@ -309,19 +315,26 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
 
   Widget _buildInputArea(ColorScheme colorScheme) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
+    final useFloating = floatingBottomBarShouldFloat(context);
+    final content = Container(
       key: _inputKey,
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      decoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha: 0.95),
-        border: Border(
-          top: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.2),
-            width: 0.5,
-          ),
-        ),
-      ),
+      padding: useFloating
+          ? const EdgeInsets.fromLTRB(12, 8, 12, 8)
+          : const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      decoration: useFloating
+          ? null
+          : BoxDecoration(
+              color: colorScheme.surface.withValues(alpha: 0.95),
+              border: Border(
+                top: BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.2),
+                  width: 0.5,
+                ),
+              ),
+            ),
       child: SafeArea(
+        top: false,
+        bottom: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -340,6 +353,8 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                     label: const Text('复制提示词'),
                     onPressed: _copyManualPromptFromInput,
                     style: TextButton.styleFrom(
+                      backgroundBuilder: _keepTodoChatButtonBackground,
+                      backgroundColor: Colors.transparent,
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       textStyle: const TextStyle(
@@ -360,6 +375,7 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                     visualDensity: VisualDensity.compact,
                     constraints: const BoxConstraints(),
                     padding: const EdgeInsets.all(8),
+                    style: floatingGlassPlainIconButtonStyle(),
                   ),
                 IconButton(
                   icon: Icon(
@@ -371,6 +387,7 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                   visualDensity: VisualDensity.compact,
                   constraints: const BoxConstraints(),
                   padding: const EdgeInsets.all(8),
+                  style: floatingGlassPlainIconButtonStyle(),
                 ),
               ],
             ),
@@ -424,6 +441,8 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                             });
                           },
                           style: TextButton.styleFrom(
+                            backgroundBuilder: _keepTodoChatButtonBackground,
+                            backgroundColor: Colors.transparent,
                             minimumSize: const Size(0, 22),
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             visualDensity: VisualDensity.compact,
@@ -442,6 +461,8 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                         TextButton(
                           onPressed: _pickCustomInjectRange,
                           style: TextButton.styleFrom(
+                            backgroundBuilder: _keepTodoChatButtonBackground,
+                            backgroundColor: Colors.transparent,
                             minimumSize: const Size(0, 22),
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             visualDensity: VisualDensity.compact,
@@ -522,12 +543,19 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
             ],
             Container(
               decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : colorScheme.surfaceContainerLow,
+                // The enclosing FloatingGlassControl already owns the
+                // material. Keep the composer row transparent in its
+                // floating form so it does not become a second glass capsule.
+                color: useFloating
+                    ? Colors.transparent
+                    : isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : colorScheme.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                  color: colorScheme.outlineVariant.withValues(
+                    alpha: useFloating ? 0.18 : 0.3,
+                  ),
                 ),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -577,6 +605,7 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                           color: colorScheme.onSurface.withValues(alpha: 0.3),
                           fontSize: 14,
                         ),
+                        filled: false,
                         border: InputBorder.none,
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(vertical: 8),
@@ -592,9 +621,13 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                       icon: const Icon(Icons.refresh_rounded, size: 18),
                       tooltip: '重试',
                       onPressed: _retryLastMessage,
-                      style: IconButton.styleFrom(
-                        foregroundColor: colorScheme.onSurfaceVariant,
-                        padding: const EdgeInsets.all(8),
+                      style: floatingGlassPlainIconButtonStyle().copyWith(
+                        foregroundColor: WidgetStatePropertyAll(
+                          colorScheme.onSurfaceVariant,
+                        ),
+                        padding: const WidgetStatePropertyAll(
+                          EdgeInsets.all(8),
+                        ),
                       ),
                     ),
                   IconButton(
@@ -622,13 +655,19 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                             ),
                     ),
                     onPressed: _isLoading ? _stopGeneration : _sendMessage,
-                    style: IconButton.styleFrom(
-                      backgroundColor: colorScheme.primary,
-                      foregroundColor: colorScheme.onPrimary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
+                    style: floatingGlassPlainIconButtonStyle().copyWith(
+                      backgroundColor:
+                          WidgetStatePropertyAll(colorScheme.primary),
+                      foregroundColor:
+                          WidgetStatePropertyAll(colorScheme.onPrimary),
+                      shape: WidgetStatePropertyAll(
+                        RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
                       ),
-                      padding: const EdgeInsets.all(8),
+                      padding: const WidgetStatePropertyAll(
+                        EdgeInsets.all(8),
+                      ),
                     ),
                   ),
                 ],
@@ -636,6 +675,27 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
             ),
           ],
         ),
+      ),
+    );
+    return SafeArea(
+      // Keep the system inset outside the rounded shell so the shell hugs its
+      // content instead of growing into the gesture/navigation area.
+      top: false,
+      left: false,
+      right: false,
+      child: FloatingGlassControl(
+        height: null,
+        margin: useFloating
+            ? const EdgeInsets.fromLTRB(8, 4, 8, 8)
+            : EdgeInsets.zero,
+        borderRadius: useFloating ? 28 : 0,
+        // Editable text must remain visible on Android devices that cannot
+        // reliably composite a content-sized glass surface over the input
+        // connection. Keep the floating capsule and use its native material
+        // fallback for this interactive composer.
+        useLiquidGlass: !AppPlatform.isAndroid,
+        mobilePortraitOnly: true,
+        child: content,
       ),
     );
   }

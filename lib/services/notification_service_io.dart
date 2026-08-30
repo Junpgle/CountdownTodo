@@ -143,6 +143,7 @@ class NotificationService {
     const InitializationSettings initializationSettings =
         InitializationSettings(
       android: initializationSettingsAndroid,
+      iOS: initializationSettingsDarwin,
       windows: initializationSettingsWindows,
       macOS: initializationSettingsDarwin,
     );
@@ -282,6 +283,68 @@ class NotificationService {
       body: body,
       notificationDetails: notificationDetails,
     );
+  }
+
+  static Future<void> showFinanceBudgetAlert({
+    required String title,
+    required String body,
+    required String alertKey,
+  }) async {
+    if (!await AppSettingsStorage.isFinanceBudgetAlertEnabled()) return;
+    if (!await AppSettingsStorage.isNormalNotificationEnabled()) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    await ensureInitialized();
+    final id = _stableNotificationId(alertKey, base: 52000, range: 9000);
+
+    if (_isDesktopSupported) {
+      await _plugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: _desktopNotificationDetails,
+      );
+      return;
+    }
+
+    if (Platform.isAndroid) {
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'finance_channel',
+          '记账提醒',
+          channelDescription: '预算进度和周期账单提醒',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      );
+      await _plugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: details,
+      );
+    } else if (Platform.isIOS) {
+      const details = NotificationDetails(
+        iOS: DarwinNotificationDetails(),
+      );
+      await _plugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: details,
+      );
+    }
+  }
+
+  static int _stableNotificationId(
+    String value, {
+    required int base,
+    required int range,
+  }) {
+    var hash = 0;
+    for (final codeUnit in value.codeUnits) {
+      hash = (hash * 31 + codeUnit) & 0x7fffffff;
+    }
+    return base + hash % range;
   }
 
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {

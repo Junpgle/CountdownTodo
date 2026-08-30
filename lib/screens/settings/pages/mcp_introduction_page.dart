@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../widgets/floating_glass_control.dart';
+
 class McpIntroductionPage extends StatelessWidget {
   final bool isEmbedded;
 
@@ -10,78 +12,96 @@ class McpIntroductionPage extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: isEmbedded ? null : AppBar(title: const Text('MCP 接入说明')),
-      body: SelectionArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 760),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildHero(context),
-                  const SizedBox(height: 20),
-                  _buildSection(
-                    context,
-                    title: '当前能做什么',
-                    icon: Icons.auto_awesome_outlined,
-                    children: const [
-                      _McpDetailRow(
-                        icon: Icons.search_rounded,
-                        title: '查询个人待办',
-                        detail: '按状态、关键词、分类和截止时间查询，并读取待办详情。',
-                      ),
-                      _McpDetailRow(
-                        icon: Icons.edit_calendar_outlined,
-                        title: '管理个人待办',
-                        detail: '创建和修改待办、完成或恢复待办，以及软删除到回收站。',
-                      ),
-                      _McpDetailRow(
-                        icon: Icons.sync_outlined,
-                        title: '延续应用同步',
-                        detail: '写入会保留操作日志和 AI（MCP）审计记录，之后由应用继续同步。',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  _buildSection(
-                    context,
-                    title: '安全与隐私',
-                    icon: Icons.shield_outlined,
-                    children: const [
-                      _McpDetailRow(
-                        icon: Icons.visibility_outlined,
-                        title: '首次建议只读',
-                        detail:
-                            '将 COUNTDOWN_TODO_MCP_READ_ONLY 设为 1 后，服务不会向 AI 客户端提供写入工具。',
-                      ),
-                      _McpDetailRow(
-                        icon: Icons.warning_amber_rounded,
-                        title: '写入前确认',
-                        detail: '读写模式会直接修改本地数据库。执行写操作时建议关闭应用，完成后再重启或刷新。',
-                      ),
-                      _McpDetailRow(
-                        icon: Icons.policy_outlined,
-                        title: '留意模型服务商',
-                        detail: 'AI 客户端可能把工具返回的数据发送给所选模型，请同时检查客户端与模型服务商的隐私策略。',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  _buildAvailabilityCard(context),
-                  const SizedBox(height: 16),
-                  _buildGettingStartedCard(context),
-                  const SizedBox(height: 12),
-                  Text(
-                    'MCP 服务不会主动唤醒 CountdownTodo，也不负责立即刷新界面、同步或通知计划；这些动作会在应用下次启动、刷新或同步时完成。',
-                    style: TextStyle(
-                      color: colorScheme.onSurfaceVariant,
-                      fontSize: 12,
-                      height: 1.5,
+      extendBodyBehindAppBar: !isEmbedded,
+      appBar: isEmbedded
+          ? null
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
+              title: const Text('MCP 接入说明'),
+            ),
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !isEmbedded,
+        child: SelectionArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              isEmbedded
+                  ? 16
+                  : floatingGlassSettingsContentTopInset(context, extra: 16),
+              16,
+              32,
+            ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildHero(context),
+                    const SizedBox(height: 20),
+                    _buildSection(
+                      context,
+                      title: '当前能做什么',
+                      icon: Icons.auto_awesome_outlined,
+                      children: const [
+                        _McpDetailRow(
+                          icon: Icons.search_rounded,
+                          title: '查询个人待办',
+                          detail: '按状态、关键词、分类和截止时间查询，并读取待办详情。',
+                        ),
+                        _McpDetailRow(
+                          icon: Icons.edit_calendar_outlined,
+                          title: '管理个人待办',
+                          detail: '创建和修改待办、完成或恢复待办，以及软删除到回收站。',
+                        ),
+                        _McpDetailRow(
+                          icon: Icons.sync_outlined,
+                          title: '延续应用同步',
+                          detail: '写入会保留操作日志和 AI（MCP）审计记录，之后由应用继续同步。',
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    _buildSection(
+                      context,
+                      title: '安全与隐私',
+                      icon: Icons.shield_outlined,
+                      children: const [
+                        _McpDetailRow(
+                          icon: Icons.visibility_outlined,
+                          title: '首次建议只读',
+                          detail:
+                              '将 COUNTDOWN_TODO_MCP_READ_ONLY 设为 1 后，服务不会向 AI 客户端提供写入工具。',
+                        ),
+                        _McpDetailRow(
+                          icon: Icons.warning_amber_rounded,
+                          title: '写入前确认',
+                          detail: '读写模式会直接修改本地数据库。执行写操作时建议关闭应用，完成后再重启或刷新。',
+                        ),
+                        _McpDetailRow(
+                          icon: Icons.policy_outlined,
+                          title: '留意模型服务商',
+                          detail:
+                              'AI 客户端可能把工具返回的数据发送给所选模型，请同时检查客户端与模型服务商的隐私策略。',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _buildAvailabilityCard(context),
+                    const SizedBox(height: 16),
+                    _buildGettingStartedCard(context),
+                    const SizedBox(height: 12),
+                    Text(
+                      'MCP 服务不会主动唤醒 CountdownTodo，也不负责立即刷新界面、同步或通知计划；这些动作会在应用下次启动、刷新或同步时完成。',
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

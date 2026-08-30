@@ -8,6 +8,7 @@ import '../../../services/feature_tip_service.dart';
 import '../../../storage_service.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../widgets/coach_mark_overlay.dart';
+import '../../../widgets/floating_bottom_bar.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../repositories/habit_repository.dart';
@@ -646,14 +647,15 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
 
         if (isWide) {
           return Scaffold(
-            appBar: AppBar(
+            appBar: FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('习惯中心'),
               centerTitle: false,
               actions: actions,
             ),
             floatingActionButton: Padding(
               padding: const EdgeInsets.only(bottom: 32.0, right: 32.0),
-              child: FloatingActionButton.extended(
+              child: FloatingGlassActionButton.extended(
                 key: _createActionKey,
                 onPressed: _openCreateHabit,
                 tooltip: '新建习惯',
@@ -704,45 +706,72 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
         }
 
         // Narrow screen (mobile)
+        final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+        final mobileTabBar = TabBar(
+          key: _navigationKey,
+          controller: _tabController,
+          indicatorSize: TabBarIndicatorSize.tab,
+          dividerColor: colorScheme.outlineVariant.withValues(alpha: 0.5),
+          labelStyle: const TextStyle(fontWeight: FontWeight.w700),
+          tabs: const [
+            Tab(text: '今日'),
+            Tab(text: '日历'),
+            Tab(text: '分析'),
+          ],
+        );
+        final floatingNavigation = FloatingBottomNavigationBar(
+          key: _navigationKey,
+          mobilePortraitOnly: false,
+          items: const [
+            FloatingBottomNavigationItem(
+              icon: Icons.today_outlined,
+              label: '今日',
+            ),
+            FloatingBottomNavigationItem(
+              icon: Icons.calendar_month_outlined,
+              label: '日历',
+            ),
+            FloatingBottomNavigationItem(
+              icon: Icons.analytics_outlined,
+              label: '分析',
+            ),
+          ],
+          selectedIndex: _tabController.index,
+          onTabSelected: (index) => _tabController.animateTo(index),
+        );
+
         return Scaffold(
-          appBar: AppBar(
+          extendBody: useFloatingBottomBar,
+          appBar: FloatingGlassAppBar(
+            flexibleSpace: const FloatingGlassTopBarBackground(),
             title: const Text('习惯中心'),
             centerTitle: false,
             actions: actions,
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(48),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 600),
-                  child: TabBar(
-                    key: _navigationKey,
-                    controller: _tabController,
-                    indicatorSize: TabBarIndicatorSize.tab,
-                    dividerColor:
-                        colorScheme.outlineVariant.withValues(alpha: 0.5),
-                    labelStyle: const TextStyle(fontWeight: FontWeight.w700),
-                    tabs: const [
-                      Tab(text: '今日'),
-                      Tab(text: '日历'),
-                      Tab(text: '分析'),
-                    ],
+            bottom: useFloatingBottomBar
+                ? null
+                : PreferredSize(
+                    preferredSize: const Size.fromHeight(48),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 600),
+                        child: mobileTabBar,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ),
           ),
+          bottomNavigationBar: useFloatingBottomBar ? floatingNavigation : null,
           floatingActionButton: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              FloatingActionButton.extended(
+              FloatingGlassActionButton.extended(
                 key: _createActionKey,
                 onPressed: _openCreateHabit,
                 tooltip: '新建习惯',
                 icon: const Icon(Icons.add_rounded),
                 label: const Text('新建习惯'),
               ),
-              const SizedBox(height: 100),
+              SizedBox(height: useFloatingBottomBar ? 8 : 100),
             ],
           ),
           body: TabBarView(

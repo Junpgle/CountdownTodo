@@ -25,9 +25,11 @@ import '../services/minor_mode_service.dart';
 import '../services/liquid_glass_effect_service.dart';
 import '../models/minor_mode_state.dart';
 import '../models.dart';
+import '../features/finance/screens/finance_home_screen.dart';
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
 import '../widgets/app_settings_widgets.dart';
+import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import 'animation_settings_page.dart';
 
@@ -103,6 +105,14 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     if (AppPlatform.isWeb) {
       return [
         _RecentFeature(
+          Icons.account_balance_wallet_outlined,
+          scheme.tertiary,
+          '记账',
+          'AI草案·文本·图片双识别·预算·本地同步',
+          destinationBuilder: () =>
+              FinanceHomeScreen(username: widget.loggedInUser ?? ''),
+        ),
+        _RecentFeature(
           Icons.blur_on_rounded,
           scheme.primary,
           'Liquid Glass 视觉升级',
@@ -164,6 +174,14 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     }
 
     return [
+      _RecentFeature(
+        Icons.account_balance_wallet_outlined,
+        scheme.tertiary,
+        '记账',
+        'AI草案·文本·图片双识别·预算·本地同步',
+        destinationBuilder: () =>
+            FinanceHomeScreen(username: widget.loggedInUser ?? ''),
+      ),
       _RecentFeature(
         Icons.blur_on_rounded,
         scheme.primary,
@@ -367,6 +385,19 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         if (!_guideOffered) _buildGlobalThemeSetupPage,
       ];
     }
+    if (AppPlatform.isMacOS) {
+      if (!onlyUnconfigured) {
+        return [
+          _buildMacFeaturePage,
+          _buildGlobalCourseSetupPage,
+          _buildGlobalThemeSetupPage,
+        ];
+      }
+      return [
+        if (!_semesterEnabled) _buildGlobalCourseSetupPage,
+        if (!_guideOffered) _buildGlobalThemeSetupPage,
+      ];
+    }
     if (AppPlatform.isWindows) {
       if (!onlyUnconfigured) {
         return [
@@ -383,7 +414,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         if (!_guideOffered) _buildGlobalThemeSetupPage,
       ];
     }
-    if (!onlyUnconfigured) {
+    if (AppPlatform.isAndroid && !onlyUnconfigured) {
       return [
         _buildAndroidFeaturePage1,
         _buildAndroidFeaturePage2,
@@ -392,6 +423,13 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         _buildMinorModeGuidePage,
         _buildGlobalCourseSetupPage,
         _buildGlobalThemeSetupPage,
+      ];
+    }
+
+    if (!AppPlatform.isAndroid) {
+      return [
+        if (!_semesterEnabled) _buildGlobalCourseSetupPage,
+        if (!_guideOffered) _buildGlobalThemeSetupPage,
       ];
     }
 
@@ -1336,7 +1374,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     );
   }
 
-  // ── Web 特性及能力取舍 ─────────────────────────────────
+  // ── Web / macOS 特性及能力取舍 ───────────────────────────
 
   Widget _buildWebFeaturePage() {
     final scheme = Theme.of(context).colorScheme;
@@ -1352,21 +1390,21 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                 '无需安装即可在浏览器中使用待办、倒数日、番茄钟、课表和同步。首次加载资源较多，安装为 PWA 后再次打开会更快。',
           ),
           const SizedBox(height: 28),
-          _buildWebCapabilityTile(
+          _buildCapabilityTile(
             icon: Icons.task_alt_rounded,
             title: '核心数据与同步可用',
             subtitle: '待办、倒数日、番茄钟、课表、个人时间轴和云端同步均可在网页端运行。',
             color: scheme.primary,
           ),
           const SizedBox(height: 12),
-          _buildWebCapabilityTile(
+          _buildCapabilityTile(
             icon: Icons.install_desktop_rounded,
             title: '支持 PWA 安装',
             subtitle: '在支持的浏览器中可安装到桌面/启动台，并缓存 Flutter 引擎、字体和离线资源。',
             color: scheme.secondary,
           ),
           const SizedBox(height: 12),
-          _buildWebCapabilityTile(
+          _buildCapabilityTile(
             icon: Icons.folder_open_rounded,
             title: '文件流程改为浏览器模式',
             subtitle: '导入使用浏览器文件选择，导出和壁纸下载会触发浏览器下载。',
@@ -1390,7 +1428,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             subtitle: '浏览器无法提供完整系统权限，因此部分原生能力会隐藏、降级或改用网页替代方案。',
           ),
           const SizedBox(height: 28),
-          _buildWebCapabilityTile(
+          _buildCapabilityTile(
             icon: Icons.notifications_off_outlined,
             title: '系统级通知与后台保活受限',
             subtitle: '网页端不提供 Android 精确闹钟、电池优化、锁屏常驻通知等系统级引导。',
@@ -1398,7 +1436,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             isLimited: true,
           ),
           const SizedBox(height: 12),
-          _buildWebCapabilityTile(
+          _buildCapabilityTile(
             icon: Icons.desktop_windows_outlined,
             title: '桌面原生能力不可用',
             subtitle: 'Windows 悬浮窗、托盘、Island、Tai 数据库读取和系统窗口控制仅在桌面端提供。',
@@ -1406,7 +1444,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             isLimited: true,
           ),
           const SizedBox(height: 12),
-          _buildWebCapabilityTile(
+          _buildCapabilityTile(
             icon: Icons.widgets_outlined,
             title: '移动端小组件不可用',
             subtitle: 'Android 桌面小部件、手环同步和原生分享入口不在网页版引导中展示。',
@@ -1418,7 +1456,45 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     );
   }
 
-  Widget _buildWebCapabilityTile({
+  Widget _buildMacFeaturePage() {
+    final scheme = Theme.of(context).colorScheme;
+    return _buildPageContainer(
+      content: Column(
+        children: [
+          const SizedBox(height: 16),
+          _buildStepHeader(
+            icon: Icons.desktop_mac_rounded,
+            iconColor: scheme.primary,
+            title: 'macOS 原生桌面体验',
+            subtitle: '把待办和专注状态融入 macOS：菜单栏、桌面小组件与系统级状态显示随时可用。',
+          ),
+          const SizedBox(height: 28),
+          _buildCapabilityTile(
+            icon: Icons.menu_open_rounded,
+            title: '菜单栏与灵动岛状态显示',
+            subtitle: '专注期间可在 macOS 菜单栏查看剩余时间；原生状态面板还可展示提醒、待办和媒体信息。',
+            color: scheme.primary,
+          ),
+          const SizedBox(height: 12),
+          _buildCapabilityTile(
+            icon: Icons.widgets_rounded,
+            title: '桌面 WidgetKit 小组件',
+            subtitle: '在 macOS 桌面添加待办、倒数日和习惯小组件，快速查看当天的任务与状态。',
+            color: scheme.secondary,
+          ),
+          const SizedBox(height: 12),
+          _buildCapabilityTile(
+            icon: Icons.rocket_launch_rounded,
+            title: '后台运行与系统集成',
+            subtitle: '支持开机自启、深度链接和系统通知；关闭主窗口后，正在进行的专注不会中断。',
+            color: scheme.tertiary,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCapabilityTile({
     required IconData icon,
     required String title,
     required String subtitle,
@@ -2028,7 +2104,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             type: MaterialType.transparency,
             child: Column(
               children: [
-                SwitchListTile(
+                LiquidGlassSwitchListTile(
                   secondary: const Icon(Icons.linear_scale),
                   title: const Text('首页学期进度条', style: TextStyle(fontSize: 14)),
                   value: _semesterEnabled,
@@ -2100,40 +2176,149 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          if (_hasCloudCourses)
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _importingCourses ? null : _importCloudCourses,
-                icon: _importingCourses
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.calendar_month_rounded, size: 20),
-                label: Text(_importingCourses ? '正在导入...' : '从云端同步课表'),
-              ),
-            ),
-          if (_hasCloudCourses && _hasCloudSemester) const SizedBox(height: 8),
-          if (_hasCloudSemester)
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _importingSemester ? null : _importCloudSemester,
-                icon: _importingSemester
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.date_range_rounded, size: 20),
-                label: Text(_importingSemester ? '正在同步...' : '从云端同步开学/放假时间'),
-              ),
-            ),
+          _buildCloudSyncActions(scheme),
         ],
       ],
     ));
+  }
+
+  Widget _buildCloudSyncActions(ColorScheme scheme) {
+    final courseAction = _hasCloudCourses
+        ? _buildCloudSyncAction(
+            accentColor: scheme.primary,
+            icon: Icons.calendar_month_rounded,
+            label: _importingCourses ? '正在导入...' : '从云端同步课表',
+            loading: _importingCourses,
+            onPressed: _importingCourses ? null : _importCloudCourses,
+          )
+        : null;
+    final semesterAction = _hasCloudSemester
+        ? _buildCloudSyncAction(
+            accentColor: scheme.secondary,
+            icon: Icons.date_range_rounded,
+            label: _importingSemester ? '正在同步...' : '从云端同步开学/放假时间',
+            loading: _importingSemester,
+            onPressed: _importingSemester ? null : _importCloudSemester,
+          )
+        : null;
+    final hasBothActions = courseAction != null && semesterAction != null;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 652),
+        child: SizedBox(
+          width: double.infinity,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              const gap = 12.0;
+              const maxActionWidth = 320.0;
+              final canFitSideBySide = hasBothActions &&
+                  constraints.maxWidth >= maxActionWidth * 2 + gap;
+
+              if (canFitSideBySide) {
+                return Row(
+                  children: [
+                    Expanded(child: courseAction),
+                    const SizedBox(width: gap),
+                    Expanded(child: semesterAction),
+                  ],
+                );
+              }
+
+              final actionWidth = constraints.maxWidth < maxActionWidth
+                  ? constraints.maxWidth
+                  : maxActionWidth;
+              return Column(
+                children: [
+                  if (courseAction != null)
+                    SizedBox(width: actionWidth, child: courseAction),
+                  if (hasBothActions) const SizedBox(height: 10),
+                  if (semesterAction != null)
+                    SizedBox(width: actionWidth, child: semesterAction),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCloudSyncAction({
+    required Color accentColor,
+    required IconData icon,
+    required String label,
+    required bool loading,
+    required VoidCallback? onPressed,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = scheme.brightness == Brightness.dark;
+    final isEnabled = onPressed != null;
+    final iconColor = isEnabled || loading
+        ? accentColor
+        : scheme.onSurface.withValues(alpha: 0.38);
+    final labelColor = isEnabled || loading
+        ? scheme.onSurface.withValues(alpha: 0.88)
+        : scheme.onSurface.withValues(alpha: 0.38);
+    final borderRadius = BorderRadius.circular(26);
+
+    return FloatingGlassControl(
+      height: 52,
+      borderRadius: 26,
+      // Keep the glass material neutral and let the action color belong to the
+      // icon. Passing accentColor as the glass tint makes sibling actions
+      // sample as unrelated blue/gray surfaces on macOS.
+      haloColor: scheme.shadow,
+      haloOpacity: isEnabled ? 0.42 : 0.18,
+      isDark: isDark,
+      child: Semantics(
+        button: true,
+        enabled: isEnabled,
+        label: label,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: borderRadius,
+            child: SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (loading)
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          color: iconColor,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    else
+                      Icon(icon, size: 20, color: iconColor),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              color: labelColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _pickSemesterDate(bool isStart) async {
@@ -2411,9 +2596,101 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
   // ── 布局搭建 ──────────────────────────────────────────
 
+  Widget _buildLiquidGlassAction({
+    required VoidCallback onPressed,
+    required IconData icon,
+    required String label,
+    double? width,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final foregroundColor = colorScheme.onSurface;
+    final borderRadius = BorderRadius.circular(28);
+
+    return FloatingGlassControl(
+      height: 56,
+      borderRadius: 28,
+      haloColor: colorScheme.primary,
+      isDark: colorScheme.brightness == Brightness.dark,
+      child: Semantics(
+        button: true,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: borderRadius,
+            child: SizedBox(
+              width: width,
+              height: 56,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 24, color: foregroundColor),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: foregroundColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isSinglePage = _pagesBuilder.length == 1;
+    final isFirstPage = _currentPage == 0;
+    final isLastPage = _currentPage == _pagesBuilder.length - 1;
+    final primaryAction = _buildLiquidGlassAction(
+      onPressed: isLastPage ? _done : _nextPage,
+      icon: isLastPage ? Icons.check_rounded : Icons.arrow_forward_rounded,
+      label: isLastPage ? '完成体验' : '继续探索',
+      width: isSinglePage ? 212 : null,
+    );
+    final previousAction = _buildLiquidGlassAction(
+      onPressed: _previousPage,
+      icon: Icons.arrow_back_rounded,
+      label: '上一页',
+    );
+    final bottomActions = isFirstPage
+        ? Center(child: primaryAction)
+        : Row(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: previousAction,
+                ),
+              ),
+              Expanded(flex: 2, child: primaryAction),
+            ],
+          );
+    final bottomBar = FloatingBottomBar(
+      height: 136,
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildPageIndicator(),
+              if (!isSinglePage) const SizedBox(height: 16),
+              bottomActions,
+            ],
+          ),
+        ),
+      ),
+    );
+
     return Scaffold(
+      extendBody: floatingBottomBarShouldFloat(context),
       body: PageView.builder(
         controller: _pageController,
         itemCount: _pagesBuilder.length,
@@ -2422,52 +2699,15 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           return _pagesBuilder[i]();
         },
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildPageIndicator(),
-              if (_pagesBuilder.length > 1) const SizedBox(height: 16),
-              Row(
-                children: [
-                  if (_currentPage > 0)
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 8.0),
-                        child: OutlinedButton(
-                          onPressed: _previousPage,
-                          style: OutlinedButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 16)),
-                          child: const Text('上一页'),
-                        ),
-                      ),
-                    ),
-                  Expanded(
-                    flex: 2,
-                    child: FilledButton.icon(
-                      onPressed: _currentPage == _pagesBuilder.length - 1
-                          ? _done
-                          : _nextPage,
-                      icon: Icon(_currentPage == _pagesBuilder.length - 1
-                          ? Icons.check_rounded
-                          : Icons.arrow_forward_rounded),
-                      // 🚀 动态判断按钮文字，只有一页时直接显示 "完成体验"
-                      label: Text(_currentPage == _pagesBuilder.length - 1
-                          ? '完成体验'
-                          : '继续探索'),
-                      style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16)),
-                    ),
-                  ),
-                ],
+      bottomNavigationBar: isSinglePage
+          ? SafeArea(
+              top: false,
+              child: SizedBox(
+                height: 64,
+                child: Center(child: primaryAction),
               ),
-            ],
-          ),
-        ),
-      ),
+            )
+          : bottomBar,
     );
   }
 }
@@ -2617,7 +2857,7 @@ class _GuideAppearanceOptionsState extends State<GuideAppearanceOptions> {
           ),
           child: Material(
             type: MaterialType.transparency,
-            child: SwitchListTile(
+            child: LiquidGlassSwitchListTile(
               key: const ValueKey('guide-liquid-glass-switch'),
               value: _liquidGlassEnabled,
               secondary: const Icon(Icons.blur_on_rounded),

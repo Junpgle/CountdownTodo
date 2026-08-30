@@ -11,6 +11,7 @@ import 'band_sync_service.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
 import 'screen_time_service.dart';
+import '../widgets/floating_glass_control.dart';
 
 enum AppPermissionKind {
   notification,
@@ -371,7 +372,7 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
         case AppPermissionKind.usageStats ||
               AppPermissionKind.exactAlarm ||
               AppPermissionKind.liveUpdates:
-          return status(permission);
+          return await status(permission);
       }
     } catch (_) {
       return PermissionStatus.granted;
@@ -508,154 +509,161 @@ class PermissionRationaleBanner extends StatelessWidget {
                     ),
                   );
                 },
-                child: Material(
-                  elevation: 16,
-                  color: colorScheme.surface,
-                  shadowColor: colorScheme.shadow.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(24),
-                  clipBehavior: Clip.antiAlias,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          colorScheme.primaryContainer.withValues(alpha: 0.4),
-                          colorScheme.surface,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      border: Border.all(
-                        color:
-                            colorScheme.outlineVariant.withValues(alpha: 0.3),
-                        width: 1,
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      colorScheme.primary,
-                                      colorScheme.tertiary,
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: colorScheme.primary
-                                          .withValues(alpha: 0.3),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Icon(
-                                  Icons.security_rounded,
-                                  color: colorScheme.onPrimary,
-                                  size: 26,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      proceeding
-                                          ? '正在打开“${permission.label}”权限'
-                                          : '需要“${permission.label}”权限',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                            letterSpacing: 0.3,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      proceeding
-                                          ? '请在接下来的系统页面中完成授权。'
-                                          : permission.rationale,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyMedium
-                                          ?.copyWith(
-                                            color: colorScheme.onSurfaceVariant,
-                                            height: 1.5,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (proceeding) ...[
-                            const SizedBox(height: 20),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: LinearProgressIndicator(
-                                minHeight: 6,
-                                backgroundColor: colorScheme.primaryContainer,
-                                color: colorScheme.primary,
-                              ),
-                            ),
+                child: FloatingGlassControl(
+                  height: null,
+                  borderRadius: 24,
+                  haloColor: colorScheme.primary,
+                  child: Material(
+                    type: MaterialType.transparency,
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(24),
+                    clipBehavior: Clip.antiAlias,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            colorScheme.primaryContainer
+                                .withValues(alpha: 0.18),
+                            colorScheme.surface.withValues(alpha: 0.12),
                           ],
-                          if (!proceeding) ...[
-                            const SizedBox(height: 24),
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        border: Border.all(
+                          color:
+                              colorScheme.outlineVariant.withValues(alpha: 0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                TextButton(
-                                  onPressed: onDeny,
-                                  style: TextButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 12),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        colorScheme.primary,
+                                        colorScheme.tertiary,
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
                                     ),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: colorScheme.primary
+                                            .withValues(alpha: 0.3),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
                                   ),
-                                  child: Text(
-                                    '暂不允许',
-                                    style: TextStyle(
-                                      color: colorScheme.onSurfaceVariant,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                  child: Icon(
+                                    Icons.security_rounded,
+                                    color: colorScheme.onPrimary,
+                                    size: 26,
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                FilledButton(
-                                  onPressed: onAllow,
-                                  style: FilledButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 20, vertical: 12),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    elevation: 0,
-                                  ),
-                                  child: const Text(
-                                    '允许并继续',
-                                    style:
-                                        TextStyle(fontWeight: FontWeight.w600),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        proceeding
+                                            ? '正在打开“${permission.label}”权限'
+                                            : '需要“${permission.label}”权限',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                              letterSpacing: 0.3,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        proceeding
+                                            ? '请在接下来的系统页面中完成授权。'
+                                            : permission.rationale,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.copyWith(
+                                              color:
+                                                  colorScheme.onSurfaceVariant,
+                                              height: 1.5,
+                                            ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
                             ),
+                            if (proceeding) ...[
+                              const SizedBox(height: 20),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  minHeight: 6,
+                                  backgroundColor: colorScheme.primaryContainer,
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                            if (!proceeding) ...[
+                              const SizedBox(height: 24),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton(
+                                    onPressed: onDeny,
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 16, vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '暂不允许',
+                                      style: TextStyle(
+                                        color: colorScheme.onSurfaceVariant,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  FilledButton(
+                                    onPressed: onAllow,
+                                    style: FilledButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 20, vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      elevation: 0,
+                                    ),
+                                    child: const Text(
+                                      '允许并继续',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),

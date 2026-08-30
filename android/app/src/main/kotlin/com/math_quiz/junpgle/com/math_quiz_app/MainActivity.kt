@@ -18,6 +18,8 @@ import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.Environment
 import android.os.Process
 import android.os.SystemClock
@@ -35,6 +37,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.IconCompat
 import es.antonborri.home_widget.HomeWidgetPlugin
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.RenderMode
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.*
@@ -90,6 +93,54 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val SPECIAL_TODO_ISLAND_BIZ_TAG = "math_quiz_special_todo" // 🚴 特殊待办独立岛 bizTag
     private val UPDATE_ISLAND_BIZ_TAG = "math_quiz_update" // 🚀 版本更新独立岛 bizTag
     private val TAG = "MathQuizApp"
+    private fun isHyperOsMiniWindow(): Boolean {
+        return Build.VERSION.SDK_INT >= 37 &&
+            Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true) &&
+            isInMultiWindowMode
+    }
+
+    private fun keepFlutterDrawingInMiniWindow() {
+        if (!isHyperOsMiniWindow()) return
+
+        // HyperOS 的迷你窗可以在 Activity 仍处于 RESUMED 时移除窗口焦点。
+        // Flutter embedding 会据此发送 inactive，部分 Android 17 版本随后
+        // 不再把新的 Flutter scene 提交给 TextureView。迷你窗仍是可见窗口，
+        // 因此恢复为 resumed/focused，确保它继续绘制而不是停在壁纸中间帧。
+        flutterEngine?.lifecycleChannel?.appIsResumed()
+        flutterEngine?.lifecycleChannel?.aWindowIsFocused()
+    }
+
+    private val restoreWindowAfterResizeRunnable = Runnable {
+        // 交给 Flutter embedding 恢复已缓存的系统栏标志，避免直接修改
+        // decor fitting 时与 HyperOS 的自由窗 Surface 缩放事务发生竞争。
+        updateSystemUiOverlays()
+        findViewById<android.view.View>(FlutterActivity.FLUTTER_VIEW_ID)?.let { flutterView ->
+            flutterView.requestLayout()
+            flutterView.invalidate()
+
+            // HyperOS 迷你窗会先改变 FlutterView，再异步提交 0.25 倍的
+            // SurfaceControl 事务。尺寸稳定后重新通知引擎，避免画面停在
+            // 只有壁纸的中间帧。
+            if (flutterView.width > 0 && flutterView.height > 0) {
+                flutterEngine?.renderer?.surfaceChanged(
+                    flutterView.width,
+                    flutterView.height
+                )
+            }
+
+            keepFlutterDrawingInMiniWindow()
+
+            methodChannel?.invokeMethod(
+                "windowConfigurationChanged",
+                mapOf(
+                    "isInMultiWindowMode" to isInMultiWindowMode,
+                    "width" to flutterView.width,
+                    "height" to flutterView.height,
+                    "hasWindowFocus" to hasWindowFocus()
+                )
+            )
+        }
+    }
 
     private val notificationExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "notification-worker").apply {
@@ -115,6 +166,28 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val imagePath: String?,
         val originalText: String?
     )
+
+    /**
+     * Android 17 的 HyperOS 迷你窗会单独缩放 SurfaceView 的 SurfaceControl；
+     * Flutter 默认 SurfaceView 因而可能被重复缩放，只剩黑底和极小内容。
+     * TextureView 跟随 Activity 视图树统一变换，可避开该厂商组合问题。
+     */
+    override fun getRenderMode(): RenderMode {
+        val isXiaomi = Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true)
+        return if (Build.VERSION.SDK_INT >= 37 && isXiaomi) {
+            RenderMode.texture
+        } else {
+            super.getRenderMode()
+        }
+    }
+
+    /**
+     * Deep links are routed by the Dart service so widget intents can share
+     * one authenticated navigation path across Android and desktop. Flutter's
+     * automatic route handling would otherwise also push the custom URI as a
+     * Navigator route, which can cover the page opened by the widget.
+     */
+    override fun shouldHandleDeeplinking(): Boolean = false
 
     private val lastNotificationFingerprint = ConcurrentHashMap<Int, NotificationFingerprint>()
     private val largeIconCache = ConcurrentHashMap<Int, Icon>()
@@ -283,6 +356,35 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         )
     }
 
+    private fun scheduleEdgeToEdgeRestore() {
+        window.decorView.removeCallbacks(restoreWindowAfterResizeRunnable)
+        // 首次尺寸回调早于 HyperOS 的缩放事务，稍后再补一次稳定帧。
+        window.decorView.postDelayed(restoreWindowAfterResizeRunnable, 80L)
+        window.decorView.postDelayed(restoreWindowAfterResizeRunnable, 320L)
+    }
+
+    override fun onMultiWindowModeChanged(
+        isInMultiWindowMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
+        scheduleEdgeToEdgeRestore()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        scheduleEdgeToEdgeRestore()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (isHyperOsMiniWindow()) {
+            // 迷你窗通常没有焦点，但仍应持续绘制；焦点切换后补发稳定帧。
+            keepFlutterDrawingInMiniWindow()
+            scheduleEdgeToEdgeRestore()
+        }
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putBoolean(STATE_PENDING_POMODORO, pendingOpenPomodoro)
@@ -311,6 +413,16 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         if (deepLink != null) {
             sanitizeDeepLinkIntent(intent)
             dispatchDeepLink(deepLink)
+            // A Flutter isolate can still be paused while onNewIntent is
+            // delivered from the launcher. Retry after the Activity has had
+            // time to reach the resumed state; the pending value is cleared
+            // by the MethodChannel acknowledgement when the first delivery
+            // succeeds.
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (pendingDeepLink == deepLink) {
+                    dispatchDeepLink(deepLink)
+                }
+            }, 600)
         }
     }
 
@@ -348,11 +460,30 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     private fun dispatchDeepLink(data: String) {
         Log.d(TAG, "🔗 dispatchDeepLink: $data")
-        if (deepLinkChannel != null) {
-            deepLinkChannel?.invokeMethod("openDeepLink", data)
+        // Keep a copy until Flutter acknowledges the message. When the
+        // Activity is resumed from the launcher, the Flutter isolate can be
+        // paused for a short window and a one-shot platform message may be
+        // delivered too early. Dart can fetch this value on resume.
+        pendingDeepLink = data
+        val channel = deepLinkChannel
+        if (channel != null) {
+            channel.invokeMethod("openDeepLink", data, object : MethodChannel.Result {
+                override fun success(result: Any?) {
+                    if (pendingDeepLink == data) {
+                        pendingDeepLink = null
+                    }
+                }
+
+                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+                    Log.w(TAG, "🔗 Flutter deep link delivery failed: $errorCode")
+                }
+
+                override fun notImplemented() {
+                    Log.w(TAG, "🔗 Flutter deep link handler is not ready")
+                }
+            })
             Log.d(TAG, "🔗 Invoked openDeepLink to Flutter")
         } else {
-            pendingDeepLink = data
             Log.d(TAG, "🔗 Saved pending deep link")
         }
     }
@@ -634,6 +765,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     }
 
     override fun onDestroy() {
+        window.decorView.removeCallbacks(restoreWindowAfterResizeRunnable)
         super.onDestroy()
         minorModeManager?.dispose()
         minorModeManager = null

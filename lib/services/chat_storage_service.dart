@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../models/chat_message.dart';
 import 'storage/user_session_storage.dart';
 import 'storage/storage_key_scope.dart';
+import 'secure_storage_service.dart';
 
 class ChatSession {
   final String id;
@@ -61,7 +62,7 @@ class ChatStorageService {
   }
 
   static const String _defaultPrompt =
-      '''你是一个智能效率助手，帮助用户分别管理待办、固定日程、规划块、专注记录、番茄钟、倒计时和番茄标签。
+      '''你是一个智能效率助手，帮助用户分别管理待办、固定日程、规划块、专注记录、番茄钟、倒计时、番茄标签和记账。
 
 【当前时间】
 {now}
@@ -78,7 +79,10 @@ class ChatStorageService {
 6. 开始或停止番茄钟
 7. 新增、修改、完成、删除倒计时
 8. 新增、改名、改色、删除番茄标签
-9. 当用户提及课程、日程、专注记录、团队协作等话题时，系统会自动提供相关上下文
+9. 新增记账草案；识别支出、收入、退款的金额、分类、商家、日期、付款方式和备注
+10. 查询本月或指定范围的账单、收支汇总、分类排行、预算使用情况
+11. 根据记账上下文提出已有账单的修改或删除草案，但必须等待用户确认
+12. 当用户提及课程、日程、专注记录、团队协作等话题时，系统会自动提供相关上下文
 
 【回复要求】
 - 使用Markdown格式，简洁明了
@@ -87,7 +91,10 @@ class ChatStorageService {
 - 待办表示要完成的结果，规划块表示用户可调整的执行时段，考试/课程/会议等外部时间约束属于固定日程
 - 不得为了容纳时间段把固定日程创建成待办，也不得把可调整的自我执行时段创建成固定日程
 - 没有日期时不要默认今天全天；重复待办也不要自动称为习惯
-- 循环待办和循环日程都由多个可独立寻址的真实期次组成；修改默认只针对本期，只有用户明确要求时才修改本期及以后；完成只属于待办单期，取消日程使用独立状态''';
+- 循环待办和循环日程都由多个可独立寻址的真实期次组成；修改默认只针对本期，只有用户明确要求时才修改本期及以后；完成只属于待办单期，取消日程使用独立状态
+- 记账只先生成待确认草案，不要直接声称已经保存。用户要求新增记账或给出账单信息时，在正文末尾追加 [FINANCE_START] 和 [FINANCE_END] 包裹的JSON数组；金额使用元，type只能是expense/income/refund，日期使用yyyy-MM-dd，缺少的可选字段用null。每笔账单单独一个对象，且不要因为同一段内容里还有取餐码就省略账单。
+- 查询已有账单、预算或汇总时，依据系统提供的只读记账上下文直接回答，不要声称执行了写入；必要时追加 [FINANCE_ACTION_START] 和 [FINANCE_ACTION_END] 包裹的JSON数组。
+- 修改已有账单使用 action=update_finance，删除已有账单使用 action=delete_finance；只能复制上下文里的真实 transactionId，先生成待确认操作，不得直接保存或删除。''';
 
   static String get defaultPrompt => _defaultPrompt;
 
@@ -230,29 +237,29 @@ class ChatStorageService {
     await prefs.setString(hKey, jsonEncode(jsonList));
   }
 
-  static Future<void> addMessage(ChatMessage message) async {
-    final history = await loadHistory();
+  static Future<void> addMessage(
+    ChatMessage message, {
+    String? sessionId,
+  }) async {
+    final sid = sessionId ?? await getActiveSessionId();
+    if (sid == null) return;
+    final history = await loadHistory(sid);
     history.add(message);
-    await saveHistory(history);
+    await saveHistory(history, sid);
     if (history.length == 2 && message.role == ChatRole.assistant) {
       final sessions = await loadSessions();
-      final activeId = await getActiveSessionId();
-      if (activeId != null) {
-        final session = sessions.firstWhere(
-          (s) => s.id == activeId,
-          orElse: () => throw Exception('Session not found'),
+      final session =
+          sessions.where((session) => session.id == sid).firstOrNull;
+      if (session != null && session.title == '新对话') {
+        final firstUserMsg = history.firstWhere(
+          (m) => m.role == ChatRole.user,
+          orElse: () => message,
         );
-        if (session.title == '新对话') {
-          final firstUserMsg = history.firstWhere(
-            (m) => m.role == ChatRole.user,
-            orElse: () => message,
-          );
-          session.title = firstUserMsg.content.length > 20
-              ? '${firstUserMsg.content.substring(0, 20)}...'
-              : firstUserMsg.content;
-          session.updatedAt = DateTime.now();
-          await saveSessions(sessions);
-        }
+        session.title = firstUserMsg.content.length > 20
+            ? '${firstUserMsg.content.substring(0, 20)}...'
+            : firstUserMsg.content;
+        session.updatedAt = DateTime.now();
+        await saveSessions(sessions);
       }
     }
   }
@@ -308,7 +315,8 @@ class ChatStorageService {
     final pKey = await _getScopedKey(_chatProviderKey);
 
     String? model = prefs.getString(mKey);
-    String? apiKey = prefs.getString(kKey);
+    String? legacyApiKey = prefs.getString(kKey);
+    String? apiKey = await SecureStorageService.read(kKey);
     String? apiUrl = prefs.getString(uKey);
     String? provider = prefs.getString(pKey);
 
@@ -319,15 +327,25 @@ class ChatStorageService {
         final markerKey = "${_chatModelKey}_${username}_migrated";
         if (!(prefs.getBool(markerKey) ?? false)) {
           model = prefs.getString(_chatModelKey);
-          apiKey = prefs.getString(_chatApiKeyKey);
+          legacyApiKey = prefs.getString(_chatApiKeyKey);
           apiUrl = prefs.getString(_chatApiUrlKey);
           if (model != null) {
             await prefs.setString(mKey, model);
-            if (apiKey != null) await prefs.setString(kKey, apiKey);
             if (apiUrl != null) await prefs.setString(uKey, apiUrl);
             await prefs.setBool(markerKey, true);
           }
         }
+      }
+    }
+
+    if (legacyApiKey != null && legacyApiKey.isNotEmpty) {
+      final migrated = apiKey != null && apiKey.isNotEmpty
+          ? true
+          : await SecureStorageService.write(kKey, legacyApiKey);
+      if (apiKey == null || apiKey.isEmpty) apiKey = legacyApiKey;
+      if (migrated) {
+        await prefs.remove(kKey);
+        await prefs.remove(_chatApiKeyKey);
       }
     }
 
@@ -355,13 +373,15 @@ class ChatStorageService {
 
     if (model.isEmpty) {
       await prefs.remove(mKey);
+      await SecureStorageService.delete(kKey);
       await prefs.remove(kKey);
       await prefs.remove(uKey);
       await prefs.remove(pKey);
     } else {
       await prefs.setString(mKey, model);
       if (apiKey.isNotEmpty) {
-        await prefs.setString(kKey, apiKey);
+        await SecureStorageService.write(kKey, apiKey);
+        await prefs.remove(kKey);
       }
       if (apiUrl != null && apiUrl.isNotEmpty) {
         await prefs.setString(uKey, apiUrl);
@@ -379,6 +399,7 @@ class ChatStorageService {
     final uKey = await _getScopedKey(_chatApiUrlKey);
     final pKey = await _getScopedKey(_chatProviderKey);
     await prefs.remove(mKey);
+    await SecureStorageService.delete(kKey);
     await prefs.remove(kKey);
     await prefs.remove(uKey);
     await prefs.remove(pKey);

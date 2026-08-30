@@ -121,6 +121,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     bool syncPlanBlocks = true,
     bool syncFixedSchedules = true,
     bool syncHabits = true,
+    bool syncFinance = true,
   }) async {
     if (_isSyncing || !mounted) return;
 
@@ -164,7 +165,8 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
           syncPomodoro ||
           syncPlanBlocks ||
           syncFixedSchedules ||
-          syncHabits) {
+          syncHabits ||
+          syncFinance) {
         final syncResult = await StorageService.syncData(
           widget.username,
           syncTodos: syncTodos,
@@ -175,6 +177,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
           syncPomodoro: syncPomodoro,
           syncFixedSchedules: syncFixedSchedules,
           syncHabits: syncHabits,
+          syncFinance: syncFinance,
           context: context,
         );
         if (syncResult['success'] != true) {
@@ -459,6 +462,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     bool syncPlanBlocks = true;
     bool syncFixedSchedules = true;
     bool syncHabits = true;
+    bool syncFinance = true;
 
     showDialog(
       context: context,
@@ -523,6 +527,12 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
                   onChanged: (val) =>
                       setDialogState(() => syncHabits = val ?? false),
                 ),
+                CheckboxListTile(
+                  title: const Text("记账"),
+                  value: syncFinance,
+                  onChanged: (val) =>
+                      setDialogState(() => syncFinance = val ?? false),
+                ),
               ],
             ),
           ),
@@ -538,7 +548,8 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
                       syncTimeLogs ||
                       syncPlanBlocks ||
                       syncFixedSchedules ||
-                      syncHabits)
+                      syncHabits ||
+                      syncFinance)
                   ? () {
                       Navigator.pop(ctx);
                       _handleManualSync(
@@ -551,6 +562,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
                         syncPlanBlocks: syncPlanBlocks,
                         syncFixedSchedules: syncFixedSchedules,
                         syncHabits: syncHabits,
+                        syncFinance: syncFinance,
                       );
                     }
                   : null,

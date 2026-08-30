@@ -2,11 +2,15 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/image_input_reader.dart';
+import 'ai_chat_service.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
+import 'secure_storage_service.dart';
+import '../features/finance/services/ai_usage_cost_service.dart';
 
 class LLMConfig {
   final String provider;
+  final String? visionProvider;
   final String apiKey;
   final String model;
   final String visionModel;
@@ -16,6 +20,7 @@ class LLMConfig {
 
   LLMConfig({
     this.provider = 'zhipu',
+    this.visionProvider,
     required this.apiKey,
     required this.model,
     String? visionModel,
@@ -161,7 +166,30 @@ class LLMConfig {
 如果图片中有多个事项，请返回JSON数组；如果是单个事项，也请返回JSON数组（只有一个元素）。
 例如：[{"itemKind":"fixedSchedule","title":"项目会议","location":"第一会议室","remark":null,"isAllDay":false,"startTime":"YYYY-MM-DD HH:mm","endTime":"YYYY-MM-DD HH:mm","timeMode":"range","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null,"reminderMinutes":15}]
 
-必须且只能返回纯JSON数组格式，不要包含Markdown标记。''';
+  必须且只能返回纯JSON数组格式，不要包含Markdown标记。''';
+
+  /// 外部分享图片使用的第二条识别通道。它只负责账单，和待办/取餐码
+  /// 识别并行执行，避免一张支付截图里同时出现取餐码时互相覆盖结果。
+  static const String defaultFinanceVisionPrompt =
+      '''你是一个严格的账单识别器，请从图片中提取所有有可靠金额依据的消费、收入或退款记录。
+
+【当前基准日期】
+{now}
+
+【识别边界】
+1. 只识别账单、支付成功/退款凭证、消费明细、收款记录、订单金额等有明确金额的交易。
+2. 每一笔独立交易都要单独输出，不能因为同一张图还包含取餐码、取件码、快递信息或待办信息而省略账单。
+3. 取餐码/取件码本身不是账单，不要把码值当金额；但图片中同时有账单和取餐码时，只输出账单，另一条通道会负责取餐码。
+4. 金额以人民币“元”的数字输出，不要输出千分位符；金额必须大于0。
+5. type只能是expense（支出）、income（收入）或refund（退款）。无法确认交易方向时，默认expense，但必须有可靠金额。
+6. 日期能从凭证可靠读出时使用yyyy-MM-dd，否则使用{now}中的日期。不要凭猜测补日期。
+7. category尽量使用餐饮、交通、购物、居住、学习、娱乐、健康、社交、订阅、工资、零花钱、奖金、退款或其他；无法判断时为其他。
+8. merchant填写商户或交易对象，paymentMethod填写微信、支付宝、银行卡、现金、信用卡或其他；没有可靠内容时为null。
+
+【输出格式】
+必须且只能返回纯JSON数组，不要包含Markdown。每个对象必须包含：
+{"itemKind":"finance","type":"expense|income|refund","amount":28.50,"category":"餐饮","merchant":"商户名","date":"yyyy-MM-dd","paymentMethod":"微信","note":"可选说明"}
+如果没有可靠账单，返回[]。''';
 
   /// 追加到默认或自定义识别提示词末尾的强制语义护栏。
   /// 用户仍可定制提取风格，但不能覆盖当前数据模型的类型与时间边界。
@@ -176,6 +204,7 @@ fixedSchedule地点使用location字段；todo和planBlock地点放在remark。�
 
   Map<String, dynamic> toJson() => {
         'provider': provider,
+        'vision_provider': visionProvider,
         'api_key': apiKey,
         'model': model,
         'vision_model': visionModel,
@@ -187,6 +216,7 @@ fixedSchedule地点使用location字段；todo和planBlock地点放在remark。�
   factory LLMConfig.fromJson(Map<String, dynamic> json) {
     return LLMConfig(
       provider: json['provider']?.toString() ?? 'zhipu',
+      visionProvider: json['vision_provider']?.toString(),
       apiKey: json['api_key'] ?? '',
       model: json['model'] ?? 'glm-4.7-flash',
       visionModel: json['vision_model'],
@@ -275,6 +305,27 @@ class LLMService {
   static const String _customVisionModelsKey = 'custom_vision_models';
   static const String _nvidiaNimModelsKey = 'nvidia_nim_models';
   static const String _providerModelsPrefix = 'provider_models_';
+  static const String _configApiKeyStorageKey = 'llm_config_api_key';
+  static const String _providerApiKeyStoragePrefix = 'llm_provider_api_key_';
+  static const String _customTextApiKeyStoragePrefix =
+      'llm_custom_text_api_key_';
+  static const String _customVisionApiKeyStoragePrefix =
+      'llm_custom_vision_api_key_';
+
+  static String _providerApiKeyStorageKey(String provider) =>
+      '$_providerApiKeyStoragePrefix$provider';
+
+  static String _customTextApiKeyStorageKey(String id) =>
+      '$_customTextApiKeyStoragePrefix$id';
+
+  static String _customVisionApiKeyStorageKey(String id) =>
+      '$_customVisionApiKeyStoragePrefix$id';
+
+  static Map<String, dynamic> _withoutApiKey(Map<String, dynamic> json) {
+    final copy = Map<String, dynamic>.from(json);
+    copy.remove('api_key');
+    return copy;
+  }
 
   static const Map<String, String> _visionModelProviders = {
     'glm-4.6v-flash': 'zhipu',
@@ -290,7 +341,9 @@ class LLMService {
 
   static const Map<String, String> _providerApiUrls = {
     'zhipu': 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-    'mimo': 'https://api.xiaomimimo.com/v1/chat/completions',
+    'mimo': '${AiChatService.mimoApiBaseUrl}/chat/completions',
+    AiChatService.mimoTokenPlanProvider:
+        '${AiChatService.mimoTokenPlanOpenAiBaseUrl}/chat/completions',
     'nvidia_nim': 'https://integrate.api.nvidia.com/v1/chat/completions',
     'deepseek': 'https://api.deepseek.com/chat/completions',
   };
@@ -326,12 +379,36 @@ class LLMService {
   }
 
   static Future<({String url, String key})> resolveVisionEndpoint(
-      String visionModel) async {
+      String visionModel,
+      {String? provider}) async {
+    final requestedProvider = provider?.trim() ?? '';
+
+    // The same model ID can be available from both MiMo API products. When
+    // the caller has persisted the selected provider, it must win over the
+    // model-prefix fallback below.
+    if (requestedProvider == 'custom') {
+      final customModels = await getCustomVisionModels();
+      final custom = customModels
+          .where((m) => m.modelId == visionModel || m.id == visionModel)
+          .firstOrNull;
+      if (custom != null && custom.apiUrl.isNotEmpty) {
+        return (url: custom.apiUrl, key: custom.apiKey);
+      }
+    }
+
+    if (requestedProvider.isNotEmpty &&
+        requestedProvider != 'custom' &&
+        _providerApiUrls.containsKey(requestedProvider)) {
+      final url = _providerApiUrls[requestedProvider]!;
+      final key = await getProviderApiKey(requestedProvider);
+      return (url: url, key: key);
+    }
+
     // 1. 前缀/精确匹配
-    final provider = _detectProvider(visionModel);
-    if (provider.isNotEmpty) {
-      final url = _providerApiUrls[provider]!;
-      final key = await getProviderApiKey(provider);
+    final detectedProvider = _detectProvider(visionModel);
+    if (detectedProvider.isNotEmpty) {
+      final url = _providerApiUrls[detectedProvider]!;
+      final key = await getProviderApiKey(detectedProvider);
       return (url: url, key: key);
     }
     // 2. 自定义视觉模型
@@ -357,7 +434,30 @@ class LLMService {
     final configStr = prefs.getString(_configKey);
     if (configStr == null || configStr.isEmpty) return null;
     try {
-      final json = jsonDecode(configStr) as Map<String, dynamic>;
+      final json = Map<String, dynamic>.from(
+        jsonDecode(configStr) as Map<String, dynamic>,
+      );
+      final legacyApiKey = json['api_key']?.toString() ?? '';
+      final secureApiKey =
+          await SecureStorageService.read(_configApiKeyStorageKey);
+      final apiKey = secureApiKey != null && secureApiKey.isNotEmpty
+          ? secureApiKey
+          : legacyApiKey;
+      if (legacyApiKey.isNotEmpty) {
+        final migrated = secureApiKey != null && secureApiKey.isNotEmpty
+            ? true
+            : await SecureStorageService.write(
+                _configApiKeyStorageKey,
+                legacyApiKey,
+              );
+        if (migrated) {
+          await prefs.setString(
+            _configKey,
+            jsonEncode(_withoutApiKey(json)),
+          );
+        }
+      }
+      json['api_key'] = apiKey;
       return LLMConfig.fromJson(json);
     } catch (_) {
       return null;
@@ -366,14 +466,29 @@ class LLMService {
 
   static Future<void> saveConfig(LLMConfig config) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_configKey, jsonEncode(config.toJson()));
+    if (config.apiKey.isEmpty) {
+      await SecureStorageService.delete(_configApiKeyStorageKey);
+    } else {
+      await SecureStorageService.write(_configApiKeyStorageKey, config.apiKey);
+    }
+    await prefs.setString(
+      _configKey,
+      jsonEncode(_withoutApiKey(config.toJson())),
+    );
   }
 
   static Future<void> clearConfig() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_configKey);
+    await SecureStorageService.delete(_configApiKeyStorageKey);
     await prefs.remove(_nvidiaNimModelsKey);
-    for (final provider in ['zhipu', 'mimo', 'deepseek', 'nvidia_nim']) {
+    for (final provider in [
+      'zhipu',
+      'mimo',
+      AiChatService.mimoTokenPlanProvider,
+      'deepseek',
+      'nvidia_nim',
+    ]) {
       await prefs.remove('$_providerModelsPrefix$provider');
     }
   }
@@ -388,28 +503,39 @@ class LLMService {
 
   static Future<String> getProviderApiKey(String provider) async {
     final prefs = await SharedPreferences.getInstance();
-    // 优先读取新的 provider key
-    final providerKey = prefs.getString('$_providerApiKeyPrefix$provider');
-    if (providerKey != null && providerKey.isNotEmpty) return providerKey;
-    // 向后兼容：zhipu 从旧 key 迁移
-    if (provider == 'zhipu') {
-      final legacy = prefs.getString(_zhipuApiKeyKey);
-      if (legacy != null && legacy.isNotEmpty) {
-        // 自动迁移到新 key
-        await prefs.setString('$_providerApiKeyPrefix$provider', legacy);
-        return legacy;
+    final secureKey = _providerApiKeyStorageKey(provider);
+    final secureApiKey = await SecureStorageService.read(secureKey);
+    final providerPreferenceKey = '$_providerApiKeyPrefix$provider';
+    final legacyApiKey = prefs.getString(providerPreferenceKey) ??
+        (provider == 'zhipu' ? prefs.getString(_zhipuApiKeyKey) : null) ??
+        '';
+    if (secureApiKey != null && secureApiKey.isNotEmpty) {
+      if (legacyApiKey.isNotEmpty) {
+        await prefs.remove(providerPreferenceKey);
+        if (provider == 'zhipu') await prefs.remove(_zhipuApiKeyKey);
       }
+      return secureApiKey;
     }
-    return '';
+    if (legacyApiKey.isEmpty) return '';
+
+    final migrated = await SecureStorageService.write(secureKey, legacyApiKey);
+    if (migrated) {
+      await prefs.remove(providerPreferenceKey);
+      if (provider == 'zhipu') await prefs.remove(_zhipuApiKeyKey);
+    }
+    return legacyApiKey;
   }
 
   static Future<void> saveProviderApiKey(String provider, String apiKey) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('$_providerApiKeyPrefix$provider', apiKey);
-    // 保持 zhipu 旧 key 同步（向后兼容）
-    if (provider == 'zhipu') {
-      await prefs.setString(_zhipuApiKeyKey, apiKey);
+    final secureKey = _providerApiKeyStorageKey(provider);
+    if (apiKey.isEmpty) {
+      await SecureStorageService.delete(secureKey);
+    } else {
+      await SecureStorageService.write(secureKey, apiKey);
     }
+    await prefs.remove('$_providerApiKeyPrefix$provider');
+    if (provider == 'zhipu') await prefs.remove(_zhipuApiKeyKey);
   }
 
   static Future<List<String>> getNvidiaNimModels() async {
@@ -448,10 +574,41 @@ class LLMService {
   static Future<List<CustomTextModel>> getCustomTextModels() async {
     final prefs = await SharedPreferences.getInstance();
     final list = prefs.getStringList(_customTextModelsKey) ?? [];
-    return list
-        .map((e) =>
-            CustomTextModel.fromJson(jsonDecode(e) as Map<String, dynamic>))
-        .toList();
+    var needsSanitizing = false;
+    final models = <CustomTextModel>[];
+    for (final entry in list) {
+      final model = CustomTextModel.fromJson(
+        jsonDecode(entry) as Map<String, dynamic>,
+      );
+      final secureApiKey = await SecureStorageService.read(
+        _customTextApiKeyStorageKey(model.id),
+      );
+      final apiKey = secureApiKey ?? model.apiKey;
+      if (model.apiKey.isNotEmpty) {
+        final migrated = secureApiKey != null ||
+            await SecureStorageService.write(
+              _customTextApiKeyStorageKey(model.id),
+              model.apiKey,
+            );
+        needsSanitizing = needsSanitizing || migrated;
+      }
+      models.add(CustomTextModel(
+        id: model.id,
+        name: model.name,
+        modelId: model.modelId,
+        apiUrl: model.apiUrl,
+        apiKey: apiKey,
+      ));
+    }
+    if (needsSanitizing) {
+      await prefs.setStringList(
+        _customTextModelsKey,
+        models
+            .map((model) => jsonEncode(_withoutApiKey(model.toJson())))
+            .toList(),
+      );
+    }
+    return models;
   }
 
   static Future<void> saveCustomTextModel(CustomTextModel model) async {
@@ -463,25 +620,69 @@ class LLMService {
     } else {
       models.add(model);
     }
-    await prefs.setStringList(_customTextModelsKey,
-        models.map((e) => jsonEncode(e.toJson())).toList());
+    if (model.apiKey.isEmpty) {
+      await SecureStorageService.delete(_customTextApiKeyStorageKey(model.id));
+    } else {
+      await SecureStorageService.write(
+        _customTextApiKeyStorageKey(model.id),
+        model.apiKey,
+      );
+    }
+    await prefs.setStringList(
+      _customTextModelsKey,
+      models.map((e) => jsonEncode(_withoutApiKey(e.toJson()))).toList(),
+    );
   }
 
   static Future<void> deleteCustomTextModel(String id) async {
     final prefs = await SharedPreferences.getInstance();
     final models = await getCustomTextModels();
     models.removeWhere((m) => m.id == id);
-    await prefs.setStringList(_customTextModelsKey,
-        models.map((e) => jsonEncode(e.toJson())).toList());
+    await SecureStorageService.delete(_customTextApiKeyStorageKey(id));
+    await prefs.setStringList(
+      _customTextModelsKey,
+      models.map((e) => jsonEncode(_withoutApiKey(e.toJson()))).toList(),
+    );
   }
 
   static Future<List<CustomVisionModel>> getCustomVisionModels() async {
     final prefs = await SharedPreferences.getInstance();
     final list = prefs.getStringList(_customVisionModelsKey) ?? [];
-    return list
-        .map((e) =>
-            CustomVisionModel.fromJson(jsonDecode(e) as Map<String, dynamic>))
-        .toList();
+    var needsSanitizing = false;
+    final models = <CustomVisionModel>[];
+    for (final entry in list) {
+      final model = CustomVisionModel.fromJson(
+        jsonDecode(entry) as Map<String, dynamic>,
+      );
+      final secureApiKey = await SecureStorageService.read(
+        _customVisionApiKeyStorageKey(model.id),
+      );
+      final apiKey = secureApiKey ?? model.apiKey;
+      if (model.apiKey.isNotEmpty) {
+        final migrated = secureApiKey != null ||
+            await SecureStorageService.write(
+              _customVisionApiKeyStorageKey(model.id),
+              model.apiKey,
+            );
+        needsSanitizing = needsSanitizing || migrated;
+      }
+      models.add(CustomVisionModel(
+        id: model.id,
+        name: model.name,
+        modelId: model.modelId,
+        apiUrl: model.apiUrl,
+        apiKey: apiKey,
+      ));
+    }
+    if (needsSanitizing) {
+      await prefs.setStringList(
+        _customVisionModelsKey,
+        models
+            .map((model) => jsonEncode(_withoutApiKey(model.toJson())))
+            .toList(),
+      );
+    }
+    return models;
   }
 
   static Future<void> saveCustomVisionModel(CustomVisionModel model) async {
@@ -493,16 +694,30 @@ class LLMService {
     } else {
       models.add(model);
     }
-    await prefs.setStringList(_customVisionModelsKey,
-        models.map((e) => jsonEncode(e.toJson())).toList());
+    if (model.apiKey.isEmpty) {
+      await SecureStorageService.delete(
+          _customVisionApiKeyStorageKey(model.id));
+    } else {
+      await SecureStorageService.write(
+        _customVisionApiKeyStorageKey(model.id),
+        model.apiKey,
+      );
+    }
+    await prefs.setStringList(
+      _customVisionModelsKey,
+      models.map((e) => jsonEncode(_withoutApiKey(e.toJson()))).toList(),
+    );
   }
 
   static Future<void> deleteCustomVisionModel(String id) async {
     final prefs = await SharedPreferences.getInstance();
     final models = await getCustomVisionModels();
     models.removeWhere((m) => m.id == id);
-    await prefs.setStringList(_customVisionModelsKey,
-        models.map((e) => jsonEncode(e.toJson())).toList());
+    await SecureStorageService.delete(_customVisionApiKeyStorageKey(id));
+    await prefs.setStringList(
+      _customVisionModelsKey,
+      models.map((e) => jsonEncode(_withoutApiKey(e.toJson()))).toList(),
+    );
   }
 
   static Future<String> testConnection() async {
@@ -517,14 +732,18 @@ class LLMService {
       'Authorization': 'Bearer ${config.apiKey}',
     };
 
-    final body = jsonEncode({
+    final requestBody = <String, dynamic>{
       'model': config.model,
       'messages': [
         {'role': 'user', 'content': '请回复"连接成功"'}
       ],
       'temperature': 0.1,
-      'max_tokens': 50,
-    });
+    };
+    requestBody[
+        AiChatService.usesMimoChatProtocol(config.provider, config.apiUrl)
+            ? 'max_completion_tokens'
+            : 'max_tokens'] = 50;
+    final body = jsonEncode(requestBody);
 
     // print('========== 测试连接 ==========');
     // print('API: ${config.apiUrl}');
@@ -533,7 +752,8 @@ class LLMService {
 
     final response = await http
         .post(
-          Uri.parse(config.apiUrl),
+          Uri.parse(
+              AiChatService.resolveChatUrl(config.provider, config.apiUrl)),
           headers: headers,
           body: body,
         )
@@ -544,6 +764,22 @@ class LLMService {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final usage = AiTokenUsage.fromJson(data['usage']);
+    try {
+      final usageProvider =
+          AiChatService.effectiveProvider(config.provider, config.apiUrl);
+      await AiUsageCostService.recordUsage(
+        provider: usageProvider.isEmpty ? 'custom' : usageProvider,
+        model: config.model,
+        operation: 'connection_test',
+        promptTokens: usage?.promptTokens ?? 0,
+        completionTokens: usage?.completionTokens ?? 0,
+        totalTokens: usage?.totalTokens ?? 0,
+        usageAvailable: usage != null,
+      );
+    } catch (_) {
+      // Cost tracking must not invalidate a successful text recognition.
+    }
     final choices = data['choices'] as List?;
     if (choices == null || choices.isEmpty) {
       // print('完整响应: ${response.body}');
@@ -604,7 +840,8 @@ class LLMService {
 
     final response = await http
         .post(
-          Uri.parse(config.apiUrl),
+          Uri.parse(
+              AiChatService.resolveChatUrl(config.provider, config.apiUrl)),
           headers: headers,
           body: body,
         )
@@ -616,6 +853,22 @@ class LLMService {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final usage = AiTokenUsage.fromJson(data['usage']);
+    try {
+      final usageProvider =
+          AiChatService.effectiveProvider(config.provider, config.apiUrl);
+      await AiUsageCostService.recordUsage(
+        provider: usageProvider.isEmpty ? 'custom' : usageProvider,
+        model: config.model,
+        operation: 'todo_text',
+        promptTokens: usage?.promptTokens ?? 0,
+        completionTokens: usage?.completionTokens ?? 0,
+        totalTokens: usage?.totalTokens ?? 0,
+        usageAvailable: usage != null,
+      );
+    } catch (_) {
+      // Cost tracking must not invalidate a successful text recognition.
+    }
     final choices = data['choices'] as List?;
     if (choices == null || choices.isEmpty) {
       throw Exception('API返回数据格式异常');
@@ -640,7 +893,34 @@ class LLMService {
   }
 
   static Future<List<Map<String, dynamic>>> parseTodoFromImage(
-      String imagePath) async {
+      String imagePath) {
+    return _parseImageWithPrompt(
+      imagePath,
+      operation: 'vision_todo',
+      promptBuilder: (config, nowStr) =>
+          '${config.visionPrompt.replaceAll('{now}', nowStr)}\n\n'
+          '${LLMConfig.itemSemanticGuardrailPrompt}',
+    );
+  }
+
+  /// Performs the finance half of a shared-image recognition pass. This is
+  /// intentionally separate from [parseTodoFromImage]: a vision model should
+  /// be allowed to return both a pickup todo and a bill from the same image.
+  static Future<List<Map<String, dynamic>>> parseFinanceFromImage(
+      String imagePath) {
+    return _parseImageWithPrompt(
+      imagePath,
+      operation: 'vision_finance',
+      promptBuilder: (_, nowStr) =>
+          LLMConfig.defaultFinanceVisionPrompt.replaceAll('{now}', nowStr),
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> _parseImageWithPrompt(
+    String imagePath, {
+    required String operation,
+    required String Function(LLMConfig config, String nowStr) promptBuilder,
+  }) async {
     await _ensureAiInteractionAllowed();
     final config = await getConfig();
     if (config == null || !config.isConfigured) {
@@ -648,43 +928,40 @@ class LLMService {
     }
 
     final imageInput = await readImageInput(imagePath);
-
-    // 检查文件大小
     final fileSize = imageInput.length;
-    // print('图片大小: ${(fileSize / 1024).toStringAsFixed(1)}KB');
-
     if (fileSize > 10 * 1024 * 1024) {
       throw Exception('图片太大，请使用小于10MB的图片');
     }
 
-    // 读取并编码图片
-    final bytes = imageInput.bytes;
-
-    // 使用 Future.microtask 避免阻塞主线程
-    final base64Image = await Future.microtask(() => base64Encode(bytes));
-
-    final mimeType = imageInput.mimeType;
-
+    final base64Image = await Future.microtask(
+      () => base64Encode(imageInput.bytes),
+    );
     final now = DateTime.now();
     final nowStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final prompt = promptBuilder(config, nowStr);
 
-    final resolvedPrompt = config.visionPrompt.replaceAll('{now}', nowStr);
-    final prompt =
-        '$resolvedPrompt\n\n${LLMConfig.itemSemanticGuardrailPrompt}';
-
-    final endpoint = await resolveVisionEndpoint(config.visionModel);
-    final visionUrl = endpoint.url.isNotEmpty ? endpoint.url : config.apiUrl;
+    final configuredVisionProvider = config.visionProvider?.trim();
+    final visionProvider = configuredVisionProvider?.isNotEmpty == true
+        ? configuredVisionProvider
+        : (config.provider == AiChatService.mimoTokenPlanProvider ||
+                AiChatService.inferProviderFromApiUrl(config.apiUrl) ==
+                    AiChatService.mimoTokenPlanProvider
+            ? AiChatService.mimoTokenPlanProvider
+            : null);
+    final endpoint = await resolveVisionEndpoint(
+      config.visionModel,
+      provider: visionProvider,
+    );
+    final visionUrl = endpoint.url.isNotEmpty
+        ? endpoint.url
+        : AiChatService.resolveChatUrl(config.provider, config.apiUrl);
     final visionKey = endpoint.key.isNotEmpty ? endpoint.key : config.apiKey;
-
     final headers = {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer $visionKey',
     };
-
-    final imageUrl = 'data:$mimeType;base64,$base64Image';
-    // print('Base64 长度: ${imageUrl.length}');
-
+    final imageUrl = 'data:${imageInput.mimeType};base64,$base64Image';
     final body = jsonEncode({
       'model': config.visionModel,
       'messages': [
@@ -694,21 +971,13 @@ class LLMService {
             {'type': 'text', 'text': prompt},
             {
               'type': 'image_url',
-              'image_url': {'url': imageUrl}
-            }
-          ]
-        }
+              'image_url': {'url': imageUrl},
+            },
+          ],
+        },
       ],
       'temperature': 0.1,
     });
-
-    // print('========== LLM 图片识别请求 ==========');
-    // print('API: $visionUrl');
-    // print('Model: ${config.visionModel}');
-    // print(
-    //     'Image: ${imageInput.displayName} (${(fileSize / 1024).toStringAsFixed(1)}KB)');
-    // print('Body 大小: ${(body.length / 1024).toStringAsFixed(1)}KB');
-    // print('====================================');
 
     final response = await http
         .post(
@@ -717,34 +986,40 @@ class LLMService {
           body: body,
         )
         .timeout(const Duration(seconds: 90));
-
     if (response.statusCode != 200) {
-      // print('LLM 请求失败: ${response.statusCode} - ${response.body}');
       throw Exception('API调用失败: ${response.statusCode}');
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final usage = AiTokenUsage.fromJson(data['usage']);
+    try {
+      final usageProvider = AiChatService.effectiveProvider(
+        visionProvider ?? config.provider,
+        visionUrl,
+      );
+      await AiUsageCostService.recordUsage(
+        provider: usageProvider.isEmpty ? 'custom' : usageProvider,
+        model: config.visionModel,
+        operation: operation,
+        promptTokens: usage?.promptTokens ?? 0,
+        completionTokens: usage?.completionTokens ?? 0,
+        totalTokens: usage?.totalTokens ?? 0,
+        imageCount: 1,
+        usageAvailable: usage != null,
+      );
+    } catch (_) {
+      // Cost tracking must not invalidate a successful image recognition.
+    }
     final choices = data['choices'] as List?;
     if (choices == null || choices.isEmpty) {
       throw Exception('API返回数据格式异常');
     }
-
     final message = choices[0]['message'] as Map<String, dynamic>;
     final content = (message['content'] as String?) ?? '';
     final reasoning = (message['reasoning_content'] as String?) ?? '';
     final fullContent =
         reasoning.isNotEmpty ? '$reasoning\n\n$content' : content;
-
-    // print('========== LLM 图片识别响应 ==========');
-    // print('原始返回:\n$fullContent');
-    // print('=====================================');
-
-    final results = _extractJsonList(fullContent);
-
-    // print('解析结果: $results');
-    // print('====================================');
-
-    return results;
+    return _extractJsonList(fullContent);
   }
 
   static Future<void> _ensureAiInteractionAllowed() async {
@@ -793,7 +1068,11 @@ class LLMService {
     for (final match in matches) {
       try {
         final obj = jsonDecode(match.group(0)!) as Map<String, dynamic>;
-        if (obj.containsKey('title')) {
+        if (obj.containsKey('title') ||
+            obj.containsKey('itemKind') ||
+            obj.containsKey('item_kind') ||
+            obj.containsKey('amount') ||
+            obj.containsKey('amount_minor')) {
           results.add(obj);
         }
       } catch (_) {}

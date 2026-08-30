@@ -1,3 +1,4 @@
+import '../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -485,7 +486,8 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(
           _editing && _seriesItems.where((entry) => !entry.isDeleted).length > 1
               ? '编辑重复日程系列'
@@ -534,7 +536,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                   subtitle: Text(DateFormat('yyyy-MM-dd').format(_date)),
                   onTap: _pickDate,
                 ),
-                SwitchListTile(
+                LiquidGlassSwitchListTile(
                   secondary: const Icon(Icons.schedule_rounded),
                   title: const Text('时间待定'),
                   subtitle: const Text('日期已确定，但主办方尚未公布具体时刻'),
@@ -548,7 +550,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                     subtitle: Text(_startTime.format(context)),
                     onTap: _pickStartTime,
                   ),
-                  SwitchListTile(
+                  LiquidGlassSwitchListTile(
                     secondary: const Icon(Icons.more_time_rounded),
                     title: const Text('结束时间待定'),
                     value: _endTimeTbd,
@@ -718,7 +720,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
           ),
           if (_editing) ...[
             const SizedBox(height: 8),
-            SwitchListTile(
+            LiquidGlassSwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('日程已取消'),
               subtitle: const Text('取消后不再参与冲突、进行中状态和日历导出'),

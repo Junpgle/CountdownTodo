@@ -2,8 +2,6 @@ package com.math_quiz.junpgle.com.math_quiz_app
 
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
-import android.graphics.Color
 import android.os.Bundle
 import android.text.Html
 import android.text.Spanned
@@ -65,27 +63,28 @@ class TodoOnlyRemoteViewsFactory(
         if (position >= itemsData.size) return RemoteViews(context.packageName, R.layout.widget_item_todo)
 
         val data = itemsData[position]
-        val isDarkMode = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val primaryTextColor = context.getColor(R.color.widget_text_primary)
-        val secondaryTextColor = context.getColor(R.color.widget_text_secondary)
-
         val views = RemoteViews(context.packageName, R.layout.widget_item_todo)
         val isDone = data.getBoolean("isDone")
         val title = data.getString("title", "")
 
         views.setCharSequence(R.id.todo_text, "setText", getHtmlSpanned(if (isDone) "<s>$title</s>" else title))
-        views.setTextColor(R.id.todo_text, if (isDone) secondaryTextColor else primaryTextColor)
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.todo_text,
+            if (isDone) R.color.widget_text_secondary else R.color.widget_text_primary
+        )
 
         val dueText = data.getString("due", "")
         if (dueText.isNotEmpty() && !isDone) {
             views.setViewVisibility(R.id.todo_due, View.VISIBLE)
             views.setTextViewText(R.id.todo_due, dueText)
-            val redColor = Color.parseColor(if (isDarkMode) "#F87171" else "#EF4444")
-            val yellowColor = Color.parseColor(if (isDarkMode) "#FBBF24" else "#F59E0B")
-            val greenColor = Color.parseColor(if (isDarkMode) "#34D399" else "#10B981")
-            if (dueText.contains("逾期")) views.setTextColor(R.id.todo_due, redColor)
-            else if (dueText.contains("今天")) views.setTextColor(R.id.todo_due, yellowColor)
-            else views.setTextColor(R.id.todo_due, greenColor)
+            val dueColor = when {
+                dueText.contains("逾期") -> R.color.widget_due_overdue
+                dueText.contains("今天") -> R.color.widget_due_today
+                else -> R.color.widget_due_future
+            }
+            WidgetProviderSupport.setTextColor(context, views, R.id.todo_due, dueColor)
         } else {
             views.setViewVisibility(R.id.todo_due, View.GONE)
         }

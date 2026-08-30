@@ -61,6 +61,12 @@ class SidebarMenuService {
       icon: Icons.people_rounded,
       defaultTarget: SidebarMenuTarget.features,
     ),
+    'finance': SidebarMenuItemDefinition(
+      key: 'finance',
+      title: '记账',
+      icon: Icons.account_balance_wallet_outlined,
+      defaultTarget: SidebarMenuTarget.features,
+    ),
     'aiAssistant': SidebarMenuItemDefinition(
       key: 'aiAssistant',
       title: 'AI 助手',
@@ -119,6 +125,7 @@ class SidebarMenuService {
 
   static const List<String> _defaultFeatures = [
     'teams',
+    'finance',
     'aiAssistant',
     'timeline',
     'journal',

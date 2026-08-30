@@ -2,8 +2,6 @@ package com.math_quiz.junpgle.com.math_quiz_app
 
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
-import android.graphics.Color
 import android.os.Bundle
 import android.text.Html
 import android.text.Spanned
@@ -62,26 +60,44 @@ class CourseOnlyRemoteViewsFactory(
         if (position >= itemsData.size) return RemoteViews(context.packageName, R.layout.widget_item_course)
 
         val data = itemsData[position]
-        val isDarkMode = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val primaryTextColor = context.getColor(R.color.widget_text_primary)
-        val secondaryTextColor = context.getColor(R.color.widget_text_secondary)
-
         val views = RemoteViews(context.packageName, R.layout.widget_item_course)
         views.setCharSequence(R.id.course_date, "setText", getHtmlSpanned(data.getString("date", "")))
-        views.setTextColor(R.id.course_date, secondaryTextColor)
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.course_date,
+            R.color.widget_text_secondary
+        )
 
         val cId = data.getString("id", "")
         val urgentCourseId = prefs.getString("urgent_course_id", "")
-        val redColor = Color.parseColor(if (isDarkMode) "#F87171" else "#EF4444")
-
         views.setCharSequence(R.id.course_name, "setText", getHtmlSpanned(data.getString("name", "")))
-        views.setTextColor(R.id.course_name, if (cId == urgentCourseId && urgentCourseId?.isNotEmpty() == true) redColor else primaryTextColor)
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.course_name,
+            if (cId == urgentCourseId && urgentCourseId?.isNotEmpty() == true) {
+                R.color.widget_due_overdue
+            } else {
+                R.color.widget_text_primary
+            }
+        )
 
         views.setTextViewText(R.id.course_time, data.getString("time", ""))
-        views.setTextColor(R.id.course_time, secondaryTextColor)
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.course_time,
+            R.color.widget_text_secondary
+        )
 
         views.setTextViewText(R.id.course_room, data.getString("room", ""))
-        views.setTextColor(R.id.course_room, secondaryTextColor)
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.course_room,
+            R.color.widget_text_secondary
+        )
 
         views.setOnClickFillInIntent(R.id.course_name, Intent())
         return views

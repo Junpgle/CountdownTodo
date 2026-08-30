@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import '../storage_service.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
 // ─────────────────────────────────────────────
@@ -515,16 +516,45 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
     return Scaffold(
+      extendBody: useFloatingBottomBar,
       backgroundColor: cs.surfaceContainerLowest,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
         title: const Text("详细统计",
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
+        flexibleSpace: const FloatingGlassTopBarBackground(),
       ),
+      bottomNavigationBar: useFloatingBottomBar
+          ? FloatingBottomNavigationBar(
+              items: const [
+                FloatingBottomNavigationItem(
+                  icon: Icons.today_outlined,
+                  label: '日',
+                ),
+                FloatingBottomNavigationItem(
+                  icon: Icons.date_range_outlined,
+                  label: '周',
+                ),
+                FloatingBottomNavigationItem(
+                  icon: Icons.calendar_month_outlined,
+                  label: '月',
+                ),
+              ],
+              selectedIndex: _currentRange.index,
+              onTabSelected: (index) {
+                final range = ScreenTimeRange.values[index];
+                setState(() {
+                  _currentRange = range;
+                  _selectedDate = _periodStart(_selectedDate, range);
+                });
+              },
+            )
+          : null,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Center(
@@ -668,7 +698,9 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _buildFilters(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4)),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          includeRange: !floatingBottomBarShouldFloat(context),
+        ),
         _buildHeroCard(selectedTotal, diff, datePrefix),
         Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -735,7 +767,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   // ─────────────────────────────────────────────
   // 过滤器
   // ─────────────────────────────────────────────
-  Widget _buildFilters({EdgeInsetsGeometry padding = EdgeInsets.zero}) {
+  Widget _buildRangeFilterRow({bool floating = false}) {
     final cs = Theme.of(context).colorScheme;
     Widget buildRangeChip(ScreenTimeRange range) {
       final selected = _currentRange == range;
@@ -758,13 +790,33 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           shape: const StadiumBorder(),
           showCheckmark: false,
           selectedColor: cs.primary,
-          backgroundColor: cs.surfaceContainerHighest,
+          backgroundColor: floating
+              ? cs.surface.withValues(alpha: 0)
+              : cs.surfaceContainerHighest,
           side: BorderSide(
-              color: selected ? cs.primary : cs.outlineVariant, width: 1),
+            color: selected
+                ? cs.primary
+                : (floating
+                    ? cs.onSurfaceVariant.withValues(alpha: 0.35)
+                    : cs.outlineVariant),
+            width: 1,
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 8),
         ),
       );
     }
+
+    return SizedBox(
+      height: 42,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: ScreenTimeRange.values.map(buildRangeChip).toList(),
+      ),
+    );
+  }
+
+  Widget _buildDeviceFilterRow() {
+    final cs = Theme.of(context).colorScheme;
 
     Widget buildDeviceChip(DeviceFilter filter) {
       final selected = _currentFilter == filter;
@@ -791,26 +843,29 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       );
     }
 
+    return SizedBox(
+      height: 42,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: DeviceFilter.values.map(buildDeviceChip).toList(),
+      ),
+    );
+  }
+
+  Widget _buildFilters({
+    EdgeInsetsGeometry padding = EdgeInsets.zero,
+    bool includeRange = true,
+  }) {
     return Padding(
       padding: padding,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(
-            height: 42,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: ScreenTimeRange.values.map(buildRangeChip).toList(),
-            ),
-          ),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 42,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: DeviceFilter.values.map(buildDeviceChip).toList(),
-            ),
-          ),
+          if (includeRange) ...[
+            _buildRangeFilterRow(),
+            const SizedBox(height: 6),
+          ],
+          _buildDeviceFilterRow(),
         ],
       ),
     );
@@ -1321,13 +1376,14 @@ class CategoryDetailScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: cs.surfaceContainerLowest,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
         title: Text(categoryName,
             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
+        flexibleSpace: const FloatingGlassTopBarBackground(),
       ),
       body: Center(
         child: ConstrainedBox(
@@ -1587,13 +1643,14 @@ class AppDetailScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: cs.surfaceContainerLowest,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
         title: const Text("应用详情",
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
+        flexibleSpace: const FloatingGlassTopBarBackground(),
       ),
       body: Center(
         child: ConstrainedBox(

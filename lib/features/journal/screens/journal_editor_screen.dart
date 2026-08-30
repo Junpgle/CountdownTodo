@@ -1,3 +1,4 @@
+import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
@@ -7,6 +8,7 @@ import '../services/journal_media_service.dart';
 import '../services/journal_picker.dart';
 import '../services/journal_picker_context.dart';
 import '../services/journal_storage.dart';
+import '../../../widgets/optional_liquid_glass_surface.dart';
 
 class JournalEditorScreen extends StatefulWidget {
   final String accountId;
@@ -323,7 +325,8 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
         if (await _confirmExit() && context.mounted) Navigator.pop(context);
       },
       child: Scaffold(
-        appBar: AppBar(
+        appBar: FloatingGlassAppBar(
+          flexibleSpace: const FloatingGlassTopBarBackground(),
           title: Text(_isEditing ? '编辑日记' : '写日记'),
           leading: IconButton(
             tooltip: '关闭',
@@ -371,34 +374,69 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  TextField(
-                    controller: _titleController,
-                    textCapitalization: TextCapitalization.sentences,
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
+                  OptionalLiquidGlassCard(
+                    borderRadius: 24,
+                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                    highContrast: true,
+                    tint: scheme.primary.withValues(alpha: 0.08),
+                    fallbackDecoration: BoxDecoration(
+                      color: scheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: scheme.outlineVariant.withValues(alpha: 0.55),
+                      ),
                     ),
-                    decoration: const InputDecoration(
-                      hintText: '给今天一个标题',
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextField(
+                          controller: _titleController,
+                          textCapitalization: TextCapitalization.sentences,
+                          style: theme.textTheme.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                          decoration: const InputDecoration(
+                            hintText: '给今天一个标题',
+                            filled: false,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            isCollapsed: true,
+                            contentPadding: EdgeInsets.symmetric(vertical: 4),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Divider(
+                          height: 1,
+                          thickness: 0.8,
+                          color: scheme.outlineVariant.withValues(alpha: 0.35),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _contentController,
+                          minLines: 8,
+                          maxLines: null,
+                          keyboardType: TextInputType.multiline,
+                          textCapitalization: TextCapitalization.sentences,
+                          style:
+                              theme.textTheme.bodyLarge?.copyWith(height: 1.65),
+                          decoration: const InputDecoration(
+                            hintText: '写下此刻想留下的东西……',
+                            filled: false,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            isCollapsed: true,
+                            contentPadding: EdgeInsets.symmetric(vertical: 4),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  TextField(
-                    controller: _contentController,
-                    minLines: 8,
-                    maxLines: null,
-                    keyboardType: TextInputType.multiline,
-                    textCapitalization: TextCapitalization.sentences,
-                    style: theme.textTheme.bodyLarge?.copyWith(height: 1.65),
-                    decoration: const InputDecoration(
-                      hintText: '写下此刻想留下的东西……',
-                      border: InputBorder.none,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  if (_attachments.isNotEmpty)
+                  if (_attachments.isNotEmpty) ...[
+                    const SizedBox(height: 16),
                     _AttachmentEditor(
                       attachments: _attachments,
                       onChanged: (value) => setState(() {
@@ -406,38 +444,46 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
                         _dirty = true;
                       }),
                     ),
+                  ],
                   const SizedBox(height: 24),
-                  Card(
-                    elevation: 0,
-                    color: scheme.surfaceContainerLow,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Row(
-                        children: [
-                          IconButton.filledTonal(
-                            tooltip: '从相册添加',
-                            onPressed: _isSaving ? null : _pickImages,
-                            icon: const Icon(Icons.photo_library_rounded),
-                          ),
-                          const SizedBox(width: 4),
-                          IconButton.filledTonal(
-                            tooltip: '拍照添加',
-                            onPressed: _isSaving ? null : _takePhoto,
-                            icon: const Icon(Icons.photo_camera_rounded),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              _attachments.isEmpty
-                                  ? '添加几张图片，让这段记忆更完整'
-                                  : '${_attachments.length}/9 张图片 · 长按可拖动排序',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                              ),
+                  OptionalLiquidGlassCard(
+                    borderRadius: 24,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    highContrast: true,
+                    tint: scheme.primary.withValues(alpha: 0.06),
+                    fallbackDecoration: BoxDecoration(
+                      color: scheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: scheme.outlineVariant.withValues(alpha: 0.55),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton.filledTonal(
+                          tooltip: '从相册添加',
+                          onPressed: _isSaving ? null : _pickImages,
+                          icon: const Icon(Icons.photo_library_rounded),
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton.filledTonal(
+                          tooltip: '拍照添加',
+                          onPressed: _isSaving ? null : _takePhoto,
+                          icon: const Icon(Icons.photo_camera_rounded),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _attachments.isEmpty
+                                ? '添加几张图片，让这段记忆更完整'
+                                : '${_attachments.length}/9 张图片 · 长按可拖动排序',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: scheme.onSurfaceVariant,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 12),

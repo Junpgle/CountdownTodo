@@ -79,13 +79,18 @@ class RecurrenceWidgetProvider : HomeWidgetProvider() {
         val selectedSeries = seriesCatalog.firstOrNull { it.seriesId == selectedSeriesId }
         val configureIntent = configurePendingIntent(context, appWidgetId)
 
-        views.setInt(
-            R.id.widget_bg_image,
-            "setColorFilter",
-            context.getColor(R.color.widget_bg)
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.widget_title,
+            R.color.widget_text_primary
         )
-        views.setTextColor(R.id.widget_title, context.getColor(R.color.widget_text_primary))
-        views.setTextColor(R.id.recurrence_configure, context.getColor(R.color.widget_text_accent))
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.recurrence_configure,
+            R.color.widget_text_accent
+        )
         views.setOnClickPendingIntent(R.id.recurrence_configure, configureIntent)
 
         if (selectedSeries == null) {
@@ -95,11 +100,11 @@ class RecurrenceWidgetProvider : HomeWidgetProvider() {
                 hadSelection = !selectedSeriesId.isNullOrBlank(),
                 hasCatalog = seriesCatalog.any { it.isActive }
             )
-            views.setOnClickPendingIntent(R.id.widget_root, configureIntent)
+            views.setOnClickPendingIntent(android.R.id.background, configureIntent)
         } else {
             showSeries(context, appWidgetManager, appWidgetId, views, selectedSeries)
             views.setOnClickPendingIntent(
-                R.id.widget_root,
+                android.R.id.background,
                 detailPendingIntent(context, appWidgetId, selectedSeries.seriesId)
             )
         }
@@ -127,13 +132,17 @@ class RecurrenceWidgetProvider : HomeWidgetProvider() {
             R.id.recurrence_empty_action,
             context.getString(R.string.widget_recurrence_tap_to_choose)
         )
-        views.setTextColor(
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
             R.id.recurrence_empty_message,
-            context.getColor(R.color.widget_text_secondary)
+            R.color.widget_text_secondary
         )
-        views.setTextColor(
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
             R.id.recurrence_empty_action,
-            context.getColor(R.color.widget_text_accent)
+            R.color.widget_text_accent
         )
     }
 
@@ -154,11 +163,36 @@ class RecurrenceWidgetProvider : HomeWidgetProvider() {
         views.setTextViewText(R.id.recurrence_status, presentation.statusText)
         views.setTextViewText(R.id.recurrence_schedule, presentation.scheduleText)
         views.setTextViewText(R.id.recurrence_summary, presentation.summaryText)
-        views.setTextColor(R.id.recurrence_pattern, context.getColor(R.color.widget_text_secondary))
-        views.setTextColor(R.id.recurrence_title, context.getColor(R.color.widget_text_primary))
-        views.setTextColor(R.id.recurrence_schedule, context.getColor(R.color.widget_text_secondary))
-        views.setTextColor(R.id.recurrence_summary, context.getColor(R.color.widget_text_secondary))
-        views.setTextColor(R.id.recurrence_status, stateColor(context, presentation.state))
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.recurrence_pattern,
+            R.color.widget_text_secondary
+        )
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.recurrence_title,
+            R.color.widget_text_primary
+        )
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.recurrence_schedule,
+            R.color.widget_text_secondary
+        )
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.recurrence_summary,
+            R.color.widget_text_secondary
+        )
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.recurrence_status,
+            stateColorResource(presentation.state)
+        )
 
         val contextText = presentation.contextText
         views.setViewVisibility(
@@ -167,9 +201,11 @@ class RecurrenceWidgetProvider : HomeWidgetProvider() {
         )
         if (contextText != null) {
             views.setTextViewText(R.id.recurrence_context, contextText)
-            views.setTextColor(
+            WidgetProviderSupport.setTextColor(
+                context,
+                views,
                 R.id.recurrence_context,
-                context.getColor(R.color.widget_text_secondary)
+                R.color.widget_text_secondary
             )
         }
 
@@ -211,26 +247,29 @@ class RecurrenceWidgetProvider : HomeWidgetProvider() {
                     item.symbol
                 }
                 views.setTextViewText(viewId, "$symbol\n${item.label}")
-                views.setTextColor(viewId, stateColor(context, item.state, item.isSelected))
+                WidgetProviderSupport.setTextColor(
+                    context,
+                    views,
+                    viewId,
+                    stateColorResource(item.state, item.isSelected)
+                )
             }
         }
     }
 
-    private fun stateColor(
-        context: Context,
+    private fun stateColorResource(
         state: RecurrenceWidgetOccurrenceState,
         isSelected: Boolean = true
     ): Int {
         return when (state) {
             RecurrenceWidgetOccurrenceState.COMPLETED ->
-                context.getColor(R.color.widget_recurrence_completed)
+                R.color.widget_recurrence_completed
             RecurrenceWidgetOccurrenceState.OVERDUE ->
-                context.getColor(R.color.widget_recurrence_overdue)
+                R.color.widget_recurrence_overdue
             RecurrenceWidgetOccurrenceState.CURRENT ->
-                context.getColor(R.color.widget_text_accent)
-            RecurrenceWidgetOccurrenceState.FUTURE -> context.getColor(
+                R.color.widget_text_accent
+            RecurrenceWidgetOccurrenceState.FUTURE ->
                 if (isSelected) R.color.widget_text_accent else R.color.widget_text_secondary
-            )
         }
     }
 

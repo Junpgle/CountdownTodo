@@ -19,6 +19,17 @@ class AppSystemUiStyle {
     SystemChrome.setSystemUIOverlayStyle(forBrightness(initialBrightness));
   }
 
+  /// 在系统重新配置应用窗口后恢复沉浸式系统栏。
+  ///
+  /// Android 自由窗切换不一定让 Activity 重新进入 resumed，部分系统会在
+  /// 这期间重置 decorFitsSystemWindows。restoreSystemUIOverlays 会让 Flutter
+  /// Android embedding 重新应用已缓存的 edge-to-edge 模式和当前栏样式。
+  static Future<void> restoreAfterWindowChange() async {
+    if (!AppPlatform.isAndroid) return;
+
+    await SystemChrome.restoreSystemUIOverlays();
+  }
+
   static SystemUiOverlayStyle forBrightness(Brightness backgroundBrightness) {
     final iconBrightness = backgroundBrightness == Brightness.dark
         ? Brightness.light

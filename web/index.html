@@ -84,6 +84,12 @@
       flex-direction: column;
       align-items: center;
     }
+    .loading-logo {
+      width: 96px;
+      height: 96px;
+      object-fit: contain;
+      margin-bottom: 2px;
+    }
     .loading-title {
       margin: 18px 0 0;
       font-size: 20px;
@@ -240,6 +246,7 @@
   <!-- Loading splash (removed by Flutter once first frame is ready) -->
   <div id="loading-indicator">
     <div class="loading-panel">
+      <img class="loading-logo" src="icons/Icon-192.png" alt="CountDownTodo">
       <div class="spinner" aria-hidden="true"></div>
       <h1 class="loading-title">CountDownTodo</h1>
       <p class="loading-text" id="loading-status">正在连接资源…</p>
@@ -570,7 +577,7 @@
     // ── Service Worker Registration ──────────────────────────
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {
-        navigator.serviceWorker.register('sw.js?v=20260701e', { scope: './' }).then(function (reg) {
+        navigator.serviceWorker.register('sw.js?v=20260826c', { scope: './' }).then(function (reg) {
           // Listen for updates and prompt user to reload.
           reg.addEventListener('updatefound', function () {
             var newWorker = reg.installing;
@@ -611,6 +618,6 @@
     });
   </script>
 
-  <script src="flutter_bootstrap.js?v=20260701e" async></script>
+  <script src="flutter_bootstrap.js?v=20260826c" async></script>
 </body>
 </html>

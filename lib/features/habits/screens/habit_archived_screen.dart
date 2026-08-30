@@ -1,3 +1,4 @@
+import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 
 import '../../../utils/page_transitions.dart';
@@ -68,7 +69,8 @@ class _HabitArchivedScreenState extends State<HabitArchivedScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('已归档习惯'),
       ),
       body: _loading

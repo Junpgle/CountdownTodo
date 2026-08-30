@@ -142,7 +142,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                     minLines: 1,
                   ),
                   const SizedBox(height: 12),
-                  SwitchListTile(
+                  LiquidGlassSwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text(
                       "某天内完成",
@@ -1394,7 +1394,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
       PageTransitions.material(
         builder: (context) => Scaffold(
           backgroundColor: Colors.black,
-          appBar: AppBar(
+          appBar: FloatingGlassAppBar(
+            flexibleSpace: const FloatingGlassTopBarBackground(),
             backgroundColor: Colors.black,
             foregroundColor: Colors.white,
             title: const Text("图片预览"),

@@ -1,18 +1,25 @@
 part of 'home_dashboard.dart';
 // ignore_for_file: annotate_overrides
 
+enum _HomeAddAction { todo, countdown, finance }
+
 mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
   Widget build(BuildContext context) {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     bool showWallpaper = !isDarkMode && _wallpaperShow && _wallpaperUrl != null;
     bool isLight = showWallpaper;
-    final bool isTablet = MediaQuery.of(context).size.width >= 768;
+    final double screenWidth = MediaQuery.sizeOf(context).width;
+    final bool isTablet = screenWidth >= 768;
+    final double drawerWidth = homeDrawerSlideWidthFor(
+      screenWidth: screenWidth,
+      isWide: isTablet,
+    );
     final double bottomSystemInset = MediaQuery.viewPaddingOf(context).bottom;
     final Brightness cardBackgroundBrightness =
         isDarkMode ? Brightness.dark : Brightness.light;
 
     final mainScreen = Scaffold(
-      extendBody: true,
+      extendBody: !isTablet,
       resizeToAvoidBottomInset: !_isSearchOpen, // 🚀 关键：搜索时锁定背景，防止位移卡顿
       backgroundColor: (showWallpaper && !AppPlatform.isWindows)
           ? Colors.transparent
@@ -73,101 +80,112 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
           SafeArea(
             // 仅避让顶部状态栏。列表需要继续绘制到 Android 手势导航区
             // 后方，末尾的滚动余量再保证卡片操作不会被底栏遮挡。
+            top: false,
             bottom: false,
-            child: Column(
-              children: [
-                _buildSemesterProgressBar(isLight),
+            child: FloatingGlassPinnedHeaderLayout(
+              initialHeaderExtent:
+                  (_selectedTabIndex != _homeFocusTabIndex || isTablet)
+                      ? 112.0
+                      : 0.0,
+              header: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildSemesterProgressBar(isLight),
 
-                if (_selectedTabIndex != 1 || isTablet)
-                  HomeAppBar(
-                    username: widget.username,
-                    timeSalutation: _timeSalutation,
-                    currentGreeting: _currentGreeting,
-                    textConfig: HomeTextConfig(
-                      customTimeSalutation:
-                          _homeTextConfig['customTimeSalutation'] as String?,
-                      dateFormat: _homeTextConfig['dateFormat'] as String?,
-                      usernameFormat:
-                          _homeTextConfig['usernameFormat'] as String?,
+                  if (_selectedTabIndex != _homeFocusTabIndex || isTablet)
+                    HomeAppBar(
+                      username: widget.username,
+                      timeSalutation: _timeSalutation,
+                      currentGreeting: _currentGreeting,
+                      textConfig: HomeTextConfig(
+                        customTimeSalutation:
+                            _homeTextConfig['customTimeSalutation'] as String?,
+                        dateFormat: _homeTextConfig['dateFormat'] as String?,
+                        usernameFormat:
+                            _homeTextConfig['usernameFormat'] as String?,
+                      ),
+                      isLight: isLight,
+                      isSyncing: _isSyncing,
+                      onSync: _showSyncOptionsDialog,
+                      onSearch: _showGlobalSearch,
+                      onAiAssistant: _openAiAssistantFromAppBar,
+                      searchKey: _searchButtonKey,
+                      syncKey: _syncButtonKey,
+                      teamsKey: _teamsButtonKey,
+                      aiKey: _aiButtonKey,
+                      settingsKey: _settingsButtonKey,
+                      menuKey: _menuKey,
+                      showMenuButton: true,
+                      courseKey: _courseButtonKey,
+                      showCourseButton: isTablet,
+                      teamPendingCount: _teamPendingCount, // 🚀 绑定计数
+                      hasTeamConflictDot: _hasTeamConflictDot,
+                      onTeams: () async {
+                        await PageTransitions.pushFromRect(
+                          context: context,
+                          page: TeamManagementScreen(username: widget.username),
+                          sourceKey: _teamsButtonKey,
+                        );
+                        final unreadBackgroundNotifications =
+                            await BackgroundNotificationService
+                                .getUnreadBackgroundNotifications();
+                        final notificationIds = unreadBackgroundNotifications
+                            .map((e) => e['id'])
+                            .whereType<num>()
+                            .map((e) => e.toInt())
+                            .toList();
+                        await ApiService.markNotificationsRead(notificationIds);
+                        await BackgroundNotificationService
+                            .clearUnreadBackgroundNotifications();
+                        await _fetchTeamPendingCount();
+                        _loadAllData(deferred: true);
+                      },
+                      onSettings: () async {
+                        await PageTransitions.pushFromRect(
+                          context: context,
+                          page: const SettingsPage(),
+                          sourceKey: _settingsButtonKey,
+                        );
+                        _loadSectionPreferences();
+                        _loadSemesterSettings();
+                        await _loadHomeTextConfig();
+                        _loadAllData(deferred: true);
+                      },
                     ),
-                    isLight: isLight,
-                    isSyncing: _isSyncing,
-                    onSync: _showSyncOptionsDialog,
-                    onSearch: _showGlobalSearch,
-                    onAiAssistant: _openAiAssistantFromAppBar,
-                    searchKey: _searchButtonKey,
-                    syncKey: _syncButtonKey,
-                    teamsKey: _teamsButtonKey,
-                    aiKey: _aiButtonKey,
-                    settingsKey: _settingsButtonKey,
-                    menuKey: _menuKey,
-                    courseKey: _courseButtonKey,
-                    showCourseButton: isTablet,
-                    teamPendingCount: _teamPendingCount, // 🚀 绑定计数
-                    hasTeamConflictDot: _hasTeamConflictDot,
-                    onTeams: () async {
-                      await PageTransitions.pushFromRect(
-                        context: context,
-                        page: TeamManagementScreen(username: widget.username),
-                        sourceKey: _teamsButtonKey,
-                      );
-                      final unreadBackgroundNotifications =
-                          await BackgroundNotificationService
-                              .getUnreadBackgroundNotifications();
-                      final notificationIds = unreadBackgroundNotifications
-                          .map((e) => e['id'])
-                          .whereType<num>()
-                          .map((e) => e.toInt())
-                          .toList();
-                      await ApiService.markNotificationsRead(notificationIds);
-                      await BackgroundNotificationService
-                          .clearUnreadBackgroundNotifications();
-                      await _fetchTeamPendingCount();
-                      _loadAllData(deferred: true);
-                    },
-                    onSettings: () async {
-                      await PageTransitions.pushFromRect(
-                        context: context,
-                        page: const SettingsPage(),
-                        sourceKey: _settingsButtonKey,
-                      );
-                      _loadSectionPreferences();
-                      _loadSemesterSettings();
-                      await _loadHomeTextConfig();
-                      _loadAllData(deferred: true);
-                    },
-                  ),
 
-                // 🚀 Uni-Sync 4.0: 全局链路诊断横幅
-                if (_selectedTabIndex != 1 || isTablet)
-                  SyncStatusBanner(
-                    onDiagnosticRequested: _showLinkDiagnostics,
-                  ),
+                  // 🚀 Uni-Sync 4.0: 全局链路诊断横幅
+                  if (_selectedTabIndex != _homeFocusTabIndex || isTablet)
+                    SyncStatusBanner(
+                      onDiagnosticRequested: _showLinkDiagnostics,
+                    ),
 
-                // DEBUG: 检查状态
-                // if (_activeAnnouncement != null) Text("DEBUG: Announcement exists: ${_activeAnnouncement!.title}"),
+                  // DEBUG: 检查状态
+                  // if (_activeAnnouncement != null) Text("DEBUG: Announcement exists: ${_activeAnnouncement!.title}"),
 
-                // 🚀 Uni-Sync 4.0: 团队置顶公告
-                if (_activeAnnouncement != null &&
-                    (_selectedTabIndex != 1 || isTablet))
-                  StickyAnnouncementBanner(
-                    announcement: _activeAnnouncement!,
-                    onAcknowledge: () async {
-                      final uuid = _activeAnnouncement!.uuid;
-                      setState(() => _activeAnnouncement = null);
-                      await ApiService.markAnnouncementAsRead(uuid);
-                    },
-                  ),
+                  // 🚀 Uni-Sync 4.0: 团队置顶公告
+                  if (_activeAnnouncement != null &&
+                      (_selectedTabIndex != _homeFocusTabIndex || isTablet))
+                    StickyAnnouncementBanner(
+                      announcement: _activeAnnouncement!,
+                      onAcknowledge: () async {
+                        final uuid = _activeAnnouncement!.uuid;
+                        setState(() => _activeAnnouncement = null);
+                        await ApiService.markAnnouncementAsRead(uuid);
+                      },
+                    ),
 
-                if (_isThirtyDayChallengeActive &&
-                    (_selectedTabIndex != 1 || isTablet))
-                  _buildChallengeParticipationBanner(isLight),
+                  if (_isThirtyDayChallengeActive &&
+                      (_selectedTabIndex != _homeFocusTabIndex || isTablet))
+                    _buildChallengeParticipationBanner(isLight),
 
-                // 待确认事项入口卡片（从图片识别来）
-                _buildPendingTodoConfirmCard(isLight),
-
-                Expanded(
-                  child: ValueListenableBuilder<bool>(
+                  // 待确认事项入口卡片（从图片识别来）
+                  _buildPendingTodoConfirmCard(isLight),
+                ],
+              ),
+              bodyBuilder: (context, headerExtent) => Stack(
+                fit: StackFit.expand,
+                children: [
+                  ValueListenableBuilder<bool>(
                     valueListenable: _isGlobalLoadingNotifier,
                     builder: (context, isLoading, child) {
                       // 🚀 核心优化：只有当数据完全为空且正在加载时才显示骨架屏，避免背景刷新时的闪烁
@@ -178,7 +196,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                   (_dashboardCourseData['courses'] as List? ??
                                           [])
                                       .isEmpty)
-                              ? _buildDashboardSkeleton(isLight)
+                              ? _buildDashboardSkeleton(
+                                  isLight,
+                                  topPadding: headerExtent + 16,
+                                )
                               : LayoutBuilder(
                                   builder: (context, constraints) {
                                     // ... (rest of section definitions)
@@ -465,6 +486,28 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                         },
                                       ),
                                     );
+                                    Widget financeSection = RepaintBoundary(
+                                      child: KeyedSubtree(
+                                        key: _financeCardKey,
+                                        child: FinanceTodaySection(
+                                          username: widget.username,
+                                          isLight: isLight,
+                                          onTap: () async {
+                                            await PageTransitions.pushFromRect(
+                                              context: context,
+                                              page: FinanceHomeScreen(
+                                                username: widget.username,
+                                              ),
+                                              sourceKey: _financeCardKey,
+                                              placeholderIcon: Icons
+                                                  .account_balance_wallet_outlined,
+                                              sourceBorderRadius:
+                                                  BorderRadius.circular(24),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    );
 
                                     Map<String, Widget> sectionsMap = {
                                       'banners': AnimatedBuilder(
@@ -485,6 +528,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       'math': mathSection,
                                       'pomodoro': pomodoroSection,
                                       'timeline': timelineSection,
+                                      'finance': financeSection,
                                       'habits': RepaintBoundary(
                                         child: KeyedSubtree(
                                           key: _habitsCardKey,
@@ -616,8 +660,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               .map(buildScrollableSection)
                                               .toList();
 
-                                      final showFocusTab =
-                                          _selectedTabIndex == 2;
+                                      final showFocusTab = _selectedTabIndex ==
+                                          _homeFocusTabIndex;
                                       final activeWidgets = showFocusTab
                                           ? tab3Widgets
                                           : tab1Widgets;
@@ -671,10 +715,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                     ? 'home-focus-sections'
                                                     : 'home-main-sections',
                                               ),
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 16,
-                                                vertical: 16,
+                                              padding: EdgeInsets.fromLTRB(
+                                                16,
+                                                headerExtent + 16,
+                                                16,
+                                                16,
                                               ),
                                               itemCount: activeWidgets.length +
                                                   (hasCopyright ? 1 : 0) +
@@ -755,7 +800,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       child: SingleChildScrollView(
                                         padding: EdgeInsets.fromLTRB(
                                           isTablet ? 32 : 16,
-                                          16,
+                                          headerExtent + 16,
                                           isTablet ? 32 : 16,
                                           16 + bottomSystemInset,
                                         ),
@@ -820,52 +865,32 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                     );
                                   },
                                 ),
-                          // 🚀 移动端底部悬浮胶囊底栏 (始终显示，不受加载状态影响)
-                          if (!isTablet)
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              child: _buildCustomBottomBar(isDarkMode, isLight),
-                            ),
                         ],
                       );
                     },
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
       ),
-      bottomNavigationBar: null,
-      // 专注页的卡片自身带有「开始专注/查看记录」按钮，悬浮按钮会覆盖
-      // 这些操作，因此仅在首页显示浮动入口。
-      floatingActionButton: (!isTablet && _selectedTabIndex == 2)
-          ? null
-          : Column(
+      // Scaffold 的底部槽位负责悬浮层的布局，避免自绘 Positioned 把
+      // 底栏锁在内容 Stack 内并遮挡最后一张卡片。
+      bottomNavigationBar:
+          !isTablet ? _buildCustomBottomBar(isDarkMode, isLight) : null,
+      // 手机端的新增与番茄钟入口已收进底栏，避免首页右下角堆叠多个悬浮按钮。
+      // 平板保留原有快捷入口，因为平板布局不显示手机底栏。
+      floatingActionButton: isTablet
+          ? Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 HomeQuickActionButton.compact(
-                  key: _fabPomodoroKey,
+                  key: _homePomodoroActionKey,
                   heroTag: 'fab_pomodoro',
-                  onPressed: () async {
-                    await PageTransitions.pushFromRect(
-                      context: context,
-                      page: PomodoroScreen(username: widget.username),
-                      sourceKey: _fabPomodoroKey,
-                      placeholderBuilder: (_) => const Text(
-                        '🍅',
-                        style: TextStyle(fontSize: 30),
-                      ),
-                      sourceBorderRadius:
-                          const BorderRadius.all(Radius.circular(16)),
-                    );
-                    if (mounted) {
-                      _pomodoroRevision.value++;
-                      _timelineRevision.value++;
-                    }
+                  onPressed: () {
+                    _openHomePomodoro(sourceKey: _homePomodoroActionKey);
                   },
                   tooltip: '番茄钟',
                   tint: Theme.of(context).colorScheme.primary,
@@ -874,90 +899,25 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                   child: const Text('🍅', style: TextStyle(fontSize: 18)),
                 ),
                 const SizedBox(height: 8),
+                HomeQuickActionButton.compact(
+                  key: _homeFinanceActionKey,
+                  heroTag: 'fab_finance',
+                  onPressed: () {
+                    _openHomeFinanceQuickEntry();
+                  },
+                  tooltip: '记一笔',
+                  tint: Theme.of(context).colorScheme.secondary,
+                  foregroundColor: Theme.of(context).colorScheme.secondary,
+                  isDark: isDarkMode,
+                  child: const Icon(Icons.add_card_outlined, size: 20),
+                ),
+                const SizedBox(height: 8),
                 HomeQuickActionButton.extended(
-                  key: _fabTodoKey,
+                  key: _homeAddActionKey,
                   heroTag: 'fab_todo',
-                  onPressed: () => PageTransitions.pushFromRect(
-                    context: context,
-                    page: AddTodoScreen(
-                      todoGroups: _todoGroups,
-                      initialTeamUuid: _currentSelectedTeamUuid,
-                      initialTeamName: _currentSelectedTeamName,
-                      onFixedScheduleAdded: (item) async {
-                        await StorageService.saveFixedSchedules(
-                          widget.username,
-                          [item],
-                        );
-                        if (mounted) {
-                          _scheduleRevision.value++;
-                          _timelineRevision.value++;
-                          await _loadAllData(
-                            deferred: true,
-                            domains: const {DataRefreshDomain.fixedSchedules},
-                          );
-                        }
-                      },
-                      onTodoAdded: (todo) async {
-                        final allTodos =
-                            await StorageService.getTodos(widget.username);
-                        allTodos.add(todo);
-                        await StorageService.saveTodos(
-                            widget.username, allTodos);
-                        if (todo.teamUuid != null) {
-                          PomodoroSyncService.instance
-                              .sendTeamUpdateSignal(todo.teamUuid!);
-                        }
-                        await _saveTodosToSharedFile(allTodos);
-                        FloatWindowService.triggerReminderCheck();
-                        FloatWindowService.invalidateSlotCache();
-                        _syncTodoNotification();
-                        _rescheduleAlarms();
-                        await WidgetService.updateTodoWidget(allTodos);
-                        if (mounted) {
-                          await _loadAllData(
-                            deferred: true,
-                            domains: const {DataRefreshDomain.todos},
-                          );
-                        }
-                      },
-                      onTodosBatchAdded: (todos) async {
-                        final allTodos =
-                            await StorageService.getTodos(widget.username);
-                        allTodos.addAll(todos);
-                        await StorageService.saveTodos(
-                            widget.username, allTodos);
-                        final updatedTeamUuid = todos
-                            .firstWhere((t) => t.teamUuid != null,
-                                orElse: () => todos.first)
-                            .teamUuid;
-                        if (updatedTeamUuid != null) {
-                          PomodoroSyncService.instance
-                              .sendTeamUpdateSignal(updatedTeamUuid);
-                        }
-                        await _saveTodosToSharedFile(allTodos);
-                        FloatWindowService.triggerReminderCheck();
-                        FloatWindowService.invalidateSlotCache();
-                        _syncTodoNotification();
-                        _rescheduleAlarms();
-                        await WidgetService.updateTodoWidget(allTodos);
-                        if (mounted) {
-                          await _loadAllData(
-                            deferred: true,
-                            domains: const {DataRefreshDomain.todos},
-                          );
-                        }
-                      },
-                      onLLMResultsParsed:
-                          (results, imagePath, originalText, tUuid, tName) {
-                        Navigator.pop(context);
-                        _navigateToTodoConfirm(
-                            results, imagePath, originalText, tUuid, tName);
-                      },
-                    ),
-                    sourceKey: _fabTodoKey,
-                    sourceBorderRadius:
-                        const BorderRadius.all(Radius.circular(16)),
-                  ),
+                  onPressed: () {
+                    _openHomeTodo(sourceKey: _homeAddActionKey);
+                  },
                   tooltip: '记待办',
                   tint: Theme.of(context).colorScheme.primary,
                   foregroundColor: Theme.of(context).colorScheme.primary,
@@ -965,18 +925,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                   icon: const Icon(Icons.add_task),
                   label: const Text("记待办"),
                 ),
-                const SizedBox(height: 100), // 避开底部的悬浮导航栏
+                const SizedBox(height: 100), // 避开平板页面的悬浮导航栏
               ],
-            ),
+            )
+          : null,
     );
-
-    if (isTablet) {
-      return AppSystemUiRegion(
-        backgroundBrightness:
-            showWallpaper || isDarkMode ? Brightness.dark : Brightness.light,
-        child: mainScreen,
-      );
-    }
 
     return ZoomDrawer(
       menuScreen: HomeDrawerMenu(
@@ -1042,6 +995,17 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             _loadAllData(deferred: true);
           });
         },
+        onFinance: () {
+          Future.delayed(const Duration(milliseconds: 300), () async {
+            if (!context.mounted) return;
+            await PageTransitions.pushFromRect(
+              context: context,
+              page: FinanceHomeScreen(username: widget.username),
+              sourceKey: _financeCardKey,
+              placeholderIcon: Icons.account_balance_wallet_outlined,
+            );
+          });
+        },
         teamPendingCount: _teamPendingCount,
         hasTeamConflictDot: _hasTeamConflictDot,
         onTimeline: () {
@@ -1052,6 +1016,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
               page: PersonalTimelineScreen(username: widget.username),
               sourceKey: _timelineCardKey,
               placeholderIcon: Icons.timeline_rounded,
+              sourceColor: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.black
+                  : Colors.white,
             );
           });
         },
@@ -1147,7 +1114,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       showShadow: true,
       angle: 0.0,
       drawerShadowsBackgroundColor: Colors.grey.shade300,
-      slideWidth: MediaQuery.of(context).size.width * 0.72,
+      menuScreenWidth: isTablet ? drawerWidth : null,
+      slideWidth: drawerWidth,
     );
   }
 
@@ -1249,6 +1217,253 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     return 'jpg';
   }
 
+  Future<void> _openHomePomodoro({required GlobalKey sourceKey}) async {
+    await PageTransitions.pushFromRect(
+      context: context,
+      page: PomodoroScreen(username: widget.username),
+      sourceKey: sourceKey,
+      placeholderIcon: Icons.timer_outlined,
+      sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
+    );
+    if (mounted) {
+      _pomodoroRevision.value++;
+      _timelineRevision.value++;
+    }
+  }
+
+  Future<void> _openHomeFinanceQuickEntry() async {
+    await Navigator.of(context).push<FinanceTransaction>(
+      PageTransitions.slideHorizontal(
+        const FinanceEntryScreen(),
+      ),
+    );
+  }
+
+  Future<void> _openHomeTodo({required GlobalKey sourceKey}) async {
+    await PageTransitions.pushFromRect(
+      context: context,
+      page: AddTodoScreen(
+        todoGroups: _todoGroups,
+        initialTeamUuid: _currentSelectedTeamUuid,
+        initialTeamName: _currentSelectedTeamName,
+        onFixedScheduleAdded: (item) async {
+          await StorageService.saveFixedSchedules(
+            widget.username,
+            [item],
+          );
+          if (mounted) {
+            _scheduleRevision.value++;
+            _timelineRevision.value++;
+            await _loadAllData(
+              deferred: true,
+              domains: const {DataRefreshDomain.fixedSchedules},
+            );
+          }
+        },
+        onTodoAdded: (todo) async {
+          final allTodos = await StorageService.getTodos(widget.username);
+          allTodos.add(todo);
+          await StorageService.saveTodos(widget.username, allTodos);
+          if (todo.teamUuid != null) {
+            PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid!);
+          }
+          await _saveTodosToSharedFile(allTodos);
+          FloatWindowService.triggerReminderCheck();
+          FloatWindowService.invalidateSlotCache();
+          _syncTodoNotification();
+          _rescheduleAlarms();
+          await WidgetService.updateTodoWidget(allTodos);
+          if (mounted) {
+            await _loadAllData(
+              deferred: true,
+              domains: const {DataRefreshDomain.todos},
+            );
+          }
+        },
+        onTodosBatchAdded: (todos) async {
+          final allTodos = await StorageService.getTodos(widget.username);
+          allTodos.addAll(todos);
+          await StorageService.saveTodos(widget.username, allTodos);
+          final updatedTeamUuid = todos
+              .firstWhere((t) => t.teamUuid != null, orElse: () => todos.first)
+              .teamUuid;
+          if (updatedTeamUuid != null) {
+            PomodoroSyncService.instance.sendTeamUpdateSignal(updatedTeamUuid);
+          }
+          await _saveTodosToSharedFile(allTodos);
+          FloatWindowService.triggerReminderCheck();
+          FloatWindowService.invalidateSlotCache();
+          _syncTodoNotification();
+          _rescheduleAlarms();
+          await WidgetService.updateTodoWidget(allTodos);
+          if (mounted) {
+            await _loadAllData(
+              deferred: true,
+              domains: const {DataRefreshDomain.todos},
+            );
+          }
+        },
+        onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
+          Navigator.pop(context);
+          _navigateToTodoConfirm(
+              results, imagePath, originalText, tUuid, tName);
+        },
+      ),
+      sourceKey: sourceKey,
+      sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
+    );
+  }
+
+  Future<void> _openHomeAddCountdown() {
+    return showCountdownEditorDialog(
+      context: context,
+      username: widget.username,
+      countdowns: _countdowns,
+      onDataChanged: () {
+        _loadAllData(
+          domains: const {DataRefreshDomain.countdowns},
+        );
+        _timelineRevision.value++;
+      },
+    );
+  }
+
+  Widget _buildHomeAddOption(
+    BuildContext context, {
+    required Key key,
+    required _HomeAddAction action,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.42),
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        key: key,
+        onTap: () => Navigator.of(context).pop(action),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  shape: BoxShape.circle,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Icon(
+                    icon,
+                    color: colorScheme.onPrimaryContainer,
+                    size: 24,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openHomeAddMenu() async {
+    final action = await showModalBottomSheet<_HomeAddAction>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: Text(
+                '新增',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+            ),
+            SizedBox(
+              height: 132,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: _buildHomeAddOption(
+                      context,
+                      key: const ValueKey<String>('home-add-todo'),
+                      action: _HomeAddAction.todo,
+                      icon: Icons.add_task_rounded,
+                      title: '待办',
+                      subtitle: '记录任务',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildHomeAddOption(
+                      context,
+                      key: const ValueKey<String>('home-add-countdown'),
+                      action: _HomeAddAction.countdown,
+                      icon: Icons.timer_rounded,
+                      title: '倒计时',
+                      subtitle: '设定目标日',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildHomeAddOption(
+                      context,
+                      key: const ValueKey<String>('home-add-finance'),
+                      action: _HomeAddAction.finance,
+                      icon: Icons.account_balance_wallet_outlined,
+                      title: '记账',
+                      subtitle: '收入或支出',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+
+    switch (action) {
+      case _HomeAddAction.todo:
+        await _openHomeTodo(sourceKey: _homeAddActionKey);
+      case _HomeAddAction.countdown:
+        await _openHomeAddCountdown();
+      case _HomeAddAction.finance:
+        await _openHomeFinanceQuickEntry();
+    }
+  }
+
   Widget _buildCustomBottomBar(bool isDarkMode, bool isLight) {
     final colorScheme = Theme.of(context).colorScheme;
     final Color primaryColor = homeBottomBarPrimaryColor(
@@ -1260,73 +1475,19 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         ? colorScheme.scrim.withValues(alpha: 0.86)
         : colorScheme.onSurfaceVariant;
     final double bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
-    final selectedBackgroundColor = colorScheme.surfaceContainerHighest
-        .withValues(alpha: isDarkMode ? 0.62 : 0.72);
-    final navContent = HomeBottomNavigationContent(
-      selectedIndex: _selectedTabIndex,
+    // The reference rests as a neutral frosted capsule. Keep only a trace of
+    // the action color here; the icon and label carry the strong selection.
+    final selectedBackgroundColor = homeBottomBarSelectedBackgroundColor(
+      colorScheme: colorScheme,
       primaryColor: primaryColor,
-      inactiveColor: inactiveColor,
-      selectedBackgroundColor: selectedBackgroundColor,
-      calendarButtonKey: _courseCenterKey,
-      onTabSelected: (index) {
-        setState(() => _selectedTabIndex = index);
-        if (index == 2) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _checkFocusTabCoachMarks();
-          });
-        }
-      },
-      onCalendarPressed: () {
-        PageTransitions.pushFromRect(
-          context: context,
-          page: WeeklyCourseScreen(username: widget.username),
-          sourceKey: _courseCenterKey,
-        );
-      },
+      isDark: isDarkMode,
     );
 
     final double height =
         60.0 + (bottomPadding > 0 ? bottomPadding * 0.5 : 6.0);
-    final horizontalMargin =
-        homeBottomBarHorizontalMarginFor(MediaQuery.sizeOf(context).width);
-    final margin = EdgeInsets.fromLTRB(
-      horizontalMargin,
-      0,
-      horizontalMargin,
-      24,
-    );
-    final fallback = Container(
-      height: height,
-      margin: margin,
-      decoration: BoxDecoration(
-        color: isDarkMode
-            ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.78)
-            : colorScheme.surface.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(34),
-        border: Border.all(
-          color: colorScheme.outlineVariant
-              .withValues(alpha: isDarkMode ? 0.42 : 0.54),
-          width: 0.8,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: colorScheme.shadow.withValues(alpha: 0.12),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(34),
-        // BackdropFilter 会让整块壁纸进入离屏模糊，在 Android 上很容易造成
-        // Raster Jank。Android 保留半透明底色，其他平台继续使用毛玻璃效果。
-        child: AppPlatform.isAndroid
-            ? navContent
-            : BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                child: navContent,
-              ),
-      ),
+    final margin = floatingBottomNavigationMarginFor(
+      context,
+      itemCount: 5,
     );
 
     final glassTint = Color.alphaBlend(
@@ -1334,14 +1495,39 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       colorScheme.surface,
     ).withValues(alpha: isDarkMode ? 0.24 : 0.32);
 
-    return OptionalLiquidGlassSurface(
+    return _HomeDashboardBottomBar(
+      selectedIndex: _selectedTabIndex,
+      primaryColor: primaryColor,
+      inactiveColor: inactiveColor,
+      selectedBackgroundColor: selectedBackgroundColor,
+      weeklyButtonKey: _courseCenterKey,
+      addButtonKey: _homeAddActionKey,
+      pomodoroButtonKey: _homePomodoroActionKey,
       height: height,
       margin: margin,
-      borderRadius: 34,
-      tint: glassTint,
-      isDark: isDarkMode,
-      fallback: fallback,
-      child: navContent,
+      isDarkMode: isDarkMode,
+      glassTint: glassTint,
+      onTabSelected: (index) {
+        setState(() => _selectedTabIndex = index);
+        if (index == _homeFocusTabIndex) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _checkFocusTabCoachMarks();
+          });
+        }
+      },
+      onWeeklyPressed: () {
+        PageTransitions.pushFromRect(
+          context: context,
+          page: WeeklyCourseScreen(username: widget.username),
+          sourceKey: _courseCenterKey,
+        );
+      },
+      onAddPressed: () {
+        _openHomeAddMenu();
+      },
+      onPomodoroPressed: () {
+        _openHomePomodoro(sourceKey: _homePomodoroActionKey);
+      },
     );
   }
 
@@ -1425,12 +1611,15 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     return _isDeepValueEqual(a, b);
   }
 
-  Widget _buildDashboardSkeleton(bool isLight) {
+  Widget _buildDashboardSkeleton(
+    bool isLight, {
+    double topPadding = 16,
+  }) {
     final baseColor =
         isLight ? Colors.white.withValues(alpha: 0.3) : Colors.grey[800]!;
     return SingleChildScrollView(
       physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 16),
       child: Column(
         children: [
           _buildSkeletonCard(baseColor, height: 120),
@@ -1451,6 +1640,105 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         color: color,
         borderRadius: BorderRadius.circular(16),
       ),
+    );
+  }
+}
+
+class _HomeDashboardBottomBar extends StatelessWidget {
+  const _HomeDashboardBottomBar({
+    required this.selectedIndex,
+    required this.primaryColor,
+    required this.inactiveColor,
+    required this.selectedBackgroundColor,
+    required this.weeklyButtonKey,
+    required this.addButtonKey,
+    required this.pomodoroButtonKey,
+    required this.onTabSelected,
+    required this.onWeeklyPressed,
+    required this.onAddPressed,
+    required this.onPomodoroPressed,
+    required this.height,
+    required this.margin,
+    required this.isDarkMode,
+    required this.glassTint,
+  });
+
+  final int selectedIndex;
+  final Color primaryColor;
+  final Color inactiveColor;
+  final Color selectedBackgroundColor;
+  final Key weeklyButtonKey;
+  final Key addButtonKey;
+  final Key pomodoroButtonKey;
+  final ValueChanged<int> onTabSelected;
+  final VoidCallback onWeeklyPressed;
+  final VoidCallback onAddPressed;
+  final VoidCallback onPomodoroPressed;
+  final double height;
+  final EdgeInsets margin;
+  final bool isDarkMode;
+  final Color glassTint;
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingBottomNavigationBar(
+      items: [
+        const FloatingBottomNavigationItem(
+          icon: Icons.dashboard_rounded,
+          label: '首页',
+        ),
+        FloatingBottomNavigationItem(
+          key: weeklyButtonKey,
+          label: '周视图',
+          icon: Icons.calendar_today_rounded,
+          selectable: false,
+          onPressed: onWeeklyPressed,
+          semanticsLabel: '周视图',
+        ),
+        FloatingBottomNavigationItem(
+          label: '新增',
+          selectable: false,
+          onPressed: onAddPressed,
+          builder: (context, selectedLayer, interactive) => Center(
+            child: HomeBottomNavigationActionButton(
+              buttonKey: selectedLayer ? null : addButtonKey,
+              primaryColor: primaryColor,
+              interactive: interactive,
+              onPressed: onAddPressed,
+              semanticsLabel: '新增',
+              child: Icon(
+                Icons.add_rounded,
+                color: Theme.of(context).colorScheme.onPrimary,
+                size: 28,
+              ),
+            ),
+          ),
+        ),
+        FloatingBottomNavigationItem(
+          key: pomodoroButtonKey,
+          label: '番茄钟',
+          iconWidget: const Text('🍅', style: TextStyle(fontSize: 20)),
+          selectable: false,
+          onPressed: onPomodoroPressed,
+          semanticsLabel: '番茄钟',
+        ),
+        const FloatingBottomNavigationItem(
+          icon: Icons.adjust_rounded,
+          label: '专注',
+        ),
+      ],
+      selectedIndex: selectedIndex,
+      primaryColor: primaryColor,
+      inactiveColor: inactiveColor,
+      selectedBackgroundColor: selectedBackgroundColor,
+      onTabSelected: onTabSelected,
+      height: height,
+      margin: margin,
+      tint: glassTint,
+      haloColor: primaryColor,
+      isDark: isDarkMode,
+      mobilePortraitOnly: false,
+      keyPrefix: 'home-bottom',
     );
   }
 }

@@ -1,3 +1,4 @@
+import '../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
@@ -287,7 +288,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('待办深度清理'),
         actions: [
           IconButton(

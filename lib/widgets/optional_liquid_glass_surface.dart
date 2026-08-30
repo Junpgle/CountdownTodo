@@ -383,6 +383,11 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
     required this.borderRadius,
     required this.tint,
     required this.isDark,
+    this.haloColor,
+    this.haloOpacity,
+    this.backerOpacity,
+    this.useTopBarGlass = false,
+    this.allowChildOverflow = false,
   });
 
   final Widget child;
@@ -392,6 +397,26 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
   final double borderRadius;
   final Color tint;
   final bool isDark;
+  final Color? haloColor;
+
+  /// Scales the outer colored halo without changing the glass fill. Top-bar
+  /// controls use a restrained value so their material follows the page
+  /// surface instead of leaving a detached shadow stain behind.
+  final double? haloOpacity;
+
+  /// Optional opacity for the neutral pad behind the glass. Small controls
+  /// can use a lighter pad so the backdrop remains visible through the lens.
+  final double? backerOpacity;
+
+  /// Uses the low-distortion, page-derived liquid-glass recipe reserved for
+  /// small top-bar controls. It still renders through [GlassContainer]; this
+  /// only changes the shader settings so a small lens does not become a gray
+  /// disk over dark text.
+  final bool useTopBarGlass;
+
+  /// Paints [child] above the clipped glass shell so elevated controls can
+  /// extend beyond the surface without losing their shadow or refraction rim.
+  final bool allowChildOverflow;
 
   @override
   Widget build(BuildContext context) {
@@ -400,6 +425,21 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
       builder: (context, configuration, _) {
         if (!configuration.enabled) return fallback;
         final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
+
+        if (useTopBarGlass) {
+          return _TopBarLiquidGlassSurface(
+            height: height,
+            margin: margin,
+            borderRadius: borderRadius,
+            tint: tint,
+            haloColor: haloColor,
+            haloOpacity: haloOpacity,
+            isDark: isDark,
+            backerOpacity: backerOpacity,
+            allowChildOverflow: allowChildOverflow,
+            child: child,
+          );
+        }
 
         // One consistent frosted-glass treatment: a single live backdrop blur
         // samples the moving backdrop every frame without the premium
@@ -411,7 +451,11 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
             margin: margin,
             borderRadius: borderRadius,
             tint: tint,
+            haloColor: haloColor,
+            haloOpacity: haloOpacity,
             isDark: isDark,
+            backerOpacity: backerOpacity,
+            allowChildOverflow: allowChildOverflow,
             child: child,
           );
         }
@@ -421,38 +465,160 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
         // ancestor route FadeTransition cannot distribute opacity into the
         // runtime shader, which trips Impeller's SetInheritedOpacity
         // validation and can render the transition with the wrong alpha.
+        final glassShell = GlassContainer(
+          height: height,
+          shape: LiquidRoundedSuperellipse(borderRadius: borderRadius),
+          settings: LiquidGlassSettings(
+            glassColor: tint,
+            thickness: 20,
+            blur: 12,
+            chromaticAberration: 0.006,
+            lightIntensity: isDark ? 0.62 : 0.48,
+            ambientStrength: isDark ? 0.18 : 0.1,
+            fresnelStrength: 0.85,
+            refractiveIndex: 1.14,
+            saturation: 0.95,
+            shadowElevation: 1.0,
+            // Keep the refraction, but place a stronger neutral pad behind it
+            // so busy wallpapers cannot compete with tab labels/icons.
+            backerColor: tint.withValues(
+              alpha: (backerOpacity ??
+                      liquidGlassSurfaceBackerOpacityFor(
+                        configuration.mode,
+                        isDark: isDark,
+                      ))
+                  .clamp(0.0, 1.0)
+                  .toDouble(),
+            ),
+          ),
+          useOwnLayer: true,
+          quality: liquidGlassSurfaceQualityFor(configuration.mode),
+          clipBehavior: Clip.antiAlias,
+          child: allowChildOverflow ? const SizedBox.expand() : child,
+        );
+
         return RepaintBoundary(
-          child: GlassContainer(
+          child: Container(
             height: height,
             margin: margin,
-            shape: LiquidRoundedSuperellipse(borderRadius: borderRadius),
-            settings: LiquidGlassSettings(
-              glassColor: tint,
-              thickness: 20,
-              blur: 12,
-              chromaticAberration: 0.006,
-              lightIntensity: isDark ? 0.62 : 0.48,
-              ambientStrength: isDark ? 0.18 : 0.1,
-              fresnelStrength: 0.85,
-              refractiveIndex: 1.14,
-              saturation: 0.95,
-              shadowElevation: 1.0,
-              // Keep the refraction, but place a stronger neutral pad behind
-              // it so busy wallpapers cannot compete with tab labels/icons.
-              backerColor: tint.withValues(
-                alpha: liquidGlassSurfaceBackerOpacityFor(
-                  configuration.mode,
-                  isDark: isDark,
-                ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(borderRadius),
+              boxShadow: _surfaceHaloShadows(
+                haloColor: haloColor ?? tint,
+                shadowColor: Theme.of(context).colorScheme.shadow,
+                isDark: isDark,
+                haloOpacity: haloOpacity,
               ),
             ),
-            useOwnLayer: true,
-            quality: liquidGlassSurfaceQualityFor(configuration.mode),
-            clipBehavior: Clip.antiAlias,
-            child: child,
+            child: allowChildOverflow
+                ? Stack(
+                    fit: StackFit.expand,
+                    clipBehavior: Clip.none,
+                    children: <Widget>[glassShell, child],
+                  )
+                : glassShell,
           ),
         );
       },
+    );
+  }
+}
+
+/// A small, page-derived liquid-glass lens for top-bar controls.
+///
+/// Top-bar controls remain inside a scrolling route, so they intentionally use
+/// the package's standard real-time shader instead of the premium texture
+/// capture. This is still the actual Liquid Glass renderer; the recipe simply
+/// uses a lighter tint, lower refraction, and a restrained backer so the lens
+/// inherits the page rather than becoming a detached gray circle.
+class _TopBarLiquidGlassSurface extends StatelessWidget {
+  const _TopBarLiquidGlassSurface({
+    required this.height,
+    required this.margin,
+    required this.borderRadius,
+    required this.tint,
+    required this.haloColor,
+    required this.haloOpacity,
+    required this.isDark,
+    required this.backerOpacity,
+    required this.allowChildOverflow,
+    required this.child,
+  });
+
+  final double height;
+  final EdgeInsetsGeometry margin;
+  final double borderRadius;
+  final Color tint;
+  final Color? haloColor;
+  final double? haloOpacity;
+  final bool isDark;
+  final double? backerOpacity;
+  final bool allowChildOverflow;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final pageBase = isDark
+        ? colorScheme.surfaceContainerHigh
+        : colorScheme.surfaceContainerLow;
+    final pageTint = Color.alphaBlend(
+      tint.withValues(alpha: isDark ? 0.16 : 0.1),
+      pageBase,
+    );
+    final glassColor = pageTint.withValues(alpha: isDark ? 0.14 : 0.1);
+    final effectiveBackerOpacity =
+        (backerOpacity ?? (isDark ? 0.34 : 0.42)).clamp(0.0, 1.0).toDouble();
+    final backerColor = pageTint.withValues(alpha: effectiveBackerOpacity);
+    final glassShell = GlassContainer(
+      height: height,
+      shape: LiquidOval(),
+      settings: LiquidGlassSettings(
+        glassColor: glassColor,
+        thickness: isDark ? 12 : 10,
+        blur: isDark ? 6 : 5,
+        chromaticAberration: 0.0015,
+        lightIntensity: isDark ? 0.46 : 0.64,
+        ambientStrength: isDark ? 0.08 : 0.11,
+        ambientRim: 0.04,
+        fresnelStrength: 0.48,
+        refractiveIndex: 1.08,
+        saturation: 1.02,
+        standardOpacityMultiplier: 1.0,
+        shadowElevation: 0.22,
+        whitenStrength: isDark ? 0.04 : 0.06,
+        backerColor: backerColor,
+      ),
+      useOwnLayer: true,
+      // The top bar moves with a scrollable route. Standard is the package's
+      // lightweight real-time Liquid Glass shader and remains stable here;
+      // premium texture capture is reserved for static showcase surfaces.
+      quality: GlassQuality.standard,
+      clipBehavior: Clip.antiAlias,
+      child: allowChildOverflow ? const SizedBox.expand() : child,
+    );
+
+    return RepaintBoundary(
+      child: Container(
+        height: height,
+        margin: margin,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(borderRadius),
+          boxShadow: _surfaceHaloShadows(
+            haloColor: haloColor ?? tint,
+            shadowColor: colorScheme.shadow,
+            isDark: isDark,
+            haloOpacity: haloOpacity,
+          ),
+        ),
+        child: allowChildOverflow
+            ? Stack(
+                fit: StackFit.expand,
+                clipBehavior: Clip.none,
+                children: <Widget>[glassShell, child],
+              )
+            : glassShell,
+      ),
     );
   }
 }
@@ -468,7 +634,11 @@ class _FrostedGlassSurface extends StatelessWidget {
     required this.margin,
     required this.borderRadius,
     required this.tint,
+    required this.haloColor,
+    required this.haloOpacity,
     required this.isDark,
+    required this.backerOpacity,
+    required this.allowChildOverflow,
     required this.child,
   });
 
@@ -476,17 +646,23 @@ class _FrostedGlassSurface extends StatelessWidget {
   final EdgeInsetsGeometry margin;
   final double borderRadius;
   final Color tint;
+  final Color? haloColor;
+  final double? haloOpacity;
   final bool isDark;
+  final double? backerOpacity;
+  final bool allowChildOverflow;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final neutralBase = isDark ? colorScheme.scrim : colorScheme.surface;
+    final baseAlpha =
+        (backerOpacity ?? (isDark ? 0.34 : 0.46)).clamp(0.0, 1.0).toDouble();
     final baseColor = Color.alphaBlend(
       tint.withValues(alpha: isDark ? 0.2 : 0.14),
       neutralBase,
-    ).withValues(alpha: isDark ? 0.34 : 0.46);
+    ).withValues(alpha: baseAlpha);
     final highlightBase = isDark
         ? colorScheme.surfaceBright
         : colorScheme.surfaceContainerHighest;
@@ -495,42 +671,87 @@ class _FrostedGlassSurface extends StatelessWidget {
       baseColor.withValues(alpha: 1),
     ).withValues(alpha: isDark ? 0.4 : 0.52);
 
+    final clippedSurface = ClipRSuperellipse(
+      borderRadius: BorderRadius.circular(borderRadius),
+      clipBehavior: Clip.antiAlias,
+      child: BackdropFilter.grouped(
+        filter: ui.ImageFilter.blur(
+          sigmaX: 16,
+          sigmaY: 16,
+          tileMode: TileMode.clamp,
+        ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[highlightColor, baseColor],
+            ),
+            border: Border.all(
+              color: Colors.white.withValues(
+                alpha: isDark ? 0.4 : 0.62,
+              ),
+              width: 1,
+            ),
+          ),
+          child: allowChildOverflow ? const SizedBox.expand() : child,
+        ),
+      ),
+    );
+
     return RepaintBoundary(
       child: Padding(
         padding: margin,
         child: SizedBox(
           height: height,
-          child: ClipRSuperellipse(
-            borderRadius: BorderRadius.circular(borderRadius),
-            clipBehavior: Clip.antiAlias,
-            child: BackdropFilter.grouped(
-              filter: ui.ImageFilter.blur(
-                sigmaX: 16,
-                sigmaY: 16,
-                tileMode: TileMode.clamp,
-              ),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: <Color>[highlightColor, baseColor],
-                  ),
-                  border: Border.all(
-                    color: Colors.white.withValues(
-                      alpha: isDark ? 0.4 : 0.62,
-                    ),
-                    width: 1,
-                  ),
-                ),
-                child: child,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(borderRadius),
+              boxShadow: _surfaceHaloShadows(
+                haloColor: haloColor ?? tint,
+                shadowColor: colorScheme.shadow,
+                isDark: isDark,
+                haloOpacity: haloOpacity,
               ),
             ),
+            child: allowChildOverflow
+                ? Stack(
+                    fit: StackFit.expand,
+                    clipBehavior: Clip.none,
+                    children: <Widget>[clippedSurface, child],
+                  )
+                : clippedSurface,
           ),
         ),
       ),
     );
   }
+}
+
+List<BoxShadow> _surfaceHaloShadows({
+  required Color haloColor,
+  required Color shadowColor,
+  required bool isDark,
+  double? haloOpacity,
+}) {
+  final opacity = (haloOpacity ?? 1.0).clamp(0.0, 1.0).toDouble();
+  return [
+    BoxShadow(
+      color: haloColor.withValues(
+        alpha: (isDark ? 0.16 : 0.22) * opacity,
+      ),
+      blurRadius: 26,
+      spreadRadius: 1,
+      offset: const Offset(0, 4),
+    ),
+    BoxShadow(
+      color: shadowColor.withValues(
+        alpha: (isDark ? 0.2 : 0.08) * opacity,
+      ),
+      blurRadius: 14,
+      offset: const Offset(0, 5),
+    ),
+  ];
 }
 
 /// Rounded-top content shell for self-drawn bottom sheets.

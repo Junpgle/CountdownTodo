@@ -3,6 +3,9 @@ import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../models.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/json_value_parser.dart';
+import '../widgets/app_sheet_widgets.dart';
+import '../widgets/floating_glass_control.dart';
 
 class TeamAnnouncementScreen extends StatefulWidget {
   final Team team;
@@ -87,7 +90,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
         builder: (context, setModalState) => Container(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-            top: 24,
+            top: 12,
             left: 24,
             right: 24,
           ),
@@ -99,6 +102,9 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const AppSheetDragHandle(
+                margin: EdgeInsets.only(bottom: 20),
+              ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -123,14 +129,14 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                   ),
                   Row(
                     children: [
-                      const Text('重要置顶',
+                      Text('重要置顶',
                           style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: Colors.orange)),
-                      Switch(
+                              color: Theme.of(context).colorScheme.secondary)),
+                      LiquidGlassSwitch(
                         value: isPriority,
-                        activeThumbColor: Colors.orange,
+                        activeColor: Theme.of(context).colorScheme.secondary,
                         onChanged: (val) =>
                             setModalState(() => isPriority = val),
                       ),
@@ -268,11 +274,20 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
     Navigator.pop(context); // close loading
 
     if (res['success'] == true) {
+      final readRateValue = res['read_rate'];
+      final readRate = readRateValue is num
+          ? readRateValue.toDouble()
+          : double.tryParse(readRateValue?.toString() ?? '') ?? 0;
+      final readMembers = res['read_members'] is List
+          ? res['read_members'] as List
+          : const <dynamic>[];
+
       showAppModalBottomSheet(
         context: context,
+        isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (context) => Container(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
           decoration: BoxDecoration(
             color: Theme.of(context).scaffoldBackgroundColor,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
@@ -280,6 +295,9 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              const AppSheetDragHandle(
+                margin: EdgeInsets.only(bottom: 16),
+              ),
               const Text('阅读率统计',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
@@ -289,7 +307,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                   _buildStatItem('已读人数', '${res['read_count']}'),
                   _buildStatItem('总人数', '${res['total_members']}'),
                   _buildStatItem(
-                      '阅读率', '${(res['read_rate'] * 100).toStringAsFixed(1)}%'),
+                      '阅读率', '${(readRate * 100).toStringAsFixed(1)}%'),
                 ],
               ),
               const SizedBox(height: 16),
@@ -301,23 +319,40 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                       fontWeight: FontWeight.bold,
                       color: Colors.grey)),
               const SizedBox(height: 12),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: (res['read_members'] as List).length,
-                  itemBuilder: (context, index) {
-                    final member = res['read_members'][index];
-                    final time = DateFormat('MM-dd HH:mm').format(
-                        DateTime.fromMillisecondsSinceEpoch(member['read_at']));
-                    return ListTile(
-                      leading: const CircleAvatar(
-                          child: Icon(Icons.person, size: 16)),
-                      title: Text(member['username']),
-                      trailing: Text(time,
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.grey)),
-                    );
-                  },
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.45,
                 ),
+                child: readMembers.isEmpty
+                    ? const SizedBox(
+                        height: 48,
+                        child: Center(child: Text('暂无已读成员')),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: readMembers.length,
+                        itemBuilder: (context, index) {
+                          final member = readMembers[index] is Map
+                              ? (readMembers[index] as Map)
+                                  .cast<String, dynamic>()
+                              : const <String, dynamic>{};
+                          final readAt = JsonValueParser.toInt(
+                            member['read_at'],
+                            fallback: DateTime.now().millisecondsSinceEpoch,
+                          );
+                          final time = DateFormat('MM-dd HH:mm').format(
+                              DateTime.fromMillisecondsSinceEpoch(readAt));
+                          return ListTile(
+                            leading: const CircleAvatar(
+                                child: Icon(Icons.person, size: 16)),
+                            title:
+                                Text(member['username']?.toString() ?? '未知成员'),
+                            trailing: Text(time,
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.grey)),
+                          );
+                        },
+                      ),
               ),
             ],
           ),
@@ -347,11 +382,12 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
     return Scaffold(
       backgroundColor:
           isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FA),
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
         title: Text('${widget.team.name} 公告',
             style: const TextStyle(fontWeight: FontWeight.bold)),
         elevation: 0,
         backgroundColor: Colors.transparent,
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         actions: [
           IconButton(
               icon: const Icon(Icons.refresh_rounded),
@@ -373,7 +409,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                   ),
                 ),
       floatingActionButton: isAdmin
-          ? FloatingActionButton.extended(
+          ? FloatingGlassActionButton.extended(
               onPressed: _showCreateAnnouncementDialog,
               backgroundColor: Theme.of(context).colorScheme.secondary,
               foregroundColor: Colors.white,

@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/time_utils.dart';
 import '../utils/app_dialogs.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
+import '../widgets/floating_glass_control.dart';
 import '../widgets/team_heatmap_widget.dart';
 import '../widgets/team_gantt_widget.dart';
 
@@ -272,20 +272,13 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                 physics: const BouncingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics()),
                 slivers: [
-                  SliverAppBar(
+                  FloatingGlassSliverAppBar(
                     floating: true,
                     pinned: true,
                     expandedHeight: 60,
                     elevation: 0,
-                    backgroundColor: isDark
-                        ? Colors.black.withValues(alpha: 0.65)
-                        : Colors.white.withValues(alpha: 0.65),
-                    flexibleSpace: ClipRect(
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                        child: Container(color: Colors.transparent),
-                      ),
-                    ),
+                    backgroundColor: Colors.transparent,
+                    flexibleSpace: const FloatingGlassTopBarBackground(),
                     title: const Text('全景汇聚看板',
                         style: TextStyle(
                             fontSize: 20,
@@ -303,121 +296,129 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                       ),
                     ],
                   ),
-
-                  // 🚀 看板功能区 (热力图 & 甘特图)
-                  SliverToBoxAdapter(
-                    child: OptionalLiquidGlassCard(
-                      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 24, horizontal: 16),
-                      borderRadius: 28,
-                      highContrast: true,
-                      fallbackDecoration: BoxDecoration(
-                        color: Theme.of(context).cardColor,
-                        borderRadius: BorderRadius.circular(28),
-                        border: Border.all(
-                            color:
-                                isDark ? Colors.white10 : Colors.transparent),
-                        boxShadow: [
-                          BoxShadow(
-                            color: isDark
-                                ? Colors.black.withValues(alpha: 0.3)
-                                : Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 24,
-                            offset: const Offset(0, 8),
-                          )
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          TeamHeatmapWidget(
-                              todos: _allCombinedTodos,
-                              viewDays: _viewDays == 30 ? 35 : _viewDays),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 20),
-                            child: Divider(
-                                height: 1,
+                  FloatingGlassSliverContentFadeGroup(
+                    topBarHeight: floatingGlassTopBarHeight(context),
+                    slivers: [
+                      // 🚀 看板功能区 (热力图 & 甘特图)
+                      SliverToBoxAdapter(
+                        child: OptionalLiquidGlassCard(
+                          margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 24, horizontal: 16),
+                          borderRadius: 28,
+                          highContrast: true,
+                          fallbackDecoration: BoxDecoration(
+                            color: Theme.of(context).cardColor,
+                            borderRadius: BorderRadius.circular(28),
+                            border: Border.all(
                                 color: isDark
                                     ? Colors.white10
-                                    : Colors.grey.withValues(alpha: 0.1)),
+                                    : Colors.transparent),
+                            boxShadow: [
+                              BoxShadow(
+                                color: isDark
+                                    ? Colors.black.withValues(alpha: 0.3)
+                                    : Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 24,
+                                offset: const Offset(0, 8),
+                              )
+                            ],
                           ),
-                          TeamGanttWidget(
-                            todos: _allCombinedTodos,
-                            viewDays: _viewDays,
-                            onTodoTap: _showTodoDetails,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // 数据指标行
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      child: Row(
-                        children: [
-                          Expanded(
-                              child: _buildStatChip(
-                                  context,
-                                  "活跃任务",
-                                  "${_allCombinedTodos.length}",
-                                  Theme.of(context).colorScheme.primary,
-                                  Icons.flash_on_rounded)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                              child: _buildStatChip(
-                                  context,
-                                  "团队关联",
-                                  "${_allCombinedTodos.where((t) => t.teamUuid != null).length}",
-                                  Colors.purple,
-                                  Icons.hub_rounded)),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SliverToBoxAdapter(child: SizedBox(height: 16)),
-
-                  // 任务流
-                  _allCombinedTodos.isEmpty
-                      ? SliverFillRemaining(
-                          hasScrollBody: false,
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.task_alt_rounded,
-                                    size: 64,
-                                    color: Colors.grey.withValues(alpha: 0.3)),
-                                const SizedBox(height: 16),
-                                Text("暂无活跃的全景任务",
-                                    style: TextStyle(
-                                        fontSize: 16,
-                                        color: Colors.grey,
-                                        fontWeight: FontWeight.w500)),
-                              ],
-                            ),
-                          ),
-                        )
-                      : SliverPadding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          sliver: SliverList(
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) => _buildWaterfallItem(
-                                  _allCombinedTodos[index],
-                                  isLast:
-                                      index == _allCombinedTodos.length - 1),
-                              childCount: _allCombinedTodos.length,
-                            ),
+                          child: Column(
+                            children: [
+                              TeamHeatmapWidget(
+                                  todos: _allCombinedTodos,
+                                  viewDays: _viewDays == 30 ? 35 : _viewDays),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 20),
+                                child: Divider(
+                                    height: 1,
+                                    color: isDark
+                                        ? Colors.white10
+                                        : Colors.grey.withValues(alpha: 0.1)),
+                              ),
+                              TeamGanttWidget(
+                                todos: _allCombinedTodos,
+                                viewDays: _viewDays,
+                                onTodoTap: _showTodoDetails,
+                              ),
+                            ],
                           ),
                         ),
+                      ),
 
-                  // 底部留白
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                        height: MediaQuery.of(context).padding.bottom + 50),
+                      // 数据指标行
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                  child: _buildStatChip(
+                                      context,
+                                      "活跃任务",
+                                      "${_allCombinedTodos.length}",
+                                      Theme.of(context).colorScheme.primary,
+                                      Icons.flash_on_rounded)),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                  child: _buildStatChip(
+                                      context,
+                                      "团队关联",
+                                      "${_allCombinedTodos.where((t) => t.teamUuid != null).length}",
+                                      Colors.purple,
+                                      Icons.hub_rounded)),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+                      // 任务流
+                      _allCombinedTodos.isEmpty
+                          ? SliverFillRemaining(
+                              hasScrollBody: false,
+                              child: Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.task_alt_rounded,
+                                        size: 64,
+                                        color:
+                                            Colors.grey.withValues(alpha: 0.3)),
+                                    const SizedBox(height: 16),
+                                    Text("暂无活跃的全景任务",
+                                        style: TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.grey,
+                                            fontWeight: FontWeight.w500)),
+                                  ],
+                                ),
+                              ),
+                            )
+                          : SliverPadding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              sliver: SliverList(
+                                delegate: SliverChildBuilderDelegate(
+                                  (context, index) => _buildWaterfallItem(
+                                      _allCombinedTodos[index],
+                                      isLast: index ==
+                                          _allCombinedTodos.length - 1),
+                                  childCount: _allCombinedTodos.length,
+                                ),
+                              ),
+                            ),
+
+                      // 底部留白
+                      SliverToBoxAdapter(
+                        child: SizedBox(
+                            height: MediaQuery.of(context).padding.bottom + 50),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -617,57 +618,64 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
 
     return CustomScrollView(
       slivers: [
-        SliverAppBar(
+        FloatingGlassSliverAppBar(
           backgroundColor: Colors.transparent,
+          flexibleSpace: const FloatingGlassTopBarBackground(),
           title: Container(
               width: 140,
               height: 24,
               decoration: BoxDecoration(
                   color: baseColor, borderRadius: BorderRadius.circular(12))),
         ),
-        SliverToBoxAdapter(
-          child: Container(
-            height: 300,
-            margin: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-                color: baseColor, borderRadius: BorderRadius.circular(28)),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Expanded(
-                    child: Container(
-                        height: 60,
-                        decoration: BoxDecoration(
-                            color: baseColor,
-                            borderRadius: BorderRadius.circular(20)))),
-                const SizedBox(width: 12),
-                Expanded(
-                    child: Container(
-                        height: 60,
-                        decoration: BoxDecoration(
-                            color: baseColor,
-                            borderRadius: BorderRadius.circular(20)))),
-              ],
-            ),
-          ),
-        ),
-        SliverPadding(
-          padding: const EdgeInsets.all(16),
-          sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) => Container(
-                height: 100,
-                margin: const EdgeInsets.only(bottom: 12),
+        FloatingGlassSliverContentFadeGroup(
+          topBarHeight: floatingGlassTopBarHeight(context),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Container(
+                height: 300,
+                margin: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                    color: baseColor, borderRadius: BorderRadius.circular(20)),
+                    color: baseColor, borderRadius: BorderRadius.circular(28)),
               ),
-              childCount: 3,
             ),
-          ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                        child: Container(
+                            height: 60,
+                            decoration: BoxDecoration(
+                                color: baseColor,
+                                borderRadius: BorderRadius.circular(20)))),
+                    const SizedBox(width: 12),
+                    Expanded(
+                        child: Container(
+                            height: 60,
+                            decoration: BoxDecoration(
+                                color: baseColor,
+                                borderRadius: BorderRadius.circular(20)))),
+                  ],
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.all(16),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => Container(
+                    height: 100,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                        color: baseColor,
+                        borderRadius: BorderRadius.circular(20)),
+                  ),
+                  childCount: 3,
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );

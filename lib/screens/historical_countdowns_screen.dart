@@ -1,3 +1,4 @@
+import '../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
@@ -540,7 +541,8 @@ class _HistoricalCountdownsScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('历史倒计时'),
         elevation: 0,
         centerTitle: true,

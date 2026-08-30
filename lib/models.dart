@@ -1399,6 +1399,7 @@ class TeamShare {
   final String? title;
   final String? description;
   final bool shareTodos;
+  final bool shareSchedules;
   final bool shareCountdowns;
   final bool shareAnnouncements;
   final bool hasPassword;
@@ -1415,6 +1416,7 @@ class TeamShare {
     this.title,
     this.description,
     this.shareTodos = true,
+    this.shareSchedules = true,
     this.shareCountdowns = true,
     this.shareAnnouncements = true,
     this.hasPassword = false,
@@ -1435,6 +1437,9 @@ class TeamShare {
         title: json['title']?.toString(),
         description: json['description']?.toString(),
         shareTodos: json['share_todos'] == 1 || json['share_todos'] == true,
+        shareSchedules: json['share_schedules'] == null ||
+            json['share_schedules'] == 1 ||
+            json['share_schedules'] == true,
         shareCountdowns:
             json['share_countdowns'] == 1 || json['share_countdowns'] == true,
         shareAnnouncements: json['share_announcements'] == 1 ||

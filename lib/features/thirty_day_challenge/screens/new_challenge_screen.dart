@@ -1,3 +1,4 @@
+import '../../../widgets/floating_glass_control.dart';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -189,7 +190,8 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
     final taskTitles = _taskTitles;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('新建打卡挑战'),
         actions: [
           IconButton(

@@ -92,7 +92,7 @@ class FocusOnlyWidgetProvider : HomeWidgetProvider() {
             )
             views.setPendingIntentTemplate(R.id.list_timelogs, appPendingIntent)
             views.setOnClickPendingIntent(
-                R.id.widget_root,
+                android.R.id.background,
                 WidgetProviderSupport.mainActivityPendingIntent(context)
             )
 

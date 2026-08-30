@@ -13,6 +13,9 @@
     <color name="widget_tab_active_bg">#FFFFFF</color>
     <color name="widget_tab_active_text">#111827</color>
     <color name="widget_checkbox_tint">#3B82F6</color>
+    <color name="widget_due_overdue">#EF4444</color>
+    <color name="widget_due_today">#F59E0B</color>
+    <color name="widget_due_future">#10B981</color>
     <color name="focus_active_bg">#EFF6FF</color>
     <color name="focus_timer_color">#2563EB</color>
     <color name="focus_tag_text">#10B981</color>

@@ -2,8 +2,6 @@ package com.math_quiz.junpgle.com.math_quiz_app
 
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
-import android.graphics.Color
 import android.os.Bundle
 import android.text.Html
 import android.text.Spanned
@@ -59,15 +57,21 @@ class FocusOnlyRemoteViewsFactory(
         if (position >= itemsData.size) return RemoteViews(context.packageName, R.layout.widget_item_timelog)
 
         val data = itemsData[position]
-        val isDarkMode = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val primaryTextColor = context.getColor(R.color.widget_text_primary)
-
         val views = RemoteViews(context.packageName, R.layout.widget_item_timelog)
         views.setCharSequence(R.id.tl_title, "setText", getHtmlSpanned(data.getString("title", "")))
-        views.setTextColor(R.id.tl_title, primaryTextColor)
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.tl_title,
+            R.color.widget_text_primary
+        )
         views.setTextViewText(R.id.tl_time, data.getString("time", ""))
-        val greenColor = Color.parseColor(if (isDarkMode) "#34D399" else "#10B981")
-        views.setTextColor(R.id.tl_time, greenColor)
+        WidgetProviderSupport.setTextColor(
+            context,
+            views,
+            R.id.tl_time,
+            R.color.focus_tag_text
+        )
         views.setOnClickFillInIntent(R.id.tl_title, Intent())
         return views
     }

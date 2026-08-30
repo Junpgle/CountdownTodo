@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import '../models.dart';
 import '../services/api_service.dart';
+import '../services/team_share_link.dart';
+import '../widgets/floating_glass_control.dart';
 
 class TeamShareManageScreen extends StatefulWidget {
   final Team team;
@@ -94,8 +96,10 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
   }
 
   void _copyShareLink(TeamShare share) {
-    final url =
-        share.shareUrl ?? 'https://api-cdt.junpgle.me/share/${share.shareCode}';
+    final url = TeamShareLink.normalize(
+      shareUrl: share.shareUrl,
+      shareCode: share.shareCode,
+    );
     Clipboard.setData(ClipboardData(text: url));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('链接已复制到剪贴板')),
@@ -105,7 +109,8 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text('${widget.team.name} · 分享管理'),
         actions: [
           IconButton(
@@ -119,7 +124,7 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
           : _shares.isEmpty
               ? _buildEmptyState()
               : _buildSharesList(),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingGlassActionButton.extended(
         onPressed: _showCreateShareDialog,
         icon: const Icon(Icons.add_link),
         label: const Text('创建分享'),
@@ -205,7 +210,7 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
                     ],
                   ),
                 ),
-                Switch(
+                LiquidGlassSwitch(
                   value: share.isActive,
                   onChanged: (value) => _toggleShare(share),
                 ),
@@ -232,6 +237,8 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
               children: [
                 if (share.shareTodos)
                   _buildTag('待办事项', Icons.check_circle_outline),
+                if (share.shareSchedules)
+                  _buildTag('日程', Icons.event_available_outlined),
                 if (share.shareCountdowns)
                   _buildTag('倒计时', Icons.timer_outlined),
                 if (share.shareAnnouncements)
@@ -338,6 +345,7 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
   final _descController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _shareTodos = true;
+  bool _shareSchedules = true;
   bool _shareCountdowns = true;
   bool _shareAnnouncements = true;
   bool _usePassword = false;
@@ -363,6 +371,7 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
         description:
             _descController.text.isNotEmpty ? _descController.text : null,
         shareTodos: _shareTodos,
+        shareSchedules: _shareSchedules,
         shareCountdowns: _shareCountdowns,
         shareAnnouncements: _shareAnnouncements,
         password: _usePassword ? _passwordController.text : null,
@@ -370,7 +379,10 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
       );
 
       if (result['success'] == true) {
-        final shareUrl = result['share_url'] ?? '';
+        final shareUrl = TeamShareLink.normalize(
+          shareUrl: result['share_url']?.toString(),
+          shareCode: result['share_code']?.toString(),
+        );
         if (mounted) {
           widget.onCreated();
 
@@ -431,7 +443,8 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('创建分享链接'),
       ),
       body: SingleChildScrollView(
@@ -482,6 +495,13 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
               controlAffinity: ListTileControlAffinity.leading,
             ),
             CheckboxListTile(
+              title: const Text('日程'),
+              value: _shareSchedules,
+              onChanged: (v) => setState(() => _shareSchedules = v ?? true),
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
+            CheckboxListTile(
               title: const Text('团队公告'),
               value: _shareAnnouncements,
               onChanged: (v) => setState(() => _shareAnnouncements = v ?? true),
@@ -489,7 +509,7 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
               controlAffinity: ListTileControlAffinity.leading,
             ),
             const Divider(height: 32),
-            SwitchListTile(
+            LiquidGlassSwitchListTile(
               title: const Text('密码保护'),
               subtitle: const Text('访问者需要输入密码才能查看'),
               value: _usePassword,
@@ -530,11 +550,13 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
               width: double.infinity,
               height: 48,
               child: ElevatedButton(
-                onPressed:
-                    (_shareTodos || _shareCountdowns || _shareAnnouncements) &&
-                            !_isCreating
-                        ? _createShare
-                        : null,
+                onPressed: (_shareTodos ||
+                            _shareSchedules ||
+                            _shareCountdowns ||
+                            _shareAnnouncements) &&
+                        !_isCreating
+                    ? _createShare
+                    : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.primary,
                   foregroundColor: Theme.of(context).colorScheme.onPrimary,

@@ -5,6 +5,7 @@ import '../models/journal_entry.dart';
 import '../services/journal_media_service.dart';
 import '../services/journal_picker.dart';
 import '../services/journal_storage.dart';
+import '../../../widgets/floating_glass_control.dart';
 import 'journal_detail_screen.dart';
 import 'journal_editor_screen.dart';
 
@@ -132,7 +133,10 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
 
     return Scaffold(
       backgroundColor: scheme.surface,
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         titleSpacing: 20,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -162,25 +166,34 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
             onPressed: () => _showSearch(context),
             icon: const Icon(Icons.search_rounded),
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: SegmentedButton<bool>(
-              showSelectedIcon: false,
-              style: const ButtonStyle(
-                visualDensity: VisualDensity.compact,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          MenuAnchor(
+            menuChildren: [
+              _buildViewMenuItem(
+                isPhotoWall: false,
+                icon: Icons.view_agenda_rounded,
+                label: '时间线',
               ),
-              segments: const [
-                ButtonSegment(
-                    value: false, icon: Icon(Icons.view_agenda_rounded)),
-                ButtonSegment(value: true, icon: Icon(Icons.grid_view_rounded)),
-              ],
-              selected: {_isPhotoWall},
-              onSelectionChanged: (values) {
-                setState(() => _isPhotoWall = values.first);
-              },
-            ),
+              _buildViewMenuItem(
+                isPhotoWall: true,
+                icon: Icons.grid_view_rounded,
+                label: '照片墙',
+              ),
+            ],
+            builder: (context, controller, child) {
+              return IconButton(
+                tooltip: '选择视图',
+                onPressed: () {
+                  if (controller.isOpen) {
+                    controller.close();
+                  } else {
+                    controller.open();
+                  }
+                },
+                icon: const Icon(Icons.filter_list_rounded),
+              );
+            },
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: _isLoading
@@ -188,7 +201,6 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
           : entries.isEmpty
               ? _JournalEmptyState(
                   hasSearch: _query.isNotEmpty,
-                  onCreate: _createEntry,
                   onClearSearch: () async {
                     setState(() {
                       _query = '';
@@ -214,11 +226,31 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
                           onTap: _openEntry,
                         ),
                 ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingGlassActionButton.extended(
         onPressed: _createEntry,
         icon: const Icon(Icons.edit_rounded),
         label: const Text('写一篇'),
       ),
+    );
+  }
+
+  Widget _buildViewMenuItem({
+    required bool isPhotoWall,
+    required IconData icon,
+    required String label,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final selected = _isPhotoWall == isPhotoWall;
+    return MenuItemButton(
+      onPressed: () {
+        if (_isPhotoWall != isPhotoWall) {
+          setState(() => _isPhotoWall = isPhotoWall);
+        }
+      },
+      leadingIcon: Icon(icon),
+      trailingIcon:
+          selected ? Icon(Icons.check_rounded, color: scheme.primary) : null,
+      child: Text(label),
     );
   }
 
@@ -651,12 +683,10 @@ class _JournalImageState extends State<_JournalImage> {
 
 class _JournalEmptyState extends StatelessWidget {
   final bool hasSearch;
-  final VoidCallback onCreate;
   final VoidCallback onClearSearch;
 
   const _JournalEmptyState({
     required this.hasSearch,
-    required this.onCreate,
     required this.onClearSearch,
   });
 
@@ -695,19 +725,14 @@ class _JournalEmptyState extends StatelessWidget {
                   ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 28),
-            if (hasSearch)
+            if (hasSearch) ...[
+              const SizedBox(height: 28),
               OutlinedButton.icon(
                 onPressed: onClearSearch,
                 icon: const Icon(Icons.close_rounded),
                 label: const Text('清除搜索'),
-              )
-            else
-              FilledButton.icon(
-                onPressed: onCreate,
-                icon: const Icon(Icons.edit_rounded),
-                label: const Text('写下第一篇'),
               ),
+            ],
           ],
         ),
       ),

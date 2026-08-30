@@ -143,166 +143,169 @@ class _DayViewState extends State<_DayView> {
                 borderRadius:
                     const BorderRadius.vertical(top: Radius.circular(20))),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Text('当天补录',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: _TC.text(ctx))),
-                  const SizedBox(width: 8),
-                  Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 3),
-                      decoration: BoxDecoration(
-                          color: colorScheme.cdtInfo.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(20)),
-                      child: Text('${dayLogs.length}条',
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: colorScheme.cdtInfo,
-                              fontWeight: FontWeight.w600))),
-                  const Spacer(),
-                  IconButton(
-                      icon:
-                          Icon(Icons.close, size: 20, color: _TC.textHint(ctx)),
-                      onPressed: () => Navigator.pop(ctx)),
-                ]),
-                const SizedBox(height: 12),
-                if (dayLogs.isEmpty)
-                  Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24),
-                      child: Center(
-                          child: Text('暂无补录记录',
-                              style: TextStyle(color: _TC.textHint(ctx)))))
-                else
-                  Flexible(
-                      child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: dayLogs.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (ctx2, i) {
-                      final log = dayLogs[i];
-                      final tag = log.tagUuids.isNotEmpty
-                          ? widget.tags.cast<PomodoroTag?>().firstWhere(
-                              (t) => log.tagUuids.contains(t?.uuid),
-                              orElse: () => null)
-                          : null;
-                      final c = tag != null
-                          ? hexColor(tag.color)
-                          : colorScheme.cdtInfo;
-                      final dur = (log.endTime - log.startTime) ~/ 60000;
-                      final s =
-                          DateTime.fromMillisecondsSinceEpoch(log.startTime);
-                      final e =
-                          DateTime.fromMillisecondsSinceEpoch(log.endTime);
-                      return Container(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Text('当天补录',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: _TC.text(ctx))),
+                    const SizedBox(width: 8),
+                    Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
+                            horizontal: 10, vertical: 3),
                         decoration: BoxDecoration(
-                            color: _TC.inputFill(ctx2),
-                            border:
-                                Border(left: BorderSide(color: c, width: 3)),
-                            borderRadius: BorderRadius.circular(10)),
-                        child: Row(children: [
-                          Expanded(
-                              child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                Text(
-                                    log.title.isNotEmpty
-                                        ? log.title
-                                        : (tag?.name ?? '补录记录'),
-                                    style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: _TC.text(ctx2))),
-                                const SizedBox(height: 3),
-                                Row(children: [
-                                  if (tag != null) ...[
-                                    Container(
-                                        width: 6,
-                                        height: 6,
-                                        decoration: BoxDecoration(
-                                            color: c, shape: BoxShape.circle)),
-                                    const SizedBox(width: 4),
-                                    Text(tag.name,
+                            color: colorScheme.cdtInfo.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(20)),
+                        child: Text('${dayLogs.length}条',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: colorScheme.cdtInfo,
+                                fontWeight: FontWeight.w600))),
+                    const Spacer(),
+                    IconButton(
+                        icon: Icon(Icons.close,
+                            size: 20, color: _TC.textHint(ctx)),
+                        onPressed: () => Navigator.pop(ctx)),
+                  ]),
+                  const SizedBox(height: 12),
+                  if (dayLogs.isEmpty)
+                    Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Center(
+                            child: Text('暂无补录记录',
+                                style: TextStyle(color: _TC.textHint(ctx)))))
+                  else
+                    Flexible(
+                        child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: dayLogs.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (ctx2, i) {
+                        final log = dayLogs[i];
+                        final tag = log.tagUuids.isNotEmpty
+                            ? widget.tags.cast<PomodoroTag?>().firstWhere(
+                                (t) => log.tagUuids.contains(t?.uuid),
+                                orElse: () => null)
+                            : null;
+                        final c = tag != null
+                            ? hexColor(tag.color)
+                            : colorScheme.cdtInfo;
+                        final dur = (log.endTime - log.startTime) ~/ 60000;
+                        final s =
+                            DateTime.fromMillisecondsSinceEpoch(log.startTime);
+                        final e =
+                            DateTime.fromMillisecondsSinceEpoch(log.endTime);
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                              color: _TC.inputFill(ctx2),
+                              border:
+                                  Border(left: BorderSide(color: c, width: 3)),
+                              borderRadius: BorderRadius.circular(10)),
+                          child: Row(children: [
+                            Expanded(
+                                child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                  Text(
+                                      log.title.isNotEmpty
+                                          ? log.title
+                                          : (tag?.name ?? '补录记录'),
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: _TC.text(ctx2))),
+                                  const SizedBox(height: 3),
+                                  Row(children: [
+                                    if (tag != null) ...[
+                                      Container(
+                                          width: 6,
+                                          height: 6,
+                                          decoration: BoxDecoration(
+                                              color: c,
+                                              shape: BoxShape.circle)),
+                                      const SizedBox(width: 4),
+                                      Text(tag.name,
+                                          style: TextStyle(
+                                              fontSize: 10,
+                                              color: c,
+                                              fontWeight: FontWeight.w600)),
+                                      const SizedBox(width: 6),
+                                    ],
+                                    Text(
+                                        '${DateFormat('HH:mm').format(s)} → ${DateFormat('HH:mm').format(e)}',
                                         style: TextStyle(
                                             fontSize: 10,
-                                            color: c,
-                                            fontWeight: FontWeight.w600)),
-                                    const SizedBox(width: 6),
-                                  ],
-                                  Text(
-                                      '${DateFormat('HH:mm').format(s)} → ${DateFormat('HH:mm').format(e)}',
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          color: _TC.textHint(ctx2))),
-                                ]),
-                              ])),
-                          const SizedBox(width: 8),
-                          Text('${dur}min',
-                              style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: c)),
-                          const SizedBox(width: 4),
-                          IconButton(
-                            icon: Icon(Icons.delete_outline,
-                                size: 20,
-                                color:
-                                    colorScheme.error.withValues(alpha: 0.6)),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(
-                                minWidth: 36, minHeight: 36),
-                            onPressed: () {
-                              showDialog(
-                                  context: ctx,
-                                  builder: (dCtx) => AlertDialog(
-                                        backgroundColor: _TC.card(ctx),
-                                        title: Text('删除记录',
-                                            style: TextStyle(
-                                                color: _TC.text(ctx),
-                                                fontSize: 16)),
-                                        content: Text(
-                                            '确定删除「${log.title.isNotEmpty ? log.title : (tag?.name ?? '补录记录')}」吗？',
-                                            style: TextStyle(
-                                                color: _TC.textSub(ctx),
-                                                fontSize: 13)),
-                                        actions: [
-                                          TextButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(dCtx),
-                                              child: Text('取消',
-                                                  style: TextStyle(
-                                                      color:
-                                                          _TC.textSub(ctx)))),
-                                          TextButton(
-                                              onPressed: () {
-                                                Navigator.pop(dCtx);
-                                                widget.onDeleteLog(log.id);
-                                                if (dayLogs.length <= 1) {
-                                                  Navigator.pop(ctx);
-                                                } else {
-                                                  setModal(() {});
-                                                }
-                                              },
-                                              child: Text('删除',
-                                                  style: TextStyle(
-                                                      color: colorScheme.error,
-                                                      fontWeight:
-                                                          FontWeight.w700))),
-                                        ],
-                                      ));
-                            },
-                          ),
-                        ]),
-                      );
-                    },
-                  )),
-              ]),
+                                            color: _TC.textHint(ctx2))),
+                                  ]),
+                                ])),
+                            const SizedBox(width: 8),
+                            Text('${dur}min',
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: c)),
+                            const SizedBox(width: 4),
+                            IconButton(
+                              icon: Icon(Icons.delete_outline,
+                                  size: 20,
+                                  color:
+                                      colorScheme.error.withValues(alpha: 0.6)),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                  minWidth: 36, minHeight: 36),
+                              onPressed: () {
+                                showDialog(
+                                    context: ctx,
+                                    builder: (dCtx) => AlertDialog(
+                                          backgroundColor: _TC.card(ctx),
+                                          title: Text('删除记录',
+                                              style: TextStyle(
+                                                  color: _TC.text(ctx),
+                                                  fontSize: 16)),
+                                          content: Text(
+                                              '确定删除「${log.title.isNotEmpty ? log.title : (tag?.name ?? '补录记录')}」吗？',
+                                              style: TextStyle(
+                                                  color: _TC.textSub(ctx),
+                                                  fontSize: 13)),
+                                          actions: [
+                                            TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(dCtx),
+                                                child: Text('取消',
+                                                    style: TextStyle(
+                                                        color:
+                                                            _TC.textSub(ctx)))),
+                                            TextButton(
+                                                onPressed: () {
+                                                  Navigator.pop(dCtx);
+                                                  widget.onDeleteLog(log.id);
+                                                  if (dayLogs.length <= 1) {
+                                                    Navigator.pop(ctx);
+                                                  } else {
+                                                    setModal(() {});
+                                                  }
+                                                },
+                                                child: Text('删除',
+                                                    style: TextStyle(
+                                                        color:
+                                                            colorScheme.error,
+                                                        fontWeight:
+                                                            FontWeight.w700))),
+                                          ],
+                                        ));
+                              },
+                            ),
+                          ]),
+                        );
+                      },
+                    )),
+                ]),
           ),
         );
       }),
@@ -354,9 +357,11 @@ class _DayViewState extends State<_DayView> {
 
   Widget _buildCrossDayBar(int dLogN, int dPlanN) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
+    final useFloating = floatingBottomBarShouldFloat(context);
+    final child = Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      color: _TC.topBar(context),
+      decoration:
+          useFloating ? null : BoxDecoration(color: _TC.topBar(context)),
       child: Row(children: [
         const SizedBox(width: 8),
         _EntryModeToggle(
@@ -436,6 +441,14 @@ class _DayViewState extends State<_DayView> {
           }),
         ),
       ]),
+    );
+    return FloatingGlassControl(
+      height: useFloating ? 60 : 52,
+      margin:
+          useFloating ? const EdgeInsets.fromLTRB(8, 8, 8, 4) : EdgeInsets.zero,
+      borderRadius: useFloating ? _timeLogActionBarRadius : 0,
+      mobilePortraitOnly: true,
+      child: child,
     );
   }
 
@@ -2208,7 +2221,7 @@ class _TopBarChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           border: Border.all(color: border),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(_timeLogActionChipRadius),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

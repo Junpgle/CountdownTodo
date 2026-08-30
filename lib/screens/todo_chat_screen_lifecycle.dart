@@ -313,6 +313,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   Future<void> _switchSession(String sessionId) async {
+    if (_isLoading || sessionId == _activeSessionId) return;
     await ChatStorageService.setActiveSessionId(sessionId);
     if (mounted) {
       setState(() {
@@ -326,6 +327,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   Future<void> _newSession() async {
+    if (_isLoading) return;
     final newSession = await ChatStorageService.createSession();
     if (mounted) {
       setState(() {
@@ -339,6 +341,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   Future<void> _deleteSession(String sessionId) async {
+    if (_isLoading) return;
     if (_sessions.length <= 1) {
       await ChatStorageService.deleteSession(sessionId);
       final newSession = await ChatStorageService.createSession();
@@ -449,10 +452,13 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   Future<void> _openTutorialPage() async {
-    await Navigator.of(context).push(
-      PageTransitions.material(
-        builder: (_) => const AiAssistantTutorialScreen(),
-      ),
+    await PageTransitions.pushFromRect(
+      context: context,
+      page: const AiAssistantTutorialScreen(),
+      sourceKey: _tutorialButtonKey,
+      sourceColor: Theme.of(context).colorScheme.primaryContainer,
+      placeholderIcon: Icons.menu_book_rounded,
+      sourceBorderRadius: BorderRadius.circular(16),
     );
   }
 
@@ -480,6 +486,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   List<Map<String, String>> _buildApiMessages({
     String? pendingUserText,
     bool trackSmartContext = true,
+    String financeContext = '',
   }) {
     final List<Map<String, String>> apiMessages = [
       {'role': 'system', 'content': _buildSystemPrompt()},
@@ -506,7 +513,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       for (final msg in sourceMessages) {
         apiMessages.add({
           'role': msg.role == ChatRole.user ? 'user' : 'assistant',
-          'content': msg.content,
+          'content': msg.toLLMMessage(),
         });
       }
     } else {
@@ -535,14 +542,35 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         if (msg.content == firstUserMsg.content) continue;
         apiMessages.add({
           'role': msg.role == ChatRole.user ? 'user' : 'assistant',
-          'content': msg.content,
+          'content': msg.toLLMMessage(),
         });
       }
     }
 
     final smartContext = _injectContext(apiMessages);
+    var combinedContext = smartContext;
+    if (financeContext.trim().isNotEmpty) {
+      int lastUserIndex = -1;
+      for (int i = apiMessages.length - 1; i >= 0; i--) {
+        if (apiMessages[i]['role'] == 'user') {
+          lastUserIndex = i;
+          break;
+        }
+      }
+      if (lastUserIndex != -1) {
+        final currentUserContent = apiMessages[lastUserIndex]['content'] ?? '';
+        apiMessages[lastUserIndex] = {
+          'role': 'user',
+          'content': '${financeContext.trim()}\n\n$currentUserContent',
+        };
+        combinedContext = [
+          smartContext,
+          financeContext.trim(),
+        ].where((item) => item.isNotEmpty).join('\n\n');
+      }
+    }
     if (trackSmartContext) {
-      _lastRequestSmartContext = smartContext;
+      _lastRequestSmartContext = combinedContext;
     }
     return apiMessages;
   }

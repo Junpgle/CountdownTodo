@@ -363,6 +363,7 @@ mixin _StorageSettings on _StorageServiceBase {
   Future<void> savePendingTodoConfirm({
     required String imagePath,
     List<Map<String, dynamic>> results = const [],
+    List<Map<String, dynamic>> financeResults = const [],
     String status = 'success',
     String? compressedPath,
     int currentAttempt = 1,
@@ -373,6 +374,7 @@ mixin _StorageSettings on _StorageServiceBase {
     final data = jsonEncode({
       'imagePath': imagePath,
       'results': results,
+      'financeResults': financeResults,
       'status': status,
       'compressedPath': compressedPath,
       'currentAttempt': currentAttempt,
@@ -389,6 +391,7 @@ mixin _StorageSettings on _StorageServiceBase {
     int? maxAttempts,
     String? errorMsg,
     List<Map<String, dynamic>>? results,
+    List<Map<String, dynamic>>? financeResults,
   }) async {
     final existing = await getPendingTodoConfirm();
     if (existing == null) return;
@@ -401,6 +404,7 @@ mixin _StorageSettings on _StorageServiceBase {
       'maxAttempts': maxAttempts ?? existing['maxAttempts'] ?? 1,
       'errorMsg': errorMsg ?? existing['errorMsg'],
       'results': results ?? existing['results'] ?? [],
+      'financeResults': financeResults ?? existing['financeResults'] ?? [],
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
     await prefs.setString(keyPendingTodoConfirm, data);

@@ -91,7 +91,7 @@ class HabitWidgetProvider : HomeWidgetProvider() {
 
             // 第一阶段：点击打开应用（习惯中心入口）
             val appPendingIntent = WidgetProviderSupport.mainActivityPendingIntent(context)
-            views.setOnClickPendingIntent(R.id.widget_root, appPendingIntent)
+            views.setOnClickPendingIntent(android.R.id.background, appPendingIntent)
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }

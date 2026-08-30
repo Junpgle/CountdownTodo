@@ -1,3 +1,4 @@
+import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 
 import '../../../models.dart';
@@ -135,7 +136,8 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text('${widget.goal.name} · 历史'),
         centerTitle: false,
       ),

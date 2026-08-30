@@ -6,6 +6,12 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty || _isLoading) return;
 
+    // The explicit #记账 format is intentionally handled locally. This keeps
+    // a simple import usable without an AI key and makes its result editable
+    // immediately; natural-language finance requests still go through the
+    // assistant below.
+    if (await _tryHandleExplicitFinanceText(text)) return;
+
     String model = _chatModel;
     String apiKey = _chatApiKey;
     String apiUrl = _chatApiUrl;
@@ -63,6 +69,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     }
 
     if (apiUrl.isEmpty) apiUrl = AiChatService.defaultApiUrl;
+    final sessionId = _activeSessionId;
+    if (sessionId == null) return;
 
     final userMsg = ChatMessage(
       role: ChatRole.user,
@@ -74,14 +82,19 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       _streamingContent = '';
       _isLoading = true;
     });
-    await ChatStorageService.addMessage(userMsg);
+    await ChatStorageService.addMessage(userMsg, sessionId: sessionId);
     _inputCtrl.clear();
     _scrollToBottom();
 
     _cancelGeneration = Completer<void>();
 
     try {
-      final List<Map<String, String>> apiMessages = _buildApiMessages();
+      final financeContext = await FinanceAiContextService.buildContext(
+        userMessage: text,
+      );
+      final List<Map<String, String>> apiMessages = _buildApiMessages(
+        financeContext: financeContext,
+      );
       String fullContent = '';
       String reasoningContent = '';
 
@@ -131,22 +144,33 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             existingTodoTitles: existingTodoTitles,
             existingScheduleTitles: existingScheduleTitles,
           );
-          final cleanContent = AiActionParser.cleanActionContent(fullContent);
+          final financeDrafts = FinanceTextParser.extractAssistantDrafts(
+            fullContent,
+          );
+          final financeActions = FinanceTextParser.extractAssistantActions(
+            fullContent,
+          );
+          final cleanContent = FinanceTextParser.cleanAssistantContent(
+            AiActionParser.cleanActionContent(fullContent),
+          );
           setState(() {
             final assistantMsg = ChatMessage(
               role: ChatRole.assistant,
-              content: '$cleanContent\n\n*(已中断)*',
+              content:
+                  '${cleanContent.isEmpty && (financeDrafts.isNotEmpty || financeActions.isNotEmpty) ? financeDrafts.isNotEmpty ? '已生成记账草案，请核对后编辑并保存。' : '已生成账单操作草案，请在确认卡中核对。' : cleanContent}\n\n*(已中断)*',
               rawContent: fullContent,
               reasoningContent: reasoningContent,
               smartContext: _lastRequestSmartContext,
               todoActions: todoActions.isNotEmpty ? todoActions : null,
+              financeDrafts: financeDrafts.isNotEmpty ? financeDrafts : null,
+              financeActions: financeActions.isNotEmpty ? financeActions : null,
             );
             _messages.add(assistantMsg);
             _streamingContent = '';
             _streamingReasoning = '';
             _isLoading = false;
             _cancelGeneration = null;
-            ChatStorageService.addMessage(assistantMsg);
+            ChatStorageService.addMessage(assistantMsg, sessionId: sessionId);
           });
         } else {
           setState(() {
@@ -179,16 +203,31 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         existingScheduleTitles: existingScheduleTitles,
       );
       final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
-      final cleanContent = AiActionParser.cleanActionContent(fullContent);
+      final financeDrafts = FinanceTextParser.extractAssistantDrafts(
+        fullContent,
+      );
+      final financeActions = FinanceTextParser.extractAssistantActions(
+        fullContent,
+      );
+      final cleanContent = FinanceTextParser.cleanAssistantContent(
+        AiActionParser.cleanActionContent(fullContent),
+      );
 
       setState(() {
         final assistantMsg = ChatMessage(
           role: ChatRole.assistant,
-          content: cleanContent,
+          content: cleanContent.isEmpty &&
+                  (financeDrafts.isNotEmpty || financeActions.isNotEmpty)
+              ? financeDrafts.isNotEmpty
+                  ? '已生成记账草案，请核对后编辑并保存。'
+                  : '已生成账单操作草案，请在确认卡中核对。'
+              : cleanContent,
           rawContent: fullContent,
           reasoningContent: reasoningContent,
           smartContext: _lastRequestSmartContext,
           todoActions: todoActions.isNotEmpty ? todoActions : null,
+          financeDrafts: financeDrafts.isNotEmpty ? financeDrafts : null,
+          financeActions: financeActions.isNotEmpty ? financeActions : null,
         );
 
         _messages.add(assistantMsg);
@@ -202,10 +241,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         if (todoActions.isNotEmpty) {
           _actionRailCollapsed = false;
         }
-        ChatStorageService.addMessage(assistantMsg);
+        ChatStorageService.addMessage(assistantMsg, sessionId: sessionId);
       });
       _scrollToBottom();
-      _generateSessionTitle();
+      _generateSessionTitle(sessionId: sessionId);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -220,11 +259,53 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     }
   }
 
+  Future<bool> _tryHandleExplicitFinanceText(String text) async {
+    final hasPickupClue = RegExp(
+      r'取餐|取件|取货|餐号|取单号|取餐码|取件码|外卖|快递',
+    ).hasMatch(text);
+    if (hasPickupClue || !FinanceTextParser.looksLikeFinanceFormat(text)) {
+      return false;
+    }
+    final drafts = FinanceTextParser.parse(
+      text,
+      source: FinanceEntrySource.import,
+    );
+    if (drafts.isEmpty) return false;
+    final sessionId = _activeSessionId;
+    if (sessionId == null) return false;
+
+    final userMsg = ChatMessage(role: ChatRole.user, content: text);
+    final assistantMsg = ChatMessage(
+      role: ChatRole.assistant,
+      content: drafts.length == 1
+          ? '已识别为一笔记账草案，请核对后编辑并保存。'
+          : '已识别为 ${drafts.length} 笔记账草案，请逐笔核对后保存。',
+      rawContent: text,
+      financeDrafts: drafts,
+    );
+    setState(() {
+      _messages.addAll([userMsg, assistantMsg]);
+      _inputCtrl.clear();
+      _suggestions = _getSmartSuggestions();
+    });
+    await ChatStorageService.addMessage(userMsg, sessionId: sessionId);
+    await ChatStorageService.addMessage(assistantMsg, sessionId: sessionId);
+    _scrollToBottom();
+    _generateSessionTitle(sessionId: sessionId);
+    return true;
+  }
+
   Future<void> _copyManualPromptFromInput() async {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty) return;
 
-    final apiMessages = _buildApiMessages(pendingUserText: text);
+    final financeContext = await FinanceAiContextService.buildContext(
+      userMessage: text,
+    );
+    final apiMessages = _buildApiMessages(
+      pendingUserText: text,
+      financeContext: financeContext,
+    );
     final manualPrompt =
         AiTodoContextBuilder.buildManualCopyPrompt(apiMessages);
     _pendingManualOriginalText = text;
@@ -278,6 +359,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   }
 
   Future<void> _importManualAiReply(String fullContent) async {
+    final sessionId = _activeSessionId;
+    if (sessionId == null) return;
     final originalText = _pendingManualOriginalText.isNotEmpty
         ? _pendingManualOriginalText
         : (_inputCtrl.text.trim().isNotEmpty
@@ -298,7 +381,12 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       existingScheduleTitles: existingScheduleTitles,
     );
     final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
-    final cleanContent = AiActionParser.cleanActionContent(fullContent);
+    final financeDrafts = FinanceTextParser.extractAssistantDrafts(fullContent);
+    final financeActions =
+        FinanceTextParser.extractAssistantActions(fullContent);
+    final cleanContent = FinanceTextParser.cleanAssistantContent(
+      AiActionParser.cleanActionContent(fullContent),
+    );
 
     final newMessages = <ChatMessage>[];
     if (originalText.isNotEmpty && _lastUserContent() != originalText) {
@@ -306,10 +394,18 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     }
     final assistantMsg = ChatMessage(
       role: ChatRole.assistant,
-      content: cleanContent.isEmpty ? fullContent : cleanContent,
+      content: cleanContent.isEmpty
+          ? financeDrafts.isNotEmpty
+              ? '已生成记账草案，请核对后编辑并保存。'
+              : financeActions.isNotEmpty
+                  ? '已生成账单操作草案，请在确认卡中核对。'
+                  : fullContent
+          : cleanContent,
       rawContent: fullContent,
       smartContext: smartContext,
       todoActions: todoActions.isNotEmpty ? todoActions : null,
+      financeDrafts: financeDrafts.isNotEmpty ? financeDrafts : null,
+      financeActions: financeActions.isNotEmpty ? financeActions : null,
     );
     newMessages.add(assistantMsg);
 
@@ -332,10 +428,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       _pendingManualSmartContext = '';
     });
     for (final message in newMessages) {
-      await ChatStorageService.addMessage(message);
+      await ChatStorageService.addMessage(message, sessionId: sessionId);
     }
     _scrollToBottom();
-    _generateSessionTitle();
+    _generateSessionTitle(sessionId: sessionId);
   }
 
   String _lastUserContent() {
@@ -366,10 +462,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     _sendMessage();
   }
 
-  Future<void> _generateSessionTitle() async {
-    if (_messages.isEmpty) return;
+  Future<void> _generateSessionTitle({required String sessionId}) async {
     final session = _sessions.firstWhere(
-      (s) => s.id == _activeSessionId,
+      (s) => s.id == sessionId,
       orElse: () => ChatSession(title: '新对话'),
     );
     if (session.title != '新对话') return;
@@ -378,6 +473,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       String model = _chatModel;
       String apiKey = _chatApiKey;
       String apiUrl = _chatApiUrl;
+      String provider = _chatProvider;
 
       if (model.isEmpty || apiKey.isEmpty) {
         final globalConfig = await LLMService.getConfig();
@@ -385,6 +481,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           model = globalConfig.model;
           apiKey = globalConfig.apiKey;
           apiUrl = globalConfig.apiUrl;
+          provider = globalConfig.provider;
         } else {
           return;
         }
@@ -392,9 +489,11 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
 
       if (apiUrl.isEmpty) apiUrl = AiChatService.defaultApiUrl;
 
-      final firstUserMsg = _messages.firstWhere(
+      final history = await ChatStorageService.loadHistory(sessionId);
+      if (history.isEmpty) return;
+      final firstUserMsg = history.firstWhere(
         (m) => m.role == ChatRole.user,
-        orElse: () => _messages.first,
+        orElse: () => history.first,
       );
 
       String title = await AiChatService.completeChat(
@@ -411,6 +510,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             'content': firstUserMsg.content,
           },
         ],
+        provider: provider,
       );
       title = title.trim().replaceAll('"', '').replaceAll("'", '');
       if (title.length > 15) title = '${title.substring(0, 15)}...';
@@ -475,7 +575,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SwitchListTile(
+                  LiquidGlassSwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('启用自定义提示词'),
                     subtitle: const Text('关闭后将使用默认提示词'),

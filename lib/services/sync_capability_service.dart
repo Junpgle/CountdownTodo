@@ -13,6 +13,12 @@ class SyncCapabilityService {
   static const String habitSyncCursor = 'habit_sync_cursor';
   static const int habitSyncCursorVersion = 1;
 
+  /// Personal finance sync is deliberately independent from team sync.
+  /// The server must explicitly advertise this capability before the client
+  /// advances the finance cursor.
+  static const String finance = 'finance_v1';
+  static const int financeVersion = 1;
+
   static bool supportsFixedSchedules(dynamic rawCapabilities) =>
       capabilityVersion(rawCapabilities, fixedSchedules) >=
       fixedSchedulesVersion;
@@ -35,6 +41,15 @@ class SyncCapabilityService {
   static bool supportsHabitSyncCursor(dynamic rawCapabilities) =>
       capabilityVersion(rawCapabilities, habitSyncCursor) >=
       habitSyncCursorVersion;
+
+  static bool supportsFinance(dynamic rawCapabilities) =>
+      capabilityVersion(rawCapabilities, finance) >= financeVersion;
+
+  static bool shouldAcknowledgeFinanceChanges({
+    required bool syncEnabled,
+    required dynamic rawCapabilities,
+  }) =>
+      syncEnabled && supportsFinance(rawCapabilities);
 
   /// 只有本轮实际同步习惯数据，并且服务端明确声明协议版本时，
   /// 才能确认对应 oplog。未知能力必须按旧服务端处理并保留本地操作。

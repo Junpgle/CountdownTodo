@@ -5,6 +5,7 @@ import '../../services/ai_chat_service.dart';
 import '../../services/llm_service.dart';
 import '../../services/minor_mode_policy.dart';
 import '../../services/minor_mode_service.dart';
+import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
 
 class TextModelInfo {
@@ -47,6 +48,8 @@ class VisionModelInfo {
   });
 }
 
+enum _ModelSelectionTarget { text, vision }
+
 class LLMConfigPage extends StatefulWidget {
   final bool isEmbedded;
   const LLMConfigPage({super.key, this.isEmbedded = false});
@@ -70,6 +73,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   final Map<String, List<VisionModelInfo>> _fetchedVisionModelsByProvider = {};
   String _zhipuApiKey = '';
   String _mimoApiKey = '';
+  String _mimoTokenPlanApiKey = '';
   String _deepseekApiKey = '';
   String _nvidiaNimApiKey = '';
   String _selectedTextModelProvider = 'zhipu';
@@ -84,7 +88,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     },
     'mimo': {
       'name': '小米MiMo',
-      'apiUrl': 'https://api.xiaomimimo.com/v1/chat/completions',
+      'apiUrl': '${AiChatService.mimoApiBaseUrl}/chat/completions',
+    },
+    AiChatService.mimoTokenPlanProvider: {
+      'name': '小米MiMo Token Plan',
+      'apiUrl': '${AiChatService.mimoTokenPlanOpenAiBaseUrl}/chat/completions',
     },
     'deepseek': {
       'name': 'DeepSeek',
@@ -221,6 +229,25 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       isPaid: true,
       provider: 'mimo',
     ),
+    // === 小米 MiMo Token Plan 模型 ===
+    TextModelInfo(
+      id: 'mimo-v2.5-pro',
+      name: 'MiMo-V2.5-Pro（Token Plan）',
+      description: 'Token Plan 专属入口，万亿参数旗舰模型',
+      context: '1M',
+      maxOutput: '128K',
+      isPaid: true,
+      provider: AiChatService.mimoTokenPlanProvider,
+    ),
+    TextModelInfo(
+      id: 'mimo-v2.5',
+      name: 'MiMo-V2.5（Token Plan）',
+      description: 'Token Plan 专属入口，支持文本与图像理解',
+      context: '1M',
+      maxOutput: '32K',
+      isPaid: true,
+      provider: AiChatService.mimoTokenPlanProvider,
+    ),
     // === DeepSeek 模型 ===
     TextModelInfo(
       id: 'deepseek-v4-flash',
@@ -337,6 +364,15 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       isPaid: false,
       provider: 'mimo',
     ),
+    VisionModelInfo(
+      id: 'mimo-v2.5',
+      name: 'MiMo-V2.5（Token Plan）',
+      description: 'Token Plan 专属入口，支持图像理解',
+      context: '1M',
+      maxOutput: '32K',
+      isPaid: true,
+      provider: AiChatService.mimoTokenPlanProvider,
+    ),
   ];
 
   @override
@@ -367,6 +403,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     _customVisionModels = await LLMService.getCustomVisionModels();
     _zhipuApiKey = await LLMService.getProviderApiKey('zhipu');
     _mimoApiKey = await LLMService.getProviderApiKey('mimo');
+    _mimoTokenPlanApiKey = await LLMService.getProviderApiKey(
+      AiChatService.mimoTokenPlanProvider,
+    );
     _deepseekApiKey = await LLMService.getProviderApiKey('deepseek');
     _nvidiaNimApiKey = await LLMService.getProviderApiKey('nvidia_nim');
     for (final provider in providers.keys) {
@@ -376,7 +415,25 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       );
     }
 
+    final configProvider = config?.provider ?? '';
+    final providerFromConfigUrl = config == null
+        ? ''
+        : AiChatService.inferProviderFromApiUrl(config.apiUrl);
+    // Older configs did not always persist the provider. If the endpoint
+    // identifies a provider, use it for backward-compatible migration.
+    final savedTextProvider =
+        configProvider == 'zhipu' && providerFromConfigUrl.isNotEmpty
+            ? providerFromConfigUrl
+            : configProvider;
+    final savedVisionProvider = config?.visionProvider ?? '';
+
     if (config != null) {
+      if (savedTextProvider == 'mimo' && _mimoApiKey.isEmpty) {
+        _mimoApiKey = config.apiKey;
+      } else if (savedTextProvider == AiChatService.mimoTokenPlanProvider &&
+          _mimoTokenPlanApiKey.isEmpty) {
+        _mimoTokenPlanApiKey = config.apiKey;
+      }
       _presetApiKeyCtrl.text = config.apiKey;
       _textPromptCtrl.text = config.textPrompt;
       _visionPromptCtrl.text = config.visionPrompt;
@@ -391,7 +448,6 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
 
       final textModelId = config.model;
       final visionModelId = config.visionModel;
-      final savedProvider = config.provider;
 
       final textModelExists = textModels.any((m) => m.id == textModelId);
       final customTextMatch =
@@ -421,10 +477,6 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       } else {
         _selectedVisionModel = null;
       }
-
-      if (savedProvider.isNotEmpty) {
-        _selectedTextModelProvider = savedProvider;
-      }
     } else {
       _selectedTextModel = 'glm-4.7-flash';
       _selectedVisionModel = 'glm-4.6v-flash';
@@ -435,30 +487,57 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     final hasAnyApiKey = [
       _zhipuApiKey,
       _mimoApiKey,
+      _mimoTokenPlanApiKey,
       _deepseekApiKey,
       _nvidiaNimApiKey,
       config?.apiKey ?? '',
     ].any((key) => key.trim().isNotEmpty);
     _currentStep = hasAnyApiKey ? 2 : 0;
 
-    // 根据已选模型确定各自的服务商
+    // 根据已选模型确定各自的服务商。优先使用已保存的服务商，避免
+    // Token Plan 与普通 MiMo 的同名模型被前缀匹配到错误端点。
     if (_customTextModels.any((m) => m.id == _selectedTextModel)) {
       _selectedTextModelProvider = 'custom';
+    } else if (providers.containsKey(savedTextProvider)) {
+      _selectedTextModelProvider = savedTextProvider;
     } else {
-      _selectedTextModelProvider = _getModelProvider(_selectedTextModel);
+      _selectedTextModelProvider = _getModelProvider(
+        _selectedTextModel,
+        preferredProvider: _selectedTextModelProvider,
+      );
     }
     if (_customVisionModels.any((m) => m.id == _selectedVisionModel)) {
       _selectedVisionModelProvider = 'custom';
+    } else if (providers.containsKey(savedVisionProvider)) {
+      _selectedVisionModelProvider = savedVisionProvider;
     } else {
-      _selectedVisionModelProvider = _getModelProvider(_selectedVisionModel);
+      _selectedVisionModelProvider = _getModelProvider(
+        _selectedVisionModel,
+        preferredProvider: _selectedVisionModelProvider,
+      );
     }
 
     _updateApiKeyDisplay();
     if (mounted) setState(() => _isLoading = false);
   }
 
-  String _getModelProvider(String? modelId) {
-    if (modelId == null) return 'zhipu';
+  String _getModelProvider(String? modelId, {String? preferredProvider}) {
+    if (modelId == null) return preferredProvider ?? 'zhipu';
+    if (_customTextModels.any((m) => m.id == modelId) ||
+        _customVisionModels.any((m) => m.id == modelId)) {
+      return 'custom';
+    }
+
+    if (preferredProvider != null &&
+        preferredProvider != 'custom' &&
+        providers.containsKey(preferredProvider)) {
+      final hasTextModel = _getTextModelsForProvider(preferredProvider)
+          .any((m) => m.id == modelId);
+      final hasVisionModel = _getVisionModelsForProvider(preferredProvider)
+          .any((m) => m.id == modelId);
+      if (hasTextModel || hasVisionModel) return preferredProvider;
+    }
+
     final preset = textModels.where((m) => m.id == modelId).firstOrNull;
     if (preset != null) return preset.provider;
     final fetchedTextModel = _fetchedTextModelsByProvider.values
@@ -475,10 +554,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     if (fetchedVisionModel != null) {
       return fetchedVisionModel.provider;
     }
-    if (_selectedTextModelProvider != 'zhipu') {
-      return _selectedTextModelProvider;
-    }
-    return 'zhipu';
+    return preferredProvider ?? 'zhipu';
   }
 
   List<TextModelInfo> _getTextModelsForProvider(String provider) {
@@ -544,9 +620,15 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     if (customText != null) {
       _presetApiKeyCtrl.text = customText.apiKey;
     } else {
-      final provider = _getModelProvider(_selectedTextModel);
+      final provider = _selectedTextModelProvider == 'custom'
+          ? _getModelProvider(
+              _selectedTextModel,
+              preferredProvider: _selectedTextModelProvider,
+            )
+          : _selectedTextModelProvider;
       _presetApiKeyCtrl.text = switch (provider) {
         'mimo' => _mimoApiKey,
+        AiChatService.mimoTokenPlanProvider => _mimoTokenPlanApiKey,
         'deepseek' => _deepseekApiKey,
         'nvidia_nim' => _nvidiaNimApiKey,
         _ => _zhipuApiKey,
@@ -564,7 +646,12 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     final customText =
         _customTextModels.where((m) => m.id == _selectedTextModel).firstOrNull;
     if (customText != null) return customText.apiUrl;
-    final provider = _getModelProvider(_selectedTextModel);
+    final provider = _selectedTextModelProvider == 'custom'
+        ? _getModelProvider(
+            _selectedTextModel,
+            preferredProvider: _selectedTextModelProvider,
+          )
+        : _selectedTextModelProvider;
     if (provider == 'nvidia_nim') {
       return 'https://integrate.api.nvidia.com/v1';
     }
@@ -595,6 +682,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       }
 
       final testConfig = LLMConfig(
+        provider: _selectedTextModelProvider,
+        visionProvider: _selectedVisionModelProvider,
         apiKey: _getEffectiveApiKey(),
         model: _getEffectiveModelId(),
         visionModel: _getEffectiveVisionModelId(),
@@ -640,9 +729,15 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       return;
     }
 
-    final provider = _getModelProvider(_selectedTextModel);
+    final provider = _selectedTextModelProvider == 'custom'
+        ? _getModelProvider(
+            _selectedTextModel,
+            preferredProvider: _selectedTextModelProvider,
+          )
+        : _selectedTextModelProvider;
     final config = LLMConfig(
       provider: provider,
+      visionProvider: _selectedVisionModelProvider,
       apiKey: _getEffectiveApiKey(),
       model: _getEffectiveModelId(),
       visionModel: _getEffectiveVisionModelId(),
@@ -658,6 +753,12 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     }
     if (_mimoApiKey.isNotEmpty) {
       await LLMService.saveProviderApiKey('mimo', _mimoApiKey);
+    }
+    if (_mimoTokenPlanApiKey.isNotEmpty) {
+      await LLMService.saveProviderApiKey(
+        AiChatService.mimoTokenPlanProvider,
+        _mimoTokenPlanApiKey,
+      );
     }
     if (_deepseekApiKey.isNotEmpty) {
       await LLMService.saveProviderApiKey('deepseek', _deepseekApiKey);
@@ -745,7 +846,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     return (maxWidth - spacing * (columns - 1)) / columns;
   }
 
-  // ==================== Step 1: 选择服务商 ====================
+  // ==================== Step 1: 了解服务商 ====================
 
   Widget _buildStep1Provider() {
     return LayoutBuilder(
@@ -764,6 +865,13 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             features: ['1M超长上下文', '全模态感知', '深度推理'],
             color: Colors.blue,
             icon: Icons.smart_toy,
+          ),
+          _buildProviderInfoCard(
+            name: 'MiMo Token Plan',
+            description: '小米 MiMo 的 Token Plan 专属 API 入口',
+            features: ['独立配额', 'OpenAI兼容', '支持模型列表'],
+            color: Colors.indigo,
+            icon: Icons.token_outlined,
           ),
           _buildProviderInfoCard(
             name: 'DeepSeek',
@@ -791,7 +899,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '本应用基于 OpenAI API 兼容接口开发，已深度适配以下大模型平台。文本模型和视觉模型可以来自不同服务商，自由混搭。',
+              '本应用基于 OpenAI API 兼容接口开发，已深度适配以下大模型平台。下一步填写 API Key，最后再选择文本和视觉模型。',
               style:
                   TextStyle(fontSize: 13, color: Colors.grey[700], height: 1.5),
             ),
@@ -814,6 +922,12 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                   url: 'https://platform.xiaomimimo.com',
                 ),
                 _buildQuickLink(
+                  label: 'MiMo Token Plan 文档',
+                  icon: Icons.open_in_new,
+                  color: Colors.indigo,
+                  url: 'https://mimo.mi.com/docs/welcome',
+                ),
+                _buildQuickLink(
                   label: 'DeepSeek开放平台',
                   icon: Icons.open_in_new,
                   color: Colors.green,
@@ -823,7 +937,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             ),
             const SizedBox(height: 20),
             Text(
-              '支持的服务商',
+              '支持的服务商（模型将在下一步选择）',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
@@ -975,6 +1089,15 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             linkLabel: '→ 前往小米MiMo开放平台申请',
           ),
           _buildProviderKeyField(
+            provider: AiChatService.mimoTokenPlanProvider,
+            name: 'MiMo Token Plan',
+            color: Colors.indigo,
+            apiKey: _mimoTokenPlanApiKey,
+            onChanged: (val) => _mimoTokenPlanApiKey = val,
+            url: 'https://mimo.mi.com/docs/welcome',
+            linkLabel: '→ 查看 MiMo Token Plan 文档',
+          ),
+          _buildProviderKeyField(
             provider: 'deepseek',
             name: 'DeepSeek',
             color: Colors.green,
@@ -991,13 +1114,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           minWidth: 320,
           maxColumns: 2,
         );
-        final wide = _useWideLayout(constraints.maxWidth);
-
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '配置您需要使用的 API Key。文本模型和视觉模型可以来自不同服务商，请按需填写。',
+              '配置您需要使用的 API Key。文本模型和视觉模型可以来自不同服务商，请按需填写；填写后点击“下一步”选择模型。',
               style:
                   TextStyle(fontSize: 13, color: Colors.grey[600], height: 1.5),
             ),
@@ -1009,23 +1130,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                   .map((field) => SizedBox(width: fieldWidth, child: field))
                   .toList(),
             ),
-            const SizedBox(height: 16),
-            Align(
-              alignment: wide ? Alignment.centerRight : Alignment.centerLeft,
-              child: SizedBox(
-                width: wide ? 320 : double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _isTesting ? null : _testConnection,
-                  icon: _isTesting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.wifi_tethering, size: 18),
-                  label: Text(_isTesting ? '测试连接' : '测试当前选中模型的连接'),
-                ),
-              ),
+            const SizedBox(height: 12),
+            Text(
+              '模型选择和连接测试位于下一步，测试时会使用你刚刚选中的文本模型。',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
           ],
         );
@@ -1203,10 +1311,14 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     );
   }
 
-  Future<void> _fetchProviderModels(String provider) async {
+  Future<void> _fetchProviderModels(
+    String provider, {
+    required _ModelSelectionTarget target,
+  }) async {
     if (!await _ensureLlmConfigurationAllowed()) return;
     final apiKey = switch (provider) {
       'mimo' => _mimoApiKey,
+      AiChatService.mimoTokenPlanProvider => _mimoTokenPlanApiKey,
       'deepseek' => _deepseekApiKey,
       'nvidia_nim' => _nvidiaNimApiKey,
       _ => _zhipuApiKey,
@@ -1243,16 +1355,19 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       if (!mounted) return;
 
       setState(() {
-        _selectedTextModelProvider = provider;
-        _selectedVisionModelProvider = provider;
         final fetchedTextModels = _fetchedTextModelsByProvider[provider] ?? [];
         final fetchedVisionModels =
             _fetchedVisionModelsByProvider[provider] ?? [];
-        if (_selectedTextModel == null && fetchedTextModels.isNotEmpty) {
-          _selectedTextModel = fetchedTextModels.first.id;
-        }
-        if (_selectedVisionModel == null && fetchedVisionModels.isNotEmpty) {
-          _selectedVisionModel = fetchedVisionModels.first.id;
+        if (target == _ModelSelectionTarget.text) {
+          _selectedTextModelProvider = provider;
+          if (_selectedTextModel == null && fetchedTextModels.isNotEmpty) {
+            _selectedTextModel = fetchedTextModels.first.id;
+          }
+        } else {
+          _selectedVisionModelProvider = provider;
+          if (_selectedVisionModel == null && fetchedVisionModels.isNotEmpty) {
+            _selectedVisionModel = fetchedVisionModels.first.id;
+          }
         }
       });
 
@@ -1285,10 +1400,13 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                           onPressed: () {
                             Navigator.pop(ctx);
                             setState(() {
-                              _selectedTextModel = id;
-                              _selectedTextModelProvider = provider;
-                              _selectedVisionModel = id;
-                              _selectedVisionModelProvider = provider;
+                              if (target == _ModelSelectionTarget.text) {
+                                _selectedTextModel = id;
+                                _selectedTextModelProvider = provider;
+                              } else {
+                                _selectedVisionModel = id;
+                                _selectedVisionModelProvider = provider;
+                              }
                             });
                           },
                           child: const Text('选用'),
@@ -1322,6 +1440,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         final wide = _useWideLayout(constraints.maxWidth);
         final textModelSection = _buildModelSection(
           title: '文本模型',
+          selectionTarget: _ModelSelectionTarget.text,
           selectedProvider: _selectedTextModelProvider,
           onProviderChanged: (provider) {
             setState(() {
@@ -1353,6 +1472,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         );
         final visionModelSection = _buildModelSection(
           title: '视觉模型',
+          selectionTarget: _ModelSelectionTarget.vision,
           selectedProvider: _selectedVisionModelProvider,
           onProviderChanged: (provider) {
             setState(() {
@@ -1404,9 +1524,33 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             ],
             const SizedBox(height: 16),
             _buildPromptSettings(wide: wide),
+            _buildTestConnectionButton(wide: wide),
           ],
         );
       },
+    );
+  }
+
+  Widget _buildTestConnectionButton({required bool wide}) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Align(
+        alignment: wide ? Alignment.centerRight : Alignment.centerLeft,
+        child: SizedBox(
+          width: wide ? 320 : double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _isTesting ? null : _testConnection,
+            icon: _isTesting
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.wifi_tethering, size: 18),
+            label: Text(_isTesting ? '测试连接' : '测试当前选中模型的连接'),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1482,6 +1626,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
 
   Widget _buildModelSection({
     required String title,
+    required _ModelSelectionTarget selectionTarget,
     required String selectedProvider,
     required ValueChanged<String> onProviderChanged,
     required List models,
@@ -1507,6 +1652,12 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         'name': '小米MiMo',
         'color': Colors.blue,
         'icon': Icons.smart_toy
+      },
+      {
+        'key': AiChatService.mimoTokenPlanProvider,
+        'name': 'MiMo Token Plan',
+        'color': Colors.indigo,
+        'icon': Icons.token_outlined
       },
       {
         'key': 'deepseek',
@@ -1589,7 +1740,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           Align(
             alignment: Alignment.centerRight,
             child: OutlinedButton.icon(
-              onPressed: () => _fetchProviderModels(selectedProvider),
+              onPressed: () => _fetchProviderModels(
+                selectedProvider,
+                target: selectionTarget,
+              ),
               icon: const Icon(Icons.cloud_download_outlined, size: 16),
               label: Text(
                 '拉取${providers[selectedProvider]?['name'] ?? selectedProvider}模型列表',
@@ -1799,10 +1953,119 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
 
   @override
   Widget build(BuildContext context) {
+    final standalone = !widget.isEmbedded;
+    final content = _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : _accessDenied
+            ? _buildAccessDeniedBody(context)
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = _useWideLayout(constraints.maxWidth);
+                  return Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1180),
+                      child: Stepper(
+                        type: wide
+                            ? StepperType.horizontal
+                            : StepperType.vertical,
+                        margin: wide
+                            ? const EdgeInsets.fromLTRB(24, 12, 24, 24)
+                            : null,
+                        currentStep: _currentStep,
+                        onStepContinue: () {
+                          if (_currentStep < 2) {
+                            setState(() => _currentStep++);
+                          } else {
+                            _saveConfig();
+                          }
+                        },
+                        onStepCancel: () {
+                          if (_currentStep > 0) {
+                            setState(() => _currentStep--);
+                          }
+                        },
+                        onStepTapped: (step) {
+                          // 只允许点击已完成的步骤或当前步骤
+                          if (step <= _currentStep) {
+                            setState(() => _currentStep = step);
+                          }
+                        },
+                        controlsBuilder: (context, details) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 20),
+                            child: Row(
+                              mainAxisAlignment: wide
+                                  ? MainAxisAlignment.end
+                                  : MainAxisAlignment.start,
+                              children: [
+                                if (_currentStep < 2)
+                                  FilledButton.icon(
+                                    onPressed: details.onStepContinue,
+                                    icon: const Icon(Icons.arrow_forward,
+                                        size: 18),
+                                    label: const Text('下一步'),
+                                  )
+                                else
+                                  FilledButton.icon(
+                                    onPressed: _isTesting
+                                        ? null
+                                        : details.onStepContinue,
+                                    icon: const Icon(Icons.save, size: 18),
+                                    label: const Text('保存配置'),
+                                  ),
+                                if (_currentStep > 0) ...[
+                                  const SizedBox(width: 12),
+                                  OutlinedButton.icon(
+                                    onPressed: details.onStepCancel,
+                                    icon:
+                                        const Icon(Icons.arrow_back, size: 18),
+                                    label: const Text('上一步'),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          );
+                        },
+                        steps: [
+                          Step(
+                            title: const Text('了解服务商'),
+                            content: _buildStep1Provider(),
+                            isActive: _currentStep >= 0,
+                            state: _currentStep > 0
+                                ? StepState.complete
+                                : StepState.indexed,
+                          ),
+                          Step(
+                            title: const Text('配置 API Key'),
+                            content: _buildStep2ApiKey(),
+                            isActive: _currentStep >= 1,
+                            state: _currentStep > 1
+                                ? StepState.complete
+                                : _currentStep == 1
+                                    ? StepState.indexed
+                                    : StepState.disabled,
+                          ),
+                          Step(
+                            title: const Text('选择模型'),
+                            content: _buildStep3Models(),
+                            isActive: _currentStep >= 2,
+                            state: _currentStep == 2
+                                ? StepState.indexed
+                                : StepState.disabled,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+
     return Scaffold(
+      extendBodyBehindAppBar: standalone,
       appBar: widget.isEmbedded
           ? null
-          : AppBar(
+          : FloatingGlassAppBar(
+              flexibleSpace: const FloatingGlassTopBarBackground(),
               title: const Text('大模型API配置'),
               actions: _accessDenied
                   ? const []
@@ -1847,111 +2110,18 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                       ),
                     ],
             ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _accessDenied
-              ? _buildAccessDeniedBody(context)
-              : LayoutBuilder(
-                  builder: (context, constraints) {
-                    final wide = _useWideLayout(constraints.maxWidth);
-                    return Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1180),
-                        child: Stepper(
-                          type: wide
-                              ? StepperType.horizontal
-                              : StepperType.vertical,
-                          margin: wide
-                              ? const EdgeInsets.fromLTRB(24, 12, 24, 24)
-                              : null,
-                          currentStep: _currentStep,
-                          onStepContinue: () {
-                            if (_currentStep < 2) {
-                              setState(() => _currentStep++);
-                            } else {
-                              _saveConfig();
-                            }
-                          },
-                          onStepCancel: () {
-                            if (_currentStep > 0) {
-                              setState(() => _currentStep--);
-                            }
-                          },
-                          onStepTapped: (step) {
-                            // 只允许点击已完成的步骤或当前步骤
-                            if (step <= _currentStep) {
-                              setState(() => _currentStep = step);
-                            }
-                          },
-                          controlsBuilder: (context, details) {
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 20),
-                              child: Row(
-                                mainAxisAlignment: wide
-                                    ? MainAxisAlignment.end
-                                    : MainAxisAlignment.start,
-                                children: [
-                                  if (_currentStep < 2)
-                                    FilledButton.icon(
-                                      onPressed: details.onStepContinue,
-                                      icon: const Icon(Icons.arrow_forward,
-                                          size: 18),
-                                      label: const Text('下一步'),
-                                    )
-                                  else
-                                    FilledButton.icon(
-                                      onPressed: _isTesting
-                                          ? null
-                                          : details.onStepContinue,
-                                      icon: const Icon(Icons.save, size: 18),
-                                      label: const Text('保存配置'),
-                                    ),
-                                  if (_currentStep > 0) ...[
-                                    const SizedBox(width: 12),
-                                    OutlinedButton.icon(
-                                      onPressed: details.onStepCancel,
-                                      icon: const Icon(Icons.arrow_back,
-                                          size: 18),
-                                      label: const Text('上一步'),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            );
-                          },
-                          steps: [
-                            Step(
-                              title: const Text('选择服务商'),
-                              content: _buildStep1Provider(),
-                              isActive: _currentStep >= 0,
-                              state: _currentStep > 0
-                                  ? StepState.complete
-                                  : StepState.indexed,
-                            ),
-                            Step(
-                              title: const Text('配置 API Key'),
-                              content: _buildStep2ApiKey(),
-                              isActive: _currentStep >= 1,
-                              state: _currentStep > 1
-                                  ? StepState.complete
-                                  : _currentStep == 1
-                                      ? StepState.indexed
-                                      : StepState.disabled,
-                            ),
-                            Step(
-                              title: const Text('选择模型'),
-                              content: _buildStep3Models(),
-                              isActive: _currentStep >= 2,
-                              state: _currentStep == 2
-                                  ? StepState.indexed
-                                  : StepState.disabled,
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: standalone,
+        child: standalone
+            ? Padding(
+                padding: EdgeInsets.only(
+                  top: floatingGlassSettingsContentTopInset(context),
                 ),
+                child: content,
+              )
+            : content,
+      ),
     );
   }
 

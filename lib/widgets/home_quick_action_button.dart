@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'optional_liquid_glass_surface.dart';
+import 'floating_glass_control.dart';
 
-/// A home-screen quick action that preserves the stock FAB while Liquid Glass
-/// is disabled and swaps only its visual shell when the effect is enabled.
+/// A home-screen quick action backed by the shared draggable Liquid Glass FAB.
+/// Callers can opt out with [useLiquidGlass] when a native FAB is required.
 class HomeQuickActionButton extends StatelessWidget {
   const HomeQuickActionButton.compact({
     super.key,
@@ -13,6 +13,7 @@ class HomeQuickActionButton extends StatelessWidget {
     required this.tint,
     required this.foregroundColor,
     required this.isDark,
+    this.useLiquidGlass = true,
     required Widget child,
   })  : _extended = false,
         _compactChild = child,
@@ -27,6 +28,7 @@ class HomeQuickActionButton extends StatelessWidget {
     required this.tint,
     required this.foregroundColor,
     required this.isDark,
+    this.useLiquidGlass = true,
     required Widget icon,
     required Widget label,
   })  : _extended = true,
@@ -40,6 +42,7 @@ class HomeQuickActionButton extends StatelessWidget {
   final Color tint;
   final Color foregroundColor;
   final bool isDark;
+  final bool useLiquidGlass;
   final bool _extended;
   final Widget? _compactChild;
   final Widget? _icon;
@@ -62,59 +65,25 @@ class HomeQuickActionButton extends StatelessWidget {
             child: _compactChild,
           );
 
-    final borderRadius = _extended ? 16.0 : 20.0;
-    final glassContent = Tooltip(
-      message: tooltip,
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(borderRadius),
-          child: _extended
-              ? SizedBox(
-                  height: 56,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        IconTheme(
-                          data: IconThemeData(
-                            color: foregroundColor,
-                            size: 24,
-                          ),
-                          child: _icon!,
-                        ),
-                        const SizedBox(width: 8),
-                        DefaultTextStyle(
-                          style:
-                              Theme.of(context).textTheme.labelLarge!.copyWith(
-                                    color: foregroundColor,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                          child: _label!,
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : SizedBox(
-                  width: 40,
-                  height: 40,
-                  child: Center(child: _compactChild),
-                ),
-        ),
-      ),
-    );
+    if (!useLiquidGlass) return fallback;
 
-    return OptionalLiquidGlassPanel(
-      borderRadius: borderRadius,
-      circular: !_extended,
-      tint: tint.withValues(alpha: 0.18),
-      isDark: isDark,
-      fallback: fallback,
-      child: glassContent,
-    );
+    return _extended
+        ? FloatingGlassActionButton.extended(
+            heroTag: heroTag,
+            onPressed: onPressed,
+            tooltip: tooltip,
+            backgroundColor: tint,
+            foregroundColor: foregroundColor,
+            icon: _icon!,
+            label: _label!,
+          )
+        : FloatingGlassActionButton.small(
+            heroTag: heroTag,
+            onPressed: onPressed,
+            tooltip: tooltip,
+            backgroundColor: tint,
+            foregroundColor: foregroundColor,
+            child: _compactChild,
+          );
   }
 }

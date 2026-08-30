@@ -41,6 +41,10 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: ThemeData(
+          useMaterial3: true,
+          bottomSheetTheme: const BottomSheetThemeData(showDragHandle: true),
+        ),
         home: Builder(
           builder: (context) => Scaffold(
             body: Center(
@@ -64,6 +68,9 @@ void main() {
 
     await tester.tap(find.text('打开'));
     await tester.pumpAndSettle();
+
+    final bottomSheet = tester.widget<BottomSheet>(find.byType(BottomSheet));
+    expect(bottomSheet.showDragHandle, isFalse);
 
     final safeArea = tester.widget<SafeArea>(
       find.ancestor(

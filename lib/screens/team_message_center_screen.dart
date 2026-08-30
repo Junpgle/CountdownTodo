@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../models.dart';
+import '../widgets/floating_glass_control.dart';
 
 class TeamMessageCenterScreen extends StatefulWidget {
   final List<Team> managedTeams;
@@ -83,11 +84,12 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
     return Scaffold(
       backgroundColor:
           isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FA),
-      appBar: AppBar(
+      appBar: FloatingGlassAppBar(
         title:
             const Text('消息中心', style: TextStyle(fontWeight: FontWeight.bold)),
         elevation: 0,
         backgroundColor: Colors.transparent,
+        flexibleSpace: const FloatingGlassTopBarBackground(),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),

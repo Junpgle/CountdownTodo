@@ -20,6 +20,8 @@ import 'screens/feature_guide_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/default_splash_screen.dart';
 import 'screens/share_view_screen.dart';
+import 'services/team_share_link.dart';
+import 'services/api_service.dart';
 import 'widgets/privacy_policy_dialog.dart';
 import 'storage_service.dart';
 import 'models.dart';
@@ -98,6 +100,14 @@ Future<void> _initializePlatformBeforeHome(List<String> args) async {
   // These tasks are independent. Start them together while the Flutter splash
   // is already visible, then keep the authenticated home flow behind this
   // readiness barrier so SQLite and platform channels are safe to use.
+  // Bind the deep-link channel before starting the other platform tasks. A
+  // synchronous startup failure in an earlier task must not prevent a widget
+  // intent from being captured during a cold start.
+  final deepLinkReady = _runStartupTask(
+    'AppDeepLinkService.init',
+    AppDeepLinkService.init(args),
+    timeout: const Duration(seconds: 2),
+  );
   await Future.wait<dynamic>([
     _runStartupTask(
       'NotificationService.bindNativeChannel',
@@ -114,11 +124,7 @@ Future<void> _initializePlatformBeforeHome(List<String> args) async {
       PageTransitions.init(),
       timeout: const Duration(seconds: 1),
     ),
-    _runStartupTask(
-      'AppDeepLinkService.init',
-      AppDeepLinkService.init(args),
-      timeout: const Duration(seconds: 2),
-    ),
+    deepLinkReady,
     _runStartupTask(
       'WindowService.init',
       PlatformBootstrap.initWindowService(),
@@ -135,6 +141,24 @@ Future<void> _initializePlatformBeforeHome(List<String> args) async {
       timeout: const Duration(seconds: 2),
     ),
   ]);
+}
+
+String? _detectInitialShareCode() {
+  if (!kIsWeb) return null;
+
+  final routes = <String>[];
+  try {
+    routes.add(getUrlHash());
+  } catch (_) {}
+  try {
+    routes.add(Uri.base.toString());
+  } catch (_) {}
+
+  for (final route in routes) {
+    final code = TeamShareLink.codeFromRoute(route);
+    if (code != null && code.isNotEmpty) return code;
+  }
+  return null;
 }
 
 void _configureRuntimeCaches() {
@@ -197,25 +221,31 @@ Future<void> main(List<String> args) async {
 
   // 立刻运行 App。平台初始化在开屏可见期间并行完成，避免原生启动页
   // 因多个串行 timeout 最坏阻塞数秒。
+  final initialShareCode = _detectInitialShareCode();
   runApp(
     LiquidGlassWidgets.wrap(
-      child: MyApp(platformReady: platformReady),
+      child: MyApp(
+        platformReady: platformReady,
+        initialShareCode: initialShareCode,
+      ),
       brightnessResolver: Theme.maybeBrightnessOf,
     ),
   );
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key, this.platformReady});
+  const MyApp({super.key, this.platformReady, this.initialShareCode});
 
   final Future<void>? platformReady;
+  final String? initialShareCode;
 
   @override
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   static const int _isolateTransformThreshold = 60;
+  static const Duration _systemUiRestoreDelay = Duration(milliseconds: 150);
 
   String? _loggedInUser;
   bool _isChecking = true;
@@ -225,13 +255,20 @@ class _MyAppState extends State<MyApp> {
   bool _showHolidaySplash = false;
   bool _showPrivacyUpdate = false;
   bool _defaultSplashCompleted = false;
+  bool _splashSequenceReady = false;
   bool _windowReadyForSplashTransition = true;
+  bool _deepLinkConsumptionScheduled = false;
   Timer? _defaultSplashFallbackTimer;
+  Timer? _systemUiRestoreTimer;
   String? _shareCode;
 
   @override
   void initState() {
     super.initState();
+    if (AppPlatform.isAndroid) {
+      WidgetsBinding.instance.addObserver(this);
+    }
+    _shareCode = widget.initialShareCode;
     // ── 最先检查分享路由，避免启动多余逻辑 ──
     _checkShareRoute();
     _windowReadyForSplashTransition =
@@ -262,38 +299,77 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
+  @override
+  void didChangeMetrics() {
+    _scheduleSystemUiRestore();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _scheduleSystemUiRestore();
+    }
+  }
+
+  void _scheduleSystemUiRestore() {
+    if (!AppPlatform.isAndroid) return;
+
+    _systemUiRestoreTimer?.cancel();
+    _systemUiRestoreTimer = Timer(_systemUiRestoreDelay, () {
+      if (!mounted) return;
+      unawaited(AppSystemUiStyle.restoreAfterWindowChange());
+    });
+  }
+
   void _checkShareRoute() {
-    if (_shareCode != null) return;
-    try {
-      String hash = getUrlHash();
-      if (hash.startsWith('#')) hash = hash.substring(1);
-      if (hash.startsWith('/share')) {
-        final uri = Uri.parse('http://localhost$hash');
-        final code = uri.queryParameters['code'];
+    if (_shareCode == null) {
+      final routes = <String>[];
+      try {
+        routes.add(getUrlHash());
+      } catch (_) {}
+      if (kIsWeb) {
+        // Some browsers expose the hash late through window.location. Uri.base
+        // gives us a second synchronous source during the first app build.
+        try {
+          routes.add(Uri.base.toString());
+        } catch (_) {}
+      }
+
+      for (final route in routes) {
+        final code = TeamShareLink.codeFromRoute(route);
         if (code != null && code.isNotEmpty) {
           _shareCode = code;
+          break;
         }
       }
-    } catch (_) {}
+    }
+
+    // 分享页会跳过常规启动流程，因此需要单独选择 Web API 入口。
+    if (_shareCode != null && kIsWeb) {
+      ApiService.setServerChoice('aliyun');
+    }
   }
 
   Future<void> _startSplashSequence() async {
+    Map<String, dynamic>? splashContent;
     try {
       // 异步获取节日开屏内容，不在这加延迟，让 DefaultSplashScreen 自己跑
-      final splashContent = await SplashService.getCachedContent()
+      splashContent = await SplashService.getCachedContent()
           .timeout(const Duration(seconds: 1));
-      if (mounted) {
-        setState(() {
-          _splashContent = splashContent;
-          // 避免竞态：如果默认开屏已结束但缓存稍后才返回，也要能切到节日开屏。
-          if (_defaultSplashCompleted && splashContent != null) {
-            _showHolidaySplash = true;
-          }
-        });
-      }
     } catch (e) {
       // debugPrint('[Main] 开屏缓存读取失败，跳过节日开屏: $e');
     }
+    if (!mounted) return;
+    setState(() {
+      _splashContent = splashContent;
+      // 避免竞态：如果默认开屏已结束但缓存稍后才返回，也要能切到节日开屏。
+      if (_defaultSplashCompleted && splashContent != null) {
+        _showHolidaySplash = true;
+      }
+    });
+    _splashSequenceReady = true;
+    if (_defaultSplashCompleted) _applySplashTransitionIfReady();
+    _scheduleDeepLinkConsumption();
   }
 
   Future<bool> _showCloseConfirmDialog() async {
@@ -404,9 +480,7 @@ class _MyAppState extends State<MyApp> {
             _showPrivacyUpdateDialog();
           });
         }
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          unawaited(AppDeepLinkService.consumePendingAfterAppReady());
-        });
+        _scheduleDeepLinkConsumption();
       }
     } catch (e) {
       // debugPrint('[Main] 初始化失败: $e');
@@ -414,6 +488,7 @@ class _MyAppState extends State<MyApp> {
         setState(() {
           _isChecking = false;
         });
+        _scheduleDeepLinkConsumption();
       }
     }
 
@@ -509,19 +584,20 @@ class _MyAppState extends State<MyApp> {
 
   void _applySplashTransitionIfReady() {
     if (!_defaultSplashCompleted ||
+        !_splashSequenceReady ||
         !_windowReadyForSplashTransition ||
         !mounted) {
       return;
     }
+    final showHolidaySplash = _splashContent != null;
     if (mounted) {
       setState(() {
         _showDefaultSplash = false;
         // 如果有开屏图，切换到开屏图状态
-        if (_splashContent != null) {
-          _showHolidaySplash = true;
-        }
+        _showHolidaySplash = showHolidaySplash;
       });
     }
+    if (!showHolidaySplash) _scheduleDeepLinkConsumption();
   }
 
   void _onHolidaySplashComplete() {
@@ -530,7 +606,37 @@ class _MyAppState extends State<MyApp> {
         _showHolidaySplash = false;
         _splashContent = null;
       });
+      _scheduleDeepLinkConsumption();
     }
+  }
+
+  /// Wait until the authenticated root page and every startup splash route
+  /// have settled before consuming a widget deep link. MaterialApp can rebuild
+  /// its initial `/` route during the splash handoff; navigating earlier would
+  /// leave the target page underneath that replacement route.
+  void _scheduleDeepLinkConsumption() {
+    if (!mounted ||
+        !_splashSequenceReady ||
+        !_defaultSplashCompleted ||
+        _showDefaultSplash ||
+        _showHolidaySplash ||
+        _isChecking ||
+        _deepLinkConsumptionScheduled) {
+      return;
+    }
+    _deepLinkConsumptionScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _deepLinkConsumptionScheduled = false;
+      if (!mounted ||
+          !_splashSequenceReady ||
+          !_defaultSplashCompleted ||
+          _showDefaultSplash ||
+          _showHolidaySplash ||
+          _isChecking) {
+        return;
+      }
+      unawaited(AppDeepLinkService.consumePendingAfterAppReady());
+    });
   }
 
   StreamSubscription? _bandPomodoroSub;
@@ -697,6 +803,10 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     _defaultSplashFallbackTimer?.cancel();
+    _systemUiRestoreTimer?.cancel();
+    if (AppPlatform.isAndroid) {
+      WidgetsBinding.instance.removeObserver(this);
+    }
     _bandPomodoroSub?.cancel();
     unawaited(FloatWindowService.dispose());
     BandSyncService.dispose();
@@ -879,11 +989,13 @@ class _MyAppState extends State<MyApp> {
                                 onGenerateRoute: (settings) {
                                   final name = settings.name ?? '';
                                   if (name.startsWith('/share')) {
-                                    final uri =
-                                        Uri.parse('http://localhost$name');
-                                    final code = uri.queryParameters['code'];
+                                    final code =
+                                        TeamShareLink.codeFromRoute(name);
                                     if (code != null && code.isNotEmpty) {
                                       _shareCode = code;
+                                      if (kIsWeb) {
+                                        ApiService.setServerChoice('aliyun');
+                                      }
                                       return MaterialPageRoute(
                                         builder: (_) =>
                                             ShareViewScreen(shareCode: code),
