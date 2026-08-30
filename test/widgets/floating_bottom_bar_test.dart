@@ -5,6 +5,7 @@ import 'package:countdown_todo/widgets/home_app_bar.dart';
 import 'package:countdown_todo/widgets/home_quick_action_button.dart';
 import 'package:countdown_todo/widgets/home_sections.dart';
 import 'package:countdown_todo/theme/app_liquid_glass_theme.dart';
+import 'package:countdown_todo/services/android_window_rendering_policy.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -134,6 +135,40 @@ void main() {
     expect(find.text('Content-sized control'), findsOneWidget);
   });
 
+  testWidgets('does not add a second glass layer to stock buttons',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+    final theme = applyAppLiquidGlassTheme(
+      ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+      ),
+      enabled: true,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: Scaffold(
+          body: FloatingGlassControl(
+            height: 64,
+            margin: EdgeInsets.zero,
+            mobilePortraitOnly: false,
+            child: FilledButton(
+              onPressed: () {},
+              child: const Text('Action'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(find.byType(GlassContainer), findsOneWidget);
+    expect(find.byType(FilledButton), findsOneWidget);
+  });
+
   testWidgets('can keep interactive content on the native fallback',
       (tester) async {
     await LiquidGlassEffectService.setEnabled(true);
@@ -210,6 +245,36 @@ void main() {
     expect(find.byType(ShaderMask), findsOneWidget);
     expect(find.byType(BackdropFilter), findsNothing);
     expect(find.text('Faded content'), findsOneWidget);
+  });
+
+  testWidgets('keeps content visible when Android 17 disables shader fades',
+      (tester) async {
+    final previousPolicy =
+        AndroidWindowRenderingPolicy.disableShaderContentFade.value;
+    addTearDown(() {
+      AndroidWindowRenderingPolicy.disableShaderContentFade.value =
+          previousPolicy;
+    });
+    AndroidWindowRenderingPolicy.disableShaderContentFade.value = true;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FloatingGlassTopBarContentFade(
+            topBarHeight: 80,
+            child: ListView(
+              children: const [
+                SizedBox(height: 240, child: Text('Unmasked content')),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(ShaderMask), findsNothing);
+    expect(find.text('Unmasked content'), findsOneWidget);
   });
 
   testWidgets('fades grouped sliver content beneath a pinned top bar',

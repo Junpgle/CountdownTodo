@@ -29,6 +29,7 @@ import 'services/float_window_service.dart';
 import 'services/window_service.dart';
 import 'services/band_sync_service.dart';
 import 'services/notification_service.dart';
+import 'services/android_window_rendering_policy.dart';
 import 'services/pomodoro_service.dart';
 import 'widgets/macos_menu_bar.dart';
 import 'services/pomodoro_sync_service.dart';
@@ -112,6 +113,11 @@ Future<void> _initializePlatformBeforeHome(List<String> args) async {
     _runStartupTask(
       'NotificationService.bindNativeChannel',
       NotificationService.bindNativeChannel(),
+      timeout: const Duration(seconds: 1),
+    ),
+    _runStartupTask(
+      'AndroidWindowRenderingPolicy.initialize',
+      AndroidWindowRenderingPolicy.initialize(),
       timeout: const Duration(seconds: 1),
     ),
     _runStartupTask(

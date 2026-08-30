@@ -99,6 +99,19 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             isInMultiWindowMode
     }
 
+    private fun windowRenderingInfo(flutterView: android.view.View? = null): Map<String, Any> {
+        return mapOf(
+            "androidSdkInt" to Build.VERSION.SDK_INT,
+            "isAndroid17" to (Build.VERSION.SDK_INT >= 37),
+            "manufacturer" to Build.MANUFACTURER,
+            "isInMultiWindowMode" to isInMultiWindowMode,
+            "isHyperOsMiniWindow" to isHyperOsMiniWindow(),
+            "width" to (flutterView?.width ?: 0),
+            "height" to (flutterView?.height ?: 0),
+            "hasWindowFocus" to hasWindowFocus()
+        )
+    }
+
     private fun keepFlutterDrawingInMiniWindow() {
         if (!isHyperOsMiniWindow()) return
 
@@ -132,12 +145,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
             methodChannel?.invokeMethod(
                 "windowConfigurationChanged",
-                mapOf(
-                    "isInMultiWindowMode" to isInMultiWindowMode,
-                    "width" to flutterView.width,
-                    "height" to flutterView.height,
-                    "hasWindowFocus" to hasWindowFocus()
-                )
+                windowRenderingInfo(flutterView)
             )
         }
     }
@@ -1235,6 +1243,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     dartReady = true
                     flushPendingNotificationEvents()
                     result.success(null)
+                }
+                "getWindowRenderingInfo" -> {
+                    result.success(
+                        windowRenderingInfo(
+                            findViewById(FlutterActivity.FLUTTER_VIEW_ID)
+                        )
+                    )
                 }
                 "showOngoingNotification" -> {
                     val args = call.arguments as? Map<String, Any>
