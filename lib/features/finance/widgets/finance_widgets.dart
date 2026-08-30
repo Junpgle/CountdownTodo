@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../../../widgets/floating_bottom_bar.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
+
+/// Leaves enough scrollable room for the floating navigation bar and its
+/// bottom margin, so the final finance card can clear the bar completely.
+double financeBottomContentPaddingFor(BuildContext context) {
+  if (!floatingBottomBarShouldFloat(context)) return 32;
+  return floatingBottomBarHeightFor(context) + 48;
+}
 
 class FinanceOverviewPanel extends StatelessWidget {
   final DateTime month;
@@ -9,6 +17,7 @@ class FinanceOverviewPanel extends StatelessWidget {
   final List<FinanceTransaction> transactions;
   final Map<String, FinanceCategory> categories;
   final VoidCallback onAdd;
+  final GlobalKey addActionKey;
   final Future<void> Function() onRefresh;
 
   const FinanceOverviewPanel({
@@ -18,6 +27,7 @@ class FinanceOverviewPanel extends StatelessWidget {
     required this.transactions,
     required this.categories,
     required this.onAdd,
+    required this.addActionKey,
     required this.onRefresh,
   });
 
@@ -29,15 +39,17 @@ class FinanceOverviewPanel extends StatelessWidget {
         .toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final maxCategory = topCategories.isEmpty ? 1 : topCategories.first.value;
+    final bottomPadding = financeBottomContentPaddingFor(context);
 
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+        padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding),
         children: [
           _buildSummaryCard(context, colorScheme),
           const SizedBox(height: 16),
           FilledButton.tonalIcon(
+            key: addActionKey,
             onPressed: onAdd,
             icon: const Icon(Icons.add),
             label: const Text('记一笔'),
@@ -365,6 +377,7 @@ class FinanceLedgerPanel extends StatelessWidget {
       ].whereType<String>().join(' ').toLowerCase();
       return content.contains(query);
     }).toList();
+    final bottomPadding = financeBottomContentPaddingFor(context);
 
     return Column(
       children: [
@@ -402,7 +415,7 @@ class FinanceLedgerPanel extends StatelessWidget {
           child: filtered.isEmpty
               ? _buildEmptyState(context)
               : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, bottomPadding),
                   itemCount: filtered.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
                   itemBuilder: (context, index) => _buildTransactionTile(

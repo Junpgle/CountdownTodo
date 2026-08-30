@@ -734,6 +734,43 @@ class DatabaseHelper {
     );
   }
 
+  /// AI 用量属于本机可观测性数据，不参与个人账单的云端同步；已经生成
+  /// 的记账汇总仍通过 finance_transactions 按用户原有规则同步。
+  static Future<void> ensureAiUsageSchema(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ai_usage_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        prompt_tokens INTEGER NOT NULL DEFAULT 0,
+        completion_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        image_count INTEGER NOT NULL DEFAULT 0,
+        cost_micros INTEGER,
+        is_priced INTEGER NOT NULL DEFAULT 0,
+        ledger_key TEXT,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_ai_usage_records_created '
+      'ON ai_usage_records(created_at DESC)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_ai_usage_records_ledger '
+      'ON ai_usage_records(ledger_key, is_priced)',
+    );
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ai_usage_ledger_links (
+        ledger_key TEXT PRIMARY KEY,
+        finance_transaction_uuid TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+  }
+
   static Future<void> ensureTeamsSchema(Database db) async {
     try {
       await db.execute('''
@@ -781,6 +818,9 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 49) {
+              await ensureAiUsageSchema(db);
+            }
             if (oldVersion < 48) {
               await ensureFinanceSchema(db);
             }
@@ -1336,6 +1376,7 @@ class DatabaseHelper {
             await ensureHabitSchema(db);
             await ensureJournalSchema(db);
             await ensureFinanceSchema(db);
+            await ensureAiUsageSchema(db);
             await ensureMissingIndexes(db);
           },
         );
@@ -1878,6 +1919,7 @@ class DatabaseHelper {
 
     // 20. 创建个人记账表、预算和自动化表
     await ensureFinanceSchema(db);
+    await ensureAiUsageSchema(db);
 
     // 21. 创建性能索引
     await ensureMissingIndexes(db);

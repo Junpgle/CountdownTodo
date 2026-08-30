@@ -8,8 +8,12 @@ import '../models/finance_models.dart';
 import '../services/finance_automation_service.dart';
 import '../services/finance_repository.dart';
 import '../../../widgets/floating_bottom_bar.dart';
+import '../../../widgets/floating_glass_control.dart';
+import '../../../widgets/home_bottom_navigation_content.dart';
+import '../../../utils/page_transitions.dart';
 import '../widgets/finance_widgets.dart';
 import 'finance_automation_screen.dart';
+import 'ai_usage_cost_screen.dart';
 import 'finance_budget_screen.dart';
 import 'finance_entry_screen.dart';
 import 'finance_settings_screen.dart';
@@ -42,6 +46,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
+  final GlobalKey _overviewAddActionKey = GlobalKey();
+  final GlobalKey _bottomAddActionKey = GlobalKey();
 
   Map<String, FinanceCategory> get _categoryMap => {
         for (final item in _categories) item.uuid: item,
@@ -101,18 +107,26 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     }
   }
 
-  Future<void> _openEntry([
+  Future<void> _openEntry({
     FinanceTransaction? transaction,
     FinanceEntryTemplate? initialTemplate,
-  ]) async {
-    final result = await Navigator.of(context).push<FinanceTransaction>(
-      MaterialPageRoute(
-        builder: (_) => FinanceEntryScreen(
-          transaction: transaction,
-          initialTemplate: initialTemplate,
-        ),
-      ),
+    GlobalKey? sourceKey,
+  }) async {
+    final page = FinanceEntryScreen(
+      transaction: transaction,
+      initialTemplate: initialTemplate,
     );
+    final result = sourceKey == null
+        ? await Navigator.of(context).push<FinanceTransaction>(
+            PageTransitions.material(builder: (_) => page),
+          )
+        : await PageTransitions.pushFromRect<FinanceTransaction>(
+            context: context,
+            page: page,
+            sourceKey: sourceKey,
+            placeholderIcon: Icons.account_balance_wallet_outlined,
+            sourceBorderRadius: BorderRadius.circular(18),
+          );
     if (result != null && mounted) await _load();
   }
 
@@ -223,21 +237,29 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         title: const Text('记账'),
         actions: [
           IconButton(
+            style: floatingGlassPlainIconButtonStyle(),
             tooltip: '文本识别',
             onPressed: _openTextRecognition,
             icon: const Icon(Icons.text_snippet_outlined),
           ),
           IconButton(
+            style: floatingGlassPlainIconButtonStyle(),
             tooltip: '预算',
             onPressed: _openBudgets,
             icon: const Icon(Icons.track_changes_outlined),
           ),
           PopupMenuButton<String>(
+            style: floatingGlassPlainIconButtonStyle(),
             tooltip: '更多操作',
             onSelected: (value) {
               if (value == 'settings') _openSettings();
               if (value == 'text') _openTextRecognition();
               if (value == 'automation') _openAutomation();
+              if (value == 'ai_cost') {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AiUsageCostScreen()),
+                );
+              }
               if (value == 'export') _exportCsv();
               if (value == 'trash') {
                 Navigator.of(context).push(
@@ -270,6 +292,14 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.autorenew_outlined),
                   title: Text('自动化与快捷模板'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'ai_cost',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.auto_awesome_outlined),
+                  title: Text('AI 调用费用'),
                 ),
               ),
               PopupMenuItem(
@@ -308,7 +338,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                             summary: _summary,
                             transactions: _transactions,
                             categories: _categoryMap,
-                            onAdd: _openEntry,
+                            onAdd: () => _openEntry(
+                              sourceKey: _overviewAddActionKey,
+                            ),
+                            addActionKey: _overviewAddActionKey,
                             onRefresh: _load,
                           ),
                           FinanceLedgerPanel(
@@ -321,7 +354,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                                 setState(() => _keyword = value),
                             onFilterChanged: (value) =>
                                 setState(() => _filterType = value),
-                            onEdit: _openEntry,
+                            onEdit: (transaction) =>
+                                _openEntry(transaction: transaction),
                             onDelete: _deleteTransaction,
                           ),
                         ],
@@ -329,39 +363,74 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                     ),
                   ],
                 ),
-      floatingActionButton: _isLoading || _loadError != null
-          ? null
-          : FloatingGlassActionButton.extended(
-              onPressed: _openEntry,
-              icon: const Icon(Icons.add),
-              label: const Text('记一笔'),
-            ),
+      // 记账入口固定在底栏中央，避免扩展 FAB 覆盖账单内容。
       bottomNavigationBar: useFloatingBottomBar
           ? FloatingBottomNavigationBar(
-              items: const [
+              items: [
                 FloatingBottomNavigationItem(
                   icon: Icons.insights_outlined,
                   label: '概览',
                 ),
                 FloatingBottomNavigationItem(
+                  label: '记一笔',
+                  selectable: false,
+                  onPressed: () => _openEntry(sourceKey: _bottomAddActionKey),
+                  builder: (context, selectedLayer, interactive) => Center(
+                    child: HomeBottomNavigationActionButton(
+                      buttonKey: selectedLayer ? null : _bottomAddActionKey,
+                      primaryColor: colorScheme.primary,
+                      interactive: interactive,
+                      onPressed: () =>
+                          _openEntry(sourceKey: _bottomAddActionKey),
+                      semanticsLabel: '记一笔',
+                      child: Icon(
+                        Icons.add_rounded,
+                        color: colorScheme.onPrimary,
+                        size: 28,
+                      ),
+                    ),
+                  ),
+                ),
+                const FloatingBottomNavigationItem(
                   icon: Icons.receipt_long_outlined,
                   label: '账单',
                 ),
               ],
-              selectedIndex: _selectedIndex,
-              onTabSelected: (index) => setState(() => _selectedIndex = index),
+              selectedIndex: _selectedIndex == 0 ? 0 : 2,
+              onTabSelected: (index) {
+                if (index == 0) {
+                  setState(() => _selectedIndex = 0);
+                } else if (index == 2) {
+                  setState(() => _selectedIndex = 1);
+                }
+              },
             )
           : NavigationBar(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: (index) =>
-                  setState(() => _selectedIndex = index),
-              destinations: const [
-                NavigationDestination(
+              selectedIndex: _selectedIndex == 0 ? 0 : 2,
+              onDestinationSelected: (index) {
+                if (index == 1) {
+                  _openEntry(sourceKey: _bottomAddActionKey);
+                } else {
+                  setState(() => _selectedIndex = index == 0 ? 0 : 1);
+                }
+              },
+              destinations: [
+                const NavigationDestination(
                   icon: Icon(Icons.insights_outlined),
                   selectedIcon: Icon(Icons.insights),
                   label: '概览',
                 ),
                 NavigationDestination(
+                  icon: SizedBox(
+                    key: _bottomAddActionKey,
+                    width: 32,
+                    height: 32,
+                    child: const Icon(Icons.add_rounded),
+                  ),
+                  selectedIcon: const Icon(Icons.add_rounded),
+                  label: '记一笔',
+                ),
+                const NavigationDestination(
                   icon: Icon(Icons.receipt_long_outlined),
                   selectedIcon: Icon(Icons.receipt_long),
                   label: '账单',
@@ -413,6 +482,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           IconButton(
             tooltip: '上个月',
             onPressed: () => _changeMonth(-1),
+            style: floatingGlassPlainIconButtonStyle(),
             icon: const Icon(Icons.chevron_left),
           ),
           Expanded(
@@ -439,6 +509,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           IconButton(
             tooltip: '下个月',
             onPressed: () => _changeMonth(1),
+            style: floatingGlassPlainIconButtonStyle(),
             icon: const Icon(Icons.chevron_right),
           ),
         ],

@@ -11,10 +11,18 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 48;
+  static const int currentVersion = 49;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 49,
+      title: 'AI 调用用量与费用',
+      changes: [
+        '本地记录 AI 对话、标题与识图调用的用量、模型和计算费用。',
+        '按日聚合已定价调用并自动写入个人记账，保留价格未配置的调用明细。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 48,
       title: '记账待同步标记',

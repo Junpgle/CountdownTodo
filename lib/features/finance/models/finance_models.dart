@@ -128,6 +128,13 @@ abstract final class FinanceDefaults {
       'sort_order': 90,
     },
     {
+      'uuid': 'finance-system-category-ai-service',
+      'name': 'AI 服务',
+      'icon': '✨',
+      'type': 'expense',
+      'sort_order': 95,
+    },
+    {
       'uuid': 'finance-system-category-other-expense',
       'name': '其他',
       'icon': '📦',

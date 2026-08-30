@@ -317,15 +317,287 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  ButtonStyle _plainTextButtonStyle(ColorScheme colorScheme) {
+    return ButtonStyle(
+      backgroundColor: WidgetStatePropertyAll(
+        colorScheme.surface.withValues(alpha: 0),
+      ),
+      backgroundBuilder: (context, states, child) =>
+          child ?? const SizedBox.shrink(),
+      foregroundColor: WidgetStatePropertyAll(colorScheme.primary),
+      overlayColor: WidgetStatePropertyAll(
+        colorScheme.primary.withValues(alpha: 0.08),
+      ),
+      minimumSize: const WidgetStatePropertyAll(Size.zero),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      ),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  ButtonStyle _compactTextButtonStyle(ColorScheme colorScheme) {
+    return _plainTextButtonStyle(colorScheme).copyWith(
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      ),
+      textStyle: const WidgetStatePropertyAll(
+        TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
+  InputDecoration _fieldDecoration(
+    ColorScheme colorScheme, {
+    String? labelText,
+    String? hintText,
+    String? prefixText,
+    IconData? prefixIcon,
+    String? counterText,
+    bool alignLabelWithHint = false,
+    FloatingLabelBehavior? floatingLabelBehavior,
+    EdgeInsetsGeometry? contentPadding,
+    TextStyle? prefixStyle,
+  }) {
+    final outline = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(
+        color: colorScheme.outlineVariant.withValues(alpha: 0.82),
+      ),
+    );
+    return InputDecoration(
+      labelText: labelText,
+      hintText: hintText,
+      prefixText: prefixText,
+      prefixIcon: prefixIcon == null
+          ? null
+          : Icon(prefixIcon, size: 21, color: colorScheme.onSurfaceVariant),
+      counterText: counterText,
+      alignLabelWithHint: alignLabelWithHint,
+      floatingLabelBehavior: floatingLabelBehavior,
+      isDense: true,
+      filled: false,
+      contentPadding: contentPadding ??
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+      prefixStyle: prefixStyle,
+      labelStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+      floatingLabelStyle: TextStyle(
+        color: colorScheme.primary,
+        fontWeight: FontWeight.w600,
+      ),
+      hintStyle: TextStyle(
+        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.72),
+      ),
+      border: outline,
+      enabledBorder: outline,
+      focusedBorder: outline.copyWith(
+        borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+      ),
+      errorBorder: outline.copyWith(
+        borderSide: BorderSide(color: colorScheme.error),
+      ),
+      focusedErrorBorder: outline.copyWith(
+        borderSide: BorderSide(color: colorScheme.error, width: 1.5),
+      ),
+    );
+  }
+
+  Widget _buildSelectionFields(
+    ColorScheme colorScheme, {
+    required bool isWide,
+  }) {
+    final category = DropdownButtonFormField<String>(
+      key: ValueKey('finance-category-$_type-$_categoryUuid'),
+      initialValue: _categoryUuid,
+      isExpanded: true,
+      decoration: _fieldDecoration(colorScheme, labelText: '分类'),
+      items: [
+        for (final item in _visibleCategories)
+          DropdownMenuItem<String>(
+            value: item.uuid,
+            child: Text(
+              '${item.icon}  ${item.name}',
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+      ],
+      onChanged:
+          _isSaving ? null : (value) => setState(() => _categoryUuid = value),
+    );
+    final payment = DropdownButtonFormField<String>(
+      key: ValueKey('finance-payment-$_paymentMethodUuid'),
+      initialValue: _paymentMethodUuid,
+      isExpanded: true,
+      decoration: _fieldDecoration(
+        colorScheme,
+        labelText: '付款方式（可选）',
+      ),
+      items: [
+        const DropdownMenuItem<String>(
+          value: null,
+          child: Text('未指定'),
+        ),
+        for (final method in _visiblePaymentMethods)
+          DropdownMenuItem<String>(
+            value: method.uuid,
+            child: Text(
+              '${method.icon}  ${method.name}',
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+      ],
+      onChanged: _isSaving
+          ? null
+          : (value) => setState(() => _paymentMethodUuid = value),
+    );
+    if (!isWide) {
+      return Column(
+        children: [
+          category,
+          const SizedBox(height: 14),
+          payment,
+        ],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: category),
+        const SizedBox(width: 12),
+        Expanded(child: payment),
+      ],
+    );
+  }
+
+  Widget _buildDateField(ColorScheme colorScheme) {
+    return Material(
+      color: colorScheme.surface.withValues(alpha: 0),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.82),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: _isSaving ? null : _pickDate,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+          child: Row(
+            children: [
+              Icon(
+                Icons.calendar_today_outlined,
+                size: 21,
+                color: colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '账单日期',
+                  style: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              Text(
+                dateKey(_date),
+                style: TextStyle(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOptionalFields(
+    ColorScheme colorScheme, {
+    required bool isWide,
+  }) {
+    final merchant = TextFormField(
+      controller: _merchantController,
+      textInputAction: TextInputAction.next,
+      maxLength: 80,
+      decoration: _fieldDecoration(
+        colorScheme,
+        labelText: '商家（可选）',
+        counterText: '',
+      ),
+    );
+    final note = TextFormField(
+      controller: _noteController,
+      maxLines: 2,
+      maxLength: 300,
+      decoration: _fieldDecoration(
+        colorScheme,
+        labelText: '备注（可选）',
+        counterText: '',
+        alignLabelWithHint: true,
+      ),
+    );
+    if (!isWide) {
+      return Column(
+        children: [
+          merchant,
+          const SizedBox(height: 14),
+          note,
+        ],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: merchant),
+        const SizedBox(width: 12),
+        Expanded(child: note),
+      ],
+    );
+  }
+
+  ButtonStyle _primaryButtonStyle(ColorScheme colorScheme) {
+    return ButtonStyle(
+      backgroundColor: WidgetStatePropertyAll(colorScheme.primary),
+      backgroundBuilder: (context, states, child) =>
+          child ?? const SizedBox.shrink(),
+      foregroundColor: WidgetStatePropertyAll(colorScheme.onPrimary),
+      overlayColor: WidgetStatePropertyAll(
+        colorScheme.onPrimary.withValues(alpha: 0.12),
+      ),
+      minimumSize: const WidgetStatePropertyAll(Size.fromHeight(48)),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      ),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(_isEditing ? '编辑账单' : '记一笔'),
         actions: [
           TextButton(
+            style: _plainTextButtonStyle(colorScheme),
             onPressed: _isSaving || _isLoading ? null : _save,
             child: const Text('保存'),
           ),
@@ -335,240 +607,258 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Form(
               key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                children: [
-                  _buildTypeSelector(colorScheme),
-                  if (!_isEditing) ...[
-                    const SizedBox(height: 12),
-                    _buildOneSentenceEntry(colorScheme),
-                  ],
-                  if (!_isEditing && _templates.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: _showTemplatePicker,
-                        icon: const Icon(Icons.flash_on_outlined),
-                        label: Text(
-                          _selectedTemplateUuid == null ? '使用快捷模板' : '更换快捷模板',
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isWide = constraints.maxWidth >= 620;
+                  return ListView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      8,
+                      16,
+                      96 + MediaQuery.viewPaddingOf(context).bottom,
+                    ),
+                    children: [
+                      _buildTypeSelector(colorScheme),
+                      if (!_isEditing) ...[
+                        const SizedBox(height: 16),
+                        _buildOneSentenceEntry(colorScheme),
+                      ],
+                      const SizedBox(height: 20),
+                      TextFormField(
+                        controller: _amountController,
+                        autofocus: !_isEditing,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                        ],
+                        decoration: _fieldDecoration(
+                          colorScheme,
+                          labelText: '金额',
+                          prefixText: '¥ ',
+                          hintText: '0.00',
+                          floatingLabelBehavior: FloatingLabelBehavior.always,
+                          contentPadding: const EdgeInsets.fromLTRB(
+                            16,
+                            20,
+                            16,
+                            12,
+                          ),
+                          prefixStyle: TextStyle(
+                            color: colorScheme.primary,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  TextFormField(
-                    controller: _amountController,
-                    autofocus: !_isEditing,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                    ],
-                    decoration: InputDecoration(
-                      labelText: '金额',
-                      prefixText: '¥ ',
-                      hintText: '0.00',
-                      prefixStyle: TextStyle(
-                        color: colorScheme.primary,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      labelStyle: TextStyle(color: colorScheme.primary),
-                    ),
-                    style: const TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    validator: (value) =>
-                        parseFinanceAmount(value ?? '') == null
-                            ? '请输入金额'
-                            : null,
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    key: ValueKey('finance-category-$_type-$_categoryUuid'),
-                    initialValue: _categoryUuid,
-                    decoration: const InputDecoration(
-                      labelText: '分类',
-                      prefixIcon: Icon(Icons.category_outlined),
-                    ),
-                    items: [
-                      for (final category in _visibleCategories)
-                        DropdownMenuItem<String>(
-                          value: category.uuid,
-                          child: Text('${category.icon}  ${category.name}'),
+                        style: TextStyle(
+                          color: colorScheme.onSurface,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w700,
                         ),
-                    ],
-                    onChanged: (value) => setState(() => _categoryUuid = value),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    key: ValueKey('finance-payment-$_paymentMethodUuid'),
-                    initialValue: _paymentMethodUuid,
-                    decoration: const InputDecoration(
-                      labelText: '付款方式（可选）',
-                      prefixIcon: Icon(Icons.account_balance_wallet_outlined),
-                    ),
-                    items: [
-                      const DropdownMenuItem<String>(
-                        value: null,
-                        child: Text('未指定'),
+                        validator: (value) =>
+                            parseFinanceAmount(value ?? '') == null
+                                ? '请输入金额'
+                                : null,
                       ),
-                      for (final method in _visiblePaymentMethods)
-                        DropdownMenuItem<String>(
-                          value: method.uuid,
-                          child: Text('${method.icon}  ${method.name}'),
-                        ),
-                    ],
-                    onChanged: (value) =>
-                        setState(() => _paymentMethodUuid = value),
-                  ),
-                  const SizedBox(height: 12),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.calendar_today_outlined),
-                    title: const Text('账单日期'),
-                    trailing: Text(
-                      dateKey(_date),
-                      style: TextStyle(
-                        color: colorScheme.primary,
-                        fontWeight: FontWeight.w600,
+                      const SizedBox(height: 14),
+                      _buildSelectionFields(colorScheme, isWide: isWide),
+                      const SizedBox(height: 14),
+                      _buildDateField(colorScheme),
+                      const SizedBox(height: 14),
+                      _buildOptionalFields(colorScheme, isWide: isWide),
+                      const SizedBox(height: 20),
+                      FilledButton.icon(
+                        style: _primaryButtonStyle(colorScheme),
+                        onPressed: _isSaving ? null : _save,
+                        icon: _isSaving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.check_rounded),
+                        label: Text(_isSaving ? '保存中...' : '保存账单'),
                       ),
-                    ),
-                    onTap: _pickDate,
-                  ),
-                  const Divider(),
-                  TextFormField(
-                    controller: _merchantController,
-                    textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(
-                      labelText: '商家（可选）',
-                      prefixIcon: Icon(Icons.storefront_outlined),
-                    ),
-                    maxLength: 80,
-                  ),
-                  TextFormField(
-                    controller: _noteController,
-                    decoration: const InputDecoration(
-                      labelText: '备注（可选）',
-                      prefixIcon: Icon(Icons.notes_outlined),
-                    ),
-                    maxLines: 2,
-                    maxLength: 300,
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: _isSaving ? null : _save,
-                    icon: _isSaving
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.check),
-                    label: Text(_isSaving ? '保存中...' : '保存账单'),
-                  ),
-                ],
+                    ],
+                  );
+                },
               ),
             ),
     );
   }
 
   Widget _buildTypeSelector(ColorScheme colorScheme) {
-    return SegmentedButton<FinanceTransactionType>(
-      segments: [
-        for (final type in [
-          FinanceTransactionType.expense,
-          FinanceTransactionType.income,
-          FinanceTransactionType.refund,
-        ])
-          ButtonSegment<FinanceTransactionType>(
-            value: type,
-            label: Text(type.label),
-            icon: Icon(
-              type == FinanceTransactionType.expense
-                  ? Icons.arrow_upward_rounded
-                  : type == FinanceTransactionType.refund
-                      ? Icons.undo_rounded
-                      : Icons.arrow_downward_rounded,
+    final types = [
+      FinanceTransactionType.expense,
+      FinanceTransactionType.income,
+      FinanceTransactionType.refund,
+    ];
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: colorScheme.surface.withValues(alpha: 0.72),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.8),
+        ),
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Row(
+        children: [
+          for (final type in types)
+            Expanded(
+              child: Semantics(
+                button: true,
+                selected: type == _type,
+                label: type.label,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () {
+                    if (type == _type) return;
+                    setState(() {
+                      _type = type;
+                      _normalizeSelections(notify: false);
+                    });
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    curve: Curves.easeOut,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: type == _type
+                          ? colorScheme.primaryContainer
+                          : colorScheme.surface.withValues(alpha: 0),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      type.label,
+                      style: TextStyle(
+                        color: type == _type
+                            ? colorScheme.onPrimaryContainer
+                            : colorScheme.onSurfaceVariant,
+                        fontWeight:
+                            type == _type ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ),
-      ],
-      selected: {_type},
-      onSelectionChanged: (selection) {
-        if (selection.isEmpty) return;
-        setState(() {
-          _type = selection.first;
-          _normalizeSelections(notify: false);
-        });
-      },
-      style: ButtonStyle(
-        visualDensity: VisualDensity.compact,
-        foregroundColor: WidgetStatePropertyAll(colorScheme.onSurface),
+        ],
       ),
     );
   }
 
   Widget _buildOneSentenceEntry(ColorScheme colorScheme) {
-    return Card(
-      margin: EdgeInsets.zero,
-      color: colorScheme.surfaceContainerHighest,
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow.withValues(alpha: 0.52),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.72),
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+        padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.auto_awesome_rounded, color: colorScheme.primary),
-                const SizedBox(width: 8),
+                Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 19,
+                  color: colorScheme.primary,
+                ),
+                const SizedBox(width: 7),
                 const Expanded(
                   child: Text(
-                    '一句话记账',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                    '快速记账',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-                Text(
-                  '自动填入',
-                  style: TextStyle(
-                    color: colorScheme.onSurfaceVariant,
-                    fontSize: 12,
+                if (_templates.isNotEmpty)
+                  TextButton.icon(
+                    style: _compactTextButtonStyle(colorScheme),
+                    onPressed: _showTemplatePicker,
+                    icon: const Icon(Icons.flash_on_outlined, size: 17),
+                    label: Text(
+                      _selectedTemplateUuid == null ? '快捷模板' : '更换模板',
+                    ),
                   ),
-                ),
               ],
             ),
-            const SizedBox(height: 6),
             Text(
-              FinanceTextParser.oneSentenceHelp,
+              '输入一句话，自动填入金额、分类、商家和付款方式',
               style: TextStyle(
                 color: colorScheme.onSurfaceVariant,
                 fontSize: 12,
-                height: 1.4,
               ),
             ),
             const SizedBox(height: 8),
-            TextField(
-              controller: _oneSentenceController,
-              textInputAction: TextInputAction.done,
-              maxLength: 200,
-              onSubmitted: (_) => _applyOneSentence(),
-              decoration: InputDecoration(
-                labelText: '输入一句话',
-                hintText: FinanceTextParser.oneSentenceExample,
-                prefixIcon: const Icon(Icons.edit_note_rounded),
-                counterText: '',
-                filled: true,
-                fillColor: colorScheme.surface,
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '示例：',
+                    style: TextStyle(
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  TextSpan(
+                    text: FinanceTextParser.oneSentenceExample,
+                    style: TextStyle(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
             ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: _isSaving ? null : _applyOneSentence,
-                icon: const Icon(Icons.arrow_downward_rounded),
-                label: const Text('解析并填入'),
-              ),
+            const SizedBox(height: 10),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final input = TextField(
+                  controller: _oneSentenceController,
+                  textInputAction: TextInputAction.done,
+                  maxLength: 200,
+                  onSubmitted: (_) => _applyOneSentence(),
+                  decoration: _fieldDecoration(
+                    colorScheme,
+                    hintText: '输入账单描述',
+                    prefixIcon: Icons.edit_note_rounded,
+                    counterText: '',
+                  ),
+                );
+                final action = TextButton.icon(
+                  style: _compactTextButtonStyle(colorScheme),
+                  onPressed: _isSaving ? null : _applyOneSentence,
+                  icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                  label: const Text('解析并填入'),
+                );
+                if (constraints.maxWidth >= 520) {
+                  return Row(
+                    children: [
+                      Expanded(child: input),
+                      const SizedBox(width: 10),
+                      action,
+                    ],
+                  );
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    input,
+                    Align(alignment: Alignment.centerRight, child: action),
+                  ],
+                );
+              },
             ),
           ],
         ),
