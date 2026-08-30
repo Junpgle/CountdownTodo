@@ -19,10 +19,17 @@ class AiChatStreamChunk {
 class AiChatService {
   static const String defaultApiUrl =
       'https://open.bigmodel.cn/api/paas/v4/chat/completions';
+  static const String mimoApiBaseUrl = 'https://api.xiaomimimo.com/v1';
+  static const String mimoTokenPlanOpenAiBaseUrl =
+      'https://token-plan-cn.xiaomimimo.com/v1';
+  static const String mimoTokenPlanAnthropicBaseUrl =
+      'https://token-plan-cn.xiaomimimo.com/anthropic';
+  static const String mimoTokenPlanProvider = 'mimo_token_plan';
 
   static const Map<String, String> providerBaseUrls = {
     'zhipu': 'https://open.bigmodel.cn/api/paas/v4',
-    'mimo': 'https://api.xiaomimimo.com/v1',
+    'mimo': mimoApiBaseUrl,
+    mimoTokenPlanProvider: mimoTokenPlanOpenAiBaseUrl,
     'deepseek': 'https://api.deepseek.com',
     'nvidia_nim': 'https://integrate.api.nvidia.com/v1',
   };
@@ -31,10 +38,35 @@ class AiChatService {
     return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
   }
 
+  static String inferProviderFromApiUrl(String apiUrl) {
+    final normalized = apiUrl.toLowerCase();
+    if (normalized.contains('token-plan-cn.xiaomimimo.com')) {
+      return mimoTokenPlanProvider;
+    }
+    if (normalized.contains('api.xiaomimimo.com')) return 'mimo';
+    if (normalized.contains('integrate.api.nvidia.com')) return 'nvidia_nim';
+    if (normalized.contains('api.deepseek.com')) return 'deepseek';
+    if (normalized.contains('open.bigmodel.cn')) return 'zhipu';
+    return '';
+  }
+
+  static String effectiveProvider(String provider, String apiUrl) {
+    if (provider.isNotEmpty && provider != 'custom') return provider;
+    final inferred = inferProviderFromApiUrl(apiUrl);
+    return inferred.isNotEmpty ? inferred : provider;
+  }
+
+  static bool usesMimoChatProtocol(String provider, String apiUrl) {
+    final effective = effectiveProvider(provider, apiUrl);
+    return effective == 'mimo' || effective == mimoTokenPlanProvider;
+  }
+
   static String resolveChatUrl(String provider, String apiUrl) {
-    if (provider == 'nvidia_nim') {
-      final base = trimSlash(
-          apiUrl.isNotEmpty ? apiUrl : providerBaseUrls['nvidia_nim']!);
+    final effective = effectiveProvider(provider, apiUrl);
+    if (effective == 'nvidia_nim' || effective == mimoTokenPlanProvider) {
+      final base =
+          trimSlash(apiUrl.isNotEmpty ? apiUrl : providerBaseUrls[effective]!);
+      if (base.endsWith('/chat/completions')) return base;
       return '$base/chat/completions';
     }
     return apiUrl.isEmpty ? defaultApiUrl : apiUrl;
@@ -114,21 +146,24 @@ class AiChatService {
       final request = http.Request('POST', Uri.parse(resolvedUrl));
       request.headers.addAll(_headers(apiKey));
 
-      final bool isNvidiaNim = provider == 'nvidia_nim';
+      final effective = effectiveProvider(provider, apiUrl);
+      final bool isNvidiaNim = effective == 'nvidia_nim';
+      final bool isMimo = usesMimoChatProtocol(provider, apiUrl);
 
       final body = <String, dynamic>{
         'model': model,
         'messages': isNvidiaNim ? normalizeMessagesForNim(messages) : messages,
         'temperature': temperature,
-        'max_tokens': maxTokens,
         'stream': true,
       };
 
       if (isNvidiaNim) {
+        body['max_tokens'] = maxTokens;
         if (model.startsWith('deepseek-ai/deepseek-v4')) {
           body['reasoning_effort'] = deepThinking ? 'high' : 'none';
         }
       } else {
+        body[isMimo ? 'max_completion_tokens' : 'max_tokens'] = maxTokens;
         body['stream_options'] = {'include_usage': true};
         body['thinking'] = {
           'type': deepThinking ? 'enabled' : 'disabled',
@@ -246,12 +281,14 @@ class AiChatService {
       'model': model,
       'messages': messages,
       'temperature': temperature,
-      'max_tokens': maxTokens,
     };
 
-    if (provider == 'nvidia_nim') {
+    if (effectiveProvider(provider, apiUrl) == 'nvidia_nim') {
       body['messages'] = normalizeMessagesForNim(messages);
     }
+    body[usesMimoChatProtocol(provider, apiUrl)
+        ? 'max_completion_tokens'
+        : 'max_tokens'] = maxTokens;
 
     final response = await http
         .post(

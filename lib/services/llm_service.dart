@@ -2,11 +2,13 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/image_input_reader.dart';
+import 'ai_chat_service.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
 
 class LLMConfig {
   final String provider;
+  final String? visionProvider;
   final String apiKey;
   final String model;
   final String visionModel;
@@ -16,6 +18,7 @@ class LLMConfig {
 
   LLMConfig({
     this.provider = 'zhipu',
+    this.visionProvider,
     required this.apiKey,
     required this.model,
     String? visionModel,
@@ -199,6 +202,7 @@ fixedSchedule地点使用location字段；todo和planBlock地点放在remark。�
 
   Map<String, dynamic> toJson() => {
         'provider': provider,
+        'vision_provider': visionProvider,
         'api_key': apiKey,
         'model': model,
         'vision_model': visionModel,
@@ -210,6 +214,7 @@ fixedSchedule地点使用location字段；todo和planBlock地点放在remark。�
   factory LLMConfig.fromJson(Map<String, dynamic> json) {
     return LLMConfig(
       provider: json['provider']?.toString() ?? 'zhipu',
+      visionProvider: json['vision_provider']?.toString(),
       apiKey: json['api_key'] ?? '',
       model: json['model'] ?? 'glm-4.7-flash',
       visionModel: json['vision_model'],
@@ -313,7 +318,9 @@ class LLMService {
 
   static const Map<String, String> _providerApiUrls = {
     'zhipu': 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-    'mimo': 'https://api.xiaomimimo.com/v1/chat/completions',
+    'mimo': '${AiChatService.mimoApiBaseUrl}/chat/completions',
+    AiChatService.mimoTokenPlanProvider:
+        '${AiChatService.mimoTokenPlanOpenAiBaseUrl}/chat/completions',
     'nvidia_nim': 'https://integrate.api.nvidia.com/v1/chat/completions',
     'deepseek': 'https://api.deepseek.com/chat/completions',
   };
@@ -349,12 +356,36 @@ class LLMService {
   }
 
   static Future<({String url, String key})> resolveVisionEndpoint(
-      String visionModel) async {
+      String visionModel,
+      {String? provider}) async {
+    final requestedProvider = provider?.trim() ?? '';
+
+    // The same model ID can be available from both MiMo API products. When
+    // the caller has persisted the selected provider, it must win over the
+    // model-prefix fallback below.
+    if (requestedProvider == 'custom') {
+      final customModels = await getCustomVisionModels();
+      final custom = customModels
+          .where((m) => m.modelId == visionModel || m.id == visionModel)
+          .firstOrNull;
+      if (custom != null && custom.apiUrl.isNotEmpty) {
+        return (url: custom.apiUrl, key: custom.apiKey);
+      }
+    }
+
+    if (requestedProvider.isNotEmpty &&
+        requestedProvider != 'custom' &&
+        _providerApiUrls.containsKey(requestedProvider)) {
+      final url = _providerApiUrls[requestedProvider]!;
+      final key = await getProviderApiKey(requestedProvider);
+      return (url: url, key: key);
+    }
+
     // 1. 前缀/精确匹配
-    final provider = _detectProvider(visionModel);
-    if (provider.isNotEmpty) {
-      final url = _providerApiUrls[provider]!;
-      final key = await getProviderApiKey(provider);
+    final detectedProvider = _detectProvider(visionModel);
+    if (detectedProvider.isNotEmpty) {
+      final url = _providerApiUrls[detectedProvider]!;
+      final key = await getProviderApiKey(detectedProvider);
       return (url: url, key: key);
     }
     // 2. 自定义视觉模型
@@ -396,7 +427,13 @@ class LLMService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_configKey);
     await prefs.remove(_nvidiaNimModelsKey);
-    for (final provider in ['zhipu', 'mimo', 'deepseek', 'nvidia_nim']) {
+    for (final provider in [
+      'zhipu',
+      'mimo',
+      AiChatService.mimoTokenPlanProvider,
+      'deepseek',
+      'nvidia_nim',
+    ]) {
       await prefs.remove('$_providerModelsPrefix$provider');
     }
   }
@@ -540,14 +577,18 @@ class LLMService {
       'Authorization': 'Bearer ${config.apiKey}',
     };
 
-    final body = jsonEncode({
+    final requestBody = <String, dynamic>{
       'model': config.model,
       'messages': [
         {'role': 'user', 'content': '请回复"连接成功"'}
       ],
       'temperature': 0.1,
-      'max_tokens': 50,
-    });
+    };
+    requestBody[
+        AiChatService.usesMimoChatProtocol(config.provider, config.apiUrl)
+            ? 'max_completion_tokens'
+            : 'max_tokens'] = 50;
+    final body = jsonEncode(requestBody);
 
     // print('========== 测试连接 ==========');
     // print('API: ${config.apiUrl}');
@@ -556,7 +597,8 @@ class LLMService {
 
     final response = await http
         .post(
-          Uri.parse(config.apiUrl),
+          Uri.parse(
+              AiChatService.resolveChatUrl(config.provider, config.apiUrl)),
           headers: headers,
           body: body,
         )
@@ -627,7 +669,8 @@ class LLMService {
 
     final response = await http
         .post(
-          Uri.parse(config.apiUrl),
+          Uri.parse(
+              AiChatService.resolveChatUrl(config.provider, config.apiUrl)),
           headers: headers,
           body: body,
         )
@@ -708,8 +751,21 @@ class LLMService {
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     final prompt = promptBuilder(config, nowStr);
 
-    final endpoint = await resolveVisionEndpoint(config.visionModel);
-    final visionUrl = endpoint.url.isNotEmpty ? endpoint.url : config.apiUrl;
+    final configuredVisionProvider = config.visionProvider?.trim();
+    final visionProvider = configuredVisionProvider?.isNotEmpty == true
+        ? configuredVisionProvider
+        : (config.provider == AiChatService.mimoTokenPlanProvider ||
+                AiChatService.inferProviderFromApiUrl(config.apiUrl) ==
+                    AiChatService.mimoTokenPlanProvider
+            ? AiChatService.mimoTokenPlanProvider
+            : null);
+    final endpoint = await resolveVisionEndpoint(
+      config.visionModel,
+      provider: visionProvider,
+    );
+    final visionUrl = endpoint.url.isNotEmpty
+        ? endpoint.url
+        : AiChatService.resolveChatUrl(config.provider, config.apiUrl);
     final visionKey = endpoint.key.isNotEmpty ? endpoint.key : config.apiKey;
     final headers = {
       'Content-Type': 'application/json',

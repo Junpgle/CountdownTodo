@@ -468,6 +468,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       String model = _chatModel;
       String apiKey = _chatApiKey;
       String apiUrl = _chatApiUrl;
+      String provider = _chatProvider;
 
       if (model.isEmpty || apiKey.isEmpty) {
         final globalConfig = await LLMService.getConfig();
@@ -475,6 +476,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           model = globalConfig.model;
           apiKey = globalConfig.apiKey;
           apiUrl = globalConfig.apiUrl;
+          provider = globalConfig.provider;
         } else {
           return;
         }
@@ -501,6 +503,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             'content': firstUserMsg.content,
           },
         ],
+        provider: provider,
       );
       title = title.trim().replaceAll('"', '').replaceAll("'", '');
       if (title.length > 15) title = '${title.substring(0, 15)}...';

@@ -894,6 +894,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
   static const Map<String, String> providerLabels = {
     'zhipu': '智谱AI',
     'mimo': '小米MiMo',
+    AiChatService.mimoTokenPlanProvider: 'MiMo Token Plan',
     'deepseek': 'DeepSeek',
     'nvidia_nim': 'NVIDIA NIM',
     'custom': '自定义',
@@ -1179,7 +1180,18 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                         .toList(),
                     onChanged: useCustom
                         ? (val) {
-                            setDialogState(() => customProvider = val ?? '');
+                            final nextProvider = val ?? '';
+                            setDialogState(() {
+                              customProvider = nextProvider;
+                              if (nextProvider ==
+                                      AiChatService.mimoTokenPlanProvider &&
+                                  (apiUrlCtrl.text.trim().isEmpty ||
+                                      apiUrlCtrl.text.trim() ==
+                                          AiChatService.defaultApiUrl)) {
+                                apiUrlCtrl.text =
+                                    AiChatService.mimoTokenPlanOpenAiBaseUrl;
+                              }
+                            });
                           }
                         : null,
                   ),
