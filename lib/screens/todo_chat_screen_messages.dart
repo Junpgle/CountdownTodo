@@ -333,6 +333,8 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
               ),
             ),
       child: SafeArea(
+        top: false,
+        bottom: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -589,6 +591,7 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                           color: colorScheme.onSurface.withValues(alpha: 0.3),
                           fontSize: 14,
                         ),
+                        filled: false,
                         border: InputBorder.none,
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(vertical: 8),
@@ -650,13 +653,26 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
         ),
       ),
     );
-    return FloatingGlassControl(
-      height: null,
-      margin:
-          useFloating ? const EdgeInsets.fromLTRB(8, 4, 8, 8) : EdgeInsets.zero,
-      borderRadius: useFloating ? 28 : 0,
-      mobilePortraitOnly: true,
-      child: content,
+    return SafeArea(
+      // Keep the system inset outside the rounded shell so the shell hugs its
+      // content instead of growing into the gesture/navigation area.
+      top: false,
+      left: false,
+      right: false,
+      child: FloatingGlassControl(
+        height: null,
+        margin: useFloating
+            ? const EdgeInsets.fromLTRB(8, 4, 8, 8)
+            : EdgeInsets.zero,
+        borderRadius: useFloating ? 28 : 0,
+        // Editable text must remain visible on Android devices that cannot
+        // reliably composite a content-sized glass surface over the input
+        // connection. Keep the floating capsule and use its native material
+        // fallback for this interactive composer.
+        useLiquidGlass: !AppPlatform.isAndroid,
+        mobilePortraitOnly: true,
+        child: content,
+      ),
     );
   }
 
