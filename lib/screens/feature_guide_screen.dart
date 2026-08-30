@@ -108,7 +108,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           Icons.account_balance_wallet_outlined,
           scheme.tertiary,
           '记账',
-          '账单·预算·自动化·本地同步',
+          'AI草案·文本·图片双识别·预算·本地同步',
           destinationBuilder: () =>
               FinanceHomeScreen(username: widget.loggedInUser ?? ''),
         ),
@@ -178,7 +178,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         Icons.account_balance_wallet_outlined,
         scheme.tertiary,
         '记账',
-        '账单·预算·自动化·本地同步',
+        'AI草案·文本·图片双识别·预算·本地同步',
         destinationBuilder: () =>
             FinanceHomeScreen(username: widget.loggedInUser ?? ''),
       ),

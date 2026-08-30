@@ -12,6 +12,7 @@ import '../feature_guide_screen.dart';
 import '../pomodoro_screen.dart';
 import '../add_todo_screen.dart';
 import '../course_screens.dart';
+import '../../features/finance/screens/finance_home_screen.dart';
 import '../../widgets/floating_glass_control.dart';
 import 'help_article_screen.dart';
 
@@ -225,6 +226,40 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
               PageTransitions.slideHorizontal(AddTodoScreen(
                 onTodoAdded: (_) {},
               )),
+            );
+          },
+        )),
+      ),
+      _HelpEntry(
+        '记账与 AI 识别',
+        '手动、文本、自然语言和图片都先生成草案，再由你确认保存',
+        Icons.account_balance_wallet_outlined,
+        Colors.teal,
+        () => _openArticle(HelpArticle(
+          id: 'finance_and_ai',
+          title: '记账与 AI 识别',
+          summary:
+              '记账支持手动录入、固定格式文本、自然语言、图片分享和 AI 助手。所有识别结果都会先进入可编辑草案，不会未经确认写入账本。',
+          icon: Icons.account_balance_wallet_outlined,
+          iconColor: Colors.teal,
+          steps: [
+            '从首页右侧“专注”页的记账小部件，或侧边栏进入“记账”；点击“记一笔”可以手动填写金额、分类、商家、日期和付款方式。',
+            '一句话也可以识别，例如：“今天午餐花了 28.5 元，微信支付，分类餐饮”。识别后会回到普通编辑器，请核对后保存。',
+            '批量文本建议每笔使用下面的格式：#记账、类型: 支出、金额: 28.50、分类: 餐饮、商家: 午餐、日期: 2026-08-29、付款方式: 微信、备注: 工作日午餐。金额单位为元，日期省略时默认今天。',
+            '在“文本识别记账”中粘贴多笔内容，或点击“使用示例”；应用会逐笔打开编辑器，只有点击保存的账单才会写入。',
+            '在 AI 助手中可以直接说“记一笔：今天咖啡 18 元，支付宝”，助手会返回待确认记账草案；也可以问“统计本月支出”“列出本周餐饮账单”，查看汇总、分类、预算和明细。',
+            '要修改或删除已有账单，可以告诉 AI 哪一笔需要改；AI 只会引用真实账单 ID 生成操作卡，修改要打开编辑器保存，删除要再次确认，并会进入记账回收站。',
+            '如果没有配置大模型，AI 助手中的“复制提示词”可交给外部 AI；把外部 AI 的完整回复粘回“粘贴识别”，仍会按相同规则生成可编辑草案和操作卡。',
+            '从系统分享菜单把支付、订单或账单图片分享给 CountDownTodo，应用会单独识别账单和取餐/取件码；同一张图同时包含两种信息时两边都会保留，取餐码不会被当成金额。',
+            '图片识别也只生成草案。请重点核对金额小数点、日期、退款方向、商家和付款方式，再逐笔保存。',
+            '记账数据默认保存在本机；登录并开启同步后，可在支持记账的设备间同步，AI 查询只读取当前账号的本地账本上下文。',
+          ],
+          actionLabel: '打开记账',
+          onAction: () {
+            Navigator.of(context, rootNavigator: true).push(
+              PageTransitions.slideHorizontal(
+                FinanceHomeScreen(username: widget.username ?? ''),
+              ),
             );
           },
         )),
