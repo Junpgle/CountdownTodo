@@ -1005,6 +1005,12 @@ mixin _StorageSync on _StorageServiceBase {
           financeTransactionChanges: syncFinance
               ? financeChangesFor('finance_transactions_changes')
               : const [],
+          financeLoanChanges: syncFinance
+              ? financeChangesFor('finance_loans_changes')
+              : const [],
+          financeLoanInstallmentChanges: syncFinance
+              ? financeChangesFor('finance_loan_installments_changes')
+              : const [],
           financeBudgetChanges: syncFinance
               ? financeChangesFor('finance_budgets_changes')
               : const [],
@@ -1049,9 +1055,7 @@ mixin _StorageSync on _StorageServiceBase {
         if (!forceFullSync && !pendingForThisResponse) {
           return false;
         }
-        final remotePayloadEmpty = (syncResponse['server_todos'] as List?)
-                    ?.isEmpty ==
-                true &&
+        final remotePayloadEmpty = (syncResponse['server_todos'] as List?)?.isEmpty == true &&
             (syncResponse['server_todo_groups'] as List?)?.isEmpty == true &&
             (syncResponse['server_countdowns'] as List?)?.isEmpty == true &&
             (syncResponse['server_time_logs'] as List?)?.isEmpty == true &&
@@ -1071,11 +1075,18 @@ mixin _StorageSync on _StorageServiceBase {
                 ((syncResponse['server_finance_categories'] as List?)
                             ?.isEmpty ==
                         true &&
-                    (syncResponse[
-                                'server_finance_payment_methods'] as List?)
+                    (syncResponse['server_finance_payment_methods'] as List?)
                             ?.isEmpty ==
                         true &&
-                    (syncResponse['server_finance_transactions'] as List?)
+                    (syncResponse[
+                                'server_finance_transactions'] as List?)
+                            ?.isEmpty ==
+                        true &&
+                    (syncResponse[
+                                'server_finance_loans'] as List?)
+                            ?.isEmpty ==
+                        true &&
+                    (syncResponse['server_finance_loan_installments'] as List?)
                             ?.isEmpty ==
                         true &&
                     (syncResponse['server_finance_budgets'] as List?)

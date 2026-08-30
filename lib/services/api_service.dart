@@ -373,6 +373,8 @@ class ApiService {
     List<Map<String, dynamic>> financeCategoryChanges = const [],
     List<Map<String, dynamic>> financePaymentMethodChanges = const [],
     List<Map<String, dynamic>> financeTransactionChanges = const [],
+    List<Map<String, dynamic>> financeLoanChanges = const [],
+    List<Map<String, dynamic>> financeLoanInstallmentChanges = const [],
     List<Map<String, dynamic>> financeBudgetChanges = const [],
     List<Map<String, dynamic>> financeRecurringRuleChanges = const [],
     List<Map<String, dynamic>> financeTemplateChanges = const [],
@@ -403,6 +405,8 @@ class ApiService {
         'finance_categories_changes': financeCategoryChanges,
         'finance_payment_methods_changes': financePaymentMethodChanges,
         'finance_transactions_changes': financeTransactionChanges,
+        'finance_loans_changes': financeLoanChanges,
+        'finance_loan_installments_changes': financeLoanInstallmentChanges,
         'finance_budgets_changes': financeBudgetChanges,
         'finance_recurring_rules_changes': financeRecurringRuleChanges,
         'finance_entry_templates_changes': financeTemplateChanges,
@@ -454,6 +458,11 @@ class ApiService {
               data['server_finance_payment_methods'] ?? [],
           'server_finance_transactions':
               data['server_finance_transactions'] ?? [],
+          // Keep these nullable so a finance_v1 server that predates the
+          // loan tables cannot be mistaken for an empty loan snapshot.
+          'server_finance_loans': data['server_finance_loans'],
+          'server_finance_loan_installments':
+              data['server_finance_loan_installments'],
           'server_finance_budgets': data['server_finance_budgets'] ?? [],
           'server_finance_recurring_rules':
               data['server_finance_recurring_rules'] ?? [],
