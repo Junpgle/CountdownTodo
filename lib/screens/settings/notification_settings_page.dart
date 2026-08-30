@@ -598,7 +598,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               _buildCategoryRemindersSection(),
             ],
             const SizedBox(height: 16),
-            _buildCategoryRemindersSection(),
+            _buildWebNotificationLimitCard(),
           ],
         ),
       ),
