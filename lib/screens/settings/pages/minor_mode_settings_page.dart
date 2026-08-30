@@ -509,7 +509,7 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
           highlightTarget: _highlightTarget,
           itemKeys: _itemKeys,
           borderRadius: BorderRadius.zero,
-          child: SwitchListTile(
+          child: LiquidGlassSwitchListTile(
             secondary: Icon(Icons.tune, color: colorScheme.primary),
             title: const Text('手动开启'),
             subtitle: Text(

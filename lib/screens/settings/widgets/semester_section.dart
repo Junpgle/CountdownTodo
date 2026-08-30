@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../utils/time_utils.dart';
 import '../../../widgets/app_settings_widgets.dart';
+import '../../../widgets/floating_glass_control.dart';
 
 class SemesterSection extends StatelessWidget {
   final String? highlightTarget;
@@ -47,7 +48,7 @@ class SemesterSection extends StatelessWidget {
         _buildTile(
           context: context,
           targetId: 'semester_progress',
-          child: SwitchListTile(
+          child: LiquidGlassSwitchListTile(
             secondary: Icon(Icons.linear_scale, color: colorScheme.primary),
             title: const Text('首页学期进度条'),
             value: semesterEnabled,

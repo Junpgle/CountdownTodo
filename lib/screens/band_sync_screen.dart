@@ -329,7 +329,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
                       ],
                     ),
                     const Divider(height: 24),
-                    SwitchListTile(
+                    LiquidGlassSwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('自动检查手环更新',
                           style: TextStyle(fontSize: 14)),

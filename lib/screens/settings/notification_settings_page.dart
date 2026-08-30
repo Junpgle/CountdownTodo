@@ -236,6 +236,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       return _buildWebSettingsScaffold();
     }
 
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
@@ -262,7 +263,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               title: '实时活动通知',
               subtitle: '在状态栏实时更新进度（课程、测验、待办、番茄钟等）',
               icon: Icons.notifications_active,
-              color: Colors.blue,
+              color: colorScheme.primary,
               value: _liveActivityEnabled,
               onChanged: _toggleLiveActivityMaster,
             ),
@@ -361,7 +362,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               title: '普通通知',
               subtitle: '一次性触发的提醒通知（番茄钟结束、定时闹钟等）',
               icon: Icons.notifications,
-              color: Colors.orange,
+              color: colorScheme.secondary,
               value: _normalEnabled,
               onChanged: _toggleNormalMaster,
             ),
@@ -827,47 +828,61 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           ),
         ),
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => onChanged(!value),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: color, size: 28),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+        child: Row(
+          children: [
+            // The card remains tappable through its descriptive content, but
+            // the switch owns an independent hit region so horizontal drags
+            // cannot be claimed by the card's tap recognizer.
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onChanged(!value),
+                child: Row(
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(icon, color: color, size: 28),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            subtitle,
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 16),
-              Switch(
+            ),
+            const SizedBox(width: 16),
+            SizedBox(
+              width: liquidGlassSwitchWidth,
+              height: liquidGlassSwitchHeight,
+              child: LiquidGlassSwitch(
                 value: value,
                 onChanged: onChanged,
                 activeThumbColor: color,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -921,62 +936,85 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           ),
         ),
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => onChanged(!value),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: value
-                          ? Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.1)
-                          : Colors.grey.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => onChanged(!value),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: value
+                              ? Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.1)
+                              : Colors.grey.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(icon,
+                            color: value
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.grey,
+                            size: 24),
+                      ),
                     ),
-                    child: Icon(icon,
-                        color: value
-                            ? Theme.of(context).colorScheme.primary
-                            : Colors.grey,
-                        size: 24),
                   ),
-                  Switch(
+                ),
+                const SizedBox(width: 16),
+                SizedBox(
+                  width: liquidGlassSwitchWidth,
+                  height: liquidGlassSwitchHeight,
+                  child: LiquidGlassSwitch(
                     value: value,
                     onChanged: onChanged,
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                style:
-                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-              Expanded(
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => onChanged(!value),
+              child: Align(
+                alignment: Alignment.centerLeft,
                 child: Text(
-                  subtitle,
-                  style: TextStyle(
-                      fontSize: 11, color: Colors.grey[600], height: 1.2),
-                  maxLines: 3,
+                  title,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 14),
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 4),
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onChanged(!value),
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Text(
+                    subtitle,
+                    style: TextStyle(
+                        fontSize: 11, color: Colors.grey[600], height: 1.2),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

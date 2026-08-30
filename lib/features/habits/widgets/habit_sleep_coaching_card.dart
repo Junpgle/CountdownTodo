@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/app_dialogs.dart';
+import '../../../widgets/floating_glass_control.dart';
 import '../models/habit_sleep_coaching_plan.dart';
 import '../services/habit_adaptation_service.dart';
 import '../services/habit_sleep_coaching_service.dart';
@@ -59,7 +60,7 @@ class HabitSleepCoachingCard extends StatelessWidget {
               if (plan == null)
                 TextButton(onPressed: onEnable, child: const Text('开启'))
               else
-                Switch(
+                LiquidGlassSwitch(
                   value: isEnabled && !isPaused,
                   onChanged: (value) {
                     if (value) {

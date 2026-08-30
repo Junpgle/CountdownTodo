@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:countdown_todo/widgets/floating_bottom_bar.dart';
 import 'package:countdown_todo/widgets/home_app_bar.dart';
 import 'package:countdown_todo/widgets/home_quick_action_button.dart';
@@ -7,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:liquid_glass_widgets/widgets/shared/glass_effect.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:countdown_todo/services/liquid_glass_effect_service.dart';
@@ -129,6 +132,34 @@ void main() {
 
     expect(find.byType(GlassContainer), findsOneWidget);
     expect(find.text('Content-sized control'), findsOneWidget);
+  });
+
+  testWidgets('can keep interactive content on the native fallback',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+    const childKey = Key('native-fallback-control-child');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FloatingGlassControl(
+            height: null,
+            margin: EdgeInsets.zero,
+            mobilePortraitOnly: false,
+            useLiquidGlass: false,
+            child: const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Native fallback control', key: childKey),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(childKey), findsOneWidget);
+    expect(find.byType(GlassContainer), findsNothing);
   });
 
   test('resolves the shared top-bar title reveal progress', () {
@@ -424,6 +455,56 @@ void main() {
     collapseProgress.dispose();
   });
 
+  testWidgets('keeps the implicit settings back button plain at rest',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+    final theme = applyAppLiquidGlassTheme(
+      ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+      ),
+      enabled: true,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: Navigator(
+          onGenerateRoute: (settings) => MaterialPageRoute<void>(
+            settings: settings,
+            builder: (_) => const SizedBox.shrink(),
+          ),
+          onGenerateInitialRoutes: (_, __) => [
+            MaterialPageRoute<void>(
+              builder: (_) => const SizedBox.shrink(),
+            ),
+            MaterialPageRoute<void>(
+              builder: (_) => Scaffold(
+                appBar: const FloatingGlassAppBar(
+                  title: Text('设置'),
+                ),
+                body: ListView.builder(
+                  itemCount: 20,
+                  itemBuilder: (context, index) => SizedBox(
+                    height: 80,
+                    child: Text('Setting $index'),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    final backButton = tester.widget<BackButton>(find.byType(BackButton));
+    expect(backButton.style?.backgroundBuilder, isNotNull);
+    expect(find.byType(FloatingGlassControl), findsNothing);
+    expect(find.byType(GlassContainer), findsNothing);
+  });
+
   testWidgets('home AppBar icon layers stay transparent inside the shell',
       (tester) async {
     await LiquidGlassEffectService.setEnabled(true);
@@ -464,7 +545,7 @@ void main() {
     );
   });
 
-  testWidgets('keeps home content actions out of the glass button theme',
+  testWidgets('uses the shared draggable glass action for home content',
       (tester) async {
     await LiquidGlassEffectService.setEnabled(true);
     await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
@@ -508,7 +589,208 @@ void main() {
     expect(iconButtons, hasLength(1));
     expect(iconButtons.single.style?.backgroundBuilder, isNotNull);
     expect(find.byType(GlassContainer), findsNothing);
-    expect(find.byType(FloatingActionButton), findsOneWidget);
+    expect(find.byType(GlassButton), findsOneWidget);
+    expect(find.byType(FloatingActionButton), findsNothing);
+  });
+
+  testWidgets('uses the current theme primary for the active glass tint',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+    final colorScheme = ColorScheme.fromSeed(seedColor: Colors.deepPurple);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: true, colorScheme: colorScheme),
+        home: Scaffold(
+          body: LiquidGlassSwitch(value: true, onChanged: (_) {}),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(
+      liquidGlassSwitchActiveColorFor(colorScheme),
+      colorScheme.primary,
+    );
+    expect(
+      liquidGlassSwitchActiveColorFor(colorScheme),
+      isNot(Colors.blue),
+    );
+    expect(find.byType(GlassEffect), findsOneWidget);
+    expect(find.byType(GlassSwitch), findsOneWidget);
+    expect(
+      tester.widget<GlassSwitch>(find.byType(GlassSwitch)).activeColor,
+      colorScheme.primary,
+    );
+    expect(find.byType(LiquidGlassSwitch), findsOneWidget);
+  });
+
+  testWidgets('updates the glass switch before an async callback completes',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+    final callbackCompleter = Completer<void>();
+    bool? changedValue;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LiquidGlassSwitch(
+            value: false,
+            onChanged: (value) async {
+              changedValue = value;
+              await callbackCompleter.future;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    await tester.tap(find.byType(LiquidGlassSwitch));
+    await tester.pump();
+
+    expect(changedValue, isTrue);
+    expect(
+      tester.widget<GlassSwitch>(find.byType(GlassSwitch)).value,
+      isTrue,
+    );
+    expect(
+        tester.widget<LiquidGlassSwitch>(find.byType(LiquidGlassSwitch)).value,
+        isFalse);
+    callbackCompleter.complete();
+  });
+
+  testWidgets('keeps list tile switches on the trailing edge on macOS',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          useMaterial3: true,
+          platform: TargetPlatform.macOS,
+        ),
+        home: Scaffold(
+          body: LiquidGlassSwitchListTile(
+            title: const Text('Glass setting'),
+            value: false,
+            onChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    final tile = tester.widget<ListTile>(find.byType(ListTile));
+    expect(tile.leading, isNull);
+    expect(tile.trailing, isNotNull);
+  });
+
+  testWidgets('keeps the LiquidGlassSwitch drag-to-toggle interaction',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+    bool? changedValue;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        ),
+        home: Scaffold(
+          body: LiquidGlassSwitch(
+            value: false,
+            onChanged: (value) => changedValue = value,
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    await tester.drag(find.byType(LiquidGlassSwitch), const Offset(48, 0));
+    await tester.pumpAndSettle();
+
+    expect(changedValue, isTrue);
+  });
+
+  testWidgets('uses the canonical liquid-glass capsule geometry',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LiquidGlassSwitch(value: false, onChanged: (_) {}),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(
+      tester.getSize(find.byType(LiquidGlassSwitch)),
+      const Size(58, 26),
+    );
+    expect(tester.getSize(find.byType(GlassEffect)), const Size(35.2, 22));
+  });
+
+  testWidgets('keeps switch list tiles draggable', (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+    bool? changedValue;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LiquidGlassSwitchListTile(
+            title: const Text('Glass setting'),
+            value: false,
+            onChanged: (value) => changedValue = value,
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(find.byType(LiquidGlassSwitch), findsOneWidget);
+    await tester.drag(find.byType(LiquidGlassSwitch), const Offset(48, 0));
+    await tester.pumpAndSettle();
+
+    expect(changedValue, isTrue);
+  });
+
+  testWidgets('renders an inert glass switch when disabled', (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: LiquidGlassSwitch(
+            value: true,
+            onChanged: null,
+            semanticLabel: 'Disabled setting',
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(
+      tester.getSemantics(find.byType(LiquidGlassSwitch)),
+      matchesSemantics(
+        isButton: true,
+        hasEnabledState: true,
+        isEnabled: false,
+        hasToggledState: true,
+        isToggled: true,
+        label: 'Disabled setting',
+      ),
+    );
   });
 
   testWidgets('keeps the top-bar shell on the real Liquid Glass renderer',

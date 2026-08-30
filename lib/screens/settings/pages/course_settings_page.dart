@@ -667,7 +667,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
             ),
             _buildTile(
               targetId: 'semester_progress',
-              child: SwitchListTile(
+              child: LiquidGlassSwitchListTile(
                 secondary: const Icon(Icons.linear_scale),
                 title: const Text('首页学期进度条'),
                 value: _semesterEnabled,

@@ -286,6 +286,29 @@ ThemeData applyAppLiquidGlassTheme(
       RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
   );
+  final glassSwitchTheme = SwitchThemeData(
+    thumbColor: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.disabled)) {
+        return scheme.onSurface.withValues(alpha: 0.38);
+      }
+      return states.contains(WidgetState.selected)
+          ? scheme.onPrimary
+          : scheme.outline;
+    }),
+    trackColor: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.disabled)) {
+        return scheme.onSurface.withValues(alpha: 0.12);
+      }
+      return states.contains(WidgetState.selected)
+          ? scheme.primary.withValues(alpha: isDark ? 0.78 : 0.88)
+          : scheme.surfaceContainerHighest.withValues(alpha: 0.78);
+    }),
+    trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.selected)) return Colors.transparent;
+      return scheme.outlineVariant.withValues(alpha: isDark ? 0.58 : 0.7);
+    }),
+    overlayColor: _glassButtonOverlay(scheme.primary),
+  );
 
   RoundedRectangleBorder rounded(double radius) => RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(radius),
@@ -324,6 +347,12 @@ ThemeData applyAppLiquidGlassTheme(
     ),
     segmentedButtonTheme: SegmentedButtonThemeData(
       style: segmentedGlassStyle.merge(base.segmentedButtonTheme.style),
+    ),
+    switchTheme: base.switchTheme.copyWith(
+      thumbColor: glassSwitchTheme.thumbColor,
+      trackColor: glassSwitchTheme.trackColor,
+      trackOutlineColor: glassSwitchTheme.trackOutlineColor,
+      overlayColor: glassSwitchTheme.overlayColor,
     ),
     cardTheme: base.cardTheme.copyWith(
       color: quietSurface,

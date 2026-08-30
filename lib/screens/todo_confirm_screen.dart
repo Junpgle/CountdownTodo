@@ -343,7 +343,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                     minLines: 1,
                   ),
                   const SizedBox(height: 12),
-                  SwitchListTile(
+                  LiquidGlassSwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('某天内完成'),
                     value: isAllDay,

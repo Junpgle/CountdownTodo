@@ -393,7 +393,7 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
                           }
                         },
                       ),
-                      SwitchListTile.adaptive(
+                      LiquidGlassSwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         title: const Text('到期自动记账'),
                         subtitle: const Text('关闭后只提醒，不会自动产生账单'),
@@ -751,7 +751,7 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Switch.adaptive(
+            LiquidGlassSwitch(
               value: rule.isEnabled,
               onChanged: (value) => _toggleRule(rule, value),
             ),

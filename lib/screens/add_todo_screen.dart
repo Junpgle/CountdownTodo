@@ -1935,7 +1935,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                   child: _buildResponsiveGrid(
                     [
                       if (_manualCaptureKind == _ManualCaptureKind.todo) ...[
-                        SwitchListTile(
+                        LiquidGlassSwitchListTile(
                           title: const Text("某天内完成"),
                           subtitle: const Text("不指定具体时刻"),
                           value: _isAllDay,
@@ -2002,7 +2002,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                             children: [
                               const Text('时间待定'),
                               const SizedBox(width: 6),
-                              Switch(
+                              LiquidGlassSwitch(
                                 key: const ValueKey('fixed-schedule-time-tbd'),
                                 value: _scheduleTimeTbd,
                                 onChanged: (value) =>
@@ -2034,7 +2034,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                               children: [
                                 const Text('待定'),
                                 const SizedBox(width: 6),
-                                Switch(
+                                LiquidGlassSwitch(
                                   key: const ValueKey(
                                       'fixed-schedule-end-time-tbd'),
                                   value: _scheduleEndTimeTbd,

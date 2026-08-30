@@ -433,7 +433,7 @@ class _PlatformSpecificSettingsPageState
                             color: colorScheme.primary),
                         title: const Text('桌面灵动岛'),
                         subtitle: const Text('开启灵动岛式浮动窗口'),
-                        trailing: Switch(
+                        trailing: LiquidGlassSwitch(
                           value: _floatWindowStyle != 2,
                           activeThumbColor: colorScheme.primary,
                           onChanged: (val) async {
@@ -578,7 +578,7 @@ class _PlatformSpecificSettingsPageState
                             color: colorScheme.primary),
                         title: const Text('启用刘海灵动岛'),
                         subtitle: const Text('专注时在屏幕顶部显示倒计时，菜单栏不再显示应用图标'),
-                        trailing: Switch(
+                        trailing: LiquidGlassSwitch(
                           value: _macIslandEnabled,
                           activeThumbColor: colorScheme.primary,
                           onChanged: (val) async {
@@ -635,7 +635,7 @@ class _PlatformSpecificSettingsPageState
                             color: colorScheme.primary),
                         title: const Text('在灵动岛显示提醒'),
                         subtitle: const Text('待办、课程和计划到点时自动展开，支持稍后提醒'),
-                        trailing: Switch(
+                        trailing: LiquidGlassSwitch(
                           value: _macIslandRemindersEnabled,
                           activeThumbColor: colorScheme.primary,
                           onChanged: _macIslandEnabled
@@ -678,7 +678,7 @@ class _PlatformSpecificSettingsPageState
                         ),
                         title: const Text('检测剪贴板网址'),
                         subtitle: const Text('复制网页链接时短暂展开灵动岛，可确认后用浏览器打开'),
-                        trailing: Switch(
+                        trailing: LiquidGlassSwitch(
                           value: _macIslandClipboardLinksEnabled,
                           activeThumbColor: colorScheme.primary,
                           onChanged: _macIslandEnabled
@@ -773,7 +773,7 @@ class _PlatformSpecificSettingsPageState
                             color: colorScheme.primary),
                         title: const Text('无刘海屏幕也显示'),
                         subtitle: const Text('在外接显示器或无刘海 Mac 顶部显示居中胶囊'),
-                        trailing: Switch(
+                        trailing: LiquidGlassSwitch(
                           value: _macIslandShowWithoutNotch,
                           activeThumbColor: colorScheme.primary,
                           onChanged: _macIslandEnabled

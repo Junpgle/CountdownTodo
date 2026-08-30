@@ -568,7 +568,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SwitchListTile(
+                  LiquidGlassSwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('启用自定义提示词'),
                     subtitle: const Text('关闭后将使用默认提示词'),

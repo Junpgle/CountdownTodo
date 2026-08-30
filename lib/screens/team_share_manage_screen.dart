@@ -210,7 +210,7 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
                     ],
                   ),
                 ),
-                Switch(
+                LiquidGlassSwitch(
                   value: share.isActive,
                   onChanged: (value) => _toggleShare(share),
                 ),
@@ -509,7 +509,7 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
               controlAffinity: ListTileControlAffinity.leading,
             ),
             const Divider(height: 32),
-            SwitchListTile(
+            LiquidGlassSwitchListTile(
               title: const Text('密码保护'),
               subtitle: const Text('访问者需要输入密码才能查看'),
               value: _usePassword,

@@ -2046,7 +2046,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             type: MaterialType.transparency,
             child: Column(
               children: [
-                SwitchListTile(
+                LiquidGlassSwitchListTile(
                   secondary: const Icon(Icons.linear_scale),
                   title: const Text('首页学期进度条', style: TextStyle(fontSize: 14)),
                   value: _semesterEnabled,
@@ -2693,7 +2693,7 @@ class _GuideAppearanceOptionsState extends State<GuideAppearanceOptions> {
           ),
           child: Material(
             type: MaterialType.transparency,
-            child: SwitchListTile(
+            child: LiquidGlassSwitchListTile(
               key: const ValueKey('guide-liquid-glass-switch'),
               value: _liquidGlassEnabled,
               secondary: const Icon(Icons.blur_on_rounded),

@@ -142,7 +142,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                     minLines: 1,
                   ),
                   const SizedBox(height: 12),
-                  SwitchListTile(
+                  LiquidGlassSwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text(
                       "某天内完成",

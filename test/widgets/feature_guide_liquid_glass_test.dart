@@ -1,5 +1,6 @@
 import 'package:countdown_todo/screens/feature_guide_screen.dart';
 import 'package:countdown_todo/services/liquid_glass_effect_service.dart';
+import 'package:countdown_todo/widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,8 +25,9 @@ void main() {
     expect(find.text('液态玻璃效果'), findsOneWidget);
     expect(find.byKey(const ValueKey('guide-liquid-glass-switch')),
         findsOneWidget);
-    final initialSwitch =
-        tester.widget<SwitchListTile>(find.byType(SwitchListTile).first);
+    final initialSwitch = tester.widget<LiquidGlassSwitchListTile>(
+      find.byType(LiquidGlassSwitchListTile).first,
+    );
     expect(initialSwitch.value, isFalse);
     expect(LiquidGlassEffectService.isEnabled, isFalse);
 
@@ -37,8 +39,9 @@ void main() {
     expect(LiquidGlassEffectService.isEnabled, isTrue);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool('enable_liquid_glass'), isTrue);
-    final toggledSwitch =
-        tester.widget<SwitchListTile>(find.byType(SwitchListTile).first);
+    final toggledSwitch = tester.widget<LiquidGlassSwitchListTile>(
+      find.byType(LiquidGlassSwitchListTile).first,
+    );
     expect(toggledSwitch.value, isTrue);
   });
 
@@ -53,8 +56,9 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    final switchWidget =
-        tester.widget<SwitchListTile>(find.byType(SwitchListTile).first);
+    final switchWidget = tester.widget<LiquidGlassSwitchListTile>(
+      find.byType(LiquidGlassSwitchListTile).first,
+    );
     expect(switchWidget.value, isTrue);
 
     // 关闭开关同样立即持久化。

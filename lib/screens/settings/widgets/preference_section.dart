@@ -4,6 +4,7 @@ import '../../../utils/app_platform.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
+import '../../../widgets/floating_glass_control.dart';
 import '../llm_config_page.dart';
 import '../wallpaper_settings_page.dart';
 import '../home_text_config_page.dart';
@@ -106,7 +107,7 @@ class PreferenceSection extends StatelessWidget {
                 color: colorScheme.cdtWarning),
             title: const Text('冲突检测'),
             subtitle: const Text('检测待办时间重叠；关闭后首页不弹冲突提醒'),
-            trailing: Switch(
+            trailing: LiquidGlassSwitch(
               value: conflictDetectionEnabled,
               activeThumbColor: colorScheme.cdtWarning,
               onChanged: onConflictDetectionChanged,
@@ -326,7 +327,7 @@ class PreferenceSection extends StatelessWidget {
               leading: Icon(Icons.layers_outlined, color: colorScheme.primary),
               title: const Text('灵动岛'),
               subtitle: const Text('开启灵动岛式浮动窗口'),
-              trailing: Switch(
+              trailing: LiquidGlassSwitch(
                 value: floatWindowStyle != 2,
                 activeThumbColor: colorScheme.primary,
                 onChanged: (val) {

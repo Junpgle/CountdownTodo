@@ -1110,7 +1110,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SwitchListTile(
+                  LiquidGlassSwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('使用独立模型配置'),
                     subtitle: Text(

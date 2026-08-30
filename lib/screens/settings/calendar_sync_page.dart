@@ -449,7 +449,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
               : '下面列表会显示系统识别到的日历，当前只保留这一处选择入口'),
         ),
         if (!AppPlatform.isWeb)
-          SwitchListTile(
+          LiquidGlassSwitchListTile(
             contentPadding: EdgeInsets.zero,
             value: _clearBeforeWrite,
             title: const Text('写入前清除本软件已写入内容'),

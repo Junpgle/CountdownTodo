@@ -320,7 +320,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
                   Card(
                     child: Column(
                       children: [
-                        SwitchListTile.adaptive(
+                        LiquidGlassSwitchListTile(
                           value: _budgetAlertsEnabled,
                           onChanged: (value) async {
                             setState(() => _budgetAlertsEnabled = value);

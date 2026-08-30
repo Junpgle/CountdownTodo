@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'floating_glass_control.dart';
-import 'optional_liquid_glass_surface.dart';
 
-/// A home-screen quick action that uses the stock FAB treatment by default.
-/// Callers can opt into the glass shell when a standalone floating action
-/// explicitly needs it.
+/// A home-screen quick action backed by the shared draggable Liquid Glass FAB.
+/// Callers can opt out with [useLiquidGlass] when a native FAB is required.
 class HomeQuickActionButton extends StatelessWidget {
   const HomeQuickActionButton.compact({
     super.key,
@@ -15,7 +13,7 @@ class HomeQuickActionButton extends StatelessWidget {
     required this.tint,
     required this.foregroundColor,
     required this.isDark,
-    this.useLiquidGlass = false,
+    this.useLiquidGlass = true,
     required Widget child,
   })  : _extended = false,
         _compactChild = child,
@@ -30,7 +28,7 @@ class HomeQuickActionButton extends StatelessWidget {
     required this.tint,
     required this.foregroundColor,
     required this.isDark,
-    this.useLiquidGlass = false,
+    this.useLiquidGlass = true,
     required Widget icon,
     required Widget label,
   })  : _extended = true,
@@ -69,60 +67,23 @@ class HomeQuickActionButton extends StatelessWidget {
 
     if (!useLiquidGlass) return fallback;
 
-    final borderRadius =
-        _extended ? 16.0 : floatingGlassStandardControlSize / 2;
-    final glassContent = Tooltip(
-      message: tooltip,
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(borderRadius),
-          child: _extended
-              ? SizedBox(
-                  height: 56,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        IconTheme(
-                          data: IconThemeData(
-                            color: foregroundColor,
-                            size: 24,
-                          ),
-                          child: _icon!,
-                        ),
-                        const SizedBox(width: 8),
-                        DefaultTextStyle(
-                          style:
-                              Theme.of(context).textTheme.labelLarge!.copyWith(
-                                    color: foregroundColor,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                          child: _label!,
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : SizedBox(
-                  width: floatingGlassStandardControlSize,
-                  height: floatingGlassStandardControlSize,
-                  child: Center(child: _compactChild),
-                ),
-        ),
-      ),
-    );
-
-    return OptionalLiquidGlassPanel(
-      borderRadius: borderRadius,
-      circular: !_extended,
-      tint: tint.withValues(alpha: 0.18),
-      isDark: isDark,
-      fallback: fallback,
-      child: glassContent,
-    );
+    return _extended
+        ? FloatingGlassActionButton.extended(
+            heroTag: heroTag,
+            onPressed: onPressed,
+            tooltip: tooltip,
+            backgroundColor: tint,
+            foregroundColor: foregroundColor,
+            icon: _icon!,
+            label: _label!,
+          )
+        : FloatingGlassActionButton.small(
+            heroTag: heroTag,
+            onPressed: onPressed,
+            tooltip: tooltip,
+            backgroundColor: tint,
+            foregroundColor: foregroundColor,
+            child: _compactChild,
+          );
   }
 }

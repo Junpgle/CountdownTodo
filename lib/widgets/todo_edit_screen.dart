@@ -559,7 +559,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                   thickness: 0.8,
                   color: colorScheme.outlineVariant.withValues(alpha: 0.35),
                 ),
-                SwitchListTile(
+                LiquidGlassSwitchListTile(
                   key: const ValueKey('todo_edit_completion_switch'),
                   contentPadding: EdgeInsets.zero,
                   value: _isDone,
@@ -591,7 +591,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                   const SizedBox(width: 6),
                   SizedBox(
                     height: 24,
-                    child: Switch(
+                    child: LiquidGlassSwitch(
+                      height: 24,
                       value: _isAllDay,
                       onChanged: (val) {
                         setState(() {

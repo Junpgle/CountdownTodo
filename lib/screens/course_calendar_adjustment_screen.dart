@@ -267,7 +267,7 @@ class _CourseCalendarAdjustmentScreenState
             Row(
               children: [
                 const Icon(Icons.campaign_outlined, size: 18),
-                Switch(
+                LiquidGlassSwitch(
                   value: _adjustment.officialHolidayPromptEnabled,
                   onChanged: (value) => _save(_adjustment.copyWith(
                     officialHolidayPromptEnabled: value,

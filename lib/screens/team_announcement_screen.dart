@@ -129,14 +129,14 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                   ),
                   Row(
                     children: [
-                      const Text('重要置顶',
+                      Text('重要置顶',
                           style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: Colors.orange)),
-                      Switch(
+                              color: Theme.of(context).colorScheme.secondary)),
+                      LiquidGlassSwitch(
                         value: isPriority,
-                        activeThumbColor: Colors.orange,
+                        activeColor: Theme.of(context).colorScheme.secondary,
                         onChanged: (val) =>
                             setModalState(() => isPriority = val),
                       ),

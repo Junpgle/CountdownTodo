@@ -782,7 +782,7 @@ class _AboutScreenState extends State<AboutScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SwitchListTile.adaptive(
+              LiquidGlassSwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('启用帧性能记录'),
                 subtitle: const Text('仅 Debug/Profile 构建可见，记录超过阈值的帧'),
@@ -822,7 +822,7 @@ class _AboutScreenState extends State<AboutScreen> {
                     ),
                   ],
                 ),
-                SwitchListTile.adaptive(
+                LiquidGlassSwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                   title: const Text('记录触发界面'),

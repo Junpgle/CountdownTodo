@@ -2819,7 +2819,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           ),
         ],
         const SizedBox(height: 12),
-        SwitchListTile(
+        LiquidGlassSwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('跨午夜习惯（04:00 前算当天）'),
           subtitle: const Text('如早睡：晚上 11 点半打卡，次日 4 点前仍算当天'),
@@ -2943,7 +2943,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SwitchListTile(
+        LiquidGlassSwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('启用提醒'),
           value: _reminderEnabled,
@@ -2993,21 +2993,21 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          SwitchListTile(
+          LiquidGlassSwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('进度提醒'),
             subtitle: const Text('完成 50% / 100% 时提醒'),
             value: _progressReminder,
             onChanged: (v) => setState(() => _progressReminder = v),
           ),
-          SwitchListTile(
+          LiquidGlassSwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('临近结束提醒'),
             subtitle: const Text('周期快结束时提醒未完成'),
             value: _nearEndReminder,
             onChanged: (v) => setState(() => _nearEndReminder = v),
           ),
-          SwitchListTile(
+          LiquidGlassSwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('当日汇总'),
             subtitle: const Text('每晚汇总当天习惯完成情况'),
@@ -3048,7 +3048,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SwitchListTile(
+        LiquidGlassSwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: Text(title),
           subtitle: const Text('目标前 30 分钟和 5 分钟各提醒一次'),
@@ -3076,7 +3076,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             ),
           ),
         const SizedBox(height: 12),
-        SwitchListTile(
+        LiquidGlassSwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('当日汇总'),
           subtitle: const Text('每晚汇总当天习惯完成情况'),

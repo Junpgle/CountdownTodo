@@ -834,7 +834,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       height: 24,
       child: FittedBox(
         fit: BoxFit.fill,
-        child: Switch(
+        child: LiquidGlassSwitch(
           value: value,
           onChanged: onChanged,
           activeThumbColor: colorScheme.primary,
