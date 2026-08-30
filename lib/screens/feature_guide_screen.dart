@@ -2600,45 +2600,50 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     required VoidCallback onPressed,
     required IconData icon,
     required String label,
+    required bool useGlass,
     double? width,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final foregroundColor = colorScheme.onSurface;
     final borderRadius = BorderRadius.circular(28);
 
+    final action = Semantics(
+      button: true,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: borderRadius,
+          child: SizedBox(
+            width: width,
+            height: 56,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 24, color: foregroundColor),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: foregroundColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (!useGlass) return action;
+
     return FloatingGlassControl(
       height: 56,
       borderRadius: 28,
       haloColor: colorScheme.primary,
       isDark: colorScheme.brightness == Brightness.dark,
-      child: Semantics(
-        button: true,
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            onTap: onPressed,
-            borderRadius: borderRadius,
-            child: SizedBox(
-              width: width,
-              height: 56,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, size: 24, color: foregroundColor),
-                  const SizedBox(width: 8),
-                  Text(
-                    label,
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: foregroundColor,
-                          fontWeight: FontWeight.w600,
-                        ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+      child: action,
     );
   }
 
@@ -2647,16 +2652,22 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     final isSinglePage = _pagesBuilder.length == 1;
     final isFirstPage = _currentPage == 0;
     final isLastPage = _currentPage == _pagesBuilder.length - 1;
+    // On phone portrait the bottom bar owns the glass surface. On wider
+    // layouts it opts out, so each standalone action keeps its own surface.
+    final useActionGlass =
+        isSinglePage || !floatingBottomBarShouldFloat(context);
     final primaryAction = _buildLiquidGlassAction(
       onPressed: isLastPage ? _done : _nextPage,
       icon: isLastPage ? Icons.check_rounded : Icons.arrow_forward_rounded,
       label: isLastPage ? '完成体验' : '继续探索',
+      useGlass: useActionGlass,
       width: isSinglePage ? 212 : null,
     );
     final previousAction = _buildLiquidGlassAction(
       onPressed: _previousPage,
       icon: Icons.arrow_back_rounded,
       label: '上一页',
+      useGlass: useActionGlass,
     );
     final bottomActions = isFirstPage
         ? Center(child: primaryAction)
