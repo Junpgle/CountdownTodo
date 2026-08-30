@@ -22,6 +22,10 @@ abstract final class FinanceRepository {
     );
   }
 
+  static Future<FinanceTransaction?> getTransaction(String uuid) {
+    return FinanceStorage.getTransaction(uuid);
+  }
+
   static Future<FinanceSummary> getSummary({
     required DateTime from,
     required DateTime to,

@@ -313,6 +313,361 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     if (mounted) setState(() {});
   }
 
+  Widget _buildMessageFinanceActions(ChatMessage msg, bool isDark) {
+    final actions = msg.financeActions!
+        .where((action) =>
+            action.isMutation && !action.isAdded && !action.isIgnored)
+        .toList();
+    if (actions.isEmpty) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: _IridescentActionPanel(
+        isDark: isDark,
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: isDark
+                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.24)
+                : colorScheme.primaryContainer.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.manage_search_rounded,
+                      color: colorScheme.primary,
+                      size: 17,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      actions.length == 1
+                          ? '待确认账单操作'
+                          : '待确认账单操作（${actions.length}项）',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ...actions.map(
+                (action) => Container(
+                  margin:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? colorScheme.surface.withValues(alpha: 0.08)
+                        : colorScheme.surface.withValues(alpha: 0.8),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            action.type == FinanceAiActionType.delete
+                                ? Icons.delete_outline_rounded
+                                : Icons.edit_note_rounded,
+                            color: action.type == FinanceAiActionType.delete
+                                ? colorScheme.error
+                                : colorScheme.primary,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              action.type == FinanceAiActionType.delete
+                                  ? '删除已有账单'
+                                  : '修改已有账单',
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => _ignoreFinanceAction(action),
+                            tooltip: '忽略此操作',
+                            icon: const Icon(Icons.close_rounded, size: 18),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 28),
+                        child: Text(
+                          _describeFinanceAction(action),
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.4,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: action.type == FinanceAiActionType.delete
+                            ? FilledButton.tonalIcon(
+                                onPressed: () => _deleteFinanceAction(action),
+                                icon:
+                                    const Icon(Icons.delete_outline, size: 16),
+                                label: const Text('确认删除'),
+                                style: FilledButton.styleFrom(
+                                  foregroundColor: colorScheme.error,
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              )
+                            : TextButton.icon(
+                                onPressed: () => _editFinanceAction(action),
+                                icon: const Icon(Icons.edit_outlined, size: 16),
+                                label: const Text('查看并保存'),
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Text(
+                  '查询是只读的；修改和删除都要由你确认后才会写入记账本。',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _describeFinanceAction(FinanceAiAction action) {
+    final id = action.transactionId ?? '未知账单';
+    final shortId = id.length > 12 ? '${id.substring(0, 8)}…' : id;
+    if (action.type == FinanceAiActionType.delete) {
+      final reason = action.reason?.trim();
+      return '账单ID $shortId${reason?.isNotEmpty == true ? ' · $reason' : ''}';
+    }
+
+    final changes = <String>[];
+    if (action.hasType && action.transactionType != null) {
+      changes.add('类型改为${action.transactionType!.label}');
+    }
+    if (action.hasAmount && action.amountMinor != null) {
+      changes.add('金额改为${formatFinanceAmount(action.amountMinor!)}');
+    }
+    if (action.hasDate && action.transactionDate != null) {
+      changes.add('日期改为${action.transactionDate}');
+    }
+    if (action.hasCategory) {
+      changes.add('分类改为${action.categoryName ?? '未分类'}');
+    }
+    if (action.hasPaymentMethod) {
+      changes.add('付款方式改为${action.paymentMethodName ?? '未指定'}');
+    }
+    if (action.hasMerchant) {
+      changes.add('商家改为${action.merchant ?? '空'}');
+    }
+    if (action.hasNote) {
+      changes.add('备注改为${action.note ?? '空'}');
+    }
+    return '账单ID $shortId · ${changes.isEmpty ? '请打开编辑器核对' : changes.join('、')}';
+  }
+
+  Future<void> _editFinanceAction(FinanceAiAction action) async {
+    final id = action.transactionId;
+    if (id == null || id.isEmpty) return;
+    final existing = await FinanceRepository.getTransaction(id);
+    if (!mounted) return;
+    if (existing == null || existing.isDeleted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('这笔账单已不存在或已被删除，请重新查询后再操作')),
+      );
+      return;
+    }
+
+    final proposed = await _applyFinanceActionToTransaction(action, existing);
+    if (!mounted) return;
+    final saved = await Navigator.of(context).push<FinanceTransaction>(
+      MaterialPageRoute(
+        builder: (_) => FinanceEntryScreen(transaction: proposed),
+      ),
+    );
+    if (saved == null || !mounted) return;
+    action.isAdded = true;
+    await _saveHistorySilently();
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('账单已更新')),
+    );
+  }
+
+  Future<FinanceTransaction> _applyFinanceActionToTransaction(
+    FinanceAiAction action,
+    FinanceTransaction existing,
+  ) async {
+    final type = action.hasType && action.transactionType != null
+        ? action.transactionType!
+        : existing.type;
+    final values = await Future.wait<dynamic>([
+      FinanceRepository.getCategories(includeArchived: true),
+      FinanceRepository.getPaymentMethods(includeArchived: true),
+    ]);
+    final categories = values[0] as List<FinanceCategory>;
+    final paymentMethods = values[1] as List<FinancePaymentMethod>;
+
+    String? categoryUuid = existing.categoryUuid;
+    if (action.hasCategory) {
+      final resolvedCategory = _findFinanceCategoryUuid(
+        categories,
+        action.categoryName,
+        type,
+      );
+      categoryUuid = action.categoryUuid ??
+          resolvedCategory ??
+          (action.categoryName?.trim().isNotEmpty == true
+              ? existing.categoryUuid
+              : null);
+    }
+    String? paymentMethodUuid = existing.paymentMethodUuid;
+    if (action.hasPaymentMethod) {
+      paymentMethodUuid = action.paymentMethodUuid ??
+          _findFinancePaymentUuid(paymentMethods, action.paymentMethodName);
+    }
+    final requestedDate = action.transactionDate?.trim();
+    final transactionDate = action.hasDate &&
+            requestedDate != null &&
+            RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(requestedDate) &&
+            DateTime.tryParse(requestedDate) != null
+        ? requestedDate
+        : existing.transactionDate;
+
+    return FinanceTransaction(
+      uuid: existing.uuid,
+      type: type,
+      amountMinor: action.hasAmount && action.amountMinor != null
+          ? action.amountMinor!
+          : existing.amountMinor,
+      currencyCode: existing.currencyCode,
+      categoryUuid: categoryUuid,
+      paymentMethodUuid: paymentMethodUuid,
+      transactionDate: transactionDate,
+      occurredAt: existing.occurredAt,
+      timezoneOffsetMinutes: existing.timezoneOffsetMinutes,
+      merchant: action.hasMerchant ? action.merchant : existing.merchant,
+      note: action.hasNote ? action.note : existing.note,
+      source: existing.source,
+      relatedTodoUuid: existing.relatedTodoUuid,
+      relatedPlanBlockUuid: existing.relatedPlanBlockUuid,
+      relatedTransactionUuid: existing.relatedTransactionUuid,
+      isDeleted: false,
+      version: existing.version,
+      createdAt: existing.createdAt,
+      updatedAt: existing.updatedAt,
+      deviceId: existing.deviceId,
+    );
+  }
+
+  String? _findFinanceCategoryUuid(
+    List<FinanceCategory> categories,
+    String? name,
+    FinanceTransactionType type,
+  ) {
+    final wanted = _normalizeFinanceOption(name);
+    if (wanted.isEmpty) return null;
+    final categoryType = type == FinanceTransactionType.income
+        ? FinanceCategoryType.income
+        : FinanceCategoryType.expense;
+    return categories
+        .where((item) => item.type == categoryType && !item.isDeleted)
+        .where((item) => _normalizeFinanceOption(item.name) == wanted)
+        .map((item) => item.uuid)
+        .firstOrNull;
+  }
+
+  String? _findFinancePaymentUuid(
+    List<FinancePaymentMethod> methods,
+    String? name,
+  ) {
+    final wanted = _normalizeFinanceOption(name);
+    if (wanted.isEmpty) return null;
+    return methods
+        .where((item) => !item.isDeleted)
+        .where((item) => _normalizeFinanceOption(item.name) == wanted)
+        .map((item) => item.uuid)
+        .firstOrNull;
+  }
+
+  String _normalizeFinanceOption(String? value) {
+    return (value ?? '')
+        .replaceAll(RegExp(r'^[^\u4e00-\u9fffA-Za-z0-9]+'), '')
+        .trim()
+        .toLowerCase();
+  }
+
+  Future<void> _deleteFinanceAction(FinanceAiAction action) async {
+    final id = action.transactionId;
+    if (id == null || id.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除这笔账单？'),
+        content: const Text('账单会移入记账回收站，之后仍可恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await FinanceRepository.deleteTransaction(id);
+      action.isAdded = true;
+      await _saveHistorySilently();
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('账单已移入回收站')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('删除失败：$error')),
+      );
+    }
+  }
+
+  Future<void> _ignoreFinanceAction(FinanceAiAction action) async {
+    action.isIgnored = true;
+    await _saveHistorySilently();
+    if (mounted) setState(() {});
+  }
+
   Widget _buildMessageTodoActions(ChatMessage msg, bool isDark) {
     final activeActions = msg.todoActions!
         .where((action) => !action.isAdded && !action.isIgnored)

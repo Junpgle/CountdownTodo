@@ -87,7 +87,12 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     _cancelGeneration = Completer<void>();
 
     try {
-      final List<Map<String, String>> apiMessages = _buildApiMessages();
+      final financeContext = await FinanceAiContextService.buildContext(
+        userMessage: text,
+      );
+      final List<Map<String, String>> apiMessages = _buildApiMessages(
+        financeContext: financeContext,
+      );
       String fullContent = '';
       String reasoningContent = '';
 
@@ -140,6 +145,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           final financeDrafts = FinanceTextParser.extractAssistantDrafts(
             fullContent,
           );
+          final financeActions = FinanceTextParser.extractAssistantActions(
+            fullContent,
+          );
           final cleanContent = FinanceTextParser.cleanAssistantContent(
             AiActionParser.cleanActionContent(fullContent),
           );
@@ -147,12 +155,13 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             final assistantMsg = ChatMessage(
               role: ChatRole.assistant,
               content:
-                  '${cleanContent.isEmpty && financeDrafts.isNotEmpty ? '已生成记账草案，请核对后编辑并保存。' : cleanContent}\n\n*(已中断)*',
+                  '${cleanContent.isEmpty && (financeDrafts.isNotEmpty || financeActions.isNotEmpty) ? financeDrafts.isNotEmpty ? '已生成记账草案，请核对后编辑并保存。' : '已生成账单操作草案，请在确认卡中核对。' : cleanContent}\n\n*(已中断)*',
               rawContent: fullContent,
               reasoningContent: reasoningContent,
               smartContext: _lastRequestSmartContext,
               todoActions: todoActions.isNotEmpty ? todoActions : null,
               financeDrafts: financeDrafts.isNotEmpty ? financeDrafts : null,
+              financeActions: financeActions.isNotEmpty ? financeActions : null,
             );
             _messages.add(assistantMsg);
             _streamingContent = '';
@@ -195,6 +204,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       final financeDrafts = FinanceTextParser.extractAssistantDrafts(
         fullContent,
       );
+      final financeActions = FinanceTextParser.extractAssistantActions(
+        fullContent,
+      );
       final cleanContent = FinanceTextParser.cleanAssistantContent(
         AiActionParser.cleanActionContent(fullContent),
       );
@@ -202,14 +214,18 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       setState(() {
         final assistantMsg = ChatMessage(
           role: ChatRole.assistant,
-          content: cleanContent.isEmpty && financeDrafts.isNotEmpty
-              ? '已生成记账草案，请核对后编辑并保存。'
+          content: cleanContent.isEmpty &&
+                  (financeDrafts.isNotEmpty || financeActions.isNotEmpty)
+              ? financeDrafts.isNotEmpty
+                  ? '已生成记账草案，请核对后编辑并保存。'
+                  : '已生成账单操作草案，请在确认卡中核对。'
               : cleanContent,
           rawContent: fullContent,
           reasoningContent: reasoningContent,
           smartContext: _lastRequestSmartContext,
           todoActions: todoActions.isNotEmpty ? todoActions : null,
           financeDrafts: financeDrafts.isNotEmpty ? financeDrafts : null,
+          financeActions: financeActions.isNotEmpty ? financeActions : null,
         );
 
         _messages.add(assistantMsg);
@@ -279,7 +295,13 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty) return;
 
-    final apiMessages = _buildApiMessages(pendingUserText: text);
+    final financeContext = await FinanceAiContextService.buildContext(
+      userMessage: text,
+    );
+    final apiMessages = _buildApiMessages(
+      pendingUserText: text,
+      financeContext: financeContext,
+    );
     final manualPrompt =
         AiTodoContextBuilder.buildManualCopyPrompt(apiMessages);
     _pendingManualOriginalText = text;
@@ -354,6 +376,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     );
     final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
     final financeDrafts = FinanceTextParser.extractAssistantDrafts(fullContent);
+    final financeActions =
+        FinanceTextParser.extractAssistantActions(fullContent);
     final cleanContent = FinanceTextParser.cleanAssistantContent(
       AiActionParser.cleanActionContent(fullContent),
     );
@@ -367,12 +391,15 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       content: cleanContent.isEmpty
           ? financeDrafts.isNotEmpty
               ? '已生成记账草案，请核对后编辑并保存。'
-              : fullContent
+              : financeActions.isNotEmpty
+                  ? '已生成账单操作草案，请在确认卡中核对。'
+                  : fullContent
           : cleanContent,
       rawContent: fullContent,
       smartContext: smartContext,
       todoActions: todoActions.isNotEmpty ? todoActions : null,
       financeDrafts: financeDrafts.isNotEmpty ? financeDrafts : null,
+      financeActions: financeActions.isNotEmpty ? financeActions : null,
     );
     newMessages.add(assistantMsg);
 

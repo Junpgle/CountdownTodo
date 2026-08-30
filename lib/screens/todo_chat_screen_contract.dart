@@ -96,6 +96,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   List<Map<String, String>> _buildApiMessages({
     String? pendingUserText,
     bool trackSmartContext = true,
+    String financeContext = '',
   });
   String _latestUserTextFromHistory();
   String _injectContext(List<Map<String, String>> apiMessages);
@@ -148,6 +149,10 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   Widget _buildMessageFinanceDrafts(ChatMessage msg, bool isDark);
   Future<void> _editFinanceDraft(FinanceEntryDraft draft);
   Future<void> _ignoreFinanceDraft(FinanceEntryDraft draft);
+  Widget _buildMessageFinanceActions(ChatMessage msg, bool isDark);
+  Future<void> _editFinanceAction(FinanceAiAction action);
+  Future<void> _deleteFinanceAction(FinanceAiAction action);
+  Future<void> _ignoreFinanceAction(FinanceAiAction action);
   Widget _buildClassificationMetadata(AiTodoAction action);
   Widget _buildMiniMetaChip(IconData icon, String label, Color color);
   Widget _buildActionBadge(AiTodoAction action);

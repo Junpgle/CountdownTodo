@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 import 'ai_todo_action.dart';
+import '../features/finance/models/finance_ai_action.dart';
 import '../features/finance/models/finance_models.dart';
 
 enum ChatRole { user, assistant }
@@ -16,6 +17,7 @@ class ChatMessage {
   final DateTime timestamp;
   final List<AiTodoAction>? todoActions;
   final List<FinanceEntryDraft>? financeDrafts;
+  final List<FinanceAiAction>? financeActions;
 
   ChatMessage({
     String? id,
@@ -27,6 +29,7 @@ class ChatMessage {
     DateTime? timestamp,
     this.todoActions,
     this.financeDrafts,
+    this.financeActions,
   })  : id = id ?? const Uuid().v4(),
         timestamp = timestamp ?? DateTime.now();
 
@@ -40,6 +43,7 @@ class ChatMessage {
         'timestamp': timestamp.millisecondsSinceEpoch,
         'todoActions': todoActions?.map((e) => e.toJson()).toList(),
         'financeDrafts': financeDrafts?.map((e) => e.toJson()).toList(),
+        'financeActions': financeActions?.map((e) => e.toJson()).toList(),
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
@@ -62,6 +66,11 @@ class ChatMessage {
           ?.whereType<Map>()
           .map((e) => FinanceEntryDraft.fromJson(Map<String, dynamic>.from(e)))
           .toList(),
+      financeActions: (json['financeActions'] as List?)
+          ?.whereType<Map>()
+          .map((e) => FinanceAiAction.fromJson(Map<String, dynamic>.from(e)))
+          .where((action) => action.type != FinanceAiActionType.unknown)
+          .toList(),
     );
   }
 
@@ -81,11 +90,23 @@ class ChatMessage {
           },
         )
         .toList();
+    final contextActions = financeActions
+        ?.where((action) => !action.isIgnored)
+        .map((action) => action.toJson())
+        .toList();
+    final sections = <String>[content];
     if (contextDrafts != null && contextDrafts.isNotEmpty) {
-      return '$content\n\n[FINANCE_DRAFT_CONTEXT]\n'
-          '${jsonEncode(contextDrafts)}'
-          '\n[/FINANCE_DRAFT_CONTEXT]';
+      sections.add(
+        '[FINANCE_DRAFT_CONTEXT]\n${jsonEncode(contextDrafts)}\n'
+        '[/FINANCE_DRAFT_CONTEXT]',
+      );
     }
-    return content;
+    if (contextActions != null && contextActions.isNotEmpty) {
+      sections.add(
+        '[FINANCE_ACTION_CONTEXT]\n${jsonEncode(contextActions)}\n'
+        '[/FINANCE_ACTION_CONTEXT]',
+      );
+    }
+    return sections.join('\n\n');
   }
 }

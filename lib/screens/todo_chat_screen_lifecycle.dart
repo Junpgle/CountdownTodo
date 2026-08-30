@@ -480,6 +480,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   List<Map<String, String>> _buildApiMessages({
     String? pendingUserText,
     bool trackSmartContext = true,
+    String financeContext = '',
   }) {
     final List<Map<String, String>> apiMessages = [
       {'role': 'system', 'content': _buildSystemPrompt()},
@@ -541,8 +542,29 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     }
 
     final smartContext = _injectContext(apiMessages);
+    var combinedContext = smartContext;
+    if (financeContext.trim().isNotEmpty) {
+      int lastUserIndex = -1;
+      for (int i = apiMessages.length - 1; i >= 0; i--) {
+        if (apiMessages[i]['role'] == 'user') {
+          lastUserIndex = i;
+          break;
+        }
+      }
+      if (lastUserIndex != -1) {
+        final currentUserContent = apiMessages[lastUserIndex]['content'] ?? '';
+        apiMessages[lastUserIndex] = {
+          'role': 'user',
+          'content': '${financeContext.trim()}\n\n$currentUserContent',
+        };
+        combinedContext = [
+          smartContext,
+          financeContext.trim(),
+        ].where((item) => item.isNotEmpty).join('\n\n');
+      }
+    }
     if (trackSmartContext) {
-      _lastRequestSmartContext = smartContext;
+      _lastRequestSmartContext = combinedContext;
     }
     return apiMessages;
   }

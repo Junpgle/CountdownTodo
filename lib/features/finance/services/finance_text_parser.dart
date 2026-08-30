@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../models/finance_ai_action.dart';
 import '../models/finance_models.dart';
 import 'finance_repository.dart';
 
@@ -130,10 +131,62 @@ abstract final class FinanceTextParser {
     return _deduplicate(drafts);
   }
 
+  /// Extracts read-only finance queries and confirmation-required mutations.
+  ///
+  /// The preferred wrapper is `[FINANCE_ACTION_START]`; accepting a finance
+  /// action inside `[ACTION_START]` as a fallback makes pasted responses from
+  /// older/custom prompts recoverable without treating todo actions as bills.
+  static List<FinanceAiAction> extractAssistantActions(String content) {
+    final actions = <FinanceAiAction>[];
+    final blocks = <String>[];
+    for (final marker in [
+      RegExp(
+        r'\[FINANCE_ACTION_START\](.*?)\[FINANCE_ACTION_END\]',
+        dotAll: true,
+      ),
+      RegExp(r'\[ACTION_START\](.*?)\[ACTION_END\]', dotAll: true),
+    ]) {
+      blocks.addAll(
+        marker.allMatches(content).map((match) => match.group(1) ?? ''),
+      );
+    }
+
+    for (final block in blocks) {
+      for (final map in _decodeMaps(block)) {
+        final direct = FinanceAiAction.tryParse(map);
+        if (direct != null) actions.add(direct);
+
+        final nested = map['actions'] ??
+            map['updates'] ??
+            map['queries'] ??
+            map['financeActions'] ??
+            map['finance_actions'];
+        if (nested is List) {
+          for (final item in nested.whereType<Map>()) {
+            final nestedMap = <String, dynamic>{
+              'action': map['action'] ?? map['actionType'],
+              ...Map<String, dynamic>.from(item),
+            };
+            final parsed = FinanceAiAction.tryParse(nestedMap);
+            if (parsed != null) actions.add(parsed);
+          }
+        }
+      }
+    }
+    return actions;
+  }
+
   static String cleanAssistantContent(String content) {
     return content
         .replaceAll(
           RegExp(r'\[FINANCE_START\].*?\[FINANCE_END\]', dotAll: true),
+          '',
+        )
+        .replaceAll(
+          RegExp(
+            r'\[FINANCE_ACTION_START\].*?\[FINANCE_ACTION_END\]',
+            dotAll: true,
+          ),
           '',
         )
         .trim();
