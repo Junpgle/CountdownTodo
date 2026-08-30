@@ -148,6 +148,7 @@ todo.md
 !/test/widgets/app_status_toast_test.dart
 !/test/widgets/home_bottom_navigation_content_test.dart
 !/test/widgets/floating_bottom_bar_test.dart
+!/test/widgets/home_drawer_menu_test.dart
 !/test/utils/
 /test/utils/*
 !/test/utils/todo_recurrence_picker_test.dart

@@ -109,6 +109,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
   final GlobalKey? teamsKey; // 🚀 新增
   final GlobalKey? aiKey;
   final GlobalKey? menuKey; // 🚀 新增：左侧菜单键
+  final bool? showMenuButton;
   final bool showCourseButton;
   final int teamPendingCount; // 🚀 Uni-Sync 4.0: 团队待处理消息数
   final bool hasTeamConflictDot;
@@ -133,6 +134,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
     this.teamsKey,
     this.aiKey,
     this.menuKey,
+    this.showMenuButton,
     this.showCourseButton = false,
     this.teamPendingCount = 0,
     this.hasTeamConflictDot = false,
@@ -310,6 +312,8 @@ class _HomeAppBarState extends State<HomeAppBar>
     final greetingSize = isLandscape ? 11.0 : 12.0;
 
     final bool isMobileGrid = !isTablet && !isLandscape;
+    final bool shouldShowMenuButton =
+        widget.showMenuButton ?? (!isTablet && !isLandscape);
 
     // 应用自定义文字配置
     final config = widget.textConfig;
@@ -376,9 +380,8 @@ class _HomeAppBarState extends State<HomeAppBar>
         unboundedHeight: toolbarH + MediaQuery.paddingOf(context).top,
       ),
       toolbarHeight: toolbarH,
-      leading: (isTablet || isLandscape)
-          ? null
-          : IconButton(
+      leading: shouldShowMenuButton
+          ? IconButton(
               key: widget.menuKey,
               icon: const Icon(Icons.menu_rounded),
               iconSize: 28,
@@ -391,9 +394,9 @@ class _HomeAppBarState extends State<HomeAppBar>
               onPressed: () {
                 ZoomDrawer.of(context)?.toggle();
               },
-            ),
-      titleSpacing:
-          (isTablet || isLandscape) ? NavigationToolbar.kMiddleSpacing : 0,
+            )
+          : null,
+      titleSpacing: shouldShowMenuButton ? 0 : NavigationToolbar.kMiddleSpacing,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,

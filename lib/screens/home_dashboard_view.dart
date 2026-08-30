@@ -8,7 +8,12 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     bool showWallpaper = !isDarkMode && _wallpaperShow && _wallpaperUrl != null;
     bool isLight = showWallpaper;
-    final bool isTablet = MediaQuery.of(context).size.width >= 768;
+    final double screenWidth = MediaQuery.sizeOf(context).width;
+    final bool isTablet = screenWidth >= 768;
+    final double drawerWidth = homeDrawerSlideWidthFor(
+      screenWidth: screenWidth,
+      isWide: isTablet,
+    );
     final double bottomSystemInset = MediaQuery.viewPaddingOf(context).bottom;
     final Brightness cardBackgroundBrightness =
         isDarkMode ? Brightness.dark : Brightness.light;
@@ -110,6 +115,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                       aiKey: _aiButtonKey,
                       settingsKey: _settingsButtonKey,
                       menuKey: _menuKey,
+                      showMenuButton: true,
                       courseKey: _courseButtonKey,
                       showCourseButton: isTablet,
                       teamPendingCount: _teamPendingCount, // 🚀 绑定计数
@@ -1108,7 +1114,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       showShadow: true,
       angle: 0.0,
       drawerShadowsBackgroundColor: Colors.grey.shade300,
-      slideWidth: MediaQuery.of(context).size.width * 0.72,
+      menuScreenWidth: isTablet ? drawerWidth : null,
+      slideWidth: drawerWidth,
     );
   }
 
@@ -1225,8 +1232,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _openHomeFinanceQuickEntry() async {
-    await showFinanceEntryDialog(
-      context: context,
+    await Navigator.of(context).push<FinanceTransaction>(
+      PageTransitions.slideHorizontal(
+        const FinanceEntryScreen(),
+      ),
     );
   }
 
@@ -1328,14 +1337,54 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     required String subtitle,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    return ListTile(
-      key: key,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      leading: Icon(icon, color: colorScheme.primary),
-      title: Text(title),
-      subtitle: Text(subtitle),
-      trailing: const Icon(Icons.chevron_right_rounded),
-      onTap: () => Navigator.of(context).pop(action),
+    return Material(
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.42),
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        key: key,
+        onTap: () => Navigator.of(context).pop(action),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  shape: BoxShape.circle,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Icon(
+                    icon,
+                    color: colorScheme.onPrimaryContainer,
+                    size: 24,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1359,29 +1408,45 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                     ),
               ),
             ),
-            _buildHomeAddOption(
-              context,
-              key: const ValueKey<String>('home-add-todo'),
-              action: _HomeAddAction.todo,
-              icon: Icons.add_task_rounded,
-              title: '增加待办',
-              subtitle: '记录一件要完成的事情',
-            ),
-            _buildHomeAddOption(
-              context,
-              key: const ValueKey<String>('home-add-countdown'),
-              action: _HomeAddAction.countdown,
-              icon: Icons.timer_rounded,
-              title: '增加倒计时',
-              subtitle: '记录重要日和目标日期',
-            ),
-            _buildHomeAddOption(
-              context,
-              key: const ValueKey<String>('home-add-finance'),
-              action: _HomeAddAction.finance,
-              icon: Icons.account_balance_wallet_outlined,
-              title: '增加记账',
-              subtitle: '快速记录一笔收入或支出',
+            SizedBox(
+              height: 132,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: _buildHomeAddOption(
+                      context,
+                      key: const ValueKey<String>('home-add-todo'),
+                      action: _HomeAddAction.todo,
+                      icon: Icons.add_task_rounded,
+                      title: '待办',
+                      subtitle: '记录任务',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildHomeAddOption(
+                      context,
+                      key: const ValueKey<String>('home-add-countdown'),
+                      action: _HomeAddAction.countdown,
+                      icon: Icons.timer_rounded,
+                      title: '倒计时',
+                      subtitle: '设定目标日',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildHomeAddOption(
+                      context,
+                      key: const ValueKey<String>('home-add-finance'),
+                      action: _HomeAddAction.finance,
+                      icon: Icons.account_balance_wallet_outlined,
+                      title: '记账',
+                      subtitle: '收入或支出',
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),

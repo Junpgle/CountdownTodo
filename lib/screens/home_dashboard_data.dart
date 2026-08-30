@@ -669,10 +669,8 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
           ),
           CoachMarkStep(
             targetKey: _menuKey,
-            title: isTablet ? '菜单栏' : '侧边栏',
-            description: isTablet
-                ? '点击这里，即可浏览各项功能，设置也从这里进入哦~'
-                : '点击这里，即可调出侧栏，涵盖多个功能的快捷入口，设置也从这里进入哦~',
+            title: '侧边栏',
+            description: '点击这里，即可调出侧栏，涵盖多个功能的快捷入口，设置也从这里进入哦~',
           ),
         ],
         onFinish: () {
