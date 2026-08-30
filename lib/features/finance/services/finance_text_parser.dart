@@ -19,6 +19,81 @@ abstract final class FinanceTextParser {
 
 类型支持：支出、收入、退款。金额单位为元，日期省略时默认为今天。''';
 
+  /// The short sentence format shown in the normal entry form.
+  ///
+  /// It is parsed into a draft and never saved directly. This keeps
+  /// one-sentence entry just as reviewable as text recognition.
+  static const String oneSentenceExample = '今天午餐花了 28.5 元，微信支付，分类餐饮';
+  static const String oneSentenceHelp = '说法：时间 + 事项 + 金额 + 付款方式 + 分类\n'
+      '示例：今天午餐花了 28.5 元，微信支付，分类餐饮';
+
+  static const Map<String, String> _sentencePaymentAliases = {
+    'apple pay': 'Apple Pay',
+    'paypal': 'PayPal',
+    '信用卡': '信用卡',
+    '银行卡': '银行卡',
+    '借记卡': '银行卡',
+    '支付宝': '支付宝',
+    '微信': '微信',
+    '花呗': '花呗',
+    '云闪付': '云闪付',
+    '现金': '现金',
+  };
+
+  static const Map<String, String> _expenseCategoryAliases = {
+    '餐饮': '餐饮',
+    '吃饭': '餐饮',
+    '早餐': '餐饮',
+    '午餐': '餐饮',
+    '晚餐': '餐饮',
+    '咖啡': '餐饮',
+    '外卖': '餐饮',
+    '餐厅': '餐饮',
+    '买菜': '餐饮',
+    '交通': '交通',
+    '地铁': '交通',
+    '公交': '交通',
+    '打车': '交通',
+    '滴滴': '交通',
+    '加油': '交通',
+    '停车': '交通',
+    '购物': '购物',
+    '买东西': '购物',
+    '衣服': '购物',
+    '淘宝': '购物',
+    '京东': '购物',
+    '房租': '居住',
+    '水电': '居住',
+    '燃气': '居住',
+    '居住': '居住',
+    '学习': '学习',
+    '课程': '学习',
+    '教材': '学习',
+    '培训': '学习',
+    '娱乐': '娱乐',
+    '电影': '娱乐',
+    '游戏': '娱乐',
+    '演唱会': '娱乐',
+    '健康': '健康',
+    '医院': '健康',
+    '买药': '健康',
+    '社交': '社交',
+    '礼物': '社交',
+    '红包': '社交',
+    '订阅': '订阅',
+    '会员': '订阅',
+  };
+
+  static const Map<String, String> _incomeCategoryAliases = {
+    '工资': '工资',
+    '薪资': '工资',
+    '发薪': '工资',
+    '零花钱': '零花钱',
+    '生活费': '零花钱',
+    '奖金': '奖金',
+    '年终奖': '奖金',
+  };
+
   static final RegExp _blockMarker = RegExp(
     r'^[ \t]*(?:#[ \t]*)?(?:\[[ \t]*)?记账(?:[ \t]*#?[ \t]*\d+)?(?:[ \t]*\])?(?=[ \t]*(?:\||$))',
     multiLine: true,
@@ -42,6 +117,76 @@ abstract final class FinanceTextParser {
       caseSensitive: false,
     ).hasMatch(text);
     return hasMarker || (hasAmount && (hasType || hasDirectionWord));
+  }
+
+  /// Parses the single-line natural-language shortcut used by the entry form.
+  ///
+  /// Examples:
+  /// - 今天午餐花了 28.5 元，微信支付，分类餐饮
+  /// - 昨天收到工资 8000 元，分类工资
+  /// - 前天退款 20 元，支付宝
+  ///
+  /// Amount is required. Other fields are best effort; the caller still
+  /// presents the result in the normal editor for review.
+  static FinanceEntryDraft? parseOneSentence(
+    String input, {
+    DateTime? now,
+    FinanceEntrySource source = FinanceEntrySource.manual,
+  }) {
+    final text = _normalizeOneSentence(input);
+    if (text.isEmpty) return null;
+
+    final amountMatch = _findSentenceAmountMatch(text);
+    final amount = _parseAmount(amountMatch?.group(1));
+    if (amount == null || amount <= 0 || amountMatch == null) return null;
+
+    final current = now ?? DateTime.now();
+    final type = _parseType(text);
+    final category = _extractSentenceValue(
+          text,
+          RegExp(
+            r'(?:分类|类别|归类为?|记到)\s*[:=]?\s*([^,，。；;]+)',
+          ),
+        ) ??
+        _inferSentenceCategory(text, type);
+    final payment = _normalizeSentencePayment(
+      _extractSentenceValue(
+        text,
+        RegExp(
+          r'(?:付款方式|支付方式|付款(?!给)|支付(?!宝|给)|用(?!于)|通过)'
+          r'\s*[:=]?\s*([^,，。；;]+)',
+        ),
+      ),
+      text,
+    );
+    final note = _extractSentenceValue(
+      text,
+      RegExp(r'(?:备注|说明)\s*[:=]?\s*([^,，。；;]+)'),
+    );
+    final explicitMerchant = _extractSentenceValue(
+      text,
+      RegExp(r'(?:商家|商户|店铺|项目|名称)\s*[:=]?\s*([^,，。；;]+)'),
+    );
+    final merchant = explicitMerchant ??
+        _deriveSentenceMerchant(
+          text,
+          amountMatch,
+          category: category,
+          payment: payment,
+          note: note,
+        );
+
+    return FinanceEntryDraft(
+      type: type,
+      amountMinor: amount,
+      transactionDate: dateKey(_parseSentenceDate(text, current)),
+      categoryName: category,
+      paymentMethodName: payment,
+      merchant: merchant,
+      note: note,
+      source: source,
+      originalText: input.trim(),
+    );
   }
 
   /// Parses one or more explicit bill blocks. Invalid/incomplete blocks are
@@ -416,6 +561,188 @@ abstract final class FinanceTextParser {
     return _parseAmount(match?.group(1));
   }
 
+  static RegExpMatch? _findSentenceAmountMatch(String text) {
+    final patterns = [
+      RegExp(r'(?:¥|￥)\s*(\d+(?:[,.]\d+)*)', caseSensitive: false),
+      RegExp(
+        r'(\d+(?:[,.]\d+)*)\s*(?:元|块钱?|人民币|CNY|RMB)(?![A-Za-z])',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'(?:金额|花(?:了|费)?|支出|收入|收到|退款|消费|支付|付款|付了|共|合计|实付)'
+        r'\s*[:=]?\s*(?:¥|￥)?\s*(\d+(?:[,.]\d+)*)',
+        caseSensitive: false,
+      ),
+    ];
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(text);
+      if (match != null) return match;
+    }
+    return null;
+  }
+
+  static String _normalizeOneSentence(String input) {
+    return input
+        .replaceAll('\r\n', ' ')
+        .replaceAll('\n', ' ')
+        .replaceAll('\r', ' ')
+        .replaceAll('：', ':')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static String? _extractSentenceValue(String text, RegExp pattern) {
+    final value = pattern.firstMatch(text)?.group(1)?.trim();
+    return value == null || value.isEmpty ? null : value;
+  }
+
+  static String? _normalizeSentencePayment(String? explicit, String text) {
+    final explicitValue = _knownSentencePayment(explicit);
+    if (explicitValue != null) return explicitValue;
+    if (explicit != null && explicit.trim().isNotEmpty) {
+      return explicit.trim();
+    }
+    return _knownSentencePayment(text);
+  }
+
+  static String? _knownSentencePayment(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    final normalized = value.trim().toLowerCase();
+    for (final entry in _sentencePaymentAliases.entries) {
+      if (normalized.contains(entry.key.toLowerCase())) return entry.value;
+    }
+    return null;
+  }
+
+  static String? _inferSentenceCategory(
+    String text,
+    FinanceTransactionType type,
+  ) {
+    if (type == FinanceTransactionType.refund) return '退款';
+    final aliases = type == FinanceTransactionType.income
+        ? _incomeCategoryAliases
+        : _expenseCategoryAliases;
+    final normalized = text.toLowerCase();
+    for (final entry in aliases.entries) {
+      if (normalized.contains(entry.key.toLowerCase())) return entry.value;
+    }
+    return null;
+  }
+
+  static String? _deriveSentenceMerchant(
+    String text,
+    RegExpMatch amountMatch, {
+    String? category,
+    String? payment,
+    String? note,
+  }) {
+    final candidates = <String>[
+      text.substring(0, amountMatch.start),
+      text.substring(amountMatch.end).split(RegExp(r'[,，。；;]')).first,
+    ];
+    for (final candidate in candidates) {
+      var value = candidate.trim();
+      if (value.isEmpty) continue;
+      value = _removeSentenceDate(value);
+      value = value.replaceAll(
+        RegExp(
+          r'记一笔|记账|记录|一共|合计|实付|金额|支出|收入|退款|消费|花(?:了|费)?|'
+          r'用了?|支付了?|付款了?|付了|买了?|购买了?|收到|入账|进账|收款|赚到?|'
+          r'用于|在|于|给|为',
+        ),
+        '',
+      );
+      value = value
+          .replaceAll(RegExp(r'^[:：,，。；;、\s]+'), '')
+          .replaceAll(RegExp(r'[:：,，。；;、\s]+$'), '')
+          .trim();
+      value = value.replaceFirst(RegExp(r'^(?:的|一笔)'), '').trim();
+      if (value.isEmpty || value.length > 80) continue;
+      if (_sameSentenceValue(value, category) ||
+          _sameSentenceValue(value, payment) ||
+          _sameSentenceValue(value, note) ||
+          _knownSentencePayment(value) != null ||
+          RegExp(r'^(?:分类|类别|付款方式|支付方式|备注|说明)').hasMatch(value)) {
+        continue;
+      }
+      return value;
+    }
+    return null;
+  }
+
+  static bool _sameSentenceValue(String value, String? other) {
+    return other != null &&
+        value.trim().toLowerCase() == other.trim().toLowerCase();
+  }
+
+  static String _removeSentenceDate(String value) {
+    return value
+        .replaceAll(RegExp(r'今天|昨天|前天|明天'), '')
+        .replaceAll(
+          RegExp(
+            r'\d{4}\s*(?:年|[-/.])\s*\d{1,2}\s*'
+            r'(?:月|[-/.])\s*\d{1,2}\s*日?',
+          ),
+          '',
+        )
+        .replaceAll(RegExp(r'\d{1,2}\s*月\s*\d{1,2}\s*日?'), '')
+        .replaceAll(RegExp(r'\d{1,2}\s*/\s*\d{1,2}'), '');
+  }
+
+  static DateTime _parseSentenceDate(String text, DateTime now) {
+    final relative = RegExp(r'今天|昨天|前天|明天').firstMatch(text)?.group(0);
+    if (relative != null) return _parseDate(relative, now);
+
+    final full = RegExp(
+      r'(?<!\d)(\d{4})\s*(?:年|[-/.])\s*(\d{1,2})\s*'
+      r'(?:月|[-/.])\s*(\d{1,2})\s*日?',
+    ).firstMatch(text);
+    if (full != null) {
+      final parsed = _safeSentenceDate(
+        int.tryParse(full.group(1) ?? ''),
+        int.tryParse(full.group(2) ?? ''),
+        int.tryParse(full.group(3) ?? ''),
+      );
+      if (parsed != null) return parsed;
+    }
+
+    final monthDay = RegExp(
+      r'(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*日?',
+    ).firstMatch(text);
+    if (monthDay != null) {
+      final parsed = _safeSentenceDate(
+        now.year,
+        int.tryParse(monthDay.group(1) ?? ''),
+        int.tryParse(monthDay.group(2) ?? ''),
+      );
+      if (parsed != null) return parsed;
+    }
+
+    final slashMonthDay = RegExp(
+      r'(?<!\d)(\d{1,2})\s*/\s*(\d{1,2})(?!\d)',
+    ).firstMatch(text);
+    if (slashMonthDay != null) {
+      final parsed = _safeSentenceDate(
+        now.year,
+        int.tryParse(slashMonthDay.group(1) ?? ''),
+        int.tryParse(slashMonthDay.group(2) ?? ''),
+      );
+      if (parsed != null) return parsed;
+    }
+    return _day(now);
+  }
+
+  static DateTime? _safeSentenceDate(int? year, int? month, int? day) {
+    if (year == null || month == null || day == null) return null;
+    final candidate = DateTime(year, month, day);
+    if (candidate.year != year ||
+        candidate.month != month ||
+        candidate.day != day) {
+      return null;
+    }
+    return _day(candidate);
+  }
+
   static FinanceTransactionType _parseType(String text) {
     final value = text.toLowerCase();
     if (value.contains('退款') || value.contains('refund')) {
@@ -424,6 +751,9 @@ abstract final class FinanceTextParser {
     if (value.contains('收入') ||
         value.contains('进账') ||
         value.contains('收款') ||
+        value.contains('收到') ||
+        value.contains('到账') ||
+        value.contains('赚到') ||
         value.contains('income') ||
         value.contains('入账')) {
       return FinanceTransactionType.income;

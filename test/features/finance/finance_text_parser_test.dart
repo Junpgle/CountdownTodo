@@ -133,4 +133,73 @@ void main() {
     expect(restored.financeDrafts!.single.merchant, '书店');
     expect(restored.financeDrafts!.single.isAdded, isFalse);
   });
+
+  final now = DateTime(2026, 8, 30, 15, 20);
+
+  group('一句话记账解析', () {
+    test('解析支出、商家、付款方式、分类和备注', () {
+      final draft = FinanceTextParser.parseOneSentence(
+        '今天午餐花了 28.5 元，微信支付，分类餐饮，备注工作日午餐',
+        now: now,
+      );
+
+      expect(draft, isNotNull);
+      expect(draft!.type, FinanceTransactionType.expense);
+      expect(draft.amountMinor, 2850);
+      expect(draft.transactionDate, '2026-08-30');
+      expect(draft.merchant, '午餐');
+      expect(draft.paymentMethodName, '微信');
+      expect(draft.categoryName, '餐饮');
+      expect(draft.note, '工作日午餐');
+      expect(draft.originalText, contains('28.5'));
+    });
+
+    test('支持相对日期、千位分隔金额和收入分类', () {
+      final draft = FinanceTextParser.parseOneSentence(
+        '昨天收到工资 8,000 元，分类工资',
+        now: now,
+      );
+
+      expect(draft, isNotNull);
+      expect(draft!.type, FinanceTransactionType.income);
+      expect(draft.amountMinor, 800000);
+      expect(draft.transactionDate, '2026-08-29');
+      expect(draft.categoryName, '工资');
+    });
+
+    test('支持退款和付款方式', () {
+      final draft = FinanceTextParser.parseOneSentence(
+        '前天退款 20 元，支付宝',
+        now: now,
+      );
+
+      expect(draft, isNotNull);
+      expect(draft!.type, FinanceTransactionType.refund);
+      expect(draft.amountMinor, 2000);
+      expect(draft.transactionDate, '2026-08-28');
+      expect(draft.categoryName, '退款');
+      expect(draft.paymentMethodName, '支付宝');
+    });
+
+    test('未显式写分类时可从常见事项推断分类', () {
+      final draft = FinanceTextParser.parseOneSentence(
+        '8月29日打车花了 12 元，现金',
+        now: now,
+      );
+
+      expect(draft, isNotNull);
+      expect(draft!.transactionDate, '2026-08-29');
+      expect(draft.amountMinor, 1200);
+      expect(draft.merchant, '打车');
+      expect(draft.categoryName, '交通');
+      expect(draft.paymentMethodName, '现金');
+    });
+
+    test('没有金额时不生成草稿', () {
+      expect(
+        FinanceTextParser.parseOneSentence('今天午餐，微信支付'),
+        isNull,
+      );
+    });
+  });
 }
