@@ -72,6 +72,41 @@ void main() {
     expect(find.byType(Switch), findsWidgets);
   });
 
+  testWidgets('does not add safe-area gaps inside animation grids',
+      (tester) async {
+    tester.view.physicalSize = const Size(824, 1830);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const MaterialApp(home: AnimationSettingsPage()),
+    );
+    await tester.pumpAndSettle();
+
+    final presetHeading = tester.getTopLeft(find.text('性能预设')).dy;
+    final presetCard = tester
+        .getTopLeft(
+          find.ancestor(
+            of: find.text('极致流畅'),
+            matching: find.byType(Card),
+          ),
+        )
+        .dy;
+    final toggleHeading = tester.getTopLeft(find.text('核心特效开关')).dy;
+    final toggleCard = tester
+        .getTopLeft(
+          find.ancestor(
+            of: find.text('启用页面动画'),
+            matching: find.byType(AnimatedContainer),
+          ),
+        )
+        .dy;
+
+    expect(presetCard - presetHeading, lessThan(40));
+    expect(toggleCard - toggleHeading, lessThan(40));
+  });
+
   testWidgets('uses static glass material for repeated settings surfaces',
       (tester) async {
     await LiquidGlassEffectService.setEnabled(true);

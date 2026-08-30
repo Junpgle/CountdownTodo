@@ -241,6 +241,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                           color: colorScheme.onSurfaceVariant)),
                 ),
                 GridView.count(
+                  padding: EdgeInsets.zero,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   crossAxisCount: isWide ? 3 : 2,
@@ -652,6 +653,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     required bool isCompact,
   }) {
     return GridView.count(
+      padding: EdgeInsets.zero,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       // 三种策略始终并排，便于快速对比和切换；窄屏使用更紧凑的卡片

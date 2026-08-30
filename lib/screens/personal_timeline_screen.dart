@@ -20,6 +20,7 @@ import '../services/timeline_statistics_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_bottom_bar.dart';
+import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import 'medal_wall_page.dart';
 
@@ -1673,6 +1674,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       ),
       leading: IconButton(
         tooltip: '返回',
+        style: floatingGlassPlainIconButtonStyle(),
         icon: const Icon(Icons.arrow_back_rounded),
         iconSize: 22,
         onPressed: () => Navigator.pop(context),
@@ -1681,6 +1683,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       actions: [
         IconButton(
           tooltip: '保存分享长图',
+          style: floatingGlassPlainIconButtonStyle(),
           icon: _isExportingPoster
               ? SizedBox(
                   width: 18,

@@ -265,6 +265,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
+                    style: floatingGlassPlainIconButtonStyle(),
                     icon: const Icon(Icons.arrow_back_ios, size: 13),
                     onPressed: () {
                       if (_viewMode == 2) {
@@ -301,6 +302,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
+                    style: floatingGlassPlainIconButtonStyle(),
                     icon: const Icon(Icons.arrow_forward_ios, size: 13),
                     onPressed: () {
                       if (_viewMode == 2) {
@@ -323,6 +325,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
           IconButton(
             key: _viewModeKey,
             visualDensity: const VisualDensity(horizontal: -2),
+            style: floatingGlassPlainIconButtonStyle(),
             icon: Icon(
                 _viewMode == 2
                     ? Icons.view_week
@@ -337,6 +340,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
             IconButton(
               key: _timeLogKey,
               visualDensity: const VisualDensity(horizontal: -2),
+              style: floatingGlassPlainIconButtonStyle(),
               icon: const Icon(Icons.edit_calendar, size: 20),
               tooltip: '记录时间日志',
               onPressed: () async {
@@ -419,6 +423,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                   !_collapseFreeTime;
               return IconButton(
                 visualDensity: const VisualDensity(horizontal: -2),
+                style: floatingGlassPlainIconButtonStyle(),
                 icon: Stack(
                   clipBehavior: Clip.none,
                   children: [
