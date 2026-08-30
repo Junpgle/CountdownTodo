@@ -2605,7 +2605,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final foregroundColor = colorScheme.onSurface;
-    final borderRadius = BorderRadius.circular(28);
+    final borderRadius = BorderRadius.circular(22);
+    final isDark = colorScheme.brightness == Brightness.dark;
 
     final action = Semantics(
       button: true,
@@ -2616,12 +2617,12 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           borderRadius: borderRadius,
           child: SizedBox(
             width: width,
-            height: 56,
+            height: 44,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 24, color: foregroundColor),
-                const SizedBox(width: 8),
+                Icon(icon, size: 20, color: foregroundColor),
+                const SizedBox(width: 4),
                 Text(
                   label,
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -2636,11 +2637,28 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       ),
     );
 
-    if (!useGlass) return action;
+    if (!useGlass) {
+      return Material(
+        color: colorScheme.surfaceContainerHighest.withValues(
+          alpha: isDark ? 0.92 : 0.68,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: borderRadius,
+          side: BorderSide(
+            color: colorScheme.outlineVariant.withValues(
+              alpha: isDark ? 0.7 : 0.8,
+            ),
+            width: 0.8,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: action,
+      );
+    }
 
     return FloatingGlassControl(
-      height: 56,
-      borderRadius: 28,
+      height: 44,
+      borderRadius: 22,
       haloColor: colorScheme.primary,
       isDark: colorScheme.brightness == Brightness.dark,
       child: action,
@@ -2652,10 +2670,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     final isSinglePage = _pagesBuilder.length == 1;
     final isFirstPage = _currentPage == 0;
     final isLastPage = _currentPage == _pagesBuilder.length - 1;
-    // On phone portrait the bottom bar owns the glass surface. On wider
-    // layouts it opts out, so each standalone action keeps its own surface.
+    // Each action is a standalone lens. There is intentionally no parent
+    // glass shell; dark mode uses a clean material surface to avoid muddy
+    // refraction around the action area.
     final useActionGlass =
-        isSinglePage || !floatingBottomBarShouldFloat(context);
+        Theme.of(context).colorScheme.brightness != Brightness.dark;
     final primaryAction = _buildLiquidGlassAction(
       onPressed: isLastPage ? _done : _nextPage,
       icon: isLastPage ? Icons.check_rounded : Icons.arrow_forward_rounded,
@@ -2673,29 +2692,31 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         ? Center(child: primaryAction)
         : Row(
             children: [
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: previousAction,
-                ),
-              ),
-              Expanded(flex: 2, child: primaryAction),
+              Expanded(child: previousAction),
+              const SizedBox(width: 8),
+              Expanded(child: primaryAction),
             ],
           );
-    final bottomBar = FloatingBottomBar(
-      height: 136,
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildPageIndicator(),
-              if (!isSinglePage) const SizedBox(height: 16),
-              bottomActions,
-            ],
-          ),
+    final guideBottomBarHorizontalPadding =
+        floatingBottomBarShouldFloat(context)
+            ? floatingBottomBarMarginFor(context).left
+            : 16.0;
+    final bottomBar = SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          guideBottomBarHorizontalPadding,
+          8,
+          guideBottomBarHorizontalPadding,
+          12,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildPageIndicator(),
+            if (!isSinglePage) const SizedBox(height: 6),
+            bottomActions,
+          ],
         ),
       ),
     );
