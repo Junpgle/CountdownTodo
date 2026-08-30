@@ -114,6 +114,8 @@ part 'home_dashboard_persistence.dart';
 part 'home_dashboard_wallpaper.dart';
 part 'home_dashboard_view.dart';
 
+const _homeFocusTabIndex = 4;
+
 class HomeDashboard extends StatefulWidget {
   final String username;
   const HomeDashboard({
@@ -209,10 +211,10 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final GlobalKey _screenTimeCardKey = GlobalKey();
   final GlobalKey _habitsCardKey = GlobalKey();
   final GlobalKey _focusBannerKey = GlobalKey();
-  final GlobalKey _fabPomodoroKey = GlobalKey();
-  final GlobalKey _fabFinanceKey = GlobalKey();
+  final GlobalKey _homePomodoroActionKey = GlobalKey();
+  final GlobalKey _homeFinanceActionKey = GlobalKey();
   final GlobalKey _financeCardKey = GlobalKey();
-  final GlobalKey _fabTodoKey = GlobalKey();
+  final GlobalKey _homeAddActionKey = GlobalKey();
   final GlobalKey _courseButtonKey = GlobalKey();
 
   // 🚀 新增：首页引导用的新增 Keys

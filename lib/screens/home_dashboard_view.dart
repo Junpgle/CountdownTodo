@@ -1,6 +1,8 @@
 part of 'home_dashboard.dart';
 // ignore_for_file: annotate_overrides
 
+enum _HomeAddAction { todo, countdown, finance }
+
 mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
   Widget build(BuildContext context) {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -77,13 +79,15 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             bottom: false,
             child: FloatingGlassPinnedHeaderLayout(
               initialHeaderExtent:
-                  (_selectedTabIndex != 1 || isTablet) ? 112.0 : 0.0,
+                  (_selectedTabIndex != _homeFocusTabIndex || isTablet)
+                      ? 112.0
+                      : 0.0,
               header: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _buildSemesterProgressBar(isLight),
 
-                  if (_selectedTabIndex != 1 || isTablet)
+                  if (_selectedTabIndex != _homeFocusTabIndex || isTablet)
                     HomeAppBar(
                       username: widget.username,
                       timeSalutation: _timeSalutation,
@@ -144,7 +148,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                     ),
 
                   // 🚀 Uni-Sync 4.0: 全局链路诊断横幅
-                  if (_selectedTabIndex != 1 || isTablet)
+                  if (_selectedTabIndex != _homeFocusTabIndex || isTablet)
                     SyncStatusBanner(
                       onDiagnosticRequested: _showLinkDiagnostics,
                     ),
@@ -154,7 +158,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
 
                   // 🚀 Uni-Sync 4.0: 团队置顶公告
                   if (_activeAnnouncement != null &&
-                      (_selectedTabIndex != 1 || isTablet))
+                      (_selectedTabIndex != _homeFocusTabIndex || isTablet))
                     StickyAnnouncementBanner(
                       announcement: _activeAnnouncement!,
                       onAcknowledge: () async {
@@ -165,7 +169,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                     ),
 
                   if (_isThirtyDayChallengeActive &&
-                      (_selectedTabIndex != 1 || isTablet))
+                      (_selectedTabIndex != _homeFocusTabIndex || isTablet))
                     _buildChallengeParticipationBanner(isLight),
 
                   // 待确认事项入口卡片（从图片识别来）
@@ -650,8 +654,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               .map(buildScrollableSection)
                                               .toList();
 
-                                      final showFocusTab =
-                                          _selectedTabIndex == 2;
+                                      final showFocusTab = _selectedTabIndex ==
+                                          _homeFocusTabIndex;
                                       final activeWidgets = showFocusTab
                                           ? tab3Widgets
                                           : tab1Widgets;
@@ -869,30 +873,18 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       // 底栏锁在内容 Stack 内并遮挡最后一张卡片。
       bottomNavigationBar:
           !isTablet ? _buildCustomBottomBar(isDarkMode, isLight) : null,
-      // 专注页的卡片自身带有「开始专注/查看记录」按钮，悬浮按钮会覆盖
-      // 这些操作，因此仅在首页显示浮动入口。
-      floatingActionButton: (!isTablet && _selectedTabIndex == 2)
-          ? null
-          : Column(
+      // 手机端的新增与番茄钟入口已收进底栏，避免首页右下角堆叠多个悬浮按钮。
+      // 平板保留原有快捷入口，因为平板布局不显示手机底栏。
+      floatingActionButton: isTablet
+          ? Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 HomeQuickActionButton.compact(
-                  key: _fabPomodoroKey,
+                  key: _homePomodoroActionKey,
                   heroTag: 'fab_pomodoro',
-                  onPressed: () async {
-                    await PageTransitions.pushFromRect(
-                      context: context,
-                      page: PomodoroScreen(username: widget.username),
-                      sourceKey: _fabPomodoroKey,
-                      placeholderIcon: Icons.timer_outlined,
-                      sourceBorderRadius:
-                          const BorderRadius.all(Radius.circular(16)),
-                    );
-                    if (mounted) {
-                      _pomodoroRevision.value++;
-                      _timelineRevision.value++;
-                    }
+                  onPressed: () {
+                    _openHomePomodoro(sourceKey: _homePomodoroActionKey);
                   },
                   tooltip: '番茄钟',
                   tint: Theme.of(context).colorScheme.primary,
@@ -902,18 +894,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                 ),
                 const SizedBox(height: 8),
                 HomeQuickActionButton.compact(
-                  key: _fabFinanceKey,
+                  key: _homeFinanceActionKey,
                   heroTag: 'fab_finance',
-                  onPressed: () async {
-                    await PageTransitions.pushFromRect(
-                      context: context,
-                      page: FinanceHomeScreen(
-                        username: widget.username,
-                        openQuickEntry: true,
-                      ),
-                      sourceKey: _fabFinanceKey,
-                      placeholderIcon: Icons.account_balance_wallet_outlined,
-                    );
+                  onPressed: () {
+                    _openHomeFinanceQuickEntry();
                   },
                   tooltip: '记一笔',
                   tint: Theme.of(context).colorScheme.secondary,
@@ -923,89 +907,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                 ),
                 const SizedBox(height: 8),
                 HomeQuickActionButton.extended(
-                  key: _fabTodoKey,
+                  key: _homeAddActionKey,
                   heroTag: 'fab_todo',
-                  onPressed: () => PageTransitions.pushFromRect(
-                    context: context,
-                    page: AddTodoScreen(
-                      todoGroups: _todoGroups,
-                      initialTeamUuid: _currentSelectedTeamUuid,
-                      initialTeamName: _currentSelectedTeamName,
-                      onFixedScheduleAdded: (item) async {
-                        await StorageService.saveFixedSchedules(
-                          widget.username,
-                          [item],
-                        );
-                        if (mounted) {
-                          _scheduleRevision.value++;
-                          _timelineRevision.value++;
-                          await _loadAllData(
-                            deferred: true,
-                            domains: const {DataRefreshDomain.fixedSchedules},
-                          );
-                        }
-                      },
-                      onTodoAdded: (todo) async {
-                        final allTodos =
-                            await StorageService.getTodos(widget.username);
-                        allTodos.add(todo);
-                        await StorageService.saveTodos(
-                            widget.username, allTodos);
-                        if (todo.teamUuid != null) {
-                          PomodoroSyncService.instance
-                              .sendTeamUpdateSignal(todo.teamUuid!);
-                        }
-                        await _saveTodosToSharedFile(allTodos);
-                        FloatWindowService.triggerReminderCheck();
-                        FloatWindowService.invalidateSlotCache();
-                        _syncTodoNotification();
-                        _rescheduleAlarms();
-                        await WidgetService.updateTodoWidget(allTodos);
-                        if (mounted) {
-                          await _loadAllData(
-                            deferred: true,
-                            domains: const {DataRefreshDomain.todos},
-                          );
-                        }
-                      },
-                      onTodosBatchAdded: (todos) async {
-                        final allTodos =
-                            await StorageService.getTodos(widget.username);
-                        allTodos.addAll(todos);
-                        await StorageService.saveTodos(
-                            widget.username, allTodos);
-                        final updatedTeamUuid = todos
-                            .firstWhere((t) => t.teamUuid != null,
-                                orElse: () => todos.first)
-                            .teamUuid;
-                        if (updatedTeamUuid != null) {
-                          PomodoroSyncService.instance
-                              .sendTeamUpdateSignal(updatedTeamUuid);
-                        }
-                        await _saveTodosToSharedFile(allTodos);
-                        FloatWindowService.triggerReminderCheck();
-                        FloatWindowService.invalidateSlotCache();
-                        _syncTodoNotification();
-                        _rescheduleAlarms();
-                        await WidgetService.updateTodoWidget(allTodos);
-                        if (mounted) {
-                          await _loadAllData(
-                            deferred: true,
-                            domains: const {DataRefreshDomain.todos},
-                          );
-                        }
-                      },
-                      onLLMResultsParsed:
-                          (results, imagePath, originalText, tUuid, tName) {
-                        Navigator.pop(context);
-                        _navigateToTodoConfirm(
-                            results, imagePath, originalText, tUuid, tName);
-                      },
-                    ),
-                    sourceKey: _fabTodoKey,
-                    sourceBorderRadius:
-                        const BorderRadius.all(Radius.circular(16)),
-                  ),
+                  onPressed: () {
+                    _openHomeTodo(sourceKey: _homeAddActionKey);
+                  },
                   tooltip: '记待办',
                   tint: Theme.of(context).colorScheme.primary,
                   foregroundColor: Theme.of(context).colorScheme.primary,
@@ -1013,18 +919,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                   icon: const Icon(Icons.add_task),
                   label: const Text("记待办"),
                 ),
-                const SizedBox(height: 100), // 避开底部的悬浮导航栏
+                const SizedBox(height: 100), // 避开平板页面的悬浮导航栏
               ],
-            ),
+            )
+          : null,
     );
-
-    if (isTablet) {
-      return AppSystemUiRegion(
-        backgroundBrightness:
-            showWallpaper || isDarkMode ? Brightness.dark : Brightness.light,
-        child: mainScreen,
-      );
-    }
 
     return ZoomDrawer(
       menuScreen: HomeDrawerMenu(
@@ -1096,7 +995,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             await PageTransitions.pushFromRect(
               context: context,
               page: FinanceHomeScreen(username: widget.username),
-              sourceKey: _fabFinanceKey,
+              sourceKey: _financeCardKey,
               placeholderIcon: Icons.account_balance_wallet_outlined,
             );
           });
@@ -1311,6 +1210,195 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     return 'jpg';
   }
 
+  Future<void> _openHomePomodoro({required GlobalKey sourceKey}) async {
+    await PageTransitions.pushFromRect(
+      context: context,
+      page: PomodoroScreen(username: widget.username),
+      sourceKey: sourceKey,
+      placeholderIcon: Icons.timer_outlined,
+      sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
+    );
+    if (mounted) {
+      _pomodoroRevision.value++;
+      _timelineRevision.value++;
+    }
+  }
+
+  Future<void> _openHomeFinanceQuickEntry() async {
+    await showFinanceEntryDialog(
+      context: context,
+    );
+  }
+
+  Future<void> _openHomeTodo({required GlobalKey sourceKey}) async {
+    await PageTransitions.pushFromRect(
+      context: context,
+      page: AddTodoScreen(
+        todoGroups: _todoGroups,
+        initialTeamUuid: _currentSelectedTeamUuid,
+        initialTeamName: _currentSelectedTeamName,
+        onFixedScheduleAdded: (item) async {
+          await StorageService.saveFixedSchedules(
+            widget.username,
+            [item],
+          );
+          if (mounted) {
+            _scheduleRevision.value++;
+            _timelineRevision.value++;
+            await _loadAllData(
+              deferred: true,
+              domains: const {DataRefreshDomain.fixedSchedules},
+            );
+          }
+        },
+        onTodoAdded: (todo) async {
+          final allTodos = await StorageService.getTodos(widget.username);
+          allTodos.add(todo);
+          await StorageService.saveTodos(widget.username, allTodos);
+          if (todo.teamUuid != null) {
+            PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid!);
+          }
+          await _saveTodosToSharedFile(allTodos);
+          FloatWindowService.triggerReminderCheck();
+          FloatWindowService.invalidateSlotCache();
+          _syncTodoNotification();
+          _rescheduleAlarms();
+          await WidgetService.updateTodoWidget(allTodos);
+          if (mounted) {
+            await _loadAllData(
+              deferred: true,
+              domains: const {DataRefreshDomain.todos},
+            );
+          }
+        },
+        onTodosBatchAdded: (todos) async {
+          final allTodos = await StorageService.getTodos(widget.username);
+          allTodos.addAll(todos);
+          await StorageService.saveTodos(widget.username, allTodos);
+          final updatedTeamUuid = todos
+              .firstWhere((t) => t.teamUuid != null, orElse: () => todos.first)
+              .teamUuid;
+          if (updatedTeamUuid != null) {
+            PomodoroSyncService.instance.sendTeamUpdateSignal(updatedTeamUuid);
+          }
+          await _saveTodosToSharedFile(allTodos);
+          FloatWindowService.triggerReminderCheck();
+          FloatWindowService.invalidateSlotCache();
+          _syncTodoNotification();
+          _rescheduleAlarms();
+          await WidgetService.updateTodoWidget(allTodos);
+          if (mounted) {
+            await _loadAllData(
+              deferred: true,
+              domains: const {DataRefreshDomain.todos},
+            );
+          }
+        },
+        onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
+          Navigator.pop(context);
+          _navigateToTodoConfirm(
+              results, imagePath, originalText, tUuid, tName);
+        },
+      ),
+      sourceKey: sourceKey,
+      sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
+    );
+  }
+
+  Future<void> _openHomeAddCountdown() {
+    return showCountdownEditorDialog(
+      context: context,
+      username: widget.username,
+      countdowns: _countdowns,
+      onDataChanged: () {
+        _loadAllData(
+          domains: const {DataRefreshDomain.countdowns},
+        );
+        _timelineRevision.value++;
+      },
+    );
+  }
+
+  Widget _buildHomeAddOption(
+    BuildContext context, {
+    required Key key,
+    required _HomeAddAction action,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return ListTile(
+      key: key,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      leading: Icon(icon, color: colorScheme.primary),
+      title: Text(title),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.chevron_right_rounded),
+      onTap: () => Navigator.of(context).pop(action),
+    );
+  }
+
+  Future<void> _openHomeAddMenu() async {
+    final action = await showModalBottomSheet<_HomeAddAction>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: Text(
+                '新增',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+            ),
+            _buildHomeAddOption(
+              context,
+              key: const ValueKey<String>('home-add-todo'),
+              action: _HomeAddAction.todo,
+              icon: Icons.add_task_rounded,
+              title: '增加待办',
+              subtitle: '记录一件要完成的事情',
+            ),
+            _buildHomeAddOption(
+              context,
+              key: const ValueKey<String>('home-add-countdown'),
+              action: _HomeAddAction.countdown,
+              icon: Icons.timer_rounded,
+              title: '增加倒计时',
+              subtitle: '记录重要日和目标日期',
+            ),
+            _buildHomeAddOption(
+              context,
+              key: const ValueKey<String>('home-add-finance'),
+              action: _HomeAddAction.finance,
+              icon: Icons.account_balance_wallet_outlined,
+              title: '增加记账',
+              subtitle: '快速记录一笔收入或支出',
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+
+    switch (action) {
+      case _HomeAddAction.todo:
+        await _openHomeTodo(sourceKey: _homeAddActionKey);
+      case _HomeAddAction.countdown:
+        await _openHomeAddCountdown();
+      case _HomeAddAction.finance:
+        await _openHomeFinanceQuickEntry();
+    }
+  }
+
   Widget _buildCustomBottomBar(bool isDarkMode, bool isLight) {
     final colorScheme = Theme.of(context).colorScheme;
     final Color primaryColor = homeBottomBarPrimaryColor(
@@ -1332,13 +1420,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
 
     final double height =
         60.0 + (bottomPadding > 0 ? bottomPadding * 0.5 : 6.0);
-    final horizontalMargin =
-        homeBottomBarHorizontalMarginFor(MediaQuery.sizeOf(context).width);
-    final margin = EdgeInsets.fromLTRB(
-      horizontalMargin,
-      0,
-      horizontalMargin,
-      24,
+    final margin = floatingBottomNavigationMarginFor(
+      context,
+      itemCount: 5,
     );
 
     final glassTint = Color.alphaBlend(
@@ -1351,25 +1435,33 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       primaryColor: primaryColor,
       inactiveColor: inactiveColor,
       selectedBackgroundColor: selectedBackgroundColor,
-      calendarButtonKey: _courseCenterKey,
+      weeklyButtonKey: _courseCenterKey,
+      addButtonKey: _homeAddActionKey,
+      pomodoroButtonKey: _homePomodoroActionKey,
       height: height,
       margin: margin,
       isDarkMode: isDarkMode,
       glassTint: glassTint,
       onTabSelected: (index) {
         setState(() => _selectedTabIndex = index);
-        if (index == 2) {
+        if (index == _homeFocusTabIndex) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _checkFocusTabCoachMarks();
           });
         }
       },
-      onCalendarPressed: () {
+      onWeeklyPressed: () {
         PageTransitions.pushFromRect(
           context: context,
           page: WeeklyCourseScreen(username: widget.username),
           sourceKey: _courseCenterKey,
         );
+      },
+      onAddPressed: () {
+        _openHomeAddMenu();
+      },
+      onPomodoroPressed: () {
+        _openHomePomodoro(sourceKey: _homePomodoroActionKey);
       },
     );
   }
@@ -1493,9 +1585,13 @@ class _HomeDashboardBottomBar extends StatelessWidget {
     required this.primaryColor,
     required this.inactiveColor,
     required this.selectedBackgroundColor,
-    required this.calendarButtonKey,
+    required this.weeklyButtonKey,
+    required this.addButtonKey,
+    required this.pomodoroButtonKey,
     required this.onTabSelected,
-    required this.onCalendarPressed,
+    required this.onWeeklyPressed,
+    required this.onAddPressed,
+    required this.onPomodoroPressed,
     required this.height,
     required this.margin,
     required this.isDarkMode,
@@ -1506,9 +1602,13 @@ class _HomeDashboardBottomBar extends StatelessWidget {
   final Color primaryColor;
   final Color inactiveColor;
   final Color selectedBackgroundColor;
-  final Key calendarButtonKey;
+  final Key weeklyButtonKey;
+  final Key addButtonKey;
+  final Key pomodoroButtonKey;
   final ValueChanged<int> onTabSelected;
-  final VoidCallback onCalendarPressed;
+  final VoidCallback onWeeklyPressed;
+  final VoidCallback onAddPressed;
+  final VoidCallback onPomodoroPressed;
   final double height;
   final EdgeInsets margin;
   final bool isDarkMode;
@@ -1523,17 +1623,39 @@ class _HomeDashboardBottomBar extends StatelessWidget {
           label: '首页',
         ),
         FloatingBottomNavigationItem(
-          label: '日历',
+          key: weeklyButtonKey,
+          label: '周视图',
+          icon: Icons.calendar_today_rounded,
           selectable: false,
-          onPressed: onCalendarPressed,
+          onPressed: onWeeklyPressed,
+          semanticsLabel: '周视图',
+        ),
+        FloatingBottomNavigationItem(
+          label: '新增',
+          selectable: false,
+          onPressed: onAddPressed,
           builder: (context, selectedLayer, interactive) => Center(
-            child: HomeBottomCalendarButton(
-              buttonKey: selectedLayer ? null : calendarButtonKey,
+            child: HomeBottomNavigationActionButton(
+              buttonKey: selectedLayer ? null : addButtonKey,
               primaryColor: primaryColor,
               interactive: interactive,
-              onPressed: onCalendarPressed,
+              onPressed: onAddPressed,
+              semanticsLabel: '新增',
+              child: Icon(
+                Icons.add_rounded,
+                color: Theme.of(context).colorScheme.onPrimary,
+                size: 28,
+              ),
             ),
           ),
+        ),
+        FloatingBottomNavigationItem(
+          key: pomodoroButtonKey,
+          label: '番茄钟',
+          iconWidget: const Text('🍅', style: TextStyle(fontSize: 20)),
+          selectable: false,
+          onPressed: onPomodoroPressed,
+          semanticsLabel: '番茄钟',
         ),
         const FloatingBottomNavigationItem(
           icon: Icons.adjust_rounded,

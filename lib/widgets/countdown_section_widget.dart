@@ -15,91 +15,39 @@ import 'platform_backdrop_filter.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'version_history_sheet.dart';
 
-class CountdownSectionWidget extends StatefulWidget {
-  final List<CountdownItem> countdowns;
-  final String username;
-  final bool isLight;
-  final VoidCallback onDataChanged;
-  final Key? addKey; // 🚀 新增 addKey 用于高亮引导
-  final Key? historyKey; // 🚀 新增 historyKey 用于高亮引导
+/// Opens the shared important-day editor from any home entry point.
+///
+/// Keeping the editor outside the section state lets the home bottom bar open
+/// it even when the countdown section is hidden from the dashboard layout.
+Future<void> showCountdownEditorDialog({
+  required BuildContext context,
+  required String username,
+  required List<CountdownItem> countdowns,
+  required VoidCallback onDataChanged,
+  String? selectedTeamUuid,
+  CountdownItem? item,
+}) async {
+  final bool isEditing = item != null;
+  final editingItem = item;
+  final teamData = await ApiService.fetchTeams();
+  final teams = teamData.map((t) => Team.fromJson(t)).toList();
 
-  const CountdownSectionWidget({
-    super.key,
-    required this.countdowns,
-    required this.username,
-    required this.isLight,
-    required this.onDataChanged,
-    this.addKey,
-    this.historyKey,
-  });
-
-  @override
-  State<CountdownSectionWidget> createState() => _CountdownSectionWidgetState();
-}
-
-class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
-    with TickerProviderStateMixin {
-  final Map<String, AnimationController> _pulseControllers = {};
-  String? _selectedTeamUuid; // 🚀 选中的团队视口
-
-  static const _holidayKeywords = [
-    '假期',
-    '放假',
-    '休假',
-    '春节',
-    '国庆',
-    '五一',
-    '端午',
-    '中秋',
-    '元旦',
-    '清明',
-    '新年',
-    '圣诞',
-    'holiday',
-    'vacation',
-    'break',
-  ];
-
-  bool _isHolidayKeyword(String title) {
-    final lower = title.toLowerCase();
-    return _holidayKeywords.any((kw) => lower.contains(kw));
+  final titleCtrl = TextEditingController(text: editingItem?.title);
+  DateTime selectedDate =
+      editingItem?.targetDate ?? DateTime.now().add(const Duration(days: 1));
+  String? selectedTeamName = editingItem?.teamName;
+  if (!isEditing && selectedTeamUuid != null && selectedTeamName == null) {
+    selectedTeamName =
+        teams.where((t) => t.uuid == selectedTeamUuid).firstOrNull?.name;
   }
 
-  // 🚀 桌面端滑动优化：增加控制器
-  late final ScrollController _listScrollController = ScrollController();
-  late final ScrollController _tabsScrollController = ScrollController();
-
-  @override
-  void dispose() {
-    _listScrollController.dispose();
-    _tabsScrollController.dispose();
-    for (final controller in _pulseControllers.values) {
-      controller.dispose();
-    }
-    super.dispose();
+  if (!context.mounted) {
+    titleCtrl.dispose();
+    return;
   }
 
-  void _addCountdown() => _showCountdownDialog();
-
-  void _editCountdown(CountdownItem item) => _showCountdownDialog(item: item);
-
-  Future<void> _showCountdownDialog({CountdownItem? item}) async {
-    final bool isEditing = item != null;
-    final teamData = await ApiService.fetchTeams();
-    final teams = teamData.map((t) => Team.fromJson(t)).toList();
-
-    TextEditingController titleCtrl = TextEditingController(text: item?.title);
-    DateTime selectedDate =
-        item?.targetDate ?? DateTime.now().add(const Duration(days: 1));
-    String? selectedTeamUuid = item?.teamUuid ?? _selectedTeamUuid;
-    String? selectedTeamName = item?.teamName;
-    if (!isEditing && selectedTeamUuid != null && selectedTeamName == null) {
-      selectedTeamName =
-          teams.where((t) => t.uuid == selectedTeamUuid).firstOrNull?.name;
-    }
-
-    if (!mounted) return;
-    showDialog(
+  try {
+    await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -177,26 +125,26 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
             FilledButton(
               onPressed: () async {
                 if (titleCtrl.text.isNotEmpty) {
-                  List<CountdownItem> updatedList =
-                      List.from(widget.countdowns);
-                  if (isEditing) {
-                    final idx = updatedList.indexWhere((c) => c.id == item.id);
+                  final updatedList = List<CountdownItem>.from(countdowns);
+                  if (editingItem != null) {
+                    final idx = updatedList.indexWhere(
+                        (countdown) => countdown.id == editingItem.id);
                     if (idx != -1) {
                       updatedList[idx] = CountdownItem(
-                        id: item.id,
+                        id: editingItem.id,
                         title: titleCtrl.text,
                         targetDate: selectedDate,
-                        isDeleted: item.isDeleted,
-                        isCompleted: item.isCompleted,
-                        version: item.version,
+                        isDeleted: editingItem.isDeleted,
+                        isCompleted: editingItem.isCompleted,
+                        version: editingItem.version,
                         teamUuid: selectedTeamUuid,
                         teamName: selectedTeamName,
-                        creatorId: item.creatorId,
-                        creatorName: item.creatorName,
-                        createdAt: item.createdAt,
+                        creatorId: editingItem.creatorId,
+                        creatorName: editingItem.creatorName,
+                        createdAt: editingItem.createdAt,
                         updatedAt: DateTime.now().millisecondsSinceEpoch,
-                        hasConflict: item.hasConflict,
-                        conflictData: item.conflictData,
+                        hasConflict: editingItem.hasConflict,
+                        conflictData: editingItem.conflictData,
                       );
                       updatedList[idx].markAsChanged();
                     }
@@ -206,17 +154,16 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                       targetDate: selectedDate,
                       teamUuid: selectedTeamUuid,
                       teamName: selectedTeamName,
-                      creatorName: widget.username,
+                      creatorName: username,
                     ));
                   }
-                  await StorageService.saveCountdowns(
-                      widget.username, updatedList);
-                  if (!mounted || !ctx.mounted) return;
-                  final syncUuid = isEditing ? item.teamUuid : selectedTeamUuid;
+                  await StorageService.saveCountdowns(username, updatedList);
+                  if (!context.mounted || !ctx.mounted) return;
+                  final syncUuid = editingItem?.teamUuid ?? selectedTeamUuid;
                   if (syncUuid != null) {
                     PomodoroSyncService.instance.sendTeamUpdateSignal(syncUuid);
                   }
-                  widget.onDataChanged();
+                  onDataChanged();
                   Navigator.pop(ctx);
                 }
               },
@@ -225,6 +172,88 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
           ],
         ),
       ),
+    );
+  } finally {
+    titleCtrl.dispose();
+  }
+}
+
+class CountdownSectionWidget extends StatefulWidget {
+  final List<CountdownItem> countdowns;
+  final String username;
+  final bool isLight;
+  final VoidCallback onDataChanged;
+  final Key? addKey; // 🚀 新增 addKey 用于高亮引导
+  final Key? historyKey; // 🚀 新增 historyKey 用于高亮引导
+
+  const CountdownSectionWidget({
+    super.key,
+    required this.countdowns,
+    required this.username,
+    required this.isLight,
+    required this.onDataChanged,
+    this.addKey,
+    this.historyKey,
+  });
+
+  @override
+  State<CountdownSectionWidget> createState() => _CountdownSectionWidgetState();
+}
+
+class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
+    with TickerProviderStateMixin {
+  final Map<String, AnimationController> _pulseControllers = {};
+  String? _selectedTeamUuid; // 🚀 选中的团队视口
+
+  static const _holidayKeywords = [
+    '假期',
+    '放假',
+    '休假',
+    '春节',
+    '国庆',
+    '五一',
+    '端午',
+    '中秋',
+    '元旦',
+    '清明',
+    '新年',
+    '圣诞',
+    'holiday',
+    'vacation',
+    'break',
+  ];
+
+  bool _isHolidayKeyword(String title) {
+    final lower = title.toLowerCase();
+    return _holidayKeywords.any((kw) => lower.contains(kw));
+  }
+
+  // 🚀 桌面端滑动优化：增加控制器
+  late final ScrollController _listScrollController = ScrollController();
+  late final ScrollController _tabsScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _listScrollController.dispose();
+    _tabsScrollController.dispose();
+    for (final controller in _pulseControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  void _addCountdown() => _showCountdownDialog();
+
+  void _editCountdown(CountdownItem item) => _showCountdownDialog(item: item);
+
+  Future<void> _showCountdownDialog({CountdownItem? item}) {
+    return showCountdownEditorDialog(
+      context: context,
+      username: widget.username,
+      countdowns: widget.countdowns,
+      onDataChanged: widget.onDataChanged,
+      selectedTeamUuid: item?.teamUuid ?? _selectedTeamUuid,
+      item: item,
     );
   }
 
@@ -309,11 +338,11 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                     widget.onDataChanged();
                   },
                 ),
-                SizedBox(
-                  key: widget.historyKey,
-                  child: IconButton(
-                    style: floatingGlassPlainIconButtonStyle(),
-                    icon: Icon(Icons.history,
+              SizedBox(
+                key: widget.historyKey,
+                child: IconButton(
+                  style: floatingGlassPlainIconButtonStyle(),
+                  icon: Icon(Icons.history,
                       color: useDarkUI ? Colors.white70 : Colors.grey),
                   onPressed: () async {
                     await Navigator.push(
