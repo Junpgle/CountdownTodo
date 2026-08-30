@@ -372,7 +372,7 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
         case AppPermissionKind.usageStats ||
               AppPermissionKind.exactAlarm ||
               AppPermissionKind.liveUpdates:
-          return status(permission);
+          return await status(permission);
       }
     } catch (_) {
       return PermissionStatus.granted;

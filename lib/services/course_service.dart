@@ -389,7 +389,7 @@ class CourseService {
         orderBy: 'date ASC, start_time ASC',
       );
       if (maps.isNotEmpty) {
-        return applyAdjustmentsIfNeeded(
+        return await applyAdjustmentsIfNeeded(
             maps.map((m) => CourseItem.fromJson(m)).toList());
       }
     } catch (e) {
@@ -404,7 +404,7 @@ class CourseService {
             orderBy: 'date ASC, start_time ASC',
           );
           if (maps.isNotEmpty) {
-            return applyAdjustmentsIfNeeded(
+            return await applyAdjustmentsIfNeeded(
                 maps.map((m) => CourseItem.fromJson(m)).toList());
           }
         } catch (retryError) {

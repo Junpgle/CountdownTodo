@@ -312,7 +312,7 @@ mixin _StorageFixed on _StorageServiceBase {
         orderBy: 'start_time ASC',
       );
       if (maps.length > 50) {
-        return compute(_parsePlanBlockItemsIsolate, maps);
+        return await compute(_parsePlanBlockItemsIsolate, maps);
       }
       return maps.map(TodoPlanBlock.fromJson).toList();
     } catch (e) {
