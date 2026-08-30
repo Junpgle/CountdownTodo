@@ -15,6 +15,9 @@ The Android host contains more than a standard Flutter bootstrap. Last reviewed:
 - Multiple widget families: combined todo, todo-only, countdown-only, course-only,
   focus-only, recurrence, habit and finance widgets.
 
+The Android 17 Xiaomi freeform inset/rendering incident and its verification
+record are maintained in [`../docs/reports/android-17-xiaomi-freeform-flutter.md`](../docs/reports/android-17-xiaomi-freeform-flutter.md).
+
 Resources and declarations live under `android/app/src/main/res/` and
 `AndroidManifest.xml`. Update both code and manifest/resource entries when
 adding a widget, receiver, service, permission or channel.

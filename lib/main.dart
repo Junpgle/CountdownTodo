@@ -1023,10 +1023,41 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                             )
                                           : content;
 
-                                  return AppSystemUiRegion(
-                                    backgroundBrightness:
-                                        Theme.of(context).brightness,
+                                  return ValueListenableBuilder<bool>(
+                                    valueListenable:
+                                        AndroidWindowRenderingPolicy
+                                            .disableShaderContentFade,
                                     child: appContent,
+                                    builder: (context, _, child) {
+                                      final content =
+                                          child ?? const SizedBox.shrink();
+                                      final mediaQuery =
+                                          MediaQuery.maybeOf(context);
+                                      final normalizedMediaQuery = mediaQuery ==
+                                              null
+                                          ? null
+                                          : AndroidWindowRenderingPolicy
+                                              .normalizeCompactWindowMediaQuery(
+                                              mediaQuery,
+                                            );
+                                      final adaptedContent =
+                                          normalizedMediaQuery != null &&
+                                                  !identical(
+                                                    normalizedMediaQuery,
+                                                    mediaQuery,
+                                                  )
+                                              ? MediaQuery(
+                                                  data: normalizedMediaQuery,
+                                                  child: content,
+                                                )
+                                              : content;
+
+                                      return AppSystemUiRegion(
+                                        backgroundBrightness:
+                                            Theme.of(context).brightness,
+                                        child: adaptedContent,
+                                      );
+                                    },
                                   );
                                 },
                                 home: _shareCode != null

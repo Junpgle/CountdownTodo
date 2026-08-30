@@ -93,10 +93,50 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val SPECIAL_TODO_ISLAND_BIZ_TAG = "math_quiz_special_todo" // 🚴 特殊待办独立岛 bizTag
     private val UPDATE_ISLAND_BIZ_TAG = "math_quiz_update" // 🚀 版本更新独立岛 bizTag
     private val TAG = "MathQuizApp"
-    private fun isHyperOsMiniWindow(): Boolean {
+
+    // HyperOS 的自由窗回调不一定把 isInMultiWindowMode 置为 true。
+    // 保存系统传入的 Configuration，使用其 windowing mode 作为可靠的
+    // freeform 信号；当前/最大 WindowMetrics 则作为没有该厂商字段时的兜底。
+    private var isFreeformWindow = false
+
+    private fun updateWindowModeFromConfiguration(configuration: Configuration?) {
+        val configurationText = configuration?.toString() ?: return
+        isFreeformWindow =
+            configurationText.contains("mWindowingMode=freeform", ignoreCase = true) ||
+                configurationText.contains("windowingMode=freeform", ignoreCase = true)
+    }
+
+    private fun isCompactWindow(flutterView: android.view.View? = null): Boolean {
+        if (isInMultiWindowMode || isFreeformWindow) return true
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+
+        return try {
+            val currentBounds = windowManager.currentWindowMetrics.bounds
+            val maximumBounds = windowManager.maximumWindowMetrics.bounds
+            val currentWidth = currentBounds.width()
+            val currentHeight = currentBounds.height()
+            val maximumWidth = maximumBounds.width()
+            val maximumHeight = maximumBounds.height()
+
+            if (maximumWidth <= 0 || maximumHeight <= 0) return false
+
+            val metricsAreCompact =
+                currentWidth < maximumWidth * 0.85f ||
+                    currentHeight < maximumHeight * 0.85f
+            val viewIsCompact = flutterView != null &&
+                (flutterView.width < maximumWidth * 0.85f ||
+                    flutterView.height < maximumHeight * 0.85f)
+            metricsAreCompact || viewIsCompact
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "Unable to query current window metrics", error)
+            false
+        }
+    }
+
+    private fun isHyperOsMiniWindow(flutterView: android.view.View? = null): Boolean {
         return Build.VERSION.SDK_INT >= 37 &&
             Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true) &&
-            isInMultiWindowMode
+            isCompactWindow(flutterView)
     }
 
     private fun windowRenderingInfo(flutterView: android.view.View? = null): Map<String, Any> {
@@ -105,7 +145,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             "isAndroid17" to (Build.VERSION.SDK_INT >= 37),
             "manufacturer" to Build.MANUFACTURER,
             "isInMultiWindowMode" to isInMultiWindowMode,
-            "isHyperOsMiniWindow" to isHyperOsMiniWindow(),
+            "isFreeformWindow" to isFreeformWindow,
+            "isCompactWindow" to isCompactWindow(flutterView),
+            "isHyperOsMiniWindow" to isHyperOsMiniWindow(flutterView),
             "width" to (flutterView?.width ?: 0),
             "height" to (flutterView?.height ?: 0),
             "hasWindowFocus" to hasWindowFocus()
@@ -252,6 +294,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        updateWindowModeFromConfiguration(resources.configuration)
+
         // ── 在 super.onCreate 之前恢复 pending 状态 ──
         // configureFlutterEngine 在 super.onCreate 内部执行，必须在此之前恢复，
         // 否则 pendingDeepLink/pendingTodoConfirm 等标志在 channel 初始化时仍为空。
@@ -376,11 +420,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         newConfig: Configuration
     ) {
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
+        updateWindowModeFromConfiguration(newConfig)
         scheduleEdgeToEdgeRestore()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        updateWindowModeFromConfiguration(newConfig)
         scheduleEdgeToEdgeRestore()
     }
 
@@ -389,6 +435,18 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         if (isHyperOsMiniWindow()) {
             // 迷你窗通常没有焦点，但仍应持续绘制；焦点切换后补发稳定帧。
             keepFlutterDrawingInMiniWindow()
+            scheduleEdgeToEdgeRestore()
+        }
+    }
+
+    override fun onPostResume() {
+        super.onPostResume()
+        if (Build.VERSION.SDK_INT >= 37 &&
+            Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true)
+        ) {
+            // When the Activity is restored directly into a freeform window,
+            // HyperOS may skip the multi-window callback. Query again after
+            // FlutterView has been attached so Dart receives the real bounds.
             scheduleEdgeToEdgeRestore()
         }
     }

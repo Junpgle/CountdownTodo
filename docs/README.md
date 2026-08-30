@@ -1,8 +1,7 @@
 # Documentation index
 
-All 35 project Markdown files in this workspace were reviewed against the
-working tree on 2026-08-25. Dependency/build output Markdown is intentionally
-excluded.
+Project Markdown files in this workspace were reviewed against the working tree
+on 2026-08-31. Dependency/build output Markdown is intentionally excluded.
 
 ## Current references
 
@@ -31,6 +30,9 @@ Files under `archive/` and `reports/`, plus `ai/ml-optimization-plan.md`,
 `sync/uni-sync-design.md`, and `ISLAND_REDESIGN_PLAN.md`, preserve design or
 investigation context. Each carries a status note separating implemented code
 from proposals; old checkboxes and metrics are not release guarantees.
+
+- `reports/android-17-xiaomi-freeform-flutter.md` — Android 17 Xiaomi freeform
+  inset and Flutter rendering compatibility incident record.
 
 ## Private and generated notes
 

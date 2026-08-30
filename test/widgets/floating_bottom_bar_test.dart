@@ -277,6 +277,56 @@ void main() {
     expect(find.text('Unmasked content'), findsOneWidget);
   });
 
+  test('clamps a malformed Android 17 freeform top inset', () {
+    final previousPolicy =
+        AndroidWindowRenderingPolicy.disableShaderContentFade.value;
+    addTearDown(() {
+      AndroidWindowRenderingPolicy.disableShaderContentFade.value =
+          previousPolicy;
+    });
+    AndroidWindowRenderingPolicy.disableShaderContentFade.value = true;
+
+    const malformed = MediaQueryData(
+      size: Size(360, 760),
+      padding: EdgeInsets.only(top: 760),
+      viewPadding: EdgeInsets.only(top: 760, bottom: 24),
+      viewInsets: EdgeInsets.only(top: 760),
+    );
+
+    final normalized =
+        AndroidWindowRenderingPolicy.normalizeCompactWindowMediaQuery(
+            malformed);
+
+    expect(normalized.padding.top, 64);
+    expect(normalized.viewPadding.top, 64);
+    expect(normalized.viewInsets.top, 64);
+    expect(normalized.viewPadding.bottom, 24);
+  });
+
+  test('clamps an oversized top inset even before native mode detection', () {
+    final previousPolicy =
+        AndroidWindowRenderingPolicy.disableShaderContentFade.value;
+    addTearDown(() {
+      AndroidWindowRenderingPolicy.disableShaderContentFade.value =
+          previousPolicy;
+    });
+    AndroidWindowRenderingPolicy.disableShaderContentFade.value = false;
+
+    const malformed = MediaQueryData(
+      size: Size(360, 760),
+      padding: EdgeInsets.only(top: 760),
+      viewPadding: EdgeInsets.only(top: 760, bottom: 24),
+    );
+
+    final normalized =
+        AndroidWindowRenderingPolicy.normalizeCompactWindowMediaQuery(
+            malformed);
+
+    expect(normalized.padding.top, 64);
+    expect(normalized.viewPadding.top, 64);
+    expect(normalized.viewPadding.bottom, 24);
+  });
+
   testWidgets('fades grouped sliver content beneath a pinned top bar',
       (tester) async {
     await LiquidGlassEffectService.setEnabled(false);
