@@ -62,6 +62,92 @@ abstract final class FinanceRepository {
     }
   }
 
+  static Future<List<FinanceTransaction>> saveInstallmentPlan({
+    required FinanceTransaction transaction,
+    required int totalAmountMinor,
+    required int installmentCount,
+    required DateTime startDate,
+    List<FinanceTransaction> existingInstallments = const [],
+  }) async {
+    final saved = await FinanceStorage.saveInstallmentPlan(
+      transaction: transaction,
+      totalAmountMinor: totalAmountMinor,
+      installmentCount: installmentCount,
+      startDate: startDate,
+      existingInstallments: existingInstallments,
+    );
+    for (final item in saved) {
+      try {
+        await FinanceAutomationService.checkBudgetAlerts(
+          now: dateFromKey(item.transactionDate),
+        );
+      } catch (_) {
+        // 预算通知失败不能回滚已经保存成功的分期账单。
+      }
+    }
+    return saved;
+  }
+
+  static Future<List<FinanceTransaction>> getInstallmentGroup(
+    String groupUuid, {
+    bool includeDeleted = false,
+  }) {
+    return FinanceStorage.getInstallmentGroup(
+      groupUuid,
+      includeDeleted: includeDeleted,
+    );
+  }
+
+  static Future<void> deleteInstallmentGroup(String groupUuid) {
+    return FinanceStorage.deleteInstallmentGroup(groupUuid);
+  }
+
+  static Future<void> restoreInstallmentGroup(String groupUuid) {
+    return FinanceStorage.restoreInstallmentGroup(groupUuid);
+  }
+
+  static Future<List<FinanceLoan>> getLoans({
+    bool includeDeleted = false,
+  }) {
+    return FinanceStorage.getLoans(includeDeleted: includeDeleted);
+  }
+
+  static Future<FinanceLoan?> getLoan(
+    String uuid, {
+    bool includeDeleted = false,
+  }) {
+    return FinanceStorage.getLoan(uuid, includeDeleted: includeDeleted);
+  }
+
+  static Future<List<FinanceLoanInstallment>> getLoanInstallments(
+    String loanUuid, {
+    bool includeDeleted = false,
+  }) {
+    return FinanceStorage.getLoanInstallments(
+      loanUuid,
+      includeDeleted: includeDeleted,
+    );
+  }
+
+  static Future<void> saveLoan(FinanceLoan loan) {
+    return FinanceStorage.saveLoan(loan);
+  }
+
+  static Future<void> setLoanInstallmentPaid(
+    String installmentUuid,
+    bool paid,
+  ) {
+    return FinanceStorage.setLoanInstallmentPaid(installmentUuid, paid);
+  }
+
+  static Future<void> deleteLoan(String uuid) {
+    return FinanceStorage.deleteLoan(uuid);
+  }
+
+  static Future<void> restoreLoan(String uuid) {
+    return FinanceStorage.restoreLoan(uuid);
+  }
+
   static Future<void> deleteTransaction(String uuid) {
     return FinanceStorage.deleteTransaction(uuid);
   }
@@ -187,6 +273,8 @@ abstract final class FinanceRepository {
         '商家',
         '备注',
         '来源',
+        '分期',
+        '分期总额',
       ],
       ...transactions.map((transaction) {
         final category = categories[transaction.categoryUuid];
@@ -203,6 +291,11 @@ abstract final class FinanceRepository {
           transaction.merchant ?? '',
           transaction.note ?? '',
           transaction.source.label,
+          transaction.installmentLabel ?? '',
+          transaction.isInstallment && transaction.installmentTotalMinor != null
+              ? formatFinanceAmount(transaction.installmentTotalMinor!,
+                  withSymbol: false)
+              : '',
         ];
       }),
     ];

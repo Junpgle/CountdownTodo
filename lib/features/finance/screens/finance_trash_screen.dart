@@ -14,6 +14,7 @@ class FinanceTrashScreen extends StatefulWidget {
 
 class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   List<FinanceTransaction> _transactions = const [];
+  List<FinanceLoan> _loans = const [];
   List<FinanceBudget> _budgets = const [];
   List<FinanceRecurringRule> _rules = const [];
   List<FinanceEntryTemplate> _templates = const [];
@@ -28,6 +29,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   Future<void> _load() async {
     final values = await Future.wait<dynamic>([
       FinanceStorage.getDeletedTransactions(),
+      FinanceStorage.getLoans(includeDeleted: true),
       FinanceStorage.getBudgets(includeDeleted: true),
       FinanceStorage.getRecurringRules(includeDeleted: true),
       FinanceStorage.getTemplates(includeDeleted: true),
@@ -35,13 +37,16 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
     if (!mounted) return;
     setState(() {
       _transactions = values[0] as List<FinanceTransaction>;
-      _budgets = (values[1] as List<FinanceBudget>)
+      _loans = (values[1] as List<FinanceLoan>)
+          .where((loan) => loan.isDeleted)
+          .toList();
+      _budgets = (values[2] as List<FinanceBudget>)
           .where((budget) => budget.isDeleted)
           .toList();
-      _rules = (values[2] as List<FinanceRecurringRule>)
+      _rules = (values[3] as List<FinanceRecurringRule>)
           .where((rule) => rule.isDeleted)
           .toList();
-      _templates = (values[3] as List<FinanceEntryTemplate>)
+      _templates = (values[4] as List<FinanceEntryTemplate>)
           .where((template) => template.isDeleted)
           .toList();
       _isLoading = false;
@@ -49,7 +54,39 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   }
 
   Future<void> _restore(FinanceTransaction transaction) async {
-    await FinanceStorage.restoreTransaction(transaction.uuid);
+    final restoreMode = transaction.isInstallment
+        ? await showDialog<String>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('恢复分期账单？'),
+              content: Text(
+                '这是第 ${transaction.installmentIndex}/${transaction.installmentCount} 期。',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, 'single'),
+                  child: const Text('只恢复本期'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, 'group'),
+                  child: const Text('恢复整组'),
+                ),
+              ],
+            ),
+          )
+        : 'single';
+    if (restoreMode == null) return;
+    if (restoreMode == 'group' && transaction.installmentGroupUuid != null) {
+      await FinanceStorage.restoreInstallmentGroup(
+        transaction.installmentGroupUuid!,
+      );
+    } else {
+      await FinanceStorage.restoreTransaction(transaction.uuid);
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('账单已恢复')),
@@ -70,6 +107,23 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('预算已恢复')),
+    );
+    await _load();
+  }
+
+  Future<void> _restoreLoan(FinanceLoan loan) async {
+    try {
+      await FinanceStorage.restoreLoan(loan.uuid);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('恢复贷款失败：$error')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('贷款已恢复')),
     );
     await _load();
   }
@@ -102,6 +156,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _transactions.isEmpty &&
+                  _loans.isEmpty &&
                   _budgets.isEmpty &&
                   _rules.isEmpty &&
                   _templates.isEmpty
@@ -157,6 +212,31 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
                             ),
                             trailing: TextButton(
                               onPressed: () => _restoreBudget(budget),
+                              child: const Text('恢复'),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    ],
+                    if (_loans.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      const Text(
+                        '贷款',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      for (final loan in _loans) ...[
+                        Card(
+                          child: ListTile(
+                            title: Text(loan.name),
+                            subtitle: Text(
+                              '${loan.startDate} · ${loan.repaymentMethod.label} · 年利率 ${formatFinanceInterestRate(loan.annualInterestRateBps)}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: TextButton(
+                              onPressed: () => _restoreLoan(loan),
                               child: const Text('恢复'),
                             ),
                           ),

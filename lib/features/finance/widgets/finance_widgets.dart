@@ -456,6 +456,8 @@ class FinanceLedgerPanel extends StatelessWidget {
     final subtitleParts = <String>[
       if (category != null) '${category.icon} ${category.name}',
       if (payment != null) '${payment.icon} ${payment.name}',
+      if (transaction.installmentLabel != null)
+        '分期 ${transaction.installmentLabel}',
       if (transaction.note?.isNotEmpty == true) transaction.note!,
     ];
     final amountColor = transaction.type == FinanceTransactionType.expense

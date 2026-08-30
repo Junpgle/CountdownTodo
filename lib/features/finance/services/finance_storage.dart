@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../services/database_helper.dart';
 import '../../../storage_service.dart';
@@ -170,6 +171,482 @@ abstract final class FinanceStorage {
       _localValues(transaction.toMap()),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    _notifyChanged();
+  }
+
+  /// 原子保存一组分期账单。
+  ///
+  /// 每一期都是正常的 transaction，因此月度统计、搜索、导出和同步都能
+  /// 沿用现有路径；分期字段只负责把这些交易重新识别为同一组。
+  static Future<List<FinanceTransaction>> saveInstallmentPlan({
+    required FinanceTransaction transaction,
+    required int totalAmountMinor,
+    required int installmentCount,
+    required DateTime startDate,
+    List<FinanceTransaction> existingInstallments = const [],
+  }) async {
+    final allocations = FinanceInstallmentCalculator.split(
+      totalMinor: totalAmountMinor,
+      count: installmentCount,
+      startDate: startDate,
+    );
+    await ensureReady();
+
+    var existing = existingInstallments;
+    if (existing.isEmpty && transaction.installmentGroupUuid != null) {
+      existing = await getInstallmentGroup(
+        transaction.installmentGroupUuid!,
+        includeDeleted: true,
+      );
+    }
+    final existingByIndex = <int, FinanceTransaction>{};
+    for (final item in existing) {
+      final index = item.installmentIndex;
+      if (index != null && index > 0) existingByIndex[index] = item;
+    }
+
+    final groupUuid = transaction.installmentGroupUuid ??
+        existing
+            .map((item) => item.installmentGroupUuid)
+            .whereType<String>()
+            .firstOrNull ??
+        const Uuid().v4();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final saved = <FinanceTransaction>[];
+    final db = await _database;
+
+    await db.transaction((txn) async {
+      for (final allocation in allocations) {
+        final old = existingByIndex[allocation.index];
+        final item = FinanceTransaction(
+          uuid: old?.uuid ?? (allocation.index == 1 ? transaction.uuid : null),
+          type: transaction.type,
+          amountMinor: allocation.amountMinor,
+          currencyCode: transaction.currencyCode,
+          categoryUuid: transaction.categoryUuid,
+          paymentMethodUuid: transaction.paymentMethodUuid,
+          transactionDate: dateKey(allocation.date),
+          occurredAt: old?.occurredAt ?? transaction.occurredAt,
+          timezoneOffsetMinutes: transaction.timezoneOffsetMinutes,
+          merchant: transaction.merchant,
+          note: transaction.note,
+          source: transaction.source,
+          relatedTodoUuid: transaction.relatedTodoUuid,
+          relatedPlanBlockUuid: transaction.relatedPlanBlockUuid,
+          relatedTransactionUuid: transaction.relatedTransactionUuid,
+          installmentGroupUuid: groupUuid,
+          installmentIndex: allocation.index,
+          installmentCount: allocation.count,
+          installmentTotalMinor: totalAmountMinor,
+          isDeleted: false,
+          version: old?.version ?? 1,
+          createdAt: old?.createdAt ??
+              (allocation.index == 1 ? transaction.createdAt : now),
+          updatedAt: old?.updatedAt ??
+              (allocation.index == 1 ? transaction.updatedAt : now),
+          deviceId: transaction.deviceId,
+        );
+        if (old != null) item.markAsChanged();
+        item.pendingSync = true;
+        await txn.insert(
+          'finance_transactions',
+          _localValues(item.toMap()),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        saved.add(item);
+      }
+
+      // 期数减少时，旧的多余期次进入回收站而不是物理删除，保证同步和
+      // 数据恢复都能继续遵守现有的软删除规则。
+      for (final old in existing) {
+        final index = old.installmentIndex;
+        if (index == null || index <= installmentCount || old.isDeleted) {
+          continue;
+        }
+        old.isDeleted = true;
+        old.markAsChanged();
+        await txn.update(
+          'finance_transactions',
+          _localValues(old.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [old.uuid],
+        );
+      }
+    });
+    _notifyChanged();
+    return saved;
+  }
+
+  static Future<List<FinanceTransaction>> getInstallmentGroup(
+    String groupUuid, {
+    bool includeDeleted = false,
+  }) async {
+    await ensureReady();
+    final db = await _database;
+    final where = <String>['installment_group_uuid = ?'];
+    final args = <Object?>[groupUuid];
+    if (!includeDeleted) where.add('is_deleted = 0');
+    final rows = await db.query(
+      'finance_transactions',
+      where: where.join(' AND '),
+      whereArgs: args,
+      orderBy: 'installment_index ASC, transaction_date ASC, occurred_at ASC',
+    );
+    return rows.map(FinanceTransaction.fromMap).toList();
+  }
+
+  static Future<void> deleteInstallmentGroup(String groupUuid) async {
+    final group = await getInstallmentGroup(groupUuid);
+    if (group.isEmpty) return;
+    final db = await _database;
+    await db.transaction((txn) async {
+      for (final transaction in group) {
+        transaction.isDeleted = true;
+        transaction.markAsChanged();
+        await txn.update(
+          'finance_transactions',
+          _localValues(transaction.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [transaction.uuid],
+        );
+      }
+    });
+    _notifyChanged();
+  }
+
+  static Future<void> restoreInstallmentGroup(String groupUuid) async {
+    final group = await getInstallmentGroup(
+      groupUuid,
+      includeDeleted: true,
+    );
+    final deleted = group.where((item) => item.isDeleted).toList();
+    if (deleted.isEmpty) return;
+    final counts = group
+        .map((item) => item.installmentCount)
+        .whereType<int>()
+        .where((count) => count > 1)
+        .toList();
+    final currentCount = counts.isEmpty
+        ? null
+        : counts.reduce((left, right) => left < right ? left : right);
+    final restorable = currentCount == null
+        ? deleted
+        : deleted.where((item) {
+            final index = item.installmentIndex;
+            return index == null || index <= currentCount;
+          }).toList();
+    if (restorable.isEmpty) return;
+    final db = await _database;
+    await db.transaction((txn) async {
+      for (final transaction in restorable) {
+        transaction.isDeleted = false;
+        transaction.markAsChanged();
+        await txn.update(
+          'finance_transactions',
+          _localValues(transaction.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [transaction.uuid],
+        );
+      }
+    });
+    _notifyChanged();
+  }
+
+  static Future<List<FinanceLoan>> getLoans({
+    bool includeDeleted = false,
+  }) async {
+    await ensureReady();
+    final db = await _database;
+    final rows = await db.query(
+      'finance_loans',
+      where: includeDeleted ? null : 'is_deleted = 0',
+      orderBy: 'start_date DESC, updated_at DESC',
+    );
+    return rows.map(FinanceLoan.fromMap).toList();
+  }
+
+  static Future<FinanceLoan?> getLoan(
+    String uuid, {
+    bool includeDeleted = false,
+  }) async {
+    await ensureReady();
+    final db = await _database;
+    final where = <String>['uuid = ?'];
+    if (!includeDeleted) where.add('is_deleted = 0');
+    final rows = await db.query(
+      'finance_loans',
+      where: where.join(' AND '),
+      whereArgs: [uuid],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : FinanceLoan.fromMap(rows.first);
+  }
+
+  static Future<List<FinanceLoanInstallment>> getLoanInstallments(
+    String loanUuid, {
+    bool includeDeleted = false,
+  }) async {
+    await ensureReady();
+    final db = await _database;
+    final where = <String>['loan_uuid = ?'];
+    if (!includeDeleted) where.add('is_deleted = 0');
+    final rows = await db.query(
+      'finance_loan_installments',
+      where: where.join(' AND '),
+      whereArgs: [loanUuid],
+      orderBy: 'installment_index ASC, due_date ASC',
+    );
+    return rows.map(FinanceLoanInstallment.fromMap).toList();
+  }
+
+  static Future<FinanceLoanInstallment?> getLoanInstallment(
+    String uuid, {
+    bool includeDeleted = false,
+  }) async {
+    await ensureReady();
+    final db = await _database;
+    final where = <String>['uuid = ?'];
+    if (!includeDeleted) where.add('is_deleted = 0');
+    final rows = await db.query(
+      'finance_loan_installments',
+      where: where.join(' AND '),
+      whereArgs: [uuid],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : FinanceLoanInstallment.fromMap(rows.first);
+  }
+
+  /// 保存贷款并在同一事务中生成或重算整套还款计划。
+  static Future<void> saveLoan(FinanceLoan loan) async {
+    _validateLoan(loan);
+    await ensureReady();
+    final db = await _database;
+    final existing = await getLoan(loan.uuid, includeDeleted: true);
+    final existingInstallments = existing == null
+        ? <FinanceLoanInstallment>[]
+        : await getLoanInstallments(loan.uuid, includeDeleted: true);
+    final hasPaidInstallment =
+        existingInstallments.any((item) => item.isPaid && !item.isDeleted);
+    if (existing != null &&
+        hasPaidInstallment &&
+        _loanTermsDiffer(existing, loan)) {
+      throw StateError('已有还款记录后不能修改本金、利率、期限或还款方式');
+    }
+
+    final allocations = FinanceLoanCalculator.generate(
+      principalMinor: loan.principalMinor,
+      annualInterestRateBps: loan.annualInterestRateBps,
+      termMonths: loan.termMonths,
+      startDate: dateFromKey(loan.startDate),
+      repaymentDay: loan.repaymentDay,
+      repaymentMethod: loan.repaymentMethod,
+    );
+    final existingByIndex = <int, FinanceLoanInstallment>{};
+    for (final item in existingInstallments) {
+      if (item.installmentIndex > 0) {
+        existingByIndex[item.installmentIndex] = item;
+      }
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (existing != null) {
+      loan.version = existing.version;
+      loan.createdAt = existing.createdAt;
+      loan.updatedAt = existing.updatedAt;
+      loan.markAsChanged();
+    } else {
+      loan.pendingSync = true;
+    }
+
+    await db.transaction((txn) async {
+      await txn.insert(
+        'finance_loans',
+        _localValues(loan.toMap()),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      for (final allocation in allocations) {
+        final old = existingByIndex[allocation.index];
+        final installment = FinanceLoanInstallment(
+          uuid: old?.uuid,
+          loanUuid: loan.uuid,
+          installmentIndex: allocation.index,
+          dueDate: allocation.dueDate,
+          paymentMinor: allocation.paymentMinor,
+          principalMinor: allocation.principalMinor,
+          interestMinor: allocation.interestMinor,
+          remainingPrincipalMinor: allocation.remainingPrincipalMinor,
+          isPaid: old?.isPaid ?? false,
+          paidAt: old?.paidAt,
+          interestTransactionUuid: old?.interestTransactionUuid,
+          isDeleted: false,
+          version: old?.version ?? 1,
+          createdAt: old?.createdAt ?? now,
+          updatedAt: old?.updatedAt ?? now,
+          deviceId: loan.deviceId,
+        );
+        if (old != null) installment.markAsChanged();
+        installment.pendingSync = true;
+        await txn.insert(
+          'finance_loan_installments',
+          _localValues(installment.toMap()),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      for (final old in existingInstallments) {
+        if (old.installmentIndex <= loan.termMonths || old.isDeleted) {
+          continue;
+        }
+        old.isDeleted = true;
+        old.markAsChanged();
+        await txn.update(
+          'finance_loan_installments',
+          _localValues(old.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [old.uuid],
+        );
+      }
+    });
+    _notifyChanged();
+  }
+
+  /// 标记一期已还或撤销已还。标记已还时只把利息写入支出账单，
+  /// 本金通过贷款剩余本金体现，不重复计入消费统计。
+  static Future<void> setLoanInstallmentPaid(
+    String installmentUuid,
+    bool paid,
+  ) async {
+    final installment = await getLoanInstallment(installmentUuid);
+    if (installment == null || installment.isDeleted) return;
+    final loan = await getLoan(installment.loanUuid);
+    if (loan == null) throw StateError('关联的贷款不存在或已删除');
+    if (installment.isPaid == paid) return;
+
+    final db = await _database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((txn) async {
+      if (paid) {
+        installment.isPaid = true;
+        installment.paidAt = now;
+        if (installment.interestMinor > 0 &&
+            installment.interestTransactionUuid == null) {
+          final interestTransaction = FinanceTransaction(
+            type: FinanceTransactionType.expense,
+            amountMinor: installment.interestMinor,
+            currencyCode: loan.currencyCode,
+            categoryUuid: 'finance-system-category-loan-interest',
+            transactionDate: installment.dueDate,
+            occurredAt: now,
+            timezoneOffsetMinutes: DateTime.now().timeZoneOffset.inMinutes,
+            merchant: '贷款利息 · ${loan.name}',
+            note:
+                '第 ${installment.installmentIndex}/${loan.termMonths} 期利息；同步归还本金',
+            source: FinanceEntrySource.automation,
+            relatedTransactionUuid: installment.uuid,
+            deviceId: loan.deviceId,
+            pendingSync: true,
+          );
+          installment.interestTransactionUuid = interestTransaction.uuid;
+          await txn.insert(
+            'finance_transactions',
+            _localValues(interestTransaction.toMap()),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+      } else {
+        final interestTransactionUuid = installment.interestTransactionUuid;
+        if (interestTransactionUuid != null) {
+          final row = await _findByUuid(
+            txn,
+            'finance_transactions',
+            interestTransactionUuid,
+          );
+          if (row != null) {
+            final interestTransaction = FinanceTransaction.fromMap(row);
+            if (!interestTransaction.isDeleted) {
+              interestTransaction.isDeleted = true;
+              interestTransaction.markAsChanged();
+              await txn.update(
+                'finance_transactions',
+                _localValues(interestTransaction.toMap()),
+                where: 'uuid = ?',
+                whereArgs: [interestTransaction.uuid],
+              );
+            }
+          }
+        }
+        installment.isPaid = false;
+        installment.paidAt = null;
+        installment.interestTransactionUuid = null;
+      }
+      installment.markAsChanged();
+      await txn.update(
+        'finance_loan_installments',
+        _localValues(installment.toMap()),
+        where: 'uuid = ?',
+        whereArgs: [installment.uuid],
+      );
+    });
+    _notifyChanged();
+  }
+
+  static Future<void> deleteLoan(String uuid) async {
+    final loan = await getLoan(uuid);
+    if (loan == null) return;
+    final installments = await getLoanInstallments(uuid, includeDeleted: true);
+    loan.isDeleted = true;
+    loan.markAsChanged();
+    final db = await _database;
+    await db.transaction((txn) async {
+      await txn.update(
+        'finance_loans',
+        _localValues(loan.toMap()),
+        where: 'uuid = ?',
+        whereArgs: [uuid],
+      );
+      for (final installment in installments) {
+        if (installment.isDeleted) continue;
+        installment.isDeleted = true;
+        installment.markAsChanged();
+        await txn.update(
+          'finance_loan_installments',
+          _localValues(installment.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [installment.uuid],
+        );
+      }
+    });
+    _notifyChanged();
+  }
+
+  static Future<void> restoreLoan(String uuid) async {
+    final loan = await getLoan(uuid, includeDeleted: true);
+    if (loan == null || !loan.isDeleted) return;
+    final installments = await getLoanInstallments(uuid, includeDeleted: true);
+    loan.isDeleted = false;
+    loan.markAsChanged();
+    final db = await _database;
+    await db.transaction((txn) async {
+      await txn.update(
+        'finance_loans',
+        _localValues(loan.toMap()),
+        where: 'uuid = ?',
+        whereArgs: [uuid],
+      );
+      for (final installment in installments) {
+        if (!installment.isDeleted ||
+            installment.installmentIndex > loan.termMonths) {
+          continue;
+        }
+        installment.isDeleted = false;
+        installment.markAsChanged();
+        await txn.update(
+          'finance_loan_installments',
+          _localValues(installment.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [installment.uuid],
+        );
+      }
+    });
     _notifyChanged();
   }
 
@@ -778,6 +1255,9 @@ abstract final class FinanceStorage {
     final budgets = await getBudgets(includeDeleted: true);
     final recurringRules = await getRecurringRules(includeDeleted: true);
     final templates = await getTemplates(includeDeleted: true);
+    final db = await _database;
+    final loanRows = await db.query('finance_loans');
+    final loanInstallmentRows = await db.query('finance_loan_installments');
     return {
       'transactions': transactions.map((item) => item.toJson()).toList(),
       'categories': categories.map((item) => item.toJson()).toList(),
@@ -785,6 +1265,14 @@ abstract final class FinanceStorage {
       'budgets': budgets.map((item) => item.toJson()).toList(),
       'recurring_rules': recurringRules.map((item) => item.toJson()).toList(),
       'templates': templates.map((item) => item.toJson()).toList(),
+      'loans': loanRows
+          .map(FinanceLoan.fromMap)
+          .map((item) => item.toJson())
+          .toList(),
+      'loan_installments': loanInstallmentRows
+          .map(FinanceLoanInstallment.fromMap)
+          .map((item) => item.toJson())
+          .toList(),
     };
   }
 
@@ -969,6 +1457,8 @@ abstract final class FinanceStorage {
       item.relatedTodoUuid = _remapNullable(item.relatedTodoUuid, remap);
       item.relatedPlanBlockUuid =
           _remapNullable(item.relatedPlanBlockUuid, remap);
+      item.installmentGroupUuid =
+          _remapNullable(item.installmentGroupUuid, remap);
       item.source = FinanceEntrySource.import;
       final existing = await _findByUuid(
         db,
@@ -1042,6 +1532,69 @@ abstract final class FinanceStorage {
       }
     }
 
+    final loanMaps = _listOfMaps(bundle['loans']);
+    for (final map in loanMaps) {
+      final item = FinanceLoan.fromMap(map);
+      item.uuid = remap(item.uuid);
+      if (!_isValidLoan(item)) {
+        skipped++;
+        continue;
+      }
+      final existing = await _findByUuid(db, 'finance_loans', item.uuid);
+      if (existing == null) {
+        await db.insert('finance_loans', _localValues(item.toMap()));
+        imported++;
+      } else if (item.updatedAt > FinanceLoan.fromMap(existing).updatedAt) {
+        await db.update(
+          'finance_loans',
+          _localValues(item.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [item.uuid],
+        );
+        updated++;
+      } else {
+        skipped++;
+      }
+    }
+
+    final loanInstallmentMaps = _listOfMaps(bundle['loan_installments']);
+    for (final map in loanInstallmentMaps) {
+      final item = FinanceLoanInstallment.fromMap(map);
+      item.uuid = remap(item.uuid);
+      item.loanUuid = remap(item.loanUuid);
+      item.interestTransactionUuid = _remapNullable(
+        item.interestTransactionUuid,
+        remap,
+      );
+      if (!_isValidLoanInstallment(item)) {
+        skipped++;
+        continue;
+      }
+      final existing = await _findByUuid(
+        db,
+        'finance_loan_installments',
+        item.uuid,
+      );
+      if (existing == null) {
+        await db.insert(
+          'finance_loan_installments',
+          _localValues(item.toMap()),
+        );
+        imported++;
+      } else if (item.updatedAt >
+          FinanceLoanInstallment.fromMap(existing).updatedAt) {
+        await db.update(
+          'finance_loan_installments',
+          _localValues(item.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [item.uuid],
+        );
+        updated++;
+      } else {
+        skipped++;
+      }
+    }
+
     if (imported > 0 || updated > 0) _notifyChanged();
     return {'imported': imported, 'skipped': skipped, 'updated': updated};
   }
@@ -1085,6 +1638,14 @@ abstract final class FinanceStorage {
         .map(FinanceEntryTemplate.fromMap)
         .where(_isValidTemplate)
         .toList(growable: false);
+    final loans = _listOfMaps(bundle['loans'])
+        .map(FinanceLoan.fromMap)
+        .where(_isValidLoan)
+        .toList(growable: false);
+    final loanInstallments = _listOfMaps(bundle['loan_installments'])
+        .map(FinanceLoanInstallment.fromMap)
+        .where(_isValidLoanInstallment)
+        .toList(growable: false);
 
     final db = await _database;
     var changed = 0;
@@ -1102,6 +1663,16 @@ abstract final class FinanceStorage {
       changed += await _mergeTransactions(
         txn,
         transactions,
+        forceRemoteKeys: forceRemoteKeys,
+      );
+      changed += await _mergeLoans(
+        txn,
+        loans,
+        forceRemoteKeys: forceRemoteKeys,
+      );
+      changed += await _mergeLoanInstallments(
+        txn,
+        loanInstallments,
         forceRemoteKeys: forceRemoteKeys,
       );
       changed += await _mergeBudgets(
@@ -1137,6 +1708,8 @@ abstract final class FinanceStorage {
       'categories': 'finance_categories',
       'payment_methods': 'finance_payment_methods',
       'transactions': 'finance_transactions',
+      'loans': 'finance_loans',
+      'loan_installments': 'finance_loan_installments',
       'budgets': 'finance_budgets',
       'recurring_rules': 'finance_recurring_rules',
       'templates': 'finance_entry_templates',
@@ -1145,6 +1718,8 @@ abstract final class FinanceStorage {
       'categories': 'finance_categories_changes',
       'payment_methods': 'finance_payment_methods_changes',
       'transactions': 'finance_transactions_changes',
+      'loans': 'finance_loans_changes',
+      'loan_installments': 'finance_loan_installments_changes',
       'budgets': 'finance_budgets_changes',
       'recurring_rules': 'finance_recurring_rules_changes',
       'templates': 'finance_entry_templates_changes',
@@ -1310,6 +1885,78 @@ abstract final class FinanceStorage {
     return changed;
   }
 
+  static Future<int> _mergeLoans(
+    DatabaseExecutor db,
+    List<FinanceLoan> items, {
+    Set<String> forceRemoteKeys = const {},
+  }) async {
+    var changed = 0;
+    for (final item in items) {
+      final existing = await _findByUuid(db, 'finance_loans', item.uuid);
+      if (existing == null) {
+        await db.insert('finance_loans', _remoteValues(item.toMap()));
+        changed++;
+        continue;
+      }
+      final current = FinanceLoan.fromMap(existing);
+      if (!forceRemoteKeys.contains('loans:${item.uuid}') &&
+          !_isIncomingWinner(
+            item.updatedAt,
+            item.version,
+            current.updatedAt,
+            current.version,
+          )) {
+        continue;
+      }
+      await db.update(
+        'finance_loans',
+        _remoteValues(item.toMap()),
+        where: 'uuid = ?',
+        whereArgs: [item.uuid],
+      );
+      changed++;
+    }
+    return changed;
+  }
+
+  static Future<int> _mergeLoanInstallments(
+    DatabaseExecutor db,
+    List<FinanceLoanInstallment> items, {
+    Set<String> forceRemoteKeys = const {},
+  }) async {
+    var changed = 0;
+    for (final item in items) {
+      final existing =
+          await _findByUuid(db, 'finance_loan_installments', item.uuid);
+      if (existing == null) {
+        await db.insert(
+          'finance_loan_installments',
+          _remoteValues(item.toMap()),
+        );
+        changed++;
+        continue;
+      }
+      final current = FinanceLoanInstallment.fromMap(existing);
+      if (!forceRemoteKeys.contains('loan_installments:${item.uuid}') &&
+          !_isIncomingWinner(
+            item.updatedAt,
+            item.version,
+            current.updatedAt,
+            current.version,
+          )) {
+        continue;
+      }
+      await db.update(
+        'finance_loan_installments',
+        _remoteValues(item.toMap()),
+        where: 'uuid = ?',
+        whereArgs: [item.uuid],
+      );
+      changed++;
+    }
+    return changed;
+  }
+
   static Future<int> _mergeBudgets(
     DatabaseExecutor db,
     List<FinanceBudget> items, {
@@ -1423,6 +2070,66 @@ abstract final class FinanceStorage {
     return item.uuid.trim().isNotEmpty &&
         item.amountMinor > 0 &&
         _isDateKey(item.transactionDate);
+  }
+
+  static bool _isValidLoan(FinanceLoan item) {
+    if (item.uuid.trim().isEmpty ||
+        item.name.trim().isEmpty ||
+        !_isDateKey(item.startDate)) {
+      return false;
+    }
+    try {
+      FinanceLoanCalculator.generate(
+        principalMinor: item.principalMinor,
+        annualInterestRateBps: item.annualInterestRateBps,
+        termMonths: item.termMonths,
+        startDate: dateFromKey(item.startDate),
+        repaymentDay: item.repaymentDay,
+        repaymentMethod: item.repaymentMethod,
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static void _validateLoan(FinanceLoan loan) {
+    if (loan.name.trim().isEmpty) {
+      throw ArgumentError.value(loan.name, 'name', '贷款名称不能为空');
+    }
+    if (!_isDateKey(loan.startDate)) {
+      throw ArgumentError.value(loan.startDate, 'startDate', '借款日期无效');
+    }
+    FinanceLoanCalculator.generate(
+      principalMinor: loan.principalMinor,
+      annualInterestRateBps: loan.annualInterestRateBps,
+      termMonths: loan.termMonths,
+      startDate: dateFromKey(loan.startDate),
+      repaymentDay: loan.repaymentDay,
+      repaymentMethod: loan.repaymentMethod,
+    );
+  }
+
+  static bool _isValidLoanInstallment(FinanceLoanInstallment item) {
+    return item.uuid.trim().isNotEmpty &&
+        item.loanUuid.trim().isNotEmpty &&
+        item.installmentIndex > 0 &&
+        _isDateKey(item.dueDate) &&
+        item.paymentMinor > 0 &&
+        item.principalMinor > 0 &&
+        item.interestMinor >= 0 &&
+        item.paymentMinor == item.principalMinor + item.interestMinor &&
+        item.remainingPrincipalMinor >= 0;
+  }
+
+  static bool _loanTermsDiffer(FinanceLoan left, FinanceLoan right) {
+    return left.principalMinor != right.principalMinor ||
+        left.currencyCode != right.currencyCode ||
+        left.annualInterestRateBps != right.annualInterestRateBps ||
+        left.termMonths != right.termMonths ||
+        left.startDate != right.startDate ||
+        left.repaymentDay != right.repaymentDay ||
+        left.repaymentMethod != right.repaymentMethod;
   }
 
   static bool _isValidBudget(FinanceBudget item) {

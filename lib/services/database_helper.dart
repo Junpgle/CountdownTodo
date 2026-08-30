@@ -530,7 +530,7 @@ class DatabaseHelper {
     );
   }
 
-  /// 轻量个人记账表结构、预算、自动化和同步状态表（V45-V48）。
+  /// 轻量个人记账表结构、预算、自动化和同步状态表（V45-V51）。
   ///
   /// 记账数据默认只保存在当前用户自己的数据库中。金额使用整数分存储，
   /// 分类和付款方式只做归档，不物理删除，以保证历史账单仍可正确展示。
@@ -589,6 +589,10 @@ class DatabaseHelper {
         related_todo_uuid TEXT,
         related_plan_block_uuid TEXT,
         related_transaction_uuid TEXT,
+        installment_group_uuid TEXT,
+        installment_index INTEGER,
+        installment_count INTEGER,
+        installment_total_minor INTEGER,
         is_deleted INTEGER NOT NULL DEFAULT 0,
         version INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL,
@@ -665,6 +669,50 @@ class DatabaseHelper {
         pending_sync INTEGER NOT NULL DEFAULT 0
       )
     ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS finance_loans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        lender TEXT,
+        principal_minor INTEGER NOT NULL DEFAULT 0,
+        currency_code TEXT NOT NULL DEFAULT 'CNY',
+        annual_interest_rate_bps INTEGER NOT NULL DEFAULT 0,
+        term_months INTEGER NOT NULL DEFAULT 1,
+        start_date TEXT NOT NULL,
+        repayment_day INTEGER NOT NULL DEFAULT 1,
+        repayment_method TEXT NOT NULL DEFAULT 'equalPrincipalInterest',
+        note TEXT,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        device_id TEXT,
+        pending_sync INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS finance_loan_installments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        loan_uuid TEXT NOT NULL,
+        installment_index INTEGER NOT NULL DEFAULT 1,
+        due_date TEXT NOT NULL,
+        payment_minor INTEGER NOT NULL DEFAULT 0,
+        principal_minor INTEGER NOT NULL DEFAULT 0,
+        interest_minor INTEGER NOT NULL DEFAULT 0,
+        remaining_principal_minor INTEGER NOT NULL DEFAULT 0,
+        is_paid INTEGER NOT NULL DEFAULT 0,
+        paid_at INTEGER,
+        interest_transaction_uuid TEXT,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        device_id TEXT,
+        pending_sync INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
 
     const financeTables = [
       'finance_categories',
@@ -673,6 +721,8 @@ class DatabaseHelper {
       'finance_budgets',
       'finance_recurring_rules',
       'finance_entry_templates',
+      'finance_loans',
+      'finance_loan_installments',
     ];
     for (final table in financeTables) {
       final columns = await db.rawQuery('PRAGMA table_info($table)');
@@ -695,6 +745,21 @@ class DatabaseHelper {
           'UPDATE $table SET pending_sync = 1$systemFilter',
         );
       }
+      if (table == 'finance_transactions') {
+        final installmentColumns = <Map<String, String>>[
+          {'name': 'installment_group_uuid', 'type': 'TEXT'},
+          {'name': 'installment_index', 'type': 'INTEGER'},
+          {'name': 'installment_count', 'type': 'INTEGER'},
+          {'name': 'installment_total_minor', 'type': 'INTEGER'},
+        ];
+        for (final column in installmentColumns) {
+          if (!columns.any((row) => row['name'] == column['name'])) {
+            await db.execute(
+              'ALTER TABLE $table ADD COLUMN ${column['name']} ${column['type']}',
+            );
+          }
+        }
+      }
       await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_${table}_pending '
         'ON $table(pending_sync, updated_at)',
@@ -711,6 +776,18 @@ class DatabaseHelper {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_finance_transactions_category '
       'ON finance_transactions(category_uuid, is_deleted, transaction_date)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_transactions_installment '
+      'ON finance_transactions(installment_group_uuid, is_deleted, installment_index)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_loans_active '
+      'ON finance_loans(is_deleted, start_date, updated_at)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_loan_installments_loan '
+      'ON finance_loan_installments(loan_uuid, is_deleted, installment_index)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_finance_categories_active '
@@ -821,7 +898,7 @@ class DatabaseHelper {
             if (oldVersion < 49) {
               await ensureAiUsageSchema(db);
             }
-            if (oldVersion < 48) {
+            if (oldVersion < 51) {
               await ensureFinanceSchema(db);
             }
             if (oldVersion < 44) {
