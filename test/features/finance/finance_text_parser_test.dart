@@ -66,6 +66,17 @@ void main() {
     expect(drafts[1].amountMinor, 10000);
   });
 
+  test('不依赖中文输入法也能识别显式账单字段', () {
+    const text = 'amount:12.50\ntype:expense';
+
+    expect(FinanceTextParser.looksLikeFinanceFormat(text), isTrue);
+    final drafts = FinanceTextParser.parse(text, now: fixedNow);
+
+    expect(drafts, hasLength(1));
+    expect(drafts.single.amountMinor, 1250);
+    expect(drafts.single.type, FinanceTransactionType.expense);
+  });
+
   test('提取 AI 的账单块并从正文移除协议内容', () {
     const reply = '''已帮你整理，请确认：
 [FINANCE_START]
