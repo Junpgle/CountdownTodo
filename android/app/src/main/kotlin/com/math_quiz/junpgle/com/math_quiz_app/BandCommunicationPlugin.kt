@@ -30,6 +30,8 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
     private var currentNode: Node? = null
     private var messageListener: OnMessageReceivedListener? = null
     private var hasDeviceManagerPermission = false
+    @Volatile
+    private var serviceEnabled = false
 
     private fun invokeMethod(method: String, args: Any?) {
         mainHandler.post {
@@ -45,6 +47,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
     private val serviceConnectionListener = object : OnServiceConnectionListener {
         override fun onServiceConnected() {
             // Log.d(TAG, "小米穿戴服务已连接")
+            if (!serviceEnabled) return
             getConnectedDevice()
         }
 
@@ -52,13 +55,16 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
             Log.d(TAG, "小米穿戴服务已断开")
             currentNode = null
             hasDeviceManagerPermission = false
+            if (!serviceEnabled) return
             invokeMethod("onServiceDisconnected", null)
         }
     }
 
     // 初始化 SDK
-    fun init() {
-        try {
+    fun init(): Boolean {
+        if (serviceEnabled) return true
+        serviceEnabled = true
+        return try {
             nodeApi = Wearable.getNodeApi(context)
             messageApi = Wearable.getMessageApi(context)
             serviceApi = Wearable.getServiceApi(context)
@@ -68,14 +74,19 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
             getConnectedDevice()
 
             // Log.d(TAG, "小米穿戴 SDK 初始化成功")
+            true
         } catch (e: Exception) {
             Log.e(TAG, "小米穿戴 SDK 初始化失败", e)
+            stop()
+            false
         }
     }
 
     // 获取已连接的设备
     fun getConnectedDevice() {
+        if (!serviceEnabled) return
         nodeApi?.connectedNodes?.addOnSuccessListener { nodes ->
+            if (!serviceEnabled) return@addOnSuccessListener
             if (nodes.isNotEmpty()) {
                 currentNode = nodes[0]
                 val deviceInfo = mapOf(
@@ -92,6 +103,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
                 invokeMethod("onDeviceDisconnected", null)
             }
         }?.addOnFailureListener { e ->
+            if (!serviceEnabled) return@addOnFailureListener
             Log.e(TAG, "获取已连接设备失败", e)
             invokeMethod("onError", mapOf(
                 "code" to 1000,
@@ -102,11 +114,13 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
 
     // 仅检查权限；申请由 Flutter 的说明确认流程在用户同意后触发。
     private fun checkPermission() {
+        if (!serviceEnabled) return
         val node = currentNode ?: return
 
         // Log.d(TAG, "checkAndRequestPermission: 检查权限状态...")
         
         authApi?.checkPermission(node.id, Permission.DEVICE_MANAGER)?.addOnSuccessListener { granted ->
+            if (!serviceEnabled) return@addOnSuccessListener
             hasDeviceManagerPermission = granted
             Log.d(TAG, "DEVICE_MANAGER 权限状态: $granted")
             
@@ -127,6 +141,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
 
     // 申请权限
     fun requestPermission() {
+        if (!serviceEnabled) return
         val node = currentNode
         if (node == null) {
             Log.e(TAG, "权限申请失败: 没有已连接的设备")
@@ -155,6 +170,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
             Log.d(TAG, "在主线程执行权限申请...")
             authApi?.requestPermission(node.id, Permission.DEVICE_MANAGER, Permission.NOTIFY)
                 ?.addOnSuccessListener { permissions ->
+                    if (!serviceEnabled) return@addOnSuccessListener
                     hasDeviceManagerPermission = true
                     Log.d(TAG, "权限申请成功: ${permissions.map { it.name }}")
                     invokeMethod("onPermissionGranted", mapOf(
@@ -163,6 +179,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
                     doRegisterListener()
                 }
                 ?.addOnFailureListener { e ->
+                    if (!serviceEnabled) return@addOnFailureListener
                     Log.e(TAG, "权限申请失败: ${e.message}", e)
                     val errorMsg = e.message ?: ""
                     
@@ -210,6 +227,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
 
     // 发送消息到手环
     fun sendNotificationToBand(title: String, content: String, todoType: String, notificationId: Int) {
+        if (!serviceEnabled) return
         val node = currentNode
         if (node == null) {
             Log.e(TAG, "发送手环通知失败: 没有已连接的设备")
@@ -243,6 +261,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
     }
 
     fun sendMessage(data: String) {
+        if (!serviceEnabled) return
         val node = currentNode
         if (node == null) {
             Log.e(TAG, "发送消息失败: 没有已连接的设备")
@@ -286,10 +305,12 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
 
     // 注册消息监听器
     fun registerMessageListener() {
+        if (!serviceEnabled) return
         val node = currentNode
         if (node == null) {
             Log.d(TAG, "当前没有已连接设备，尝试获取...")
             nodeApi?.connectedNodes?.addOnSuccessListener { nodes ->
+                if (!serviceEnabled) return@addOnSuccessListener
                 if (nodes.isNotEmpty()) {
                     currentNode = nodes[0]
                     Log.d(TAG, "获取到设备: ${currentNode!!.name}")
@@ -302,6 +323,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
                     ))
                 }
             }?.addOnFailureListener { e ->
+                if (!serviceEnabled) return@addOnFailureListener
                 Log.e(TAG, "获取设备失败", e)
                 invokeMethod("onError", mapOf(
                     "code" to 1000,
@@ -315,6 +337,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
 
     // 实际执行注册监听器
     private fun doRegisterListener() {
+        if (!serviceEnabled) return
         val node = currentNode
         if (node == null) {
             Log.e(TAG, "doRegisterListener: node is null")
@@ -349,6 +372,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
         unregisterMessageListener()
 
         messageListener = OnMessageReceivedListener { nodeId, message ->
+            if (!serviceEnabled) return@OnMessageReceivedListener
             if (message.size > MAX_MESSAGE_BYTES) {
                 Log.e(TAG, "丢弃过大的手环消息: ${message.size} bytes")
                 invokeMethod("onError", mapOf(
@@ -379,19 +403,20 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
 
     // 取消消息监听器
     fun unregisterMessageListener() {
+        if (messageListener == null) return
+        messageListener = null
         val node = currentNode ?: return
-        val listener = messageListener ?: return
 
         messageApi?.removeListener(node.id)?.addOnSuccessListener {
             // Log.d(TAG, "消息监听器取消成功")
         }?.addOnFailureListener { e ->
             // Log.e(TAG, "消息监听器取消失败", e)
         }
-        messageListener = null
     }
 
     // 检查手环端应用是否安装
     fun isAppInstalled() {
+        if (!serviceEnabled) return
         val node = currentNode
         if (node == null) {
             invokeMethod("onAppInstallResult", mapOf("installed" to false))
@@ -409,6 +434,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
 
     // 启动手环端应用
     fun launchApp() {
+        if (!serviceEnabled) return
         val node = currentNode
         if (node == null) {
             Log.e(TAG, "启动应用失败: 没有已连接的设备")
@@ -434,17 +460,19 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
     // 获取连接状态
     fun getConnectionStatus(): Map<String, Any> {
         return mapOf(
-            "isConnected" to (currentNode != null),
-            "nodeId" to (currentNode?.id ?: ""),
-            "name" to (currentNode?.name ?: ""),
-            "hasPermission" to hasDeviceManagerPermission
+            "isConnected" to (serviceEnabled && currentNode != null),
+            "nodeId" to if (serviceEnabled) (currentNode?.id ?: "") else "",
+            "name" to if (serviceEnabled) (currentNode?.name ?: "") else "",
+            "hasPermission" to (serviceEnabled && hasDeviceManagerPermission)
         )
     }
 
     // 检查当前权限状态并通知 Flutter
     private fun checkCurrentPermissionAndNotify() {
+        if (!serviceEnabled) return
         val node = currentNode ?: return
         authApi?.checkPermission(node.id, Permission.DEVICE_MANAGER)?.addOnSuccessListener { granted ->
+            if (!serviceEnabled) return@addOnSuccessListener
             hasDeviceManagerPermission = granted
             Log.d(TAG, "当前权限状态: $granted")
             if (granted) {
@@ -466,15 +494,45 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
         }
     }
 
-    // 释放资源
-    fun dispose() {
+    // 停止手环服务并释放资源
+    fun stop() {
+        serviceEnabled = false
         unregisterMessageListener()
         serviceApi?.unregisterServiceConnectionListener(serviceConnectionListener)
+        unbindWearableService()
         nodeApi = null
         messageApi = null
         serviceApi = null
         authApi = null
         currentNode = null
         hasDeviceManagerPermission = false
+    }
+
+    /**
+     * ServiceApi exposes listener registration but not an explicit disconnect.
+     * Its API client keeps an Android service binding alive, so release that
+     * binding when the user turns the feature off. The public SDK objects share
+     * this client; resetting its binding state lets a later enable bind again.
+     */
+    private fun unbindWearableService() {
+        val apiClient = serviceApi?.apiClient ?: return
+        try {
+            if (apiClient.d || apiClient.f != null) {
+                apiClient.c.unbindService(apiClient.i)
+            }
+        } catch (e: IllegalArgumentException) {
+            // The SDK may already have lost the binding; clearing the client
+            // state below is still safe.
+            Log.d(TAG, "小米穿戴服务绑定已释放: ${e.message}")
+        } catch (e: Exception) {
+            Log.w(TAG, "释放小米穿戴服务绑定失败: ${e.message}")
+        }
+        apiClient.f = null
+        apiClient.d = false
+    }
+
+    // 释放资源
+    fun dispose() {
+        stop()
     }
 }

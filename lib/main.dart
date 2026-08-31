@@ -666,6 +666,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   StreamSubscription? _bandPomodoroSub;
 
   Future<void> _initBandService() async {
+    if (!AppPlatform.isAndroid) return;
+
     try {
       await BandSyncService.init(
         onDeviceConnected: (info) {

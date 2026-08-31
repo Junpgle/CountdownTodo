@@ -46,6 +46,7 @@ class AppSettingsStorage {
   static const String _todoFolderDisplayMode = "todo_folder_display_mode";
   static const String _lastCourseImportUrl = "last_course_import_url";
   static const String _categoryReminderMinutes = "category_reminder_minutes";
+  static const String _bandServiceEnabled = "band_service_enabled";
 
   static Future<SharedPreferences> get _prefs =>
       SharedPreferences.getInstance();
@@ -412,5 +413,16 @@ class AppSettingsStorage {
     final prefs = await _prefs;
     await prefs.setString(
         "${_categoryReminderMinutes}_$username", jsonEncode(data));
+  }
+
+  /// 手环后台连接服务默认关闭，避免应用启动后无条件绑定小米穿戴服务。
+  static Future<bool> isBandServiceEnabled() async {
+    final prefs = await _prefs;
+    return prefs.getBool(_bandServiceEnabled) ?? false;
+  }
+
+  static Future<void> setBandServiceEnabled(bool enabled) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_bandServiceEnabled, enabled);
   }
 }

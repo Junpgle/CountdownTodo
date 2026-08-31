@@ -838,6 +838,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val pendingLocalNetworkResults = pendingLocalNetworkPermissionResults.toList()
         pendingLocalNetworkPermissionResults.clear()
         pendingLocalNetworkResults.forEach { it.success(false) }
+        bandPlugin?.dispose()
+        bandPlugin = null
         super.onDestroy()
         minorModeManager?.dispose()
         minorModeManager = null
@@ -1832,8 +1834,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         bandChannel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "init" -> {
-                    plugin?.init()
-                    result.success(true)
+                    result.success(plugin?.init() ?: false)
                 }
                 "getConnectedDevice" -> {
                     plugin?.getConnectedDevice()
@@ -1854,6 +1855,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 }
                 "unregisterListener" -> {
                     plugin?.unregisterMessageListener()
+                    result.success(true)
+                }
+                "shutdown" -> {
+                    plugin?.stop()
                     result.success(true)
                 }
                 "isAppInstalled" -> {
