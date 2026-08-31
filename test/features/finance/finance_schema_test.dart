@@ -113,6 +113,45 @@ void main() {
     }
   });
 
+  test('AI usage schema upgrades existing records with MiMo detail columns',
+      () async {
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(db.close);
+
+    await db.execute('''
+      CREATE TABLE ai_usage_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        prompt_tokens INTEGER NOT NULL DEFAULT 0,
+        completion_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        image_count INTEGER NOT NULL DEFAULT 0,
+        cost_micros INTEGER,
+        is_priced INTEGER NOT NULL DEFAULT 0,
+        ledger_key TEXT,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+
+    await DatabaseHelper.ensureAiUsageSchema(db);
+
+    final columns = await db.rawQuery('PRAGMA table_info(ai_usage_records)');
+    expect(
+      columns.map((row) => row['name']),
+      containsAll(<Object>{
+        'cached_prompt_tokens',
+        'image_tokens',
+        'audio_tokens',
+        'video_tokens',
+        'reasoning_tokens',
+        'audio_seconds',
+      }),
+    );
+  });
+
   test('贷款保存还款计划，已还利息进入支出并支持删除恢复', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'loan-test',
@@ -310,6 +349,95 @@ void main() {
       transactions.single['category_uuid'],
       'finance-system-category-ai-service',
     );
+  });
+
+  test('MiMo pricing separates cached input and does not add image fees',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'mimo-cost-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+
+    final mimoPricing = (await AiUsageCostService.getPricing()).firstWhere(
+      (item) => item.provider == 'mimo' && item.model == 'mimo-v2.5',
+    );
+    expect(mimoPricing.cachedInputMicrosPerMillion, 20000);
+    expect(mimoPricing.inputMicrosPerMillion, 1000000);
+    expect(mimoPricing.outputMicrosPerMillion, 2000000);
+
+    await AiUsageCostService.recordUsage(
+      provider: 'mimo',
+      model: 'mimo-v2.5',
+      operation: 'vision_todo',
+      promptTokens: 10000,
+      completionTokens: 2000,
+      totalTokens: 12000,
+      cachedPromptTokens: 8000,
+      imageTokens: 500,
+      imageCount: 1,
+      now: DateTime(2026, 8, 30, 10),
+    );
+
+    final records = await AiUsageCostService.getRecords();
+    expect(records, hasLength(1));
+    expect(records.single.cachedPromptTokens, 8000);
+    expect(records.single.uncachedPromptTokens, 2000);
+    expect(records.single.imageTokens, 500);
+    // 2,000 * ¥1/M + 8,000 * ¥0.02/M + 2,000 * ¥2/M = ¥0.00616.
+    expect(records.single.costMicros, 6160);
+    expect(records.single.isPriced, isTrue);
+
+    final summary = await AiUsageCostService.getSummary(
+      from: DateTime(2026, 8, 1),
+      to: DateTime(2026, 9, 1),
+    );
+    expect(summary.costMicros, 6160);
+    expect(summary.breakdowns.single.cachedPromptTokens, 8000);
+    expect(summary.breakdowns.single.imageTokens, 500);
+  });
+
+  test('MiMo ASR pricing uses seconds instead of token prices', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'mimo-asr-cost-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+
+    await AiUsageCostService.recordUsage(
+      provider: 'mimo',
+      model: 'mimo-v2.5-asr',
+      operation: 'asr',
+      promptTokens: 46,
+      completionTokens: 20,
+      totalTokens: 66,
+      cachedPromptTokens: 45,
+      audioTokens: 25,
+      audioSeconds: 4,
+      now: DateTime(2026, 8, 30, 10),
+    );
+
+    final records = await AiUsageCostService.getRecords();
+    expect(records.single.audioSeconds, 4);
+    // 4 seconds * ¥0.5/hour = ¥0.000555..., rounded to 556 micro-yuan.
+    expect(records.single.costMicros, 556);
+    expect(records.single.isPriced, isTrue);
   });
 
   test('unpriced AI usage is retained without creating a guessed expense',

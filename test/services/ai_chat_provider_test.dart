@@ -95,6 +95,46 @@ void main() {
     expect(usage.totalTokens, 154);
   });
 
+  test('parses MiMo usage details and clamps cached input', () {
+    final usage = AiTokenUsage.fromJson({
+      'prompt_tokens': 1268,
+      'completion_tokens': 356,
+      'total_tokens': 1624,
+      'completion_tokens_details': {'reasoning_tokens': 40},
+      'prompt_tokens_details': {
+        'cached_tokens': 2000,
+        'image_tokens': 500,
+        'audio_tokens': 12,
+        'video_tokens': 3,
+      },
+    });
+
+    expect(usage, isNotNull);
+    expect(usage!.cachedPromptTokens, 1268);
+    expect(usage.imageTokens, 500);
+    expect(usage.audioTokens, 12);
+    expect(usage.videoTokens, 3);
+    expect(usage.reasoningTokens, 40);
+  });
+
+  test('parses MiMo ASR duration usage', () {
+    final usage = AiTokenUsage.fromJson({
+      'prompt_tokens': 46,
+      'completion_tokens': 20,
+      'total_tokens': 66,
+      'prompt_tokens_details': {
+        'cached_tokens': 45,
+        'audio_tokens': 25,
+      },
+      'seconds': 4,
+    });
+
+    expect(usage, isNotNull);
+    expect(usage!.cachedPromptTokens, 45);
+    expect(usage.audioTokens, 25);
+    expect(usage.audioSeconds, 4);
+  });
+
   test('keeps LLM API keys out of SharedPreferences', () async {
     SharedPreferences.setMockInitialValues({});
 
