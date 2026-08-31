@@ -9,6 +9,7 @@ import '../services/pomodoro_service.dart';
 import '../services/permission_request_coordinator.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
+import '../utils/app_platform.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
@@ -28,6 +29,8 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   bool _isSyncing = false;
   final List<String> _logs = [];
   bool _isAutoUpdateEnabled = true; // 🚀 自动检查更新开关
+  bool _isServiceEnabled = false;
+  bool _isTogglingService = false;
   late final PermissionRequestCoordinator _permissionCoordinator;
 
   @override
@@ -35,7 +38,14 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     super.initState();
     _permissionCoordinator = PermissionRequestCoordinator(context: context);
     _loadUpdateSettings();
+    _loadServiceSettings();
     _initBandService();
+  }
+
+  Future<void> _loadServiceSettings() async {
+    if (!AppPlatform.isAndroid) return;
+    final enabled = await BandSyncService.loadServiceEnabled();
+    if (mounted) setState(() => _isServiceEnabled = enabled);
   }
 
   Future<void> _loadUpdateSettings() async {
@@ -54,15 +64,19 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   }
 
   Future<void> _initBandService() async {
+    if (!AppPlatform.isAndroid) return;
+
     if (BandSyncService.isInitialized) {
       _logs.add('手环服务已全局初始化');
       final status = await BandSyncService.getConnectionStatus();
+      if (!mounted) return;
+      setState(() {
+        _isConnected = status['isConnected'] == true;
+        _deviceName = status['name'] ?? '';
+        _hasPermission = status['hasPermission'] == true;
+      });
       if (status['isConnected'] == true) {
-        setState(() {
-          _isConnected = true;
-          _deviceName = status['name'] ?? '小米手环';
-          _hasPermission = status['hasPermission'] == true;
-        });
+        _deviceName = status['name'] ?? '小米手环';
         _logs.add('当前设备: $_deviceName');
         if (BandSyncService.bandVersion.isNotEmpty) {
           setState(() {});
@@ -155,10 +169,53 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     }
   }
 
+  Future<void> _setServiceEnabled(bool enabled) async {
+    if (_isTogglingService) return;
+    setState(() {
+      _isTogglingService = true;
+      _isServiceEnabled = enabled;
+    });
+
+    final started = await BandSyncService.setServiceEnabled(enabled);
+    if (!mounted) return;
+
+    if (enabled && !started) {
+      await BandSyncService.setServiceEnabled(false);
+      if (!mounted) return;
+      setState(() {
+        _isServiceEnabled = false;
+        _isTogglingService = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('手环服务启动失败，请检查小米穿戴 App 是否可用')),
+      );
+      return;
+    }
+
+    if (!enabled) {
+      setState(() {
+        _isConnected = false;
+        _deviceName = '';
+        _hasPermission = false;
+      });
+    } else {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      await BandSyncService.getConnectedDevice();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      final status = await BandSyncService.getConnectionStatus();
+      if (!mounted) return;
+      setState(() {
+        _isConnected = status['isConnected'] == true;
+        _deviceName = status['name'] ?? '';
+        _hasPermission = status['hasPermission'] == true;
+      });
+    }
+    if (mounted) setState(() => _isTogglingService = false);
+  }
+
   @override
   void dispose() {
     _permissionCoordinator.dispose();
-    BandSyncService.unregisterListener();
     super.dispose();
   }
 
@@ -217,6 +274,24 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            LiquidGlassSwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: Icon(
+                _isServiceEnabled ? Icons.sync : Icons.sync_disabled_outlined,
+                color: _isServiceEnabled
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              title: const Text('手环后台服务'),
+              subtitle: Text(
+                _isServiceEnabled
+                    ? '已开启：应用可在后台连接并接收手环消息'
+                    : '已关闭：需要同步时手动开启，可节省电量',
+              ),
+              value: _isServiceEnabled,
+              onChanged: _isTogglingService ? null : _setServiceEnabled,
+            ),
+            const Divider(height: 24),
             Row(
               children: [
                 Icon(
