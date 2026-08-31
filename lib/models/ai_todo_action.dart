@@ -2,6 +2,7 @@ import '../utils/json_value_parser.dart';
 
 enum AiTodoActionType {
   createTodo,
+  createHabit,
   updateTodo,
   completeTodo,
   deleteTodo,
@@ -63,6 +64,21 @@ class AiTodoAction {
     this.reminderMinutesList = const [],
     this.durationMinutes,
     this.tagUuids = const [],
+    this.icon,
+    this.habitSourceType,
+    this.habitPeriodType,
+    this.targetValue,
+    this.unit,
+    this.targetTimeMinute,
+    this.habitTimeComparison,
+    this.timeToleranceMinutes,
+    this.weekdaysMask,
+    this.dayBoundaryMinute,
+    this.quickValues = const [],
+    this.habitReminderPolicy,
+    this.habitDisplayMode,
+    this.defaultFocusMinutes,
+    this.sourceIds = const [],
     this.status,
     this.color,
     this.isSelected = true,
@@ -127,6 +143,24 @@ class AiTodoAction {
   List<int> reminderMinutesList;
   int? durationMinutes;
   List<String> tagUuids;
+  String? icon;
+
+  /// 习惯创建动作字段。它们只在 [AiTodoActionType.createHabit] 中生效。
+  String? habitSourceType;
+  String? habitPeriodType;
+  double? targetValue;
+  String? unit;
+  int? targetTimeMinute;
+  String? habitTimeComparison;
+  int? timeToleranceMinutes;
+  int? weekdaysMask;
+  int? dayBoundaryMinute;
+  List<int> quickValues;
+  Map<String, dynamic>? habitReminderPolicy;
+  String? habitDisplayMode;
+  int? defaultFocusMinutes;
+  List<String> sourceIds;
+
   String? status;
   String? color;
   bool isSelected;
@@ -166,6 +200,8 @@ class AiTodoAction {
       type == AiTodoActionType.rescheduleTodo ||
       type == AiTodoActionType.bulkRescheduleTodo ||
       type == AiTodoActionType.categorizeTodo;
+
+  bool get isHabitAction => type == AiTodoActionType.createHabit;
 
   bool get isTimeLogAction =>
       type == AiTodoActionType.createTimeLog ||
@@ -230,7 +266,7 @@ class AiTodoAction {
       type == AiTodoActionType.reschedulePlanBlocks ||
       type == AiTodoActionType.skipPlanBlock;
 
-  String get legacyType => createsTodo ? 'create' : 'update';
+  String get legacyType => createsTodo || isHabitAction ? 'create' : 'update';
 
   Map<String, dynamic> toJson() => {
         'actionType': type.name,
@@ -256,6 +292,21 @@ class AiTodoAction {
         'reminderMinutesList': reminderMinutesList,
         'durationMinutes': durationMinutes,
         'tagUuids': tagUuids,
+        'icon': icon,
+        'habitSourceType': habitSourceType,
+        'habitPeriodType': habitPeriodType,
+        'targetValue': targetValue,
+        'unit': unit,
+        'targetTimeMinute': targetTimeMinute,
+        'habitTimeComparison': habitTimeComparison,
+        'timeToleranceMinutes': timeToleranceMinutes,
+        'weekdaysMask': weekdaysMask,
+        'dayBoundaryMinute': dayBoundaryMinute,
+        'quickValues': quickValues,
+        'habitReminderPolicy': habitReminderPolicy,
+        'habitDisplayMode': habitDisplayMode,
+        'defaultFocusMinutes': defaultFocusMinutes,
+        'sourceIds': sourceIds,
         'status': status,
         'color': color,
         'isSelected': isSelected,
@@ -322,7 +373,7 @@ class AiTodoAction {
                   ? json['id']
                   : null))
           ?.toString(),
-      title: json['title']?.toString(),
+      title: (json['title'] ?? json['name'])?.toString(),
       remark: json['remark']?.toString(),
       date: json['date']?.toString(),
       location: json['location']?.toString(),
@@ -348,6 +399,50 @@ class AiTodoAction {
       ),
       durationMinutes: _parseInt(json['durationMinutes'] ?? json['minutes']),
       tagUuids: _parseStringList(json['tagUuids'] ?? json['tagIds']),
+      icon: json['icon']?.toString(),
+      habitSourceType:
+          (json['sourceType'] ?? json['habitSourceType'] ?? json['source_type'])
+              ?.toString(),
+      habitPeriodType:
+          (json['periodType'] ?? json['habitPeriodType'] ?? json['period_type'])
+              ?.toString(),
+      targetValue: _parseDouble(json['targetValue'] ?? json['target_value']),
+      unit: (json['unit'] ?? json['habitUnit'])?.toString(),
+      targetTimeMinute: _parseMinuteOfDay(json['targetTimeMinute'] ??
+          json['target_time_minute'] ??
+          json['targetTime'] ??
+          json['target_time']),
+      habitTimeComparison: (json['timeComparison'] ??
+              json['habitTimeComparison'] ??
+              json['time_comparison'])
+          ?.toString(),
+      timeToleranceMinutes: _parseInt(
+        json['timeToleranceMinutes'] ?? json['time_tolerance_minutes'],
+      ),
+      weekdaysMask: _parseInt(json['weekdaysMask'] ?? json['weekdays_mask']),
+      dayBoundaryMinute: _parseMinuteOfDay(
+        json['dayBoundaryMinute'] ?? json['day_boundary_minute'],
+      ),
+      quickValues: _parseIntList(json['quickValues'] ?? json['quick_values']),
+      habitReminderPolicy: _parseMap(
+        json['reminderPolicy'] ??
+            json['habitReminderPolicy'] ??
+            json['reminder_policy'],
+      ),
+      habitDisplayMode: (json['displayMode'] ??
+              json['habitDisplayMode'] ??
+              json['display_mode'])
+          ?.toString(),
+      defaultFocusMinutes: _parseInt(
+        json['defaultFocusMinutes'] ?? json['default_focus_minutes'],
+      ),
+      sourceIds: _parseStringList(
+        json['sourceIds'] ??
+            json['source_ids'] ??
+            json['habitSourceIds'] ??
+            json['habit_source_ids'] ??
+            (json['sourceType'] == 'pomodoroTag' ? json['tagUuids'] : null),
+      ),
       status: json['status']?.toString(),
       color: json['color']?.toString(),
       isSelected: json['isSelected'] != false,
@@ -404,6 +499,10 @@ class AiTodoAction {
     switch (action) {
       case 'create_todo':
         return AiTodoActionType.createTodo;
+      case 'create_habit':
+      case 'create_habit_goal':
+      case 'habit_create':
+        return AiTodoActionType.createHabit;
       case 'update_todo':
         return AiTodoActionType.updateTodo;
       case 'complete_todo':
@@ -499,6 +598,32 @@ class AiTodoAction {
     return JsonValueParser.toNullableInt(value);
   }
 
+  static double? _parseDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString().trim());
+  }
+
+  static int? _parseMinuteOfDay(dynamic value) {
+    final parsed = _parseInt(value);
+    if (parsed != null) return parsed;
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty) return null;
+    final match = RegExp(r'^(\d{1,2}):(\d{1,2})$').firstMatch(text);
+    if (match == null) return null;
+    final hour = int.tryParse(match.group(1)!);
+    final minute = int.tryParse(match.group(2)!);
+    if (hour == null || minute == null || hour > 23 || minute > 59) {
+      return null;
+    }
+    return hour * 60 + minute;
+  }
+
+  static Map<String, dynamic>? _parseMap(dynamic value) {
+    if (value is! Map) return null;
+    return Map<String, dynamic>.from(value);
+  }
+
   static String _parseRecurrenceScope(dynamic value) {
     final scope = value?.toString();
     return scope == 'future' ? 'future' : 'occurrence';
@@ -529,7 +654,16 @@ class AiTodoAction {
   }
 
   static List<int> _parseIntList(dynamic value) {
-    if (value is! List) return const [];
-    return value.map(_parseInt).whereType<int>().toList();
+    if (value is List) {
+      return value.map(_parseInt).whereType<int>().toList();
+    }
+    if (value is String && value.trim().isNotEmpty) {
+      return value
+          .split(RegExp(r'[,，\s]+'))
+          .map(_parseInt)
+          .whereType<int>()
+          .toList();
+    }
+    return const [];
   }
 }

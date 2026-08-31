@@ -1,10 +1,34 @@
 import 'dart:math';
 
+import '../features/habits/models/habit_goal.dart';
+import '../features/habits/models/habit_goal_rule.dart';
+import '../features/habits/repositories/habit_repository.dart';
+import '../features/habits/services/habit_rule_resolver.dart';
 import '../models.dart';
 import '../models/ai_todo_action.dart';
 import 'fixed_schedule_recurrence_service.dart';
 import 'pomodoro_service.dart';
 import '../utils/json_value_parser.dart';
+
+class _HabitCreationDraft {
+  const _HabitCreationDraft({
+    required this.name,
+    required this.icon,
+    required this.sourceType,
+    required this.sourceIds,
+    required this.rule,
+    required this.displayMode,
+    required this.defaultFocusMinutes,
+  });
+
+  final String name;
+  final String icon;
+  final HabitSourceType sourceType;
+  final List<String> sourceIds;
+  final HabitGoalRuleRevision rule;
+  final HabitDisplayMode displayMode;
+  final int? defaultFocusMinutes;
+}
 
 class AiTodoActionExecutionResult {
   const AiTodoActionExecutionResult({
@@ -23,6 +47,7 @@ class AiTodoActionExecutionResult {
     this.updatedPlanBlocks = const [],
     this.newFixedSchedules = const [],
     this.updatedFixedSchedules = const [],
+    this.newHabitActions = const [],
   });
 
   final List<TodoItem> newTodos;
@@ -40,6 +65,7 @@ class AiTodoActionExecutionResult {
   final List<TodoPlanBlock> updatedPlanBlocks;
   final List<FixedScheduleItem> newFixedSchedules;
   final List<FixedScheduleItem> updatedFixedSchedules;
+  final List<AiTodoAction> newHabitActions;
 
   bool get hasChanges =>
       newTodos.isNotEmpty ||
@@ -56,7 +82,8 @@ class AiTodoActionExecutionResult {
       newPlanBlocks.isNotEmpty ||
       updatedPlanBlocks.isNotEmpty ||
       newFixedSchedules.isNotEmpty ||
-      updatedFixedSchedules.isNotEmpty;
+      updatedFixedSchedules.isNotEmpty ||
+      newHabitActions.isNotEmpty;
 }
 
 class AiTodoActionExecutor {
@@ -87,6 +114,7 @@ class AiTodoActionExecutor {
     final updatedPlanBlocks = <TodoPlanBlock>[];
     final newFixedSchedules = <FixedScheduleItem>[];
     final updatedFixedSchedules = <FixedScheduleItem>[];
+    final newHabitActions = <AiTodoAction>[];
     final selectedActions = actions.where(
       (action) => action.isSelected && !action.isAdded && !action.isIgnored,
     );
@@ -117,6 +145,15 @@ class AiTodoActionExecutor {
             }
           }
           action.isAdded = true;
+        }
+        continue;
+      }
+
+      if (action.isHabitAction) {
+        if (_buildHabitCreationDraft(action) != null) {
+          // 习惯需要异步写入 HabitRepository，先交给聊天确认卡保存，
+          // 不在这个同步执行阶段提前标记 isAdded。
+          newHabitActions.add(action);
         }
         continue;
       }
@@ -240,7 +277,377 @@ class AiTodoActionExecutor {
       updatedPlanBlocks: updatedPlanBlocks,
       newFixedSchedules: newFixedSchedules,
       updatedFixedSchedules: updatedFixedSchedules,
+      newHabitActions: newHabitActions,
     );
+  }
+
+  /// 保存已经通过执行器校验的习惯创建动作。
+  ///
+  /// 习惯不是 TodoItem：这里写入真实的 HabitGoal 和首个规则版本；
+  /// 完成一次型习惯在 HabitRepository 内按需创建并绑定循环待办系列。
+  static Future<List<HabitGoal>> saveHabitActions({
+    required String username,
+    required List<AiTodoAction> actions,
+  }) async {
+    final created = <HabitGoal>[];
+    for (final action in actions) {
+      if (!action.isHabitAction ||
+          !action.isSelected ||
+          action.isAdded ||
+          action.isIgnored) {
+        continue;
+      }
+      final draft = _buildHabitCreationDraft(action);
+      if (draft == null) continue;
+      final goal = await HabitRepository.createGoal(
+        name: draft.name,
+        icon: draft.icon,
+        sourceType: draft.sourceType,
+        sourceIds: draft.sourceIds,
+        rule: draft.rule,
+        displayMode: draft.displayMode,
+        defaultFocusMinutes: draft.defaultFocusMinutes,
+        username: username,
+      );
+      action.isAdded = true;
+      created.add(goal);
+    }
+    return created;
+  }
+
+  static _HabitCreationDraft? _buildHabitCreationDraft(
+    AiTodoAction action,
+  ) {
+    final name = action.title?.trim();
+    if (name == null || name.isEmpty) return null;
+
+    final sourceType = _parseHabitSourceType(action);
+    if (sourceType == null) return null;
+    final periodType = _parseHabitPeriodType(action.habitPeriodType);
+    if (periodType == null) return null;
+
+    final weekdaysMask = action.weekdaysMask ??
+        (periodType == HabitPeriodType.weekdays ? 31 : 127);
+    if (weekdaysMask < 1 || weekdaysMask > 127) return null;
+    final customIntervalDays = action.customIntervalDays;
+    if (periodType == HabitPeriodType.custom &&
+        (customIntervalDays == null || customIntervalDays < 1)) {
+      return null;
+    }
+
+    final dayBoundaryMinute = action.dayBoundaryMinute ?? 0;
+    if (dayBoundaryMinute < 0 || dayBoundaryMinute >= 1440) return null;
+
+    var targetValue = 0.0;
+    var unit = action.unit?.trim() ?? '';
+    int? targetTimeMinute;
+    var timeComparison = HabitTimeComparison.before;
+    var defaultFocusMinutes = action.defaultFocusMinutes;
+    final sourceIds = _cleanIds(
+      sourceType == HabitSourceType.recurringTodo &&
+              action.sourceIds.isEmpty &&
+              action.recurrenceSeriesId?.trim().isNotEmpty == true
+          ? [action.recurrenceSeriesId!]
+          : action.sourceIds,
+    );
+
+    switch (sourceType) {
+      case HabitSourceType.recurringTodo:
+        targetValue = 1;
+      case HabitSourceType.pomodoroTag:
+        if (sourceIds.isEmpty) return null;
+        final durationSeconds = _habitDurationSeconds(action);
+        if (durationSeconds == null || durationSeconds < 1) return null;
+        targetValue = durationSeconds.toDouble();
+        unit = unit.isEmpty ? '分钟' : unit;
+      case HabitSourceType.quantityCheckIn:
+        final quantity = action.targetValue;
+        if (quantity == null || !quantity.isFinite || quantity <= 0) {
+          return null;
+        }
+        targetValue = quantity;
+      case HabitSourceType.timeCheckIn:
+        targetTimeMinute = action.targetTimeMinute;
+        if (targetTimeMinute == null ||
+            targetTimeMinute < 0 ||
+            targetTimeMinute >= 1440) {
+          return null;
+        }
+        timeComparison = _parseHabitTimeComparison(
+              action.habitTimeComparison,
+            ) ??
+            HabitTimeComparison.before;
+      case HabitSourceType.durationCheckIn:
+        final durationSeconds = _habitDurationSeconds(action);
+        if (durationSeconds == null || durationSeconds < 1) return null;
+        targetValue = durationSeconds.toDouble();
+        unit = unit.isEmpty ? '分钟' : unit;
+    }
+
+    if (sourceType != HabitSourceType.pomodoroTag &&
+        sourceType != HabitSourceType.durationCheckIn) {
+      defaultFocusMinutes = null;
+    } else if (defaultFocusMinutes != null) {
+      defaultFocusMinutes = defaultFocusMinutes.clamp(1, 240).toInt();
+    }
+
+    final tolerance = action.timeToleranceMinutes ?? 0;
+    if (tolerance < 0) return null;
+    final quickValues =
+        action.quickValues.where((value) => value > 0).take(4).toList();
+    final effectiveFromDate = _habitEffectiveFromDate(dayBoundaryMinute);
+    final rule = HabitGoalRuleRevision(
+      habitUuid: '',
+      effectiveFromDate: effectiveFromDate,
+      periodType: periodType,
+      weekdaysMask: weekdaysMask,
+      customIntervalDays: customIntervalDays,
+      targetValue: targetValue,
+      unit: unit,
+      targetTimeMinute: targetTimeMinute,
+      timeComparison: timeComparison,
+      timeToleranceMinutes: tolerance,
+      dayBoundaryMinute: dayBoundaryMinute,
+      quickValues: quickValues,
+      reminderPolicy: _parseHabitReminderPolicy(action),
+    );
+
+    return _HabitCreationDraft(
+      name: name,
+      icon: action.icon?.trim().isNotEmpty == true
+          ? action.icon!.trim()
+          : HabitRepository.defaultIconForName(name),
+      sourceType: sourceType,
+      sourceIds: sourceIds,
+      rule: rule,
+      displayMode: _parseHabitDisplayMode(action.habitDisplayMode) ??
+          HabitDisplayMode.habitOnly,
+      defaultFocusMinutes: defaultFocusMinutes,
+    );
+  }
+
+  static HabitSourceType? _parseHabitSourceType(AiTodoAction action) {
+    final raw = action.habitSourceType?.trim();
+    if (raw != null && raw.isNotEmpty) {
+      final index = int.tryParse(raw);
+      if (index != null &&
+          index >= 0 &&
+          index < HabitSourceType.values.length) {
+        return HabitSourceType.values[index];
+      }
+      switch (_normalizeHabitToken(raw)) {
+        case 'recurringtodo':
+        case 'completion':
+        case 'completioncheckin':
+        case '完成型':
+        case '完成一次':
+        case '循环待办':
+          return HabitSourceType.recurringTodo;
+        case 'pomodorotag':
+        case '专注标签':
+          return HabitSourceType.pomodoroTag;
+        case 'quantitycheckin':
+        case 'quantity':
+        case 'amount':
+        case '数量型':
+        case '数量':
+          return HabitSourceType.quantityCheckIn;
+        case 'timecheckin':
+        case 'timepoint':
+        case '时间点型':
+        case '时间点':
+          return HabitSourceType.timeCheckIn;
+        case 'durationcheckin':
+        case 'duration':
+        case '时长型':
+        case '时长':
+          return HabitSourceType.durationCheckIn;
+        default:
+          return null;
+      }
+    }
+    if (action.targetTimeMinute != null) return HabitSourceType.timeCheckIn;
+    if (action.durationMinutes != null) return HabitSourceType.durationCheckIn;
+    if (action.targetValue != null) return HabitSourceType.quantityCheckIn;
+    return HabitSourceType.recurringTodo;
+  }
+
+  static int? _habitDurationSeconds(AiTodoAction action) {
+    final minutes = action.durationMinutes;
+    if (minutes != null && minutes > 0) return minutes * 60;
+
+    // 兼容模型把时长放进 targetValue 的写法，但只在单位明确时换算，
+    // 避免把「30」误判成 30 秒还是 30 分钟。
+    final value = action.targetValue;
+    if (value == null || !value.isFinite || value <= 0) return null;
+    final unit = action.unit?.trim().toLowerCase() ?? '';
+    if (unit.contains('秒') || unit == 's' || unit.contains('sec')) {
+      return value.round();
+    }
+    if (unit.contains('小时') || unit == 'h' || unit.contains('hour')) {
+      return (value * 3600).round();
+    }
+    if (unit.contains('分钟') || unit == '分' || unit == 'min') {
+      return (value * 60).round();
+    }
+    return null;
+  }
+
+  static HabitPeriodType? _parseHabitPeriodType(String? raw) {
+    final value = raw?.trim();
+    if (value == null || value.isEmpty) return HabitPeriodType.daily;
+    final index = int.tryParse(value);
+    if (index != null && index >= 0 && index < HabitPeriodType.values.length) {
+      return HabitPeriodType.values[index];
+    }
+    switch (_normalizeHabitToken(value)) {
+      case 'daily':
+      case 'day':
+      case '每天':
+        return HabitPeriodType.daily;
+      case 'weekly':
+      case 'week':
+      case '每周':
+        return HabitPeriodType.weekly;
+      case 'weekdays':
+      case 'workdays':
+      case '工作日':
+      case '周一至周五':
+        return HabitPeriodType.weekdays;
+      case 'monthly':
+      case 'month':
+      case '每月':
+        return HabitPeriodType.monthly;
+      case 'custom':
+      case 'customdays':
+      case '自定义':
+      case '每隔':
+        return HabitPeriodType.custom;
+      default:
+        return null;
+    }
+  }
+
+  static HabitTimeComparison? _parseHabitTimeComparison(String? raw) {
+    final value = raw?.trim();
+    if (value == null || value.isEmpty) return null;
+    final index = int.tryParse(value);
+    if (index != null &&
+        index >= 0 &&
+        index < HabitTimeComparison.values.length) {
+      return HabitTimeComparison.values[index];
+    }
+    switch (_normalizeHabitToken(value)) {
+      case 'before':
+      case '早于':
+      case '之前':
+        return HabitTimeComparison.before;
+      case 'after':
+      case '晚于':
+      case '之后':
+        return HabitTimeComparison.after;
+      default:
+        return null;
+    }
+  }
+
+  static HabitDisplayMode? _parseHabitDisplayMode(String? raw) {
+    final value = raw?.trim();
+    if (value == null || value.isEmpty) return null;
+    final index = int.tryParse(value);
+    if (index != null && index >= 0 && index < HabitDisplayMode.values.length) {
+      return HabitDisplayMode.values[index];
+    }
+    switch (_normalizeHabitToken(value)) {
+      case 'habitonly':
+      case '仅习惯':
+        return HabitDisplayMode.habitOnly;
+      case 'todoonly':
+      case '仅待办':
+        return HabitDisplayMode.todoOnly;
+      case 'both':
+      case '两者':
+        return HabitDisplayMode.both;
+      default:
+        return null;
+    }
+  }
+
+  static HabitReminderPolicy _parseHabitReminderPolicy(
+    AiTodoAction action,
+  ) {
+    final raw = action.habitReminderPolicy;
+    final fixedTimes = _parseHabitMinuteList(
+      raw?['fixedTimes'] ?? raw?['fixed_times'],
+    );
+    return HabitReminderPolicy(
+      fixedTimes: fixedTimes,
+      progressReminder: _parseHabitBool(
+        raw?['progressReminder'] ?? raw?['progress_reminder'],
+      ),
+      nearEndReminder: _parseHabitBool(
+        raw?['nearEndReminder'] ?? raw?['near_end_reminder'],
+      ),
+      dailySummaryReminder: _parseHabitBool(
+        raw?['dailySummaryReminder'] ?? raw?['daily_summary_reminder'],
+      ),
+    );
+  }
+
+  static List<int> _parseHabitMinuteList(dynamic raw) {
+    final values = raw is List
+        ? raw
+        : raw is String && raw.trim().isNotEmpty
+            ? raw.split(RegExp(r'[,，\s]+'))
+            : const <dynamic>[];
+    return values
+        .map(_parseHabitMinute)
+        .whereType<int>()
+        .where((value) => value >= 0 && value < 1440)
+        .toSet()
+        .toList()
+      ..sort();
+  }
+
+  static int? _parseHabitMinute(dynamic raw) {
+    final value = JsonValueParser.toNullableInt(raw);
+    if (value != null) return value;
+    final text = raw?.toString().trim();
+    if (text == null) return null;
+    final match = RegExp(r'^(\d{1,2}):(\d{1,2})$').firstMatch(text);
+    if (match == null) return null;
+    final hour = int.tryParse(match.group(1)!);
+    final minute = int.tryParse(match.group(2)!);
+    if (hour == null || minute == null || hour > 23 || minute > 59) {
+      return null;
+    }
+    return hour * 60 + minute;
+  }
+
+  static bool _parseHabitBool(dynamic raw) {
+    if (raw == true || raw == 1) return true;
+    final value = raw?.toString().trim().toLowerCase();
+    return value == 'true' || value == 'yes' || value == '1';
+  }
+
+  static List<String> _cleanIds(Iterable<String> ids) {
+    return ids
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  static String _normalizeHabitToken(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'[\s_-]+'), '');
+  }
+
+  static String _habitEffectiveFromDate(int dayBoundaryMinute) {
+    final logicalDate = HabitRuleResolver.logicalDateFor(
+      DateTime.now(),
+      dayBoundaryMinute,
+    );
+    return HabitRuleResolver.dayKey(logicalDate);
   }
 
   static List<FixedScheduleItem> _buildFixedSchedules(
