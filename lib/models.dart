@@ -25,6 +25,8 @@ enum TimelineEventType {
   timeLog,
   planBlock,
   habitCheckIn,
+  // Keep newly added event types at the end: timeline snapshots use indexes.
+  financeTransaction,
 }
 
 class TimelineEvent {

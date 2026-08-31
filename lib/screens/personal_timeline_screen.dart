@@ -22,6 +22,11 @@ import '../utils/page_transitions.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
+import '../features/finance/models/finance_models.dart';
+import '../features/finance/screens/finance_entry_screen.dart';
+import '../features/finance/screens/finance_home_screen.dart';
+import '../features/finance/services/finance_repository.dart';
+import '../features/finance/services/finance_storage.dart';
 import 'medal_wall_page.dart';
 
 enum TimelineDimension { daily, weekly, monthly, yearly }
@@ -96,6 +101,12 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   int _recurringLongestStreak = 0;
   List<MapEntry<String, int>> _topFocusTags = [];
 
+  // Finance data is loaded separately from the timeline summary so an older
+  // database without the finance tables can never hide the rest of the page.
+  FinanceSummary _financeSummary = const FinanceSummary();
+  List<FinanceTransaction> _financeTransactions = const [];
+  List<FinanceCategory> _financeCategories = const [];
+
   // ML Medal Recommendation System
   TimelineSummary? _allTimeSummary;
   MedalRecommendation? _allTimeRecommendation;
@@ -116,15 +127,21 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     );
     _timelineScrollController = ScrollController()
       ..addListener(_handleTimelineScroll);
+    FinanceStorage.revision.addListener(_onFinanceChanged);
     _loadData();
   }
 
   @override
   void dispose() {
+    FinanceStorage.revision.removeListener(_onFinanceChanged);
     _timelineScrollController.dispose();
     _timelineTitleProgress.dispose();
     _animationController.dispose();
     super.dispose();
+  }
+
+  void _onFinanceChanged() {
+    if (mounted) _loadData();
   }
 
   Future<void> _loadData() async {
@@ -170,6 +187,22 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             .getEventsForDay(widget.username, day);
       } else {
         _events = []; // Or maybe fetch "Major" events
+      }
+
+      FinanceSummary financeSummary = const FinanceSummary();
+      List<FinanceTransaction> financeTransactions = const [];
+      List<FinanceCategory> financeCategories = const [];
+      try {
+        final financeData = await Future.wait<dynamic>([
+          FinanceRepository.getSummary(from: start, to: end),
+          FinanceRepository.getTransactions(from: start, to: end),
+          FinanceRepository.getCategories(includeArchived: true),
+        ]);
+        financeSummary = financeData[0] as FinanceSummary;
+        financeTransactions = financeData[1] as List<FinanceTransaction>;
+        financeCategories = financeData[2] as List<FinanceCategory>;
+      } catch (error) {
+        debugPrint('❌ get timeline finance data error: $error');
       }
 
       // 3. Get Focus Time
@@ -345,6 +378,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           _bestRecurrenceSeries = rangeStatistics.bestRecurrenceSeries;
           _recurringLongestStreak = rangeStatistics.recurringLongestStreak;
           _topFocusTags = rangeStatistics.topFocusTags;
+          _financeSummary = financeSummary;
+          _financeTransactions = financeTransactions;
+          _financeCategories = financeCategories;
 
           // Calculate ML Medal Recommendations
           _medalRecommendation = MedalRecommendationService.getRecommendations(
@@ -437,6 +473,35 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<void> _openFinanceEntry() async {
+    final saved = await Navigator.of(context).push<FinanceTransaction>(
+      PageTransitions.material(
+        builder: (_) => const FinanceEntryScreen(),
+      ),
+    );
+    if (saved != null && mounted) await _loadData();
+  }
+
+  Future<void> _openFinanceEvent(String transactionUuid) async {
+    final transaction = await FinanceRepository.getTransaction(transactionUuid);
+    if (transaction == null || !mounted) return;
+    final saved = await Navigator.of(context).push<FinanceTransaction>(
+      PageTransitions.material(
+        builder: (_) => FinanceEntryScreen(transaction: transaction),
+      ),
+    );
+    if (saved != null && mounted) await _loadData();
+  }
+
+  Future<void> _openFinanceLedger() async {
+    await Navigator.of(context).push(
+      PageTransitions.material(
+        builder: (_) => FinanceHomeScreen(username: widget.username),
+      ),
+    );
+    if (mounted) await _loadData();
   }
 
   Future<void> _loadAllTimeMedalData() async {
@@ -2011,6 +2076,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final subjectName = topSub != '全能型' ? topSub : '多主题任务';
     final keywordText = _buildKeywordText(summary);
     final habitSummary = summary.habitSummary;
+    final financeSummary = _financeSummary;
+    final financeAccent =
+        financeSummary.netExpenseMinor > 0 ? cs.error : cs.primary;
     final qualityLine = focusSessionCount > 0
         ? '平均每段 ${summary.avgPomodoroMinutes.toStringAsFixed(0)} 分钟，深度投入占 ${_formatPercent(summary.deepWorkCount / focusSessionCount)}。'
         : '暂时没有可统计的专注质量数据。';
@@ -2098,6 +2166,12 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                   Icons.desktop_windows_outlined, Colors.teal, cs),
               _buildInsightPill('屏幕偏好 ${_topAppCategory ?? '学习办公'}',
                   Icons.category_outlined, Colors.orange, cs),
+              if (financeSummary.transactionCount > 0)
+                _buildInsightPill(
+                    '净支出 ${formatFinanceAmount(financeSummary.netExpenseMinor)}',
+                    Icons.account_balance_wallet_outlined,
+                    financeAccent,
+                    cs),
               _buildInsightPill(
                   '关键词 $keywordText', Icons.sell_outlined, Colors.indigo, cs),
             ],
@@ -2607,37 +2681,69 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         event.type == TimelineEventType.todoCompleted ||
         event.type == TimelineEventType.timeLog ||
         event.type == TimelineEventType.planBlock ||
-        event.type == TimelineEventType.habitCheckIn;
+        event.type == TimelineEventType.habitCheckIn ||
+        event.type == TimelineEventType.financeTransaction;
+    String? financeTransactionId;
+    if (event.type == TimelineEventType.financeTransaction) {
+      financeTransactionId = event.extraData?['transaction_uuid']?.toString();
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 24.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(timeStr,
-              style: TextStyle(
-                  fontSize: 12,
-                  fontFamily: 'monospace',
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(_formatEventTitle(event),
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight:
-                            isImportant ? FontWeight.w600 : FontWeight.normal,
-                        color: cs.onSurface)),
-                if (event.subtitle != null)
-                  Text(event.subtitle!,
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: financeTransactionId == null
+            ? null
+            : () => _openFinanceEvent(financeTransactionId!),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(timeStr,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
+              const SizedBox(width: 20),
+              if (event.type == TimelineEventType.financeTransaction) ...[
+                Icon(
+                  Icons.account_balance_wallet_outlined,
+                  size: 16,
+                  color: cs.tertiary,
+                ),
+                const SizedBox(width: 8),
               ],
-            ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_formatEventTitle(event),
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: isImportant
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                            color: cs.onSurface)),
+                    if (event.subtitle != null)
+                      Text(event.subtitle!,
+                          style: TextStyle(
+                              fontSize: 13,
+                              color:
+                                  cs.onSurfaceVariant.withValues(alpha: 0.7))),
+                  ],
+                ),
+              ),
+              if (financeTransactionId != null) ...[
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.45),
+                ),
+              ],
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -3005,7 +3111,319 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final int colCount =
         isWide ? (MediaQuery.of(context).size.width > 1200 ? 4 : 3) : 2;
 
-    return _buildBalancedCardRows(cards, colCount);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildFinanceSummaryCard(cs),
+        const SizedBox(height: 12),
+        _buildBalancedCardRows(cards, colCount),
+      ],
+    );
+  }
+
+  Widget _buildFinanceSummaryCard(ColorScheme cs) {
+    final summary = _financeSummary;
+    final categoryMap = {
+      for (final category in _financeCategories) category.uuid: category,
+    };
+    final topCategories = summary.expenseByCategory.entries
+        .where((entry) => entry.value > 0)
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final maxCategory = topCategories.isEmpty ? 1 : topCategories.first.value;
+    final spendingDays =
+        summary.expenseByDate.values.where((value) => value > 0).length;
+    final averagePerDay =
+        spendingDays == 0 ? 0 : summary.netExpenseMinor ~/ spendingDays;
+    final averagePerTransaction = summary.transactionCount == 0
+        ? 0
+        : summary.netExpenseMinor ~/ summary.transactionCount;
+    final peakDay = summary.expenseByDate.entries
+        .where((entry) => entry.value > 0)
+        .fold<MapEntry<String, int>?>(
+          null,
+          (best, entry) =>
+              best == null || entry.value > best.value ? entry : best,
+        );
+    final expenseCount = _financeTransactions
+        .where(
+            (transaction) => transaction.type == FinanceTransactionType.expense)
+        .length;
+    final incomeCount = _financeTransactions
+        .where(
+            (transaction) => transaction.type == FinanceTransactionType.income)
+        .length;
+    final refundCount = _financeTransactions
+        .where(
+            (transaction) => transaction.type == FinanceTransactionType.refund)
+        .length;
+    final hasTransactions = summary.transactionCount > 0;
+    final financeAccent = summary.netExpenseMinor > 0 ? cs.error : cs.primary;
+
+    String categoryLabel(String uuid) {
+      final category = categoryMap[uuid];
+      return category == null ? '未分类' : '${category.icon} ${category.name}';
+    }
+
+    return OptionalLiquidGlassCard(
+      padding: const EdgeInsets.all(18),
+      borderRadius: 26,
+      highContrast: true,
+      tint: cs.tertiary.withValues(alpha: 0.08),
+      fallbackDecoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.account_balance_wallet_outlined,
+                color: financeAccent,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '账本统计',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: cs.onSurface,
+                ),
+              ),
+              const Spacer(),
+              if (hasTransactions)
+                Text(
+                  '${summary.transactionCount} 笔记录',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (!hasTransactions)
+            Text(
+              '这一段时间还没有账单，记下一笔生活开销后，这里会同步展示收支趋势。',
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.45,
+                color: cs.onSurfaceVariant,
+              ),
+            )
+          else ...[
+            Text(
+              formatFinanceAmount(summary.netExpenseMinor),
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.5,
+                color: financeAccent,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '净支出 · ${_getPeriodName()}',
+              style: TextStyle(
+                fontSize: 11,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                _buildFinanceMetric(
+                  label: '收入',
+                  value: formatFinanceAmount(summary.incomeMinor),
+                  color: cs.primary,
+                ),
+                _buildFinanceMetricDivider(cs),
+                _buildFinanceMetric(
+                  label: '结余',
+                  value: formatFinanceAmount(summary.balanceMinor),
+                  color: cs.onSurface,
+                ),
+                _buildFinanceMetricDivider(cs),
+                _buildFinanceMetric(
+                  label: '记账日均',
+                  value: formatFinanceAmount(averagePerDay),
+                  color: financeAccent,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Divider(
+              height: 1,
+              thickness: 0.6,
+              color: cs.outlineVariant.withValues(alpha: 0.45),
+            ),
+            const SizedBox(height: 10),
+            _buildRankItem(
+              0,
+              '收支构成',
+              '支出 $expenseCount · 收入 $incomeCount · 退款 $refundCount',
+              cs,
+            ),
+            _buildRankItem(
+              0,
+              '平均每笔净支出',
+              formatFinanceAmount(averagePerTransaction),
+              cs,
+            ),
+            if (peakDay != null)
+              _buildRankItem(
+                0,
+                '最高支出日',
+                '${DateFormat('MM/dd').format(dateFromKey(peakDay.key))} · '
+                    '${formatFinanceAmount(peakDay.value)}',
+                cs,
+              ),
+            if (topCategories.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                '支出分类',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 6),
+              for (final entry in topCategories.take(3))
+                _buildFinanceCategoryBar(
+                  label: categoryLabel(entry.key),
+                  amount: entry.value,
+                  maxAmount: maxCategory,
+                  color: financeAccent,
+                  cs: cs,
+                ),
+            ],
+          ],
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: _openFinanceEntry,
+                icon: const Icon(Icons.add_rounded, size: 17),
+                label: const Text('记一笔'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 38),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: _openFinanceLedger,
+                icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                label: const Text('打开账本'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 38),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFinanceMetric({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: color.withValues(alpha: 0.72),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 14,
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFinanceMetricDivider(ColorScheme cs) {
+    return Container(
+      width: 1,
+      height: 30,
+      margin: const EdgeInsets.symmetric(horizontal: 10),
+      color: cs.outlineVariant.withValues(alpha: 0.45),
+    );
+  }
+
+  Widget _buildFinanceCategoryBar({
+    required String label,
+    required int amount,
+    required int maxAmount,
+    required Color color,
+    required ColorScheme cs,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 92,
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                minHeight: 6,
+                value: maxAmount > 0 ? amount / maxAmount : 0,
+                backgroundColor: cs.surfaceContainerHighest,
+                color: color.withValues(alpha: 0.72),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            formatFinanceAmount(amount),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: cs.onSurface,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildBalancedCardRows(List<Widget> cards, int maxColumns) {
@@ -4019,6 +4437,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         return pick(['按计划进入行动时段', '赴一场与目标的约定', '规划开始落地', '进入预定任务时间']);
       case TimelineEventType.habitCheckIn:
         return pick(['习惯按计划落地', '为坚持再添一格', '今天也和目标见面了', '把小事做成日常']);
+      case TimelineEventType.financeTransaction:
+        switch (event.extraData?['finance_type']?.toString()) {
+          case 'income':
+            return pick(['收入到账，记下这份收获', '为今天的进账留下记录']);
+          case 'refund':
+            return pick(['收到一笔退款', '生活退回了一点余额']);
+          default:
+            return pick(['为生活记下一笔支出', '把今天的消费留下来', '让每一笔开销都有迹可循']);
+        }
       default:
         return event.title;
     }

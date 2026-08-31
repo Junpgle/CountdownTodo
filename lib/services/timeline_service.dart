@@ -7,6 +7,9 @@ import '../features/habits/models/habit_checkin.dart';
 import '../features/habits/models/habit_goal.dart';
 import '../features/habits/repositories/habit_repository.dart';
 import '../features/habits/services/habit_progress_calculator.dart';
+import '../features/finance/models/finance_models.dart';
+import '../features/finance/services/finance_repository.dart';
+import '../features/finance/services/finance_storage.dart';
 import 'storage/habit_storage.dart';
 
 class TimelineService {
@@ -238,6 +241,56 @@ class TimelineService {
             subtitle: '${habit.icon} ${habit.name}$detail',
           ));
         }
+      }
+
+      // 8. 记账：以账单发生日期归入当天，发生时间只负责排序。
+      // 账单的日期和 occurredAt 可能因跨时区/补记而不一致；如果发生时间
+      // 不在该日期内，回退到当天中午，确保它不会显示在错误的一天。
+      final financeTransactions = await FinanceStorage.getTransactions(
+        from: startOfDay,
+        to: endOfDay,
+      );
+      final financeCategories = await FinanceStorage.getCategories(
+        includeArchived: true,
+      );
+      final financeCategoryMap = {
+        for (final category in financeCategories) category.uuid: category,
+      };
+      final financeFallbackTime = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        12,
+      );
+      for (final transaction in financeTransactions) {
+        final occurredAt = transaction.occurredAt;
+        var timestamp = occurredAt == null
+            ? financeFallbackTime
+            : DateTime.fromMillisecondsSinceEpoch(occurredAt);
+        if (timestamp.isBefore(startOfDay) || !timestamp.isBefore(endOfDay)) {
+          timestamp = financeFallbackTime;
+        }
+        final category = financeCategoryMap[transaction.categoryUuid];
+        final merchant = transaction.merchant?.trim();
+        final note = transaction.note?.trim();
+        final detail = <String>[
+          if (merchant?.isNotEmpty == true) merchant!,
+          if (category != null) '${category.icon} ${category.name}',
+          formatSignedFinanceAmount(transaction.amountMinor, transaction.type),
+          if (note?.isNotEmpty == true) note!,
+        ].join(' · ');
+        events.add(TimelineEvent(
+          id: 'finance_${transaction.uuid}',
+          timestamp: timestamp,
+          type: TimelineEventType.financeTransaction,
+          title: '记账 · ${transaction.type.label}',
+          subtitle: detail,
+          extraData: {
+            'transaction_uuid': transaction.uuid,
+            'finance_type': transaction.type.name,
+            'amount_minor': transaction.amountMinor,
+          },
+        ));
       }
     } catch (e) {
       debugPrint('❌ getEventsForDay error: $e');
