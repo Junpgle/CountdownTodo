@@ -10,22 +10,32 @@ import '../../../services/storage/user_session_storage.dart';
 import '../models/finance_models.dart';
 import 'finance_repository.dart';
 
+int _readNonNegativeInt(Object? value) {
+  final parsed =
+      value is num ? value.toInt() : int.tryParse(value?.toString() ?? '') ?? 0;
+  return parsed < 0 ? 0 : parsed;
+}
+
 /// One model's configured CNY prices.  Prices use micro-yuan so a low-cost
 /// request is retained accurately even when its eventual ledger total is
 /// still below one fen.
 class AiUsagePricing {
   final String provider;
   final String model;
+  final int cachedInputMicrosPerMillion;
   final int inputMicrosPerMillion;
   final int outputMicrosPerMillion;
   final int imageMicrosPerImage;
+  final int audioMicrosPerHour;
 
   const AiUsagePricing({
     required this.provider,
     required this.model,
+    this.cachedInputMicrosPerMillion = 0,
     this.inputMicrosPerMillion = 0,
     this.outputMicrosPerMillion = 0,
     this.imageMicrosPerImage = 0,
+    this.audioMicrosPerHour = 0,
   });
 
   String get id => '$provider::$model';
@@ -33,20 +43,25 @@ class AiUsagePricing {
   Map<String, dynamic> toJson() => {
         'provider': provider,
         'model': model,
+        'cached_input_micros_per_million': cachedInputMicrosPerMillion,
         'input_micros_per_million': inputMicrosPerMillion,
         'output_micros_per_million': outputMicrosPerMillion,
         'image_micros_per_image': imageMicrosPerImage,
+        'audio_micros_per_hour': audioMicrosPerHour,
       };
 
   factory AiUsagePricing.fromJson(Map<String, dynamic> json) => AiUsagePricing(
         provider: json['provider']?.toString() ?? '',
         model: json['model']?.toString() ?? '',
+        cachedInputMicrosPerMillion:
+            _readNonNegativeInt(json['cached_input_micros_per_million']),
         inputMicrosPerMillion:
-            (json['input_micros_per_million'] as num?)?.toInt() ?? 0,
+            _readNonNegativeInt(json['input_micros_per_million']),
         outputMicrosPerMillion:
-            (json['output_micros_per_million'] as num?)?.toInt() ?? 0,
+            _readNonNegativeInt(json['output_micros_per_million']),
         imageMicrosPerImage:
-            (json['image_micros_per_image'] as num?)?.toInt() ?? 0,
+            _readNonNegativeInt(json['image_micros_per_image']),
+        audioMicrosPerHour: _readNonNegativeInt(json['audio_micros_per_hour']),
       );
 }
 
@@ -58,6 +73,12 @@ class AiUsageRecord {
   final int promptTokens;
   final int completionTokens;
   final int totalTokens;
+  final int cachedPromptTokens;
+  final int imageTokens;
+  final int audioTokens;
+  final int videoTokens;
+  final int reasoningTokens;
+  final int audioSeconds;
   final int imageCount;
   final int? costMicros;
   final bool isPriced;
@@ -71,27 +92,47 @@ class AiUsageRecord {
     required this.promptTokens,
     required this.completionTokens,
     required this.totalTokens,
+    required this.cachedPromptTokens,
+    required this.imageTokens,
+    required this.audioTokens,
+    required this.videoTokens,
+    required this.reasoningTokens,
+    required this.audioSeconds,
     required this.imageCount,
     required this.costMicros,
     required this.isPriced,
     required this.createdAt,
   });
 
-  factory AiUsageRecord.fromMap(Map<String, dynamic> map) => AiUsageRecord(
-        uuid: map['uuid']?.toString() ?? '',
-        provider: map['provider']?.toString() ?? '',
-        model: map['model']?.toString() ?? '',
-        operation: map['operation']?.toString() ?? '',
-        promptTokens: (map['prompt_tokens'] as num?)?.toInt() ?? 0,
-        completionTokens: (map['completion_tokens'] as num?)?.toInt() ?? 0,
-        totalTokens: (map['total_tokens'] as num?)?.toInt() ?? 0,
-        imageCount: (map['image_count'] as num?)?.toInt() ?? 0,
-        costMicros: (map['cost_micros'] as num?)?.toInt(),
-        isPriced: (map['is_priced'] as num?)?.toInt() == 1,
-        createdAt: DateTime.fromMillisecondsSinceEpoch(
-          (map['created_at'] as num?)?.toInt() ?? 0,
-        ),
-      );
+  int get uncachedPromptTokens =>
+      (promptTokens - cachedPromptTokens).clamp(0, promptTokens).toInt();
+
+  factory AiUsageRecord.fromMap(Map<String, dynamic> map) {
+    final promptTokens = _readNonNegativeInt(map['prompt_tokens']);
+    final cachedPromptTokens = _readNonNegativeInt(map['cached_prompt_tokens']);
+    return AiUsageRecord(
+      uuid: map['uuid']?.toString() ?? '',
+      provider: map['provider']?.toString() ?? '',
+      model: map['model']?.toString() ?? '',
+      operation: map['operation']?.toString() ?? '',
+      promptTokens: promptTokens,
+      completionTokens: _readNonNegativeInt(map['completion_tokens']),
+      totalTokens: _readNonNegativeInt(map['total_tokens']),
+      cachedPromptTokens:
+          cachedPromptTokens > promptTokens ? promptTokens : cachedPromptTokens,
+      imageTokens: _readNonNegativeInt(map['image_tokens']),
+      audioTokens: _readNonNegativeInt(map['audio_tokens']),
+      videoTokens: _readNonNegativeInt(map['video_tokens']),
+      reasoningTokens: _readNonNegativeInt(map['reasoning_tokens']),
+      audioSeconds: _readNonNegativeInt(map['audio_seconds']),
+      imageCount: _readNonNegativeInt(map['image_count']),
+      costMicros: (map['cost_micros'] as num?)?.toInt(),
+      isPriced: (map['is_priced'] as num?)?.toInt() == 1,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(
+        _readNonNegativeInt(map['created_at']),
+      ),
+    );
+  }
 }
 
 class AiUsageBreakdown {
@@ -99,6 +140,11 @@ class AiUsageBreakdown {
   final String model;
   int calls;
   int totalTokens;
+  int cachedPromptTokens;
+  int imageTokens;
+  int audioTokens;
+  int videoTokens;
+  int audioSeconds;
   int costMicros;
   int unpricedCalls;
 
@@ -107,6 +153,11 @@ class AiUsageBreakdown {
     required this.model,
     this.calls = 0,
     this.totalTokens = 0,
+    this.cachedPromptTokens = 0,
+    this.imageTokens = 0,
+    this.audioTokens = 0,
+    this.videoTokens = 0,
+    this.audioSeconds = 0,
     this.costMicros = 0,
     this.unpricedCalls = 0,
   });
@@ -137,6 +188,32 @@ abstract final class AiUsageCostService {
   static const _otherPaymentMethodUuid = 'finance-system-payment-other';
   static const _microsPerYuan = 1000000;
   static const _microsPerFen = 10000;
+  static const _tokensPerMillion = 1000000;
+
+  // Domestic MiMo pay-as-you-go prices, stored as micro-yuan per million
+  // tokens. Token Plan is deliberately excluded: its quota is not the same
+  // billing system as the ordinary MiMo API balance.
+  static const List<AiUsagePricing> _builtInPricing = [
+    AiUsagePricing(
+      provider: 'mimo',
+      model: 'mimo-v2.5',
+      cachedInputMicrosPerMillion: 20000,
+      inputMicrosPerMillion: 1000000,
+      outputMicrosPerMillion: 2000000,
+    ),
+    AiUsagePricing(
+      provider: 'mimo',
+      model: 'mimo-v2.5-pro',
+      cachedInputMicrosPerMillion: 25000,
+      inputMicrosPerMillion: 3000000,
+      outputMicrosPerMillion: 6000000,
+    ),
+    AiUsagePricing(
+      provider: 'mimo',
+      model: 'mimo-v2.5-asr',
+      audioMicrosPerHour: 500000,
+    ),
+  ];
 
   @visibleForTesting
   static Database? databaseOverride;
@@ -156,11 +233,11 @@ abstract final class AiUsageCostService {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(await _settingsKey());
     if (raw == null || raw.isEmpty) {
-      return (autoLedger: true, prices: const <AiUsagePricing>[]);
+      return (autoLedger: true, prices: _withBuiltInPricing(const []));
     }
     try {
       final json = jsonDecode(raw) as Map<String, dynamic>;
-      final List<AiUsagePricing> values = (json['prices'] as List? ?? const [])
+      final values = (json['prices'] as List? ?? const [])
           .whereType<Map>()
           .map((item) =>
               AiUsagePricing.fromJson(Map<String, dynamic>.from(item)))
@@ -168,12 +245,28 @@ abstract final class AiUsageCostService {
           .toList();
       return (
         autoLedger: json['auto_ledger'] != false,
-        prices: values,
+        prices: _withBuiltInPricing(values),
       );
     } catch (_) {
-      return (autoLedger: true, prices: const <AiUsagePricing>[]);
+      return (autoLedger: true, prices: _withBuiltInPricing(const []));
     }
   }
+
+  static List<AiUsagePricing> _withBuiltInPricing(
+    List<AiUsagePricing> configured,
+  ) {
+    final values = [...configured];
+    for (final pricing in _builtInPricing) {
+      if (!values.any((item) => item.id == pricing.id)) {
+        values.add(pricing);
+      }
+    }
+    values.sort((a, b) => a.id.compareTo(b.id));
+    return values;
+  }
+
+  static bool isBuiltInPricing(AiUsagePricing pricing) =>
+      _builtInPricing.any((item) => item.id == pricing.id);
 
   static Future<void> _saveSettings({
     required bool autoLedger,
@@ -228,11 +321,36 @@ abstract final class AiUsageCostService {
     required int promptTokens,
     required int completionTokens,
     required int totalTokens,
+    int cachedPromptTokens = 0,
+    int imageTokens = 0,
+    int audioTokens = 0,
+    int videoTokens = 0,
+    int reasoningTokens = 0,
+    int audioSeconds = 0,
     int imageCount = 0,
     bool usageAvailable = true,
     DateTime? now,
   }) async {
     if (provider.trim().isEmpty || model.trim().isEmpty) return;
+    final normalizedPromptTokens = _readNonNegativeInt(promptTokens);
+    final normalizedCompletionTokens = _readNonNegativeInt(completionTokens);
+    final suppliedTotalTokens = _readNonNegativeInt(totalTokens);
+    final normalizedTotalTokens = suppliedTotalTokens == 0
+        ? normalizedPromptTokens + normalizedCompletionTokens
+        : suppliedTotalTokens;
+    final normalizedCachedPromptTokens = _readNonNegativeInt(
+      cachedPromptTokens,
+    );
+    final normalizedImageTokens = _readNonNegativeInt(imageTokens);
+    final normalizedAudioTokens = _readNonNegativeInt(audioTokens);
+    final normalizedVideoTokens = _readNonNegativeInt(videoTokens);
+    final normalizedReasoningTokens = _readNonNegativeInt(reasoningTokens);
+    final normalizedAudioSeconds = _readNonNegativeInt(audioSeconds);
+    final normalizedImageCount = _readNonNegativeInt(imageCount);
+    final clampedCachedPromptTokens =
+        normalizedCachedPromptTokens > normalizedPromptTokens
+            ? normalizedPromptTokens
+            : normalizedCachedPromptTokens;
     final settings = await _loadSettings();
     final pricing = settings.prices
         .where((item) => item.provider == provider && item.model == model)
@@ -240,9 +358,14 @@ abstract final class AiUsageCostService {
     final costMicros = usageAvailable
         ? _calculateCostMicros(
             pricing,
-            promptTokens: promptTokens,
-            completionTokens: completionTokens,
-            imageCount: imageCount,
+            provider: provider,
+            model: model,
+            promptTokens: normalizedPromptTokens,
+            completionTokens: normalizedCompletionTokens,
+            cachedPromptTokens: clampedCachedPromptTokens,
+            imageTokens: normalizedImageTokens,
+            audioSeconds: normalizedAudioSeconds,
+            imageCount: normalizedImageCount,
           )
         : null;
     final timestamp = now ?? DateTime.now();
@@ -255,10 +378,16 @@ abstract final class AiUsageCostService {
       'provider': provider,
       'model': model,
       'operation': operation,
-      'prompt_tokens': promptTokens,
-      'completion_tokens': completionTokens,
-      'total_tokens': totalTokens,
-      'image_count': imageCount,
+      'prompt_tokens': normalizedPromptTokens,
+      'completion_tokens': normalizedCompletionTokens,
+      'total_tokens': normalizedTotalTokens,
+      'cached_prompt_tokens': clampedCachedPromptTokens,
+      'image_tokens': normalizedImageTokens,
+      'audio_tokens': normalizedAudioTokens,
+      'video_tokens': normalizedVideoTokens,
+      'reasoning_tokens': normalizedReasoningTokens,
+      'audio_seconds': normalizedAudioSeconds,
+      'image_count': normalizedImageCount,
       'cost_micros': costMicros,
       'is_priced': costMicros == null ? 0 : 1,
       'ledger_key': ledgerKey,
@@ -277,19 +406,68 @@ abstract final class AiUsageCostService {
 
   static int? _calculateCostMicros(
     AiUsagePricing? pricing, {
+    required String provider,
+    required String model,
     required int promptTokens,
     required int completionTokens,
+    required int cachedPromptTokens,
+    required int imageTokens,
+    required int audioSeconds,
     required int imageCount,
   }) {
     if (pricing == null) return null;
-    if (promptTokens > 0 && pricing.inputMicrosPerMillion <= 0) return null;
-    if (completionTokens > 0 && pricing.outputMicrosPerMillion <= 0) {
+    final normalizedPromptTokens = _readNonNegativeInt(promptTokens);
+    final normalizedCompletionTokens = _readNonNegativeInt(completionTokens);
+    final normalizedCachedPromptTokens = _readNonNegativeInt(
+      cachedPromptTokens,
+    );
+    final cachedTokens = normalizedCachedPromptTokens > normalizedPromptTokens
+        ? normalizedPromptTokens
+        : normalizedCachedPromptTokens;
+    final uncachedTokens = normalizedPromptTokens - cachedTokens;
+    final isMimo = provider == 'mimo' || provider == 'mimo_token_plan';
+
+    // MiMo ASR is billed by audio duration, not by the token fields in the
+    // response. A missing duration must remain unpriced instead of guessing.
+    if (model == 'mimo-v2.5-asr' || audioSeconds > 0) {
+      if (audioSeconds <= 0 || pricing.audioMicrosPerHour <= 0) return null;
+      return _roundProduct(audioSeconds, pricing.audioMicrosPerHour, 3600);
+    }
+
+    if (uncachedTokens > 0 && pricing.inputMicrosPerMillion <= 0) {
       return null;
     }
-    if (imageCount > 0 && pricing.imageMicrosPerImage <= 0) return null;
-    return (promptTokens * pricing.inputMicrosPerMillion ~/ _microsPerYuan) +
-        (completionTokens * pricing.outputMicrosPerMillion ~/ _microsPerYuan) +
-        imageCount * pricing.imageMicrosPerImage;
+    if (normalizedCompletionTokens > 0 && pricing.outputMicrosPerMillion <= 0) {
+      return null;
+    }
+    final cachedInputRate = pricing.cachedInputMicrosPerMillion > 0
+        ? pricing.cachedInputMicrosPerMillion
+        : pricing.inputMicrosPerMillion;
+    if (cachedTokens > 0 && cachedInputRate <= 0) {
+      return null;
+    }
+    if (isMimo && imageTokens > 0 && normalizedPromptTokens <= 0) {
+      return null;
+    }
+    if (!isMimo && imageCount > 0 && pricing.imageMicrosPerImage <= 0) {
+      return null;
+    }
+
+    // MiMo reports image/audio/video tokens as parts of prompt_tokens. Do not
+    // add a per-image fee on top of that total. For other providers, retain
+    // the existing optional fixed image fee behavior.
+    final tokenNumerator = uncachedTokens * pricing.inputMicrosPerMillion +
+        cachedTokens * cachedInputRate +
+        normalizedCompletionTokens * pricing.outputMicrosPerMillion;
+    final tokenCostMicros =
+        (tokenNumerator + (_tokensPerMillion ~/ 2)) ~/ _tokensPerMillion;
+    return tokenCostMicros +
+        (isMimo ? 0 : imageCount * pricing.imageMicrosPerImage);
+  }
+
+  static int _roundProduct(int value, int microsPerUnit, int divisor) {
+    final numerator = value * microsPerUnit;
+    return (numerator + (divisor ~/ 2)) ~/ divisor;
   }
 
   static Future<void> _syncLedgerAggregate({
@@ -394,6 +572,11 @@ abstract final class AiUsageCostService {
       );
       item.calls++;
       item.totalTokens += record.totalTokens;
+      item.cachedPromptTokens += record.cachedPromptTokens;
+      item.imageTokens += record.imageTokens;
+      item.audioTokens += record.audioTokens;
+      item.videoTokens += record.videoTokens;
+      item.audioSeconds += record.audioSeconds;
       item.costMicros += record.costMicros ?? 0;
       if (!record.isPriced) item.unpricedCalls++;
     }

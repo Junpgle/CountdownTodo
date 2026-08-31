@@ -775,6 +775,12 @@ class LLMService {
         promptTokens: usage?.promptTokens ?? 0,
         completionTokens: usage?.completionTokens ?? 0,
         totalTokens: usage?.totalTokens ?? 0,
+        cachedPromptTokens: usage?.cachedPromptTokens ?? 0,
+        imageTokens: usage?.imageTokens ?? 0,
+        audioTokens: usage?.audioTokens ?? 0,
+        videoTokens: usage?.videoTokens ?? 0,
+        reasoningTokens: usage?.reasoningTokens ?? 0,
+        audioSeconds: usage?.audioSeconds ?? 0,
         usageAvailable: usage != null,
       );
     } catch (_) {
@@ -864,6 +870,12 @@ class LLMService {
         promptTokens: usage?.promptTokens ?? 0,
         completionTokens: usage?.completionTokens ?? 0,
         totalTokens: usage?.totalTokens ?? 0,
+        cachedPromptTokens: usage?.cachedPromptTokens ?? 0,
+        imageTokens: usage?.imageTokens ?? 0,
+        audioTokens: usage?.audioTokens ?? 0,
+        videoTokens: usage?.videoTokens ?? 0,
+        reasoningTokens: usage?.reasoningTokens ?? 0,
+        audioSeconds: usage?.audioSeconds ?? 0,
         usageAvailable: usage != null,
       );
     } catch (_) {
@@ -1004,6 +1016,12 @@ class LLMService {
         promptTokens: usage?.promptTokens ?? 0,
         completionTokens: usage?.completionTokens ?? 0,
         totalTokens: usage?.totalTokens ?? 0,
+        cachedPromptTokens: usage?.cachedPromptTokens ?? 0,
+        imageTokens: usage?.imageTokens ?? 0,
+        audioTokens: usage?.audioTokens ?? 0,
+        videoTokens: usage?.videoTokens ?? 0,
+        reasoningTokens: usage?.reasoningTokens ?? 0,
+        audioSeconds: usage?.audioSeconds ?? 0,
         imageCount: 1,
         usageAvailable: usage != null,
       );

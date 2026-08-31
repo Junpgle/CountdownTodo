@@ -11,10 +11,18 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 51;
+  static const int currentVersion = 52;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 52,
+      title: 'MiMo 精确计费',
+      changes: [
+        '保存缓存输入、图像/音频/视频和推理 Token 等 MiMo usage 明细。',
+        '按缓存输入、未缓存输入和输出价格计算 MiMo 按量费用，ASR 按音频时长计费。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 51,
       title: '贷款管理',

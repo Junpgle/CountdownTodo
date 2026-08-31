@@ -824,6 +824,12 @@ class DatabaseHelper {
         prompt_tokens INTEGER NOT NULL DEFAULT 0,
         completion_tokens INTEGER NOT NULL DEFAULT 0,
         total_tokens INTEGER NOT NULL DEFAULT 0,
+        cached_prompt_tokens INTEGER NOT NULL DEFAULT 0,
+        image_tokens INTEGER NOT NULL DEFAULT 0,
+        audio_tokens INTEGER NOT NULL DEFAULT 0,
+        video_tokens INTEGER NOT NULL DEFAULT 0,
+        reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+        audio_seconds INTEGER NOT NULL DEFAULT 0,
         image_count INTEGER NOT NULL DEFAULT 0,
         cost_micros INTEGER,
         is_priced INTEGER NOT NULL DEFAULT 0,
@@ -831,6 +837,22 @@ class DatabaseHelper {
         created_at INTEGER NOT NULL
       )
     ''');
+    final info = await db.rawQuery('PRAGMA table_info(ai_usage_records)');
+    const columnsToAdd = <String, String>{
+      'cached_prompt_tokens': 'INTEGER NOT NULL DEFAULT 0',
+      'image_tokens': 'INTEGER NOT NULL DEFAULT 0',
+      'audio_tokens': 'INTEGER NOT NULL DEFAULT 0',
+      'video_tokens': 'INTEGER NOT NULL DEFAULT 0',
+      'reasoning_tokens': 'INTEGER NOT NULL DEFAULT 0',
+      'audio_seconds': 'INTEGER NOT NULL DEFAULT 0',
+    };
+    for (final entry in columnsToAdd.entries) {
+      if (!info.any((row) => row['name'] == entry.key)) {
+        await db.execute(
+          'ALTER TABLE ai_usage_records ADD COLUMN ${entry.key} ${entry.value}',
+        );
+      }
+    }
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_ai_usage_records_created '
       'ON ai_usage_records(created_at DESC)',
@@ -895,7 +917,7 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
-            if (oldVersion < 49) {
+            if (oldVersion < 52) {
               await ensureAiUsageSchema(db);
             }
             if (oldVersion < 51) {

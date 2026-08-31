@@ -11,11 +11,23 @@ class AiTokenUsage {
   final int promptTokens;
   final int completionTokens;
   final int totalTokens;
+  final int cachedPromptTokens;
+  final int imageTokens;
+  final int audioTokens;
+  final int videoTokens;
+  final int reasoningTokens;
+  final int audioSeconds;
 
   const AiTokenUsage({
     this.promptTokens = 0,
     this.completionTokens = 0,
     this.totalTokens = 0,
+    this.cachedPromptTokens = 0,
+    this.imageTokens = 0,
+    this.audioTokens = 0,
+    this.videoTokens = 0,
+    this.reasoningTokens = 0,
+    this.audioSeconds = 0,
   });
 
   static AiTokenUsage? fromJson(Object? raw) {
@@ -26,7 +38,27 @@ class AiTokenUsage {
     final completionTokens =
         _readInt(json['completion_tokens'] ?? json['output_tokens']);
     final totalTokens = _readInt(json['total_tokens']);
-    if (promptTokens == 0 && completionTokens == 0 && totalTokens == 0) {
+    final promptDetails = _asMap(
+      json['prompt_tokens_details'] ?? json['input_tokens_details'],
+    );
+    final completionDetails = _asMap(
+      json['completion_tokens_details'] ?? json['output_tokens_details'],
+    );
+    final cachedPromptTokens = _readInt(promptDetails?['cached_tokens']);
+    final imageTokens = _readInt(promptDetails?['image_tokens']);
+    final audioTokens = _readInt(promptDetails?['audio_tokens']);
+    final videoTokens = _readInt(promptDetails?['video_tokens']);
+    final reasoningTokens = _readInt(completionDetails?['reasoning_tokens']);
+    final audioSeconds = _readInt(json['seconds'] ?? json['audio_seconds']);
+    if (promptTokens == 0 &&
+        completionTokens == 0 &&
+        totalTokens == 0 &&
+        cachedPromptTokens == 0 &&
+        imageTokens == 0 &&
+        audioTokens == 0 &&
+        videoTokens == 0 &&
+        reasoningTokens == 0 &&
+        audioSeconds == 0) {
       return null;
     }
     return AiTokenUsage(
@@ -34,12 +66,26 @@ class AiTokenUsage {
       completionTokens: completionTokens,
       totalTokens:
           totalTokens == 0 ? promptTokens + completionTokens : totalTokens,
+      cachedPromptTokens:
+          cachedPromptTokens > promptTokens ? promptTokens : cachedPromptTokens,
+      imageTokens: imageTokens,
+      audioTokens: audioTokens,
+      videoTokens: videoTokens,
+      reasoningTokens: reasoningTokens,
+      audioSeconds: audioSeconds,
     );
   }
 
+  static Map<String, dynamic>? _asMap(Object? value) {
+    if (value is! Map) return null;
+    return Map<String, dynamic>.from(value);
+  }
+
   static int _readInt(Object? value) {
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
+    final parsed = value is num
+        ? value.toInt()
+        : int.tryParse(value?.toString() ?? '') ?? 0;
+    return parsed < 0 ? 0 : parsed;
   }
 }
 
@@ -418,6 +464,12 @@ class AiChatService {
         promptTokens: usage?.promptTokens ?? 0,
         completionTokens: usage?.completionTokens ?? 0,
         totalTokens: usage?.totalTokens ?? 0,
+        cachedPromptTokens: usage?.cachedPromptTokens ?? 0,
+        imageTokens: usage?.imageTokens ?? 0,
+        audioTokens: usage?.audioTokens ?? 0,
+        videoTokens: usage?.videoTokens ?? 0,
+        reasoningTokens: usage?.reasoningTokens ?? 0,
+        audioSeconds: usage?.audioSeconds ?? 0,
         usageAvailable: usage != null,
       );
     } catch (_) {
