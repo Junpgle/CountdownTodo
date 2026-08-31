@@ -54,6 +54,13 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
   Future<void> _editPricing([AiUsagePricing? current]) async {
     final provider = TextEditingController(text: current?.provider ?? 'zhipu');
     final model = TextEditingController(text: current?.model ?? '');
+    final cachedInput = TextEditingController(
+      text: current == null
+          ? ''
+          : AiUsageCostService.microsToYuan(
+              current.cachedInputMicrosPerMillion,
+            ),
+    );
     final input = TextEditingController(
       text: current == null
           ? ''
@@ -68,6 +75,11 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
       text: current == null
           ? ''
           : AiUsageCostService.microsToYuan(current.imageMicrosPerImage),
+    );
+    final audio = TextEditingController(
+      text: current == null
+          ? ''
+          : AiUsageCostService.microsToYuan(current.audioMicrosPerHour),
     );
     final result = await showDialog<AiUsagePricing>(
       context: context,
@@ -86,6 +98,13 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
                 decoration: const InputDecoration(labelText: '模型 ID'),
               ),
               TextField(
+                controller: cachedInput,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration:
+                    const InputDecoration(labelText: '缓存输入 ¥ / 百万 Token（可选）'),
+              ),
+              TextField(
                 controller: input,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
@@ -101,11 +120,18 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
                 controller: image,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: '图片 ¥ / 张（可选）'),
+                decoration:
+                    const InputDecoration(labelText: '图片固定费 ¥ / 张（非 MiMo 可选）'),
+              ),
+              TextField(
+                controller: audio,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: '音频 ¥ / 小时（可选）'),
               ),
               const SizedBox(height: 12),
               const Text(
-                '单价由你按服务商当前账单填写。未配置或 API 未返回 usage 的调用会保留明细，但不会自动入账。',
+                'MiMo 默认按量价格已内置；图片/音频/视频 Token 会记录在 usage 明细中，MiMo ASR 按音频时长计费。Token Plan 额度不按按量价格自动折算。',
                 style: TextStyle(fontSize: 12),
               ),
             ],
@@ -126,12 +152,16 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
                 AiUsagePricing(
                   provider: provider.text.trim(),
                   model: model.text.trim(),
+                  cachedInputMicrosPerMillion:
+                      AiUsageCostService.yuanToMicros(cachedInput.text),
                   inputMicrosPerMillion:
                       AiUsageCostService.yuanToMicros(input.text),
                   outputMicrosPerMillion:
                       AiUsageCostService.yuanToMicros(output.text),
                   imageMicrosPerImage:
                       AiUsageCostService.yuanToMicros(image.text),
+                  audioMicrosPerHour:
+                      AiUsageCostService.yuanToMicros(audio.text),
                 ),
               );
             },
@@ -142,9 +172,11 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
     );
     provider.dispose();
     model.dispose();
+    cachedInput.dispose();
     input.dispose();
     output.dispose();
     image.dispose();
+    audio.dispose();
     if (result == null) return;
     await AiUsageCostService.savePricing(result);
     await _load();
@@ -224,8 +256,11 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
                           leading: const Icon(Icons.auto_awesome_outlined),
                           title: Text('${item.provider} · ${item.model}'),
                           subtitle: Text(
-                              '${item.calls} 次 · ${item.totalTokens} Token'
-                              '${item.unpricedCalls == 0 ? '' : ' · ${item.unpricedCalls} 次待定价'}'),
+                            '${item.calls} 次 · ${item.totalTokens} Token'
+                            '${item.cachedPromptTokens == 0 ? '' : ' · 缓存 ${item.cachedPromptTokens}'}'
+                            '${item.imageTokens == 0 ? '' : ' · 图片 ${item.imageTokens}'}'
+                            '${item.unpricedCalls == 0 ? '' : ' · ${item.unpricedCalls} 次待定价'}',
+                          ),
                           trailing: Text(
                               AiUsageCostService.formatMicros(item.costMicros)),
                         ),
@@ -250,11 +285,16 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
                     ..._pricing.map(
                       (item) => Card(
                         child: ListTile(
-                          title: Text('${item.provider} · ${item.model}'),
+                          title: Text(
+                            '${item.provider} · ${item.model}'
+                            '${AiUsageCostService.isBuiltInPricing(item) ? ' · 内置' : ''}',
+                          ),
                           subtitle: Text(
-                            '输入 ${AiUsageCostService.microsToYuan(item.inputMicrosPerMillion)} / 百万 · '
-                            '输出 ${AiUsageCostService.microsToYuan(item.outputMicrosPerMillion)} / 百万'
-                            '${item.imageMicrosPerImage == 0 ? '' : ' · 图片 ${AiUsageCostService.microsToYuan(item.imageMicrosPerImage)} / 张'}',
+                            '${item.cachedInputMicrosPerMillion == 0 ? '' : '缓存 ${AiUsageCostService.microsToYuan(item.cachedInputMicrosPerMillion)} / 百万 · '}'
+                            '${item.inputMicrosPerMillion == 0 ? '' : '输入 ${AiUsageCostService.microsToYuan(item.inputMicrosPerMillion)} / 百万 · '}'
+                            '${item.outputMicrosPerMillion == 0 ? '' : '输出 ${AiUsageCostService.microsToYuan(item.outputMicrosPerMillion)} / 百万'}'
+                            '${item.imageMicrosPerImage == 0 ? '' : ' · 图片 ${AiUsageCostService.microsToYuan(item.imageMicrosPerImage)} / 张'}'
+                            '${item.audioMicrosPerHour == 0 ? '' : ' · 音频 ${AiUsageCostService.microsToYuan(item.audioMicrosPerHour)} / 小时'}',
                           ),
                           trailing: IconButton(
                             icon: const Icon(Icons.edit_outlined),
@@ -274,8 +314,12 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
                     (item) => ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 4),
                       title: Text('${item.provider} · ${item.model}'),
-                      subtitle:
-                          Text('${item.operation} · ${item.totalTokens} Token'),
+                      subtitle: Text(
+                        '${item.operation} · ${item.totalTokens} Token'
+                        '${item.cachedPromptTokens == 0 ? '' : ' · 缓存 ${item.cachedPromptTokens}'}'
+                        '${item.imageTokens == 0 ? '' : ' · 图片 ${item.imageTokens}'}'
+                        '${item.audioSeconds == 0 ? '' : ' · 音频 ${item.audioSeconds}s'}',
+                      ),
                       trailing: Text(item.isPriced
                           ? AiUsageCostService.formatMicros(
                               item.costMicros ?? 0)
