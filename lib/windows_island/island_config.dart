@@ -21,8 +21,14 @@ class IslandConfig {
 
   // ── Timing ───────────────────────────────────────────────────────────────
 
-  /// File IPC polling interval
+  /// Fast fallback used only when Windows directory notifications fail.
   static const Duration ipcPollInterval = Duration(milliseconds: 80);
+
+  /// Low-frequency safety check while event-driven IPC watching is healthy.
+  static const Duration ipcWatchFallbackInterval = Duration(seconds: 5);
+
+  /// Coalesces the multiple filesystem events emitted by a single write.
+  static const Duration ipcWatchDebounce = Duration(milliseconds: 40);
 
   /// Window ready timeout
   static const Duration readyTimeout = Duration(milliseconds: 2000);

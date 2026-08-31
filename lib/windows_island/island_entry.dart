@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'island_ui.dart';
 import 'island_payload.dart';
 import 'island_config.dart';
+import 'island_ipc_file_watcher.dart';
 import 'island_ipc_paths.dart';
 import 'island_win32.dart';
 import 'island_reminder.dart';
@@ -217,10 +218,14 @@ Future<void> islandMain(List<String> args) async {
   }
 
   await appendIslandIpcLog('islandMain entered args=${args.join('|')}');
-  await loadLatestPayloadFromFile();
-  Timer.periodic(IslandConfig.ipcPollInterval, (_) async {
-    await loadLatestPayloadFromFile();
-  });
+  final payloadFileWatcher = IslandIpcFileWatcher(
+    resolveFile: _getPayloadFile,
+    onFileChanged: loadLatestPayloadFromFile,
+    fallbackInterval: IslandConfig.ipcWatchFallbackInterval,
+    degradedPollInterval: IslandConfig.ipcPollInterval,
+    eventDebounce: IslandConfig.ipcWatchDebounce,
+  );
+  await payloadFileWatcher.start();
 
   Future.delayed(IslandConfig.windowRestoreDelay, () {
     _restoreWindowPosition();
