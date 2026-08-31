@@ -8,6 +8,7 @@ import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'course_service.dart';
+import 'external_share_payload_classifier.dart';
 import '../storage_service.dart';
 import '../models.dart';
 import '../features/finance/models/finance_models.dart';
@@ -78,8 +79,9 @@ class ExternalShareHandler {
     await Future.delayed(const Duration(milliseconds: 500));
 
     final media = files.first;
-    final isSharedText = media.type == SharedMediaType.text ||
-        media.mimeType?.toLowerCase().startsWith('text/') == true;
+    final firstPath = media.path.trim();
+    final isSharedText =
+        await ExternalSharePayloadClassifier.isInlineText(media);
     if (isSharedText) {
       try {
         final text = _sharedTextPayload(media);
@@ -103,7 +105,6 @@ class ExternalShareHandler {
       return;
     }
 
-    final firstPath = media.path;
     final isValidFile = firstPath.isNotEmpty &&
         (firstPath.contains('.') ||
             media.type == SharedMediaType.image ||
