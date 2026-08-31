@@ -9,7 +9,16 @@ import '../widgets/floating_glass_control.dart';
 class AnimationSettingsPage extends StatefulWidget {
   final bool isEmbedded;
 
-  const AnimationSettingsPage({super.key, this.isEmbedded = false});
+  /// Allows widget tests to exercise Android's transient system override on
+  /// non-Android hosts. Production callers should leave this unset.
+  @visibleForTesting
+  final bool? powerSaveModeOverride;
+
+  const AnimationSettingsPage({
+    super.key,
+    this.isEmbedded = false,
+    this.powerSaveModeOverride,
+  });
 
   @override
   State<AnimationSettingsPage> createState() => _AnimationSettingsPageState();
@@ -31,10 +40,48 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   AnimationPreset? _preset = AnimationPreset.balanced;
   AnimationSpeedPreset? _speedPreset = AnimationSpeedPreset.elegant;
 
+  bool get _powerSaveModeEnabled =>
+      widget.powerSaveModeOverride ?? PowerSaveModeService.isEnabled;
+
   @override
   void initState() {
     super.initState();
+    if (widget.powerSaveModeOverride == null) {
+      PowerSaveModeService.enabledListenable.addListener(
+        _handlePowerSaveModeChanged,
+      );
+    }
     _loadSettings();
+  }
+
+  @override
+  void didUpdateWidget(covariant AnimationSettingsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.powerSaveModeOverride == widget.powerSaveModeOverride) return;
+    if (oldWidget.powerSaveModeOverride == null) {
+      PowerSaveModeService.enabledListenable.removeListener(
+        _handlePowerSaveModeChanged,
+      );
+    }
+    if (widget.powerSaveModeOverride == null) {
+      PowerSaveModeService.enabledListenable.addListener(
+        _handlePowerSaveModeChanged,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    if (widget.powerSaveModeOverride == null) {
+      PowerSaveModeService.enabledListenable.removeListener(
+        _handlePowerSaveModeChanged,
+      );
+    }
+    super.dispose();
+  }
+
+  void _handlePowerSaveModeChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadSettings() async {
@@ -186,6 +233,19 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final powerSaveModeEnabled = _powerSaveModeEnabled;
+    final effectiveAnimationsEnabled =
+        _animationsEnabled && !powerSaveModeEnabled;
+    final effectiveScreenRadiusEnabled =
+        _screenRadiusEnabled && !powerSaveModeEnabled;
+    final effectivePredictiveBackEnabled =
+        _predictiveBackEnabled && !powerSaveModeEnabled;
+    final effectiveMotionBlurEnabled =
+        _motionBlurEnabled && !powerSaveModeEnabled;
+    final effectiveLayerBlurEnabled =
+        _layerBlurEnabled && !powerSaveModeEnabled;
+    final effectiveLiquidGlassEnabled =
+        _liquidGlassEnabled && !powerSaveModeEnabled;
     return Scaffold(
       extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
@@ -216,41 +276,36 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                 isDesktop ? 32 : 16,
               ),
               children: [
-                if (AppPlatform.isAndroid) ...[
-                  ValueListenableBuilder<bool>(
-                    valueListenable: PowerSaveModeService.enabledListenable,
-                    builder: (context, enabled, _) {
-                      return Card(
-                        elevation: 0,
-                        color: enabled
-                            ? colorScheme.primaryContainer
-                                .withValues(alpha: 0.72)
-                            : colorScheme.surfaceContainerLow,
-                        child: ListTile(
-                          leading: Icon(
-                            Icons.battery_saver_rounded,
-                            color: enabled
-                                ? colorScheme.onPrimaryContainer
-                                : colorScheme.primary,
-                          ),
-                          title: const Text('应用省电模式'),
-                          subtitle: Text(
-                            enabled
-                                ? '已跟随 Android 系统自动开启：暂停装饰动画和玻璃特效，并降低传感器与后台探测频率。'
-                                : '自动跟随 Android 系统省电模式；退出系统省电后会恢复你的动效偏好。',
-                          ),
-                          trailing: Text(
-                            enabled ? '已开启' : '跟随系统',
-                            style: TextStyle(
-                              color: enabled
-                                  ? colorScheme.onPrimaryContainer
-                                  : colorScheme.onSurfaceVariant,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
+                if (AppPlatform.isAndroid ||
+                    widget.powerSaveModeOverride != null) ...[
+                  Card(
+                    elevation: 0,
+                    color: powerSaveModeEnabled
+                        ? colorScheme.primaryContainer.withValues(alpha: 0.72)
+                        : colorScheme.surfaceContainerLow,
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.battery_saver_rounded,
+                        color: powerSaveModeEnabled
+                            ? colorScheme.onPrimaryContainer
+                            : colorScheme.primary,
+                      ),
+                      title: const Text('应用省电模式'),
+                      subtitle: Text(
+                        powerSaveModeEnabled
+                            ? '已跟随 Android 系统自动开启：暂停装饰动画和玻璃特效，并降低传感器与后台探测频率。'
+                            : '自动跟随 Android 系统省电模式；退出系统省电后会恢复你的动效偏好。',
+                      ),
+                      trailing: Text(
+                        powerSaveModeEnabled ? '已开启' : '跟随系统',
+                        style: TextStyle(
+                          color: powerSaveModeEnabled
+                              ? colorScheme.onPrimaryContainer
+                              : colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
                         ),
-                      );
-                    },
+                      ),
+                    ),
                   ),
                   SizedBox(height: isDesktop ? 20 : 16),
                 ],
@@ -272,12 +327,34 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                 ),
                 SizedBox(height: isDesktop ? 28 : 24),
                 Padding(
-                  padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
-                  child: Text('核心特效开关',
-                      style: TextStyle(
+                  padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '核心特效开关',
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
-                          color: colorScheme.onSurfaceVariant)),
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (powerSaveModeEnabled) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '当前显示省电模式下的实际状态；退出后自动恢复原有偏好。懒加载优化继续启用以减少无效渲染。',
+                          key: const ValueKey<String>(
+                            'animation-settings-power-save-effective-note',
+                          ),
+                          style: TextStyle(
+                            fontSize: 11,
+                            height: 1.35,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
                 GridView.count(
                   padding: EdgeInsets.zero,
@@ -291,20 +368,33 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                     _buildToggleCard(
                       isDesktop: isDesktop,
                       title: '启用页面动画',
-                      subtitle: '开启/关闭过渡动画',
+                      subtitle: _effectSubtitle(
+                        normal: '开启/关闭过渡动画',
+                        preferredEnabled: _animationsEnabled,
+                      ),
                       icon: Icons.animation,
-                      value: _animationsEnabled,
-                      onChanged: (val) {
-                        setState(() => _animationsEnabled = val);
-                        _update(enabled: val);
-                      },
+                      value: effectiveAnimationsEnabled,
+                      switchKey: const ValueKey<String>(
+                        'animation-settings-page-animation-switch',
+                      ),
+                      onChanged: powerSaveModeEnabled
+                          ? null
+                          : (val) {
+                              setState(() => _animationsEnabled = val);
+                              _update(enabled: val);
+                            },
                     ),
                     _buildToggleCard(
                       isDesktop: isDesktop,
                       title: '懒加载优化',
-                      subtitle: '动画进行中再渲染内容',
+                      subtitle: powerSaveModeEnabled
+                          ? '省电模式下继续启用，减少无效渲染'
+                          : '动画进行中再渲染内容',
                       icon: Icons.hourglass_empty,
                       value: _lazyLoadEnabled,
+                      switchKey: const ValueKey<String>(
+                        'animation-settings-lazy-load-switch',
+                      ),
                       onChanged: (val) {
                         setState(() => _lazyLoadEnabled = val);
                         _update(lazyLoad: val);
@@ -313,64 +403,103 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                     _buildToggleCard(
                       isDesktop: isDesktop,
                       title: '屏幕圆角适配',
-                      subtitle: '动画过程中适配屏幕圆角',
+                      subtitle: _effectSubtitle(
+                        normal: '动画过程中适配屏幕圆角',
+                        preferredEnabled: _screenRadiusEnabled,
+                      ),
                       icon: Icons.rounded_corner,
-                      value: _screenRadiusEnabled,
-                      onChanged: (val) {
-                        setState(() => _screenRadiusEnabled = val);
-                        _update(screenRadius: val);
-                      },
+                      value: effectiveScreenRadiusEnabled,
+                      switchKey: const ValueKey<String>(
+                        'animation-settings-screen-radius-switch',
+                      ),
+                      onChanged: powerSaveModeEnabled
+                          ? null
+                          : (val) {
+                              setState(() => _screenRadiusEnabled = val);
+                              _update(screenRadius: val);
+                            },
                     ),
                     if (!AppPlatform.isWeb)
                       _buildToggleCard(
                         isDesktop: isDesktop,
                         title: '预测性返回',
-                        subtitle: 'Android 14+ 返回手势',
+                        subtitle: _effectSubtitle(
+                          normal: 'Android 14+ 返回手势',
+                          preferredEnabled: _predictiveBackEnabled,
+                        ),
                         icon: Icons.swipe_left,
-                        value: _predictiveBackEnabled,
-                        onChanged: (val) {
-                          setState(() => _predictiveBackEnabled = val);
-                          _update(predictiveBack: val);
-                        },
+                        value: effectivePredictiveBackEnabled,
+                        switchKey: const ValueKey<String>(
+                          'animation-settings-predictive-back-switch',
+                        ),
+                        onChanged: powerSaveModeEnabled
+                            ? null
+                            : (val) {
+                                setState(() => _predictiveBackEnabled = val);
+                                _update(predictiveBack: val);
+                              },
                       ),
                     _buildToggleCard(
                       isDesktop: isDesktop,
                       title: '运动模糊',
-                      subtitle: '滑动动态模糊 (影响性能)',
+                      subtitle: _effectSubtitle(
+                        normal: '滑动动态模糊 (影响性能)',
+                        preferredEnabled: _motionBlurEnabled,
+                      ),
                       icon: Icons.blur_linear,
-                      value: _motionBlurEnabled,
-                      onChanged: (val) {
-                        setState(() => _motionBlurEnabled = val);
-                        _update(motionBlur: val);
-                      },
+                      value: effectiveMotionBlurEnabled,
+                      switchKey: const ValueKey<String>(
+                        'animation-settings-motion-blur-switch',
+                      ),
+                      onChanged: powerSaveModeEnabled
+                          ? null
+                          : (val) {
+                              setState(() => _motionBlurEnabled = val);
+                              _update(motionBlur: val);
+                            },
                     ),
                     _buildToggleCard(
                       isDesktop: isDesktop,
                       title: '层级模糊',
-                      subtitle: '背景页面模糊 (影响性能)',
+                      subtitle: _effectSubtitle(
+                        normal: '背景页面模糊 (影响性能)',
+                        preferredEnabled: _layerBlurEnabled,
+                      ),
                       icon: Icons.blur_on,
-                      value: _layerBlurEnabled,
-                      onChanged: (val) {
-                        setState(() => _layerBlurEnabled = val);
-                        _update(layerBlur: val);
-                      },
+                      value: effectiveLayerBlurEnabled,
+                      switchKey: const ValueKey<String>(
+                        'animation-settings-layer-blur-switch',
+                      ),
+                      onChanged: powerSaveModeEnabled
+                          ? null
+                          : (val) {
+                              setState(() => _layerBlurEnabled = val);
+                              _update(layerBlur: val);
+                            },
                     ),
                     _buildToggleCard(
                       isDesktop: isDesktop,
                       title: 'Liquid Glass',
-                      subtitle: '全应用玻璃材质、折射与半透明层次 (可选)',
+                      subtitle: _effectSubtitle(
+                        normal: '全应用玻璃材质、折射与半透明层次 (可选)',
+                        preferredEnabled: _liquidGlassEnabled,
+                      ),
                       icon: Icons.water_drop_rounded,
-                      value: _liquidGlassEnabled,
-                      onChanged: _liquidGlassMutationPending
-                          ? null
-                          : _setLiquidGlassEnabled,
+                      value: effectiveLiquidGlassEnabled,
+                      switchKey: const ValueKey<String>(
+                        'animation-settings-liquid-glass-switch',
+                      ),
+                      onChanged:
+                          powerSaveModeEnabled || _liquidGlassMutationPending
+                              ? null
+                              : _setLiquidGlassEnabled,
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
                 AnimatedOpacity(
                   duration: const Duration(milliseconds: 180),
-                  opacity: _liquidGlassEnabled ? 1 : 0.58,
+                  opacity: effectiveLiquidGlassEnabled ? 1 : 0.58,
                   child: Card(
                     elevation: 1,
                     shape: RoundedRectangleBorder(
@@ -413,11 +542,12 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                                 ),
                               ],
                               selected: {_liquidGlassMode},
-                              onSelectionChanged: !_liquidGlassEnabled ||
-                                      _liquidGlassMutationPending
-                                  ? null
-                                  : (selection) =>
-                                      _setLiquidGlassMode(selection.first),
+                              onSelectionChanged:
+                                  !effectiveLiquidGlassEnabled ||
+                                          _liquidGlassMutationPending
+                                      ? null
+                                      : (selection) =>
+                                          _setLiquidGlassMode(selection.first),
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -431,10 +561,12 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                               color: colorScheme.onSurfaceVariant,
                             ),
                           ),
-                          if (!_liquidGlassEnabled) ...[
+                          if (!effectiveLiquidGlassEnabled) ...[
                             const SizedBox(height: 6),
                             Text(
-                              '开启 Liquid Glass 后可切换模式',
+                              powerSaveModeEnabled && _liquidGlassEnabled
+                                  ? '省电模式下已暂停；退出后恢复${_liquidGlassMode == LiquidGlassEffectMode.standard ? '标准' : '增强'}模式'
+                                  : '开启 Liquid Glass 后可切换模式',
                               style: TextStyle(
                                 fontSize: 11,
                                 color: colorScheme.outline,
@@ -847,6 +979,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     required IconData icon,
     required bool value,
     required ValueChanged<bool>? onChanged,
+    Key? switchKey,
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -876,6 +1009,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       child: FittedBox(
         fit: BoxFit.fill,
         child: LiquidGlassSwitch(
+          key: switchKey,
           value: value,
           onChanged: onChanged,
           activeThumbColor: colorScheme.primary,
@@ -956,5 +1090,13 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
               ),
       ),
     );
+  }
+
+  String _effectSubtitle({
+    required String normal,
+    required bool preferredEnabled,
+  }) {
+    if (!_powerSaveModeEnabled) return normal;
+    return preferredEnabled ? '省电模式下已暂停，退出后自动恢复' : '已关闭，退出省电后保持关闭';
   }
 }
