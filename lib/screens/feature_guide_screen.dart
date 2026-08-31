@@ -249,7 +249,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   PermissionStatus? _notificationStatus;
   bool _hasUsageStats = false;
   bool _hasExactAlarm = false;
-  bool _ignoringBatteryOptimizations = false;
   bool _showDatabaseUpdatePage = false;
   DateTime? _minorBirthDate;
   bool _minorBirthDateSaving = false;
@@ -418,7 +417,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       return [
         _buildAndroidFeaturePage1,
         _buildAndroidFeaturePage2,
-        _buildAndroidFeaturePage3,
         _buildAndroidWidgetGuidePage,
         _buildMinorModeGuidePage,
         _buildGlobalCourseSetupPage,
@@ -437,7 +435,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       if (!_hasUsageStats) _buildAndroidFeaturePage1,
       if (_notificationStatus?.isGranted != true || !_hasExactAlarm)
         _buildAndroidFeaturePage2,
-      if (!_ignoringBatteryOptimizations) _buildAndroidFeaturePage3,
       if (!_minorModeGuideConfigured) _buildMinorModeGuidePage,
       if (!_semesterEnabled) _buildGlobalCourseSetupPage,
       if (!_guideOffered) _buildGlobalThemeSetupPage,
@@ -775,7 +772,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
     bool hasUsage = false;
     bool hasExact = false;
-    bool ignoringBattery = false;
 
     if (AppPlatform.isAndroid) {
       try {
@@ -787,13 +783,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         hasExact =
             await platform.invokeMethod('checkExactAlarmPermission') ?? true;
       } catch (_) {}
-      try {
-        ignoringBattery = await Permission.ignoreBatteryOptimizations.isGranted;
-      } catch (_) {}
     } else {
       hasUsage = true;
       hasExact = true;
-      ignoringBattery = true;
     }
 
     if (mounted) {
@@ -801,7 +793,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         _notificationStatus = notifStatus;
         _hasUsageStats = hasUsage;
         _hasExactAlarm = hasExact;
-        _ignoringBatteryOptimizations = ignoringBattery;
       });
     }
   }
@@ -1431,7 +1422,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           _buildCapabilityTile(
             icon: Icons.notifications_off_outlined,
             title: '系统级通知与后台保活受限',
-            subtitle: '网页端不提供 Android 精确闹钟、电池优化、锁屏常驻通知等系统级引导。',
+            subtitle: '网页端不提供 Android 精确闹钟、系统通知与使用情况访问等系统级引导。',
             color: scheme.error,
             isLimited: true,
           ),
@@ -1642,34 +1633,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
               AppPermissionKind.exactAlarm,
             );
           },
-        ),
-      ],
-    ));
-  }
-
-  Widget _buildAndroidFeaturePage3() {
-    return _buildPageContainer(
-        content: Column(
-      children: [
-        const SizedBox(height: 16),
-        _buildStepHeader(
-          icon: Icons.battery_charging_full_outlined,
-          iconColor: Colors.orange,
-          title: '番茄钟与后台长驻',
-          subtitle: '为了体验完美的番茄钟跨端同步（WebSocket）与避免锁屏后被系统盲目杀后台，我们需要调整电池优化。',
-        ),
-        _buildMediaAsset('assets/guide_media/android_return_desktop.webm'),
-        const SizedBox(height: 24),
-        _buildPermissionTile(
-          title: '忽略电池优化',
-          subtitle: '提升进程优先级，避免长时间锁屏专注时被误杀',
-          isGranted: _ignoringBatteryOptimizations,
-          onRequest: () async {
-            await _permissionCoordinator.request(
-              AppPermissionKind.batteryOptimization,
-            );
-          },
-          optional: true,
         ),
       ],
     ));

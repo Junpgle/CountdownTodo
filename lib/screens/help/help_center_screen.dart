@@ -405,7 +405,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
             '精确闹钟权限：确保按时推送提醒（Android）。',
             if (!kIsWeb && AppPlatform.isAndroid) ...[
               '使用情况权限：用于屏幕时间统计（Android）。',
-              '电池优化：防止专注时被系统杀后台（Android）。',
+              '电池优化：默认建议保留系统优化；仅在锁屏跨端实时控制持续异常时再手动调整（Android）。',
             ],
             if (!kIsWeb && AppPlatform.isMacOS) ...[
               '通知权限：macOS 系统通知。',
