@@ -190,7 +190,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     'habits': true,
     'finance': true,
   };
-  Timer? _courseTimer;
+  Timer? _dashboardMinuteTimer;
   final Set<String> _coursesWithScheduledAlarms = {};
   final Set<String> _todosWithScheduledAlarms = {};
   String? _activeCourseNotificationKey;
@@ -306,7 +306,6 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   Timer? _collaborativeSyncDebouncer; // 🚀 协同同步防抖器
   Timer? _syncWatchdogTimer;
   int _syncAttemptGeneration = 0;
-  Timer? _bannerRefreshTimer; // 🚀 新增：Banner 倒计时刷新定时器
   Timer? _todoNotificationDebouncer;
   Timer? _teamPendingDebouncer;
   Timer? _announcementDebouncer;

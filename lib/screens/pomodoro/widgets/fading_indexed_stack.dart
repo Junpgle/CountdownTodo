@@ -64,6 +64,7 @@ class _FadingIndexedStackState extends State<FadingIndexedStack>
 
   @override
   Widget build(BuildContext context) {
+    final parentTickerEnabled = TickerMode.valuesOf(context).enabled;
     return ValueListenableBuilder<bool>(
       valueListenable: AndroidWindowRenderingPolicy.disableShaderContentFade,
       builder: (context, disableTransitions, child) {
@@ -73,7 +74,10 @@ class _FadingIndexedStackState extends State<FadingIndexedStack>
         if (disableTransitions) {
           return IndexedStack(
             index: widget.index,
-            children: widget.children,
+            children: _tickerScopedChildren(
+              activeIndex: widget.index,
+              parentTickerEnabled: parentTickerEnabled,
+            ),
           );
         }
 
@@ -88,7 +92,10 @@ class _FadingIndexedStackState extends State<FadingIndexedStack>
                 position: _slideAnim,
                 child: IndexedStack(
                   index: showPrev ? _prevIndex : _displayIndex,
-                  children: widget.children,
+                  children: _tickerScopedChildren(
+                    activeIndex: showPrev ? _prevIndex : _displayIndex,
+                    parentTickerEnabled: parentTickerEnabled,
+                  ),
                 ),
               ),
             );
@@ -96,5 +103,17 @@ class _FadingIndexedStackState extends State<FadingIndexedStack>
         );
       },
     );
+  }
+
+  List<Widget> _tickerScopedChildren({
+    required int activeIndex,
+    required bool parentTickerEnabled,
+  }) {
+    return List<Widget>.generate(widget.children.length, (index) {
+      return TickerMode(
+        enabled: parentTickerEnabled && index == activeIndex,
+        child: widget.children[index],
+      );
+    });
   }
 }

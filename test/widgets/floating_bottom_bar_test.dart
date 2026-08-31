@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:countdown_todo/screens/pomodoro/widgets/fading_indexed_stack.dart';
 import 'package:countdown_todo/widgets/floating_bottom_bar.dart';
 import 'package:countdown_todo/widgets/home_app_bar.dart';
 import 'package:countdown_todo/widgets/home_quick_action_button.dart';
@@ -977,5 +978,64 @@ void main() {
 
     expect(find.byType(BackdropFilter), findsOneWidget);
     controller.dispose();
+  });
+
+  testWidgets('enables tickers only for the visible indexed child',
+      (tester) async {
+    final tickerModes = <String, bool>{};
+
+    Widget probe(String name) {
+      return Builder(
+        builder: (context) {
+          tickerModes[name] = TickerMode.valuesOf(context).enabled;
+          return Text(name);
+        },
+      );
+    }
+
+    Widget app(int index) {
+      return MaterialApp(
+        home: FadingIndexedStack(
+          index: index,
+          duration: const Duration(milliseconds: 20),
+          children: [probe('workbench'), probe('stats')],
+        ),
+      );
+    }
+
+    await tester.pumpWidget(app(0));
+    await tester.pumpAndSettle();
+    expect(tickerModes, {'workbench': true, 'stats': false});
+
+    await tester.pumpWidget(app(1));
+    await tester.pumpAndSettle();
+    expect(tickerModes, {'workbench': false, 'stats': true});
+  });
+
+  testWidgets('does not re-enable tickers disabled by a parent route',
+      (tester) async {
+    final tickerModes = <bool>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TickerMode(
+          enabled: false,
+          child: FadingIndexedStack(
+            index: 0,
+            children: List<Widget>.generate(2, (_) {
+              return Builder(
+                builder: (context) {
+                  tickerModes.add(TickerMode.valuesOf(context).enabled);
+                  return const SizedBox();
+                },
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+
+    expect(tickerModes, isNotEmpty);
+    expect(tickerModes, everyElement(isFalse));
   });
 }

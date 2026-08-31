@@ -85,6 +85,11 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   Timer? _ticker;
   int _notifyTickCount = 0;
   final ValueNotifier<int> _timerTickNotifier = ValueNotifier<int>(0);
+  bool _appInForeground = true;
+  bool _tickerModeEnabled = true;
+
+  bool get _shouldRunUiTickers =>
+      _appInForeground && _tickerModeEnabled && mounted;
 
   // ── 严格自由专注传感器 ──
   StreamSubscription<StrictFocusSensorEvent>? _strictSensorSub;
@@ -127,9 +132,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   final GlobalKey _landscapeBindTodoKey = GlobalKey();
   bool _landscapeLayoutMounted = false;
 
-  GlobalKey get settingsKey => _landscapeLayoutMounted
-      ? _landscapeSettingsKey
-      : _portraitSettingsKey;
+  GlobalKey get settingsKey =>
+      _landscapeLayoutMounted ? _landscapeSettingsKey : _portraitSettingsKey;
   GlobalKey get tagsManagerKey => _landscapeLayoutMounted
       ? _landscapeTagsManagerKey
       : _portraitTagsManagerKey;
@@ -139,9 +143,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   GlobalKey get modeSwitchKey => _landscapeLayoutMounted
       ? _landscapeModeSwitchKey
       : _portraitModeSwitchKey;
-  GlobalKey get focusTagsKey => _landscapeLayoutMounted
-      ? _landscapeFocusTagsKey
-      : _portraitFocusTagsKey;
+  GlobalKey get focusTagsKey =>
+      _landscapeLayoutMounted ? _landscapeFocusTagsKey : _portraitFocusTagsKey;
   GlobalKey get bindTodoKey =>
       _landscapeLayoutMounted ? _landscapeBindTodoKey : _portraitBindTodoKey;
 
@@ -160,6 +163,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   @override
   void initState() {
     super.initState();
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    _appInForeground =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     FloatWindowService.isWorkbenchMounted = true;
     WidgetsBinding.instance.addObserver(this);
     MacPomodoroStatusBarService.init();
@@ -167,6 +173,20 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _listenToRunState();
     _listenToStrictSensor();
     _listenToIslandActions();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final tickerModeEnabled = TickerMode.valuesOf(context).enabled;
+    if (_tickerModeEnabled == tickerModeEnabled) return;
+
+    _tickerModeEnabled = tickerModeEnabled;
+    if (_shouldRunUiTickers) {
+      unawaited(_resumeUiTickers());
+    } else {
+      _stopUiTickers();
+    }
   }
 
   StreamSubscription? _islandSub;
@@ -338,6 +358,11 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      _appInForeground = false;
+      _stopUiTickers();
+      if (state != AppLifecycleState.inactive) {
+        unawaited(_syncService.suspendForBackground());
+      }
       if (_isHandlingEnd) return;
       if (_strictWaitingForFlip) {
         StrictFocusSessionCoordinator.instance.pauseForBackground();
@@ -350,9 +375,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       return;
     }
     if (state == AppLifecycleState.resumed) {
+      _appInForeground = true;
       _notifyTickCount = 0;
-      _recoverFromBackground();
-      _syncService.resumeSync();
+      unawaited(_resumeUiTickers());
+      unawaited(_syncService.resumeFromBackground());
       if (_isStrictFreeFocus && _phase == PomodoroPhase.focusing && _isPaused) {
         if (!StrictFocusSessionCoordinator.instance.isMonitoring) {
           StrictFocusSessionCoordinator.instance.startMonitoring();
@@ -363,6 +389,41 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   bool get _isStrictFreeFocus =>
       _settings.mode == TimerMode.countUp && _settings.strictFreeFocus;
+
+  void _stopUiTickers() {
+    _ticker?.cancel();
+    _ticker = null;
+    _pauseTicker?.cancel();
+    _pauseTicker = null;
+    _remoteTicker?.cancel();
+    _remoteTicker = null;
+  }
+
+  Future<void> _resumeUiTickers() async {
+    if (!_shouldRunUiTickers || _initializing) return;
+
+    if (_phase == PomodoroPhase.remoteWatching) {
+      final remote = _remoteState;
+      if (remote != null) {
+        _startRemoteTicker(
+          remote.mode == 1 ? 0 : (remote.targetEndMs ?? _targetEndMs),
+          remote.mode == 1,
+        );
+      }
+      return;
+    }
+
+    await _recoverFromBackground();
+    if (!_shouldRunUiTickers) return;
+    if ((_phase == PomodoroPhase.focusing ||
+            _phase == PomodoroPhase.breaking) &&
+        _isPaused) {
+      _pauseElapsedSecs =
+          (DateTime.now().millisecondsSinceEpoch - _pauseStartMs) ~/ 1000;
+      _timerTickNotifier.value++;
+      _startPauseTicker();
+    }
+  }
 
   Future<void> _beginStrictWaiting() async {
     if (_strictWaitingForFlip || _strictStartInFlight) return;
@@ -1022,6 +1083,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   void _startRemoteTicker(int targetEndMs, bool isCountUp) {
     _remoteTicker?.cancel();
+    _remoteTicker = null;
+    if (!_shouldRunUiTickers) return;
     _remoteTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) {
         _remoteTicker?.cancel();
@@ -1372,7 +1435,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   void _startTicker() {
     _ticker?.cancel();
+    _ticker = null;
     _notifyTickCount = 0;
+    if (!_shouldRunUiTickers) return;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) async {
       // debugPrint('[Ticker] Tick fired, _isPaused: $_isPaused, _phase: $_phase');
       if (!mounted) return;
@@ -1435,6 +1500,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   void _startPauseTicker() {
     _pauseTicker?.cancel();
+    _pauseTicker = null;
+    if (!_shouldRunUiTickers) return;
     _pauseTicker = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
       _pauseElapsedSecs =
@@ -1571,8 +1638,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
-          // 在对话框内部也启动一个定时器或者收听外部状态
-          // 最简单的办法是使用 Timer.periodic 更新对话框内部状态
           return AlertDialog(
             title: const Text('⏸️ 已暂停'),
             content: Column(
@@ -1587,7 +1652,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     ? '已累计专注: ${formatDurationChinese(_remainingSeconds)}'
                     : '还需持续专注: ${formatDurationChinese(_remainingSeconds)}'),
                 const SizedBox(height: 8),
-                _PauseTimerText(pauseStartMs: _pauseStartMs),
+                _PauseTimerText(
+                  pauseStartMs: _pauseStartMs,
+                  tickListenable: _timerTickNotifier,
+                ),
                 if (_pauseIntervals.length > 1) ...[
                   const SizedBox(height: 8),
                   Text(
@@ -2800,8 +2868,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     const Spacer(),
                     _buildIdleMiddle(focusTagsKey: _landscapeFocusTagsKey),
                     const SizedBox(height: 32),
-                    _buildActions(isIdle, isFocusing, isRemoteWatching,
-                        contentColor,
+                    _buildActions(
+                        isIdle, isFocusing, isRemoteWatching, contentColor,
                         bindTodoKey: _landscapeBindTodoKey),
                     const Spacer(),
                   ],
@@ -2826,8 +2894,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                       const SizedBox(height: 12),
                       _buildNoteButton(contentColor),
                       const SizedBox(height: 32),
-                      _buildActions(isIdle, isFocusing, isRemoteWatching,
-                          contentColor,
+                      _buildActions(
+                          isIdle, isFocusing, isRemoteWatching, contentColor,
                           bindTodoKey: _landscapeBindTodoKey),
                     ],
                   ),
@@ -2879,8 +2947,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 ]),
               ),
             ),
-            _buildWSStatusIndicator(
-                serverConnKey: _portraitServerConnKey),
+            _buildWSStatusIndicator(serverConnKey: _portraitServerConnKey),
           ],
         ],
       ),
@@ -3249,44 +3316,24 @@ class _SimpleTag extends StatelessWidget {
   }
 }
 
-class _PauseTimerText extends StatefulWidget {
+class _PauseTimerText extends StatelessWidget {
   final int pauseStartMs;
-  const _PauseTimerText({required this.pauseStartMs});
+  final ValueNotifier<int> tickListenable;
 
-  @override
-  State<_PauseTimerText> createState() => _PauseTimerTextState();
-}
-
-class _PauseTimerTextState extends State<_PauseTimerText> {
-  Timer? _timer;
-  final ValueNotifier<int> _secondsNotifier = ValueNotifier(0);
-
-  @override
-  void initState() {
-    super.initState();
-    _update();
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) => _update());
-  }
-
-  void _update() {
-    if (!mounted) return;
-    _secondsNotifier.value =
-        (DateTime.now().millisecondsSinceEpoch - widget.pauseStartMs) ~/ 1000;
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _secondsNotifier.dispose();
-    super.dispose();
-  }
+  const _PauseTimerText({
+    required this.pauseStartMs,
+    required this.tickListenable,
+  });
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
-      valueListenable: _secondsNotifier,
-      builder: (context, seconds, _) =>
-          Text('暂停时长: ${formatTimerMMSS(seconds)}'),
+      valueListenable: tickListenable,
+      builder: (context, _, child) {
+        final seconds =
+            (DateTime.now().millisecondsSinceEpoch - pauseStartMs) ~/ 1000;
+        return Text('暂停时长: ${formatTimerMMSS(seconds)}');
+      },
     );
   }
 }

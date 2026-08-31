@@ -492,49 +492,109 @@ class _DanmakuSuggestions extends StatefulWidget {
   State<_DanmakuSuggestions> createState() => _DanmakuSuggestionsState();
 }
 
-class _DanmakuSuggestionsState extends State<_DanmakuSuggestions> {
+class _DanmakuSuggestionsState extends State<_DanmakuSuggestions>
+    with WidgetsBindingObserver {
   late ScrollController _scrollCtrl1;
   late ScrollController _scrollCtrl2;
   late ScrollController _scrollCtrl3;
   Timer? _timer;
+  bool _appInForeground = true;
+  bool _tickerModeEnabled = false;
+
+  bool get _shouldScroll =>
+      mounted &&
+      _appInForeground &&
+      _tickerModeEnabled &&
+      widget.suggestions.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    _appInForeground =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     _scrollCtrl1 = ScrollController();
     _scrollCtrl2 = ScrollController();
     _scrollCtrl3 = ScrollController();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startScrolling();
+      _syncScrollingWithVisibility();
     });
   }
 
-  void _startScrolling() {
-    _timer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
-      if (!mounted) return;
-      _autoScroll(_scrollCtrl1, 0.35);
-      _autoScroll(_scrollCtrl2, 0.55);
-      _autoScroll(_scrollCtrl3, 0.45);
-    });
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final tickerModeEnabled = TickerMode.valuesOf(context).enabled;
+    if (_tickerModeEnabled == tickerModeEnabled) return;
+    _tickerModeEnabled = tickerModeEnabled;
+    _syncScrollingWithVisibility();
   }
 
-  void _autoScroll(ScrollController ctrl, double speed) {
+  @override
+  void didUpdateWidget(covariant _DanmakuSuggestions oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.suggestions.isEmpty != widget.suggestions.isEmpty) {
+      _syncScrollingWithVisibility();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appInForeground = state == AppLifecycleState.resumed;
+    _syncScrollingWithVisibility();
+  }
+
+  void _syncScrollingWithVisibility() {
+    if (_shouldScroll) {
+      _scheduleScrollTick(Duration.zero);
+    } else {
+      _timer?.cancel();
+      _timer = null;
+    }
+  }
+
+  void _scheduleScrollTick(Duration delay) {
+    if (!_shouldScroll || _timer != null) return;
+    _timer = Timer(delay, _handleScrollTick);
+  }
+
+  void _handleScrollTick() {
+    _timer = null;
+    if (!_shouldScroll) return;
+
+    // 20fps is sufficient for the small suggestion chips and reduces timer
+    // wakeups by 40% compared with the previous 30ms loop. Distances are
+    // scaled to preserve the original pixels-per-second speed.
+    final moved1 = _autoScroll(_scrollCtrl1, 0.35 * 50 / 30);
+    final moved2 = _autoScroll(_scrollCtrl2, 0.55 * 50 / 30);
+    final moved3 = _autoScroll(_scrollCtrl3, 0.45 * 50 / 30);
+    final moved = moved1 || moved2 || moved3;
+    _scheduleScrollTick(
+      moved ? const Duration(milliseconds: 50) : const Duration(seconds: 1),
+    );
+  }
+
+  bool _autoScroll(ScrollController ctrl, double distance) {
     if (ctrl.hasClients) {
       final max = ctrl.position.maxScrollExtent;
       if (max > 0) {
-        final next = ctrl.offset + speed;
+        final next = ctrl.offset + distance;
         if (next >= max) {
           ctrl.jumpTo(0);
         } else {
           ctrl.jumpTo(next);
         }
+        return true;
       }
     }
+    return false;
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _scrollCtrl1.dispose();
     _scrollCtrl2.dispose();

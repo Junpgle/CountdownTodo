@@ -22,7 +22,7 @@ class AppBoardScreen extends StatefulWidget {
 }
 
 class _AppBoardScreenState extends State<AppBoardScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   List<TodoItem> _todos = [];
   List<CountdownItem> _countdowns = [];
   List<CourseItem> _courses = [];
@@ -34,48 +34,101 @@ class _AppBoardScreenState extends State<AppBoardScreen>
   TodoItem? _detailTask;
   DateTime _now = DateTime.now();
   final ValueNotifier<DateTime> _nowNotifier = ValueNotifier(DateTime.now());
-  late Timer _timer;
+  Timer? _timer;
   final ScrollController _cdScrollController = ScrollController();
   final ScrollController _marqueeController = ScrollController();
   Timer? _marqueeTimer;
+  bool _appInForeground = true;
+  bool _tickerModeEnabled = false;
+
+  bool get _shouldRunTimers =>
+      mounted && _appInForeground && _tickerModeEnabled;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    _appInForeground =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     _loadData();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        _now = DateTime.now();
-        _nowNotifier.value = _now;
-      }
-    });
-    _startMarquee();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final tickerModeEnabled = TickerMode.valuesOf(context).enabled;
+    if (_tickerModeEnabled == tickerModeEnabled) return;
+    _tickerModeEnabled = tickerModeEnabled;
+    _syncTimersWithVisibility();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appInForeground = state == AppLifecycleState.resumed;
+    _syncTimersWithVisibility();
   }
 
   @override
   void dispose() {
-    _timer.cancel();
-    _marqueeTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _stopTimers();
     _nowNotifier.dispose();
     _cdScrollController.dispose();
     _marqueeController.dispose();
     super.dispose();
   }
 
-  void _startMarquee() {
-    // Use a slower, less frequent timer to reduce layout thrashing.
-    // 100ms with 3px step = ~30px/s smooth scroll at lower CPU cost.
-    _marqueeTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      if (_marqueeController.hasClients) {
-        double maxScroll = _marqueeController.position.maxScrollExtent;
-        double currentScroll = _marqueeController.offset;
-        if (currentScroll >= maxScroll - 1) {
-          _marqueeController.jumpTo(0);
-        } else {
-          _marqueeController.jumpTo(currentScroll + 3);
-        }
+  void _syncTimersWithVisibility() {
+    if (_shouldRunTimers) {
+      _startTimers();
+    } else {
+      _stopTimers();
+    }
+  }
+
+  void _startTimers() {
+    _timer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!_shouldRunTimers) {
+        _stopTimers();
+        return;
       }
+      _now = DateTime.now();
+      _nowNotifier.value = _now;
     });
+    _scheduleMarqueeTick(Duration.zero);
+  }
+
+  void _stopTimers() {
+    _timer?.cancel();
+    _timer = null;
+    _marqueeTimer?.cancel();
+    _marqueeTimer = null;
+  }
+
+  void _scheduleMarqueeTick(Duration delay) {
+    if (!_shouldRunTimers || _marqueeTimer != null) return;
+    _marqueeTimer = Timer(delay, _handleMarqueeTick);
+  }
+
+  void _handleMarqueeTick() {
+    _marqueeTimer = null;
+    if (!_shouldRunTimers) return;
+
+    var nextDelay = const Duration(seconds: 1);
+    if (_marqueeController.hasClients) {
+      final maxScroll = _marqueeController.position.maxScrollExtent;
+      if (maxScroll > 1) {
+        final currentScroll = _marqueeController.offset;
+        _marqueeController.jumpTo(
+          currentScroll >= maxScroll - 1 ? 0 : currentScroll + 3,
+        );
+        // 100ms with a 3px step keeps the original ~30px/s motion. When the
+        // content does not overflow, the next check is delayed for one second.
+        nextDelay = const Duration(milliseconds: 100);
+      }
+    }
+    _scheduleMarqueeTick(nextDelay);
   }
 
   int _calculateCurrentWeek() {
