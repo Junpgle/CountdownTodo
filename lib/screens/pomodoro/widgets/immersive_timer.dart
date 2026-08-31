@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../services/pomodoro_sync_service.dart';
 import '../../../services/strict_focus_sensor_service.dart';
+import '../../../services/power_save_mode_service.dart';
 import '../../../utils/android_energy_policy.dart';
 
 class ImmersiveTimer extends StatefulWidget {
@@ -60,6 +61,8 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
       vsync: this,
       duration: const Duration(milliseconds: 2500),
     );
+    PowerSaveModeService.enabledListenable
+        .addListener(_syncPowerSaveAnimations);
     if (_shouldCelebrate(widget)) _startCelebration();
     if (_shouldBreathe(widget)) _startBreathing();
   }
@@ -90,12 +93,31 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
   }
 
   bool _shouldCelebrate(ImmersiveTimer value) =>
-      value.phase == PomodoroPhase.finished;
+      value.phase == PomodoroPhase.finished &&
+      AndroidEnergyPolicy.shouldRunDecorativeMotion;
 
   bool _shouldBreathe(ImmersiveTimer value) =>
       value.phase == PomodoroPhase.focusing &&
       !value.isPaused &&
-      !value.isStrictWaitingForFlip;
+      !value.isStrictWaitingForFlip &&
+      AndroidEnergyPolicy.shouldRunDecorativeMotion;
+
+  void _syncPowerSaveAnimations() {
+    if (_shouldCelebrate(widget)) {
+      _startCelebration();
+    } else {
+      _celebrationController
+        ..stop()
+        ..reset();
+    }
+    if (_shouldBreathe(widget)) {
+      _startBreathing();
+    } else {
+      _breathingController
+        ..stop()
+        ..reset();
+    }
+  }
 
   void _startCelebration() {
     _celebrationController
@@ -116,6 +138,8 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
 
   @override
   void dispose() {
+    PowerSaveModeService.enabledListenable
+        .removeListener(_syncPowerSaveAnimations);
     _celebrationController.dispose();
     _breathingController.dispose();
     super.dispose();

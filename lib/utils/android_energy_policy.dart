@@ -1,25 +1,40 @@
 import 'app_platform.dart';
+import '../services/power_save_mode_service.dart';
 
 /// Shared Android-only limits for energy-sensitive UI and sensor work.
 abstract final class AndroidEnergyPolicy {
   static const Duration androidStrictFocusSensorPeriod =
       Duration(milliseconds: 200);
+  static const Duration androidPowerSaveStrictFocusSensorPeriod =
+      Duration(milliseconds: 500);
   static const Duration defaultStrictFocusSensorPeriod =
       Duration(milliseconds: 100);
   static const Duration androidDisconnectedSyncProbeInterval =
       Duration(minutes: 2);
+  static const Duration androidPowerSaveDisconnectedSyncProbeInterval =
+      Duration(minutes: 5);
   static const Duration defaultDisconnectedSyncProbeInterval =
       Duration(minutes: 1);
   static const Duration androidForegroundWidgetRefreshInterval =
       Duration(hours: 1);
   static const Duration defaultForegroundWidgetRefreshInterval =
       Duration(minutes: 30);
+  static const Duration androidPowerSaveVisibleClockInterval =
+      Duration(minutes: 1);
+  static const Duration defaultVisibleClockInterval = Duration(seconds: 1);
 
   static Duration get strictFocusSensorPeriod => strictFocusSensorPeriodFor(
         isAndroid: AppPlatform.isAndroid,
+        isPowerSaveMode: PowerSaveModeService.isEnabled,
       );
 
-  static Duration strictFocusSensorPeriodFor({required bool isAndroid}) {
+  static Duration strictFocusSensorPeriodFor({
+    required bool isAndroid,
+    bool isPowerSaveMode = false,
+  }) {
+    if (isAndroid && isPowerSaveMode) {
+      return androidPowerSaveStrictFocusSensorPeriod;
+    }
     return isAndroid
         ? androidStrictFocusSensorPeriod
         : defaultStrictFocusSensorPeriod;
@@ -29,11 +44,18 @@ abstract final class AndroidEnergyPolicy {
   /// already disconnected. Android waits longer between probes to avoid
   /// needless radio wakeups; WebSocket state changes still update instantly.
   static Duration get disconnectedSyncProbeInterval =>
-      disconnectedSyncProbeIntervalFor(isAndroid: AppPlatform.isAndroid);
+      disconnectedSyncProbeIntervalFor(
+        isAndroid: AppPlatform.isAndroid,
+        isPowerSaveMode: PowerSaveModeService.isEnabled,
+      );
 
   static Duration disconnectedSyncProbeIntervalFor({
     required bool isAndroid,
+    bool isPowerSaveMode = false,
   }) {
+    if (isAndroid && isPowerSaveMode) {
+      return androidPowerSaveDisconnectedSyncProbeInterval;
+    }
     return isAndroid
         ? androidDisconnectedSyncProbeInterval
         : defaultDisconnectedSyncProbeInterval;
@@ -45,17 +67,34 @@ abstract final class AndroidEnergyPolicy {
   static Duration decorativeScrollInterval(Duration defaultInterval) {
     return decorativeScrollIntervalFor(
       isAndroid: AppPlatform.isAndroid,
+      isPowerSaveMode: PowerSaveModeService.isEnabled,
       defaultInterval: defaultInterval,
     );
   }
 
   static Duration decorativeScrollIntervalFor({
     required bool isAndroid,
+    bool isPowerSaveMode = false,
     required Duration defaultInterval,
   }) {
     assert(defaultInterval > Duration.zero);
     if (!isAndroid) return defaultInterval;
-    return Duration(microseconds: defaultInterval.inMicroseconds * 2);
+    return Duration(
+      microseconds: defaultInterval.inMicroseconds * (isPowerSaveMode ? 4 : 2),
+    );
+  }
+
+  /// Decorative motion is paused while Android Battery Saver is active.
+  static bool get shouldRunDecorativeMotion => shouldRunDecorativeMotionFor(
+        isAndroid: AppPlatform.isAndroid,
+        isPowerSaveMode: PowerSaveModeService.isEnabled,
+      );
+
+  static bool shouldRunDecorativeMotionFor({
+    required bool isAndroid,
+    required bool isPowerSaveMode,
+  }) {
+    return !isAndroid || !isPowerSaveMode;
   }
 
   /// Android's native widget providers already perform their own scheduled
@@ -63,6 +102,19 @@ abstract final class AndroidEnergyPolicy {
   /// The foreground full-database fallback can therefore run less often.
   static Duration get foregroundWidgetRefreshInterval =>
       foregroundWidgetRefreshIntervalFor(isAndroid: AppPlatform.isAndroid);
+
+  static bool get shouldRunForegroundWidgetRefresh =>
+      shouldRunForegroundWidgetRefreshFor(
+        isAndroid: AppPlatform.isAndroid,
+        isPowerSaveMode: PowerSaveModeService.isEnabled,
+      );
+
+  static bool shouldRunForegroundWidgetRefreshFor({
+    required bool isAndroid,
+    required bool isPowerSaveMode,
+  }) {
+    return !isAndroid || !isPowerSaveMode;
+  }
 
   static Duration foregroundWidgetRefreshIntervalFor({
     required bool isAndroid,
@@ -77,15 +129,34 @@ abstract final class AndroidEnergyPolicy {
   static int? decorativeRepeatCount({int androidCount = 4}) {
     return decorativeRepeatCountFor(
       isAndroid: AppPlatform.isAndroid,
+      isPowerSaveMode: PowerSaveModeService.isEnabled,
       androidCount: androidCount,
     );
   }
 
   static int? decorativeRepeatCountFor({
     required bool isAndroid,
+    bool isPowerSaveMode = false,
     int androidCount = 4,
   }) {
     assert(androidCount > 0);
-    return isAndroid ? androidCount : null;
+    if (!isAndroid) return null;
+    return isPowerSaveMode ? 1 : androidCount;
+  }
+
+  /// Visible clocks only need minute-level updates while Android Battery Saver
+  /// is active. Countdown engines and notification timing remain untouched.
+  static Duration get visibleClockInterval => visibleClockIntervalFor(
+        isAndroid: AppPlatform.isAndroid,
+        isPowerSaveMode: PowerSaveModeService.isEnabled,
+      );
+
+  static Duration visibleClockIntervalFor({
+    required bool isAndroid,
+    required bool isPowerSaveMode,
+  }) {
+    return isAndroid && isPowerSaveMode
+        ? androidPowerSaveVisibleClockInterval
+        : defaultVisibleClockInterval;
   }
 }

@@ -108,13 +108,28 @@ class _IridescentActionPanelState extends State<_IridescentActionPanel>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 5200),
-    )..repeat(
-        count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 2),
-      );
+    );
+    PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
+    _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    if (AndroidEnergyPolicy.shouldRunDecorativeMotion) {
+      if (!_controller.isAnimating) {
+        _controller.repeat(
+          count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 2),
+        );
+      }
+    } else {
+      _controller
+        ..stop()
+        ..reset();
+    }
   }
 
   @override
   void dispose() {
+    PowerSaveModeService.enabledListenable.removeListener(_syncAnimation);
     _controller.dispose();
     super.dispose();
   }
@@ -376,14 +391,29 @@ class _PulseAvatarState extends State<_PulseAvatar>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
-    )..repeat(
-        reverse: true,
-        count: AndroidEnergyPolicy.decorativeRepeatCount(),
-      );
+    );
+    PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
+    _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    if (AndroidEnergyPolicy.shouldRunDecorativeMotion) {
+      if (!_controller.isAnimating) {
+        _controller.repeat(
+          reverse: true,
+          count: AndroidEnergyPolicy.decorativeRepeatCount(),
+        );
+      }
+    } else {
+      _controller
+        ..stop()
+        ..reset();
+    }
   }
 
   @override
   void dispose() {
+    PowerSaveModeService.enabledListenable.removeListener(_syncAnimation);
     _controller.dispose();
     super.dispose();
   }
@@ -414,11 +444,24 @@ class _ThinkingLoaderState extends State<_ThinkingLoader>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
-    )..repeat();
+    );
+    PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
+    _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    if (AndroidEnergyPolicy.shouldRunDecorativeMotion) {
+      if (!_controller.isAnimating) _controller.repeat();
+    } else {
+      _controller
+        ..stop()
+        ..reset();
+    }
   }
 
   @override
   void dispose() {
+    PowerSaveModeService.enabledListenable.removeListener(_syncAnimation);
     _controller.dispose();
     super.dispose();
   }
@@ -510,12 +553,15 @@ class _DanmakuSuggestionsState extends State<_DanmakuSuggestions>
       mounted &&
       _appInForeground &&
       _tickerModeEnabled &&
+      AndroidEnergyPolicy.shouldRunDecorativeMotion &&
       widget.suggestions.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    PowerSaveModeService.enabledListenable
+        .addListener(_syncScrollingWithVisibility);
     final lifecycleState = WidgetsBinding.instance.lifecycleState;
     _appInForeground =
         lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
@@ -604,6 +650,8 @@ class _DanmakuSuggestionsState extends State<_DanmakuSuggestions>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    PowerSaveModeService.enabledListenable
+        .removeListener(_syncScrollingWithVisibility);
     _timer?.cancel();
     _scrollCtrl1.dispose();
     _scrollCtrl2.dispose();

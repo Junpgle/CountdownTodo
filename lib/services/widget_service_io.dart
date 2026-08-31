@@ -21,6 +21,7 @@ import '../features/finance/models/finance_models.dart';
 import '../features/finance/services/finance_repository.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
+import 'power_save_mode_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> widgetBackgroundCallback(Uri? uri) async {
@@ -86,6 +87,7 @@ class WidgetService {
   static Timer? _periodicTimer;
   static bool _appInForeground = true;
   static bool _periodicRefreshConfigured = false;
+  static bool _powerSaveListenerRegistered = false;
 
   static const MethodChannel _macOSWidgetChannel =
       MethodChannel('com.countdowntodo/widget');
@@ -96,6 +98,12 @@ class WidgetService {
     _widgetRefreshDebouncer?.cancel();
     _widgetRefreshDebouncer = null;
     _periodicRefreshConfigured = false;
+    _initialized = false;
+    if (_powerSaveListenerRegistered) {
+      PowerSaveModeService.enabledListenable
+          .removeListener(_onPowerSaveModeChanged);
+      _powerSaveListenerRegistered = false;
+    }
   }
 
   static void setAppForeground(bool isForeground) {
@@ -175,6 +183,11 @@ class WidgetService {
     // only while the app is visible; Android's provider handles daily updates
     // when the process is not running.
     _periodicRefreshConfigured = true;
+    if (Platform.isAndroid && !_powerSaveListenerRegistered) {
+      PowerSaveModeService.enabledListenable
+          .addListener(_onPowerSaveModeChanged);
+      _powerSaveListenerRegistered = true;
+    }
     _startPeriodicRefresh();
 
     // 立即触发一次更新
@@ -188,12 +201,20 @@ class WidgetService {
   static void _startPeriodicRefresh() {
     _periodicTimer?.cancel();
     _periodicTimer = null;
-    if (!_periodicRefreshConfigured || !_appInForeground) return;
+    if (!_periodicRefreshConfigured ||
+        !_appInForeground ||
+        !AndroidEnergyPolicy.shouldRunForegroundWidgetRefresh) {
+      return;
+    }
     _periodicTimer = Timer.periodic(_periodicRefreshInterval, (_) async {
       try {
         await _updateCurrentUserWidgets();
       } catch (_) {}
     });
+  }
+
+  static void _onPowerSaveModeChanged() {
+    _startPeriodicRefresh();
   }
 
   static String _getDueDateLabel(DateTime? dueDate) {

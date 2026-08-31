@@ -8,10 +8,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
-    )..repeat(
-        reverse: true,
-        count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 5),
-      );
+    );
     _pulseAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
@@ -23,16 +20,34 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       parent: _courseExpandCtrl,
       curve: Curves.easeOutCubic,
     );
+    PowerSaveModeService.enabledListenable.addListener(_syncPowerSavePulse);
+    _syncPowerSavePulse();
     _pageController = PageController(initialPage: 0);
     _loadData();
   }
 
   @override
   void dispose() {
+    PowerSaveModeService.enabledListenable.removeListener(_syncPowerSavePulse);
     _pulseController.dispose();
     _courseExpandCtrl.dispose();
     _pageController.dispose();
     super.dispose();
+  }
+
+  void _syncPowerSavePulse() {
+    if (_viewMode == 0 && AndroidEnergyPolicy.shouldRunDecorativeMotion) {
+      if (!_pulseController.isAnimating) {
+        _pulseController.repeat(
+          reverse: true,
+          count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 5),
+        );
+      }
+    } else {
+      _pulseController
+        ..stop()
+        ..reset();
+    }
   }
 
   Future<void> _loadData() async {
@@ -149,12 +164,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _courseExpandCtrl.forward();
-          if (_viewMode == 0 && !_pulseController.isAnimating) {
-            _pulseController.repeat(
-              reverse: true,
-              count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 5),
-            );
-          }
+          _syncPowerSavePulse();
         }
         _checkCoachMarks();
       });

@@ -12,6 +12,13 @@ void main() {
         AndroidEnergyPolicy.strictFocusSensorPeriodFor(isAndroid: false),
         const Duration(milliseconds: 100),
       );
+      expect(
+        AndroidEnergyPolicy.strictFocusSensorPeriodFor(
+          isAndroid: true,
+          isPowerSaveMode: true,
+        ),
+        const Duration(milliseconds: 500),
+      );
     });
 
     test('limits decorative loops only on Android', () {
@@ -29,6 +36,14 @@ void main() {
         ),
         isNull,
       );
+      expect(
+        AndroidEnergyPolicy.decorativeRepeatCountFor(
+          isAndroid: true,
+          isPowerSaveMode: true,
+          androidCount: 3,
+        ),
+        1,
+      );
     });
 
     test('slows disconnected HTTP probes only on Android', () {
@@ -43,6 +58,13 @@ void main() {
           isAndroid: false,
         ),
         const Duration(minutes: 1),
+      );
+      expect(
+        AndroidEnergyPolicy.disconnectedSyncProbeIntervalFor(
+          isAndroid: true,
+          isPowerSaveMode: true,
+        ),
+        const Duration(minutes: 5),
       );
     });
 
@@ -62,6 +84,14 @@ void main() {
         ),
         defaultInterval,
       );
+      expect(
+        AndroidEnergyPolicy.decorativeScrollIntervalFor(
+          isAndroid: true,
+          isPowerSaveMode: true,
+          defaultInterval: defaultInterval,
+        ),
+        const Duration(milliseconds: 200),
+      );
     });
 
     test('uses an hourly Android foreground widget fallback', () {
@@ -76,6 +106,48 @@ void main() {
           isAndroid: false,
         ),
         const Duration(minutes: 30),
+      );
+    });
+
+    test('pauses nonessential Android work in system power saver', () {
+      expect(
+        AndroidEnergyPolicy.shouldRunDecorativeMotionFor(
+          isAndroid: true,
+          isPowerSaveMode: true,
+        ),
+        isFalse,
+      );
+      expect(
+        AndroidEnergyPolicy.shouldRunForegroundWidgetRefreshFor(
+          isAndroid: true,
+          isPowerSaveMode: true,
+        ),
+        isFalse,
+      );
+      expect(
+        AndroidEnergyPolicy.shouldRunDecorativeMotionFor(
+          isAndroid: false,
+          isPowerSaveMode: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('reduces visible clock updates without changing countdown engines',
+        () {
+      expect(
+        AndroidEnergyPolicy.visibleClockIntervalFor(
+          isAndroid: true,
+          isPowerSaveMode: true,
+        ),
+        const Duration(minutes: 1),
+      );
+      expect(
+        AndroidEnergyPolicy.visibleClockIntervalFor(
+          isAndroid: true,
+          isPowerSaveMode: false,
+        ),
+        const Duration(seconds: 1),
       );
     });
   });

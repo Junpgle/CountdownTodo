@@ -31,7 +31,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       _viewMode = mode;
       if (mode == 0) {
         _updateWeekTodos();
-        if (!_pulseController.isAnimating) {
+        if (AndroidEnergyPolicy.shouldRunDecorativeMotion &&
+            !_pulseController.isAnimating) {
           _pulseController.repeat(
             reverse: true,
             count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 5),

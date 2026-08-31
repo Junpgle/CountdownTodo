@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'dart:ui';
 import '../utils/android_energy_policy.dart';
 import '../utils/app_platform.dart';
+import '../services/power_save_mode_service.dart';
 
 class StickyAnnouncementBanner extends StatefulWidget {
   final TeamAnnouncement announcement;
@@ -35,6 +36,7 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
+    PowerSaveModeService.enabledListenable.addListener(_startPulse);
     _startPulse();
   }
 
@@ -47,6 +49,12 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
   }
 
   void _startPulse() {
+    if (!AndroidEnergyPolicy.shouldRunDecorativeMotion) {
+      _controller
+        ..stop()
+        ..reset();
+      return;
+    }
     _controller
       ..reset()
       ..repeat(
@@ -57,6 +65,7 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
 
   @override
   void dispose() {
+    PowerSaveModeService.enabledListenable.removeListener(_startPulse);
     _controller.dispose();
     super.dispose();
   }

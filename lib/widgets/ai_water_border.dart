@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../utils/android_energy_policy.dart';
+import '../services/power_save_mode_service.dart';
 
 bool isAiGeneratedTodo(TodoItem todo) {
   final originalText = todo.originalText?.trim();
@@ -39,15 +40,20 @@ class _AiGeneratedTodoWaterBorderState extends State<AiGeneratedTodoWaterBorder>
       vsync: this,
       duration: const Duration(milliseconds: 5400),
     );
-    if (widget.enabled) _startAnimation();
+    PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
+    _syncAnimation();
   }
 
   @override
   void didUpdateWidget(covariant AiGeneratedTodoWaterBorder oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.enabled && !oldWidget.enabled) {
+    if (widget.enabled != oldWidget.enabled) _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    if (widget.enabled && AndroidEnergyPolicy.shouldRunDecorativeMotion) {
       _startAnimation();
-    } else if (!widget.enabled && oldWidget.enabled) {
+    } else {
       _controller
         ..stop()
         ..reset();
@@ -64,6 +70,7 @@ class _AiGeneratedTodoWaterBorderState extends State<AiGeneratedTodoWaterBorder>
 
   @override
   void dispose() {
+    PowerSaveModeService.enabledListenable.removeListener(_syncAnimation);
     _controller.dispose();
     super.dispose();
   }

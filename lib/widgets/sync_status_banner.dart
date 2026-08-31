@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:ui';
 import '../services/api_service.dart';
 import '../services/pomodoro_sync_service.dart';
+import '../services/power_save_mode_service.dart';
 import '../utils/android_energy_policy.dart';
 import 'platform_backdrop_filter.dart';
 
@@ -47,6 +48,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     // 订阅 WS 状态变化流，实时响应断线/重连
     _wsConnSub = PomodoroSyncService.instance.onConnectionChanged
         .listen(_onWsStateChanged);
+    PowerSaveModeService.enabledListenable.addListener(_onPowerSaveModeChanged);
 
     // 🚀 初始化时立即评估一次当前连接状态，防止错过已处于连接状态的情况
     final connectionState = PomodoroSyncService.instance.connectionState;
@@ -61,6 +63,8 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     _autoHideTimer?.cancel();
     _showDelayTimer?.cancel();
     _wsConnSub?.cancel();
+    PowerSaveModeService.enabledListenable
+        .removeListener(_onPowerSaveModeChanged);
     super.dispose();
   }
 
@@ -95,9 +99,9 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     _startHeartbeat();
   }
 
-  void _startHeartbeat() {
+  void _startHeartbeat({bool checkImmediately = true}) {
     if (!_isForeground || _heartbeatTimer?.isActive == true) return;
-    unawaited(_checkRealStatus());
+    if (checkImmediately) unawaited(_checkRealStatus());
     // WebSocket 健康时不再额外轮询 HTTP；仅在断线期间低频区分
     // “无网络”和“服务异常”。
     _heartbeatTimer = Timer.periodic(
@@ -109,6 +113,15 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
   void _stopHeartbeat() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
+  }
+
+  void _onPowerSaveModeChanged() {
+    if (!mounted) return;
+    _stopHeartbeat();
+    final connectionState = PomodoroSyncService.instance.connectionState;
+    if (_isForeground && connectionState != SyncConnectionState.connected) {
+      _startHeartbeat(checkImmediately: false);
+    }
   }
 
   Future<void> _checkRealStatus() async {

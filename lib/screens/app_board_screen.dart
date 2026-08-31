@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
+import '../services/power_save_mode_service.dart';
 import '../utils/android_energy_policy.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
@@ -44,11 +45,14 @@ class _AppBoardScreenState extends State<AppBoardScreen>
 
   bool get _shouldRunTimers =>
       mounted && _appInForeground && _tickerModeEnabled;
+  bool get _shouldRunMarquee =>
+      _shouldRunTimers && AndroidEnergyPolicy.shouldRunDecorativeMotion;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    PowerSaveModeService.enabledListenable.addListener(_onPowerSaveModeChanged);
     final lifecycleState = WidgetsBinding.instance.lifecycleState;
     _appInForeground =
         lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
@@ -73,6 +77,8 @@ class _AppBoardScreenState extends State<AppBoardScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    PowerSaveModeService.enabledListenable
+        .removeListener(_onPowerSaveModeChanged);
     _stopTimers();
     _nowNotifier.dispose();
     _cdScrollController.dispose();
@@ -89,7 +95,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
   }
 
   void _startTimers() {
-    _timer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+    _timer ??= Timer.periodic(AndroidEnergyPolicy.visibleClockInterval, (_) {
       if (!_shouldRunTimers) {
         _stopTimers();
         return;
@@ -97,7 +103,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
       _now = DateTime.now();
       _nowNotifier.value = _now;
     });
-    _scheduleMarqueeTick(Duration.zero);
+    if (_shouldRunMarquee) _scheduleMarqueeTick(Duration.zero);
   }
 
   void _stopTimers() {
@@ -108,13 +114,13 @@ class _AppBoardScreenState extends State<AppBoardScreen>
   }
 
   void _scheduleMarqueeTick(Duration delay) {
-    if (!_shouldRunTimers || _marqueeTimer != null) return;
+    if (!_shouldRunMarquee || _marqueeTimer != null) return;
     _marqueeTimer = Timer(delay, _handleMarqueeTick);
   }
 
   void _handleMarqueeTick() {
     _marqueeTimer = null;
-    if (!_shouldRunTimers) return;
+    if (!_shouldRunMarquee) return;
 
     var nextDelay = const Duration(seconds: 1);
     if (_marqueeController.hasClients) {
@@ -135,6 +141,13 @@ class _AppBoardScreenState extends State<AppBoardScreen>
       }
     }
     _scheduleMarqueeTick(nextDelay);
+  }
+
+  void _onPowerSaveModeChanged() {
+    _stopTimers();
+    _now = DateTime.now();
+    _nowNotifier.value = _now;
+    _syncTimersWithVisibility();
   }
 
   int _calculateCurrentWeek() {
@@ -673,14 +686,29 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
-    )..repeat(
-        reverse: true,
-        count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 2),
-      );
+    );
+    PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
+    _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    if (AndroidEnergyPolicy.shouldRunDecorativeMotion) {
+      if (!_controller.isAnimating) {
+        _controller.repeat(
+          reverse: true,
+          count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 2),
+        );
+      }
+    } else {
+      _controller
+        ..stop()
+        ..reset();
+    }
   }
 
   @override
   void dispose() {
+    PowerSaveModeService.enabledListenable.removeListener(_syncAnimation);
     _controller.dispose();
     super.dispose();
   }

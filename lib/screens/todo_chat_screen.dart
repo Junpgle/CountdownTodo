@@ -20,6 +20,7 @@ import '../services/minor_mode_service.dart';
 import '../services/chat_storage_service.dart';
 import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_service.dart';
+import '../services/power_save_mode_service.dart';
 import '../screens/ai_assistant_tutorial_screen.dart';
 import '../screens/settings/llm_config_page.dart';
 import '../storage_service.dart';

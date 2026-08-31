@@ -5,6 +5,7 @@ import 'package:sensors_plus/sensors_plus.dart';
 
 import '../utils/android_energy_policy.dart';
 import '../utils/app_platform.dart';
+import 'power_save_mode_service.dart';
 
 /// The sensor states used by strict free focus.
 enum StrictFocusSensorState {
@@ -102,6 +103,8 @@ class StrictFocusSensorService {
   StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
   Timer? _noSampleTimer;
   bool _running = false;
+  bool _powerSaveListenerRegistered = false;
+  int _samplingRevision = 0;
   DateTime? _lastSampleAt;
   StrictFocusPoseDetector _detector = StrictFocusPoseDetector();
 
@@ -115,6 +118,7 @@ class StrictFocusSensorService {
     }
 
     _running = true;
+    _registerPowerSaveListener();
     _detector = StrictFocusPoseDetector();
     _lastSampleAt = null;
     _emit(const StrictFocusSensorEvent(
@@ -122,28 +126,7 @@ class StrictFocusSensorService {
     ));
 
     try {
-      _accelerometerSubscription = accelerometerEventStream(
-        samplingPeriod: AndroidEnergyPolicy.strictFocusSensorPeriod,
-      ).listen(
-        (event) {
-          if (!_running) return;
-          _lastSampleAt = DateTime.now();
-          final next = _detector.addSample(
-            x: event.x,
-            y: event.y,
-            z: event.z,
-            timestamp: _lastSampleAt,
-          );
-          if (next != null) _emit(next);
-        },
-        onError: (Object error) {
-          _emit(StrictFocusSensorEvent(
-            StrictFocusSensorState.unavailable,
-            error: error,
-          ));
-        },
-        cancelOnError: true,
-      );
+      _listenToAccelerometer();
       _noSampleTimer = Timer(const Duration(seconds: 3), () {
         if (_running && _lastSampleAt == null) {
           _emit(const StrictFocusSensorEvent(
@@ -164,11 +147,79 @@ class StrictFocusSensorService {
 
   Future<void> stop() async {
     _running = false;
+    _samplingRevision++;
+    _unregisterPowerSaveListener();
     _noSampleTimer?.cancel();
     _noSampleTimer = null;
     await _accelerometerSubscription?.cancel();
     _accelerometerSubscription = null;
     _lastSampleAt = null;
+  }
+
+  void _listenToAccelerometer() {
+    _accelerometerSubscription = accelerometerEventStream(
+      samplingPeriod: AndroidEnergyPolicy.strictFocusSensorPeriod,
+    ).listen(
+      (event) {
+        if (!_running) return;
+        _lastSampleAt = DateTime.now();
+        final next = _detector.addSample(
+          x: event.x,
+          y: event.y,
+          z: event.z,
+          timestamp: _lastSampleAt,
+        );
+        if (next != null) _emit(next);
+      },
+      onError: (Object error) {
+        _emit(StrictFocusSensorEvent(
+          StrictFocusSensorState.unavailable,
+          error: error,
+        ));
+      },
+      cancelOnError: true,
+    );
+  }
+
+  void _registerPowerSaveListener() {
+    if (_powerSaveListenerRegistered || !AppPlatform.isAndroid) return;
+    PowerSaveModeService.enabledListenable.addListener(_onPowerSaveModeChanged);
+    _powerSaveListenerRegistered = true;
+  }
+
+  void _unregisterPowerSaveListener() {
+    if (!_powerSaveListenerRegistered) return;
+    PowerSaveModeService.enabledListenable
+        .removeListener(_onPowerSaveModeChanged);
+    _powerSaveListenerRegistered = false;
+  }
+
+  void _onPowerSaveModeChanged() {
+    if (_running) unawaited(_restartAccelerometerSampling());
+  }
+
+  Future<void> _restartAccelerometerSampling() async {
+    final revision = ++_samplingRevision;
+    final previous = _accelerometerSubscription;
+    _accelerometerSubscription = null;
+    try {
+      await previous?.cancel();
+    } catch (error) {
+      _emit(StrictFocusSensorEvent(
+        StrictFocusSensorState.unavailable,
+        error: error,
+      ));
+    }
+    if (!_running || revision != _samplingRevision) return;
+
+    try {
+      _listenToAccelerometer();
+    } catch (error) {
+      _emit(StrictFocusSensorEvent(
+        StrictFocusSensorState.unavailable,
+        error: error,
+      ));
+    }
   }
 
   void _emit(StrictFocusSensorEvent event) {
