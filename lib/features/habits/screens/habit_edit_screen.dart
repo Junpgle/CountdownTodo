@@ -1016,6 +1016,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
               ],
             ),
       child: Row(
+        mainAxisSize: useFloating ? MainAxisSize.min : MainAxisSize.max,
         children: [
           if (_step > 0)
             OutlinedButton.icon(
@@ -1031,7 +1032,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             )
           else
             const SizedBox(width: 0),
-          const Spacer(),
+          if (_step > 0 && useFloating) const SizedBox(width: 12),
+          if (!useFloating) const Spacer(),
           if (_step < lastStep)
             FilledButton.icon(
               onPressed: _saving
@@ -1077,8 +1079,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       ),
     );
 
-    return FloatingGlassControl(
-      height: useFloating ? 100 : 88,
+    final control = FloatingGlassControl(
+      height: useFloating ? null : 88,
       margin: useFloating
           ? const EdgeInsets.fromLTRB(16, 8, 16, 24)
           : EdgeInsets.zero,
@@ -1086,6 +1088,10 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       mobilePortraitOnly: true,
       child: child,
     );
+
+    return useFloating
+        ? Align(alignment: Alignment.centerRight, child: control)
+        : control;
   }
 
   // ── 第 1 步：模板 / 手动自定义 ─────────────────────────
