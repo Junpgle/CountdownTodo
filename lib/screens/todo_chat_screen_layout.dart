@@ -595,7 +595,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
               _StaggeredFadeSlide(
                 delay: const Duration(milliseconds: 170),
                 child: Text(
-                  '可以直接问日程、课程、待办、规划块和专注记录，也可以让它生成可执行操作。',
+                  '可以直接问习惯、日程、课程、待办、规划块和专注记录，也可以让它生成可执行操作。',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 14,
@@ -1364,6 +1364,9 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
       '整理一下我的时间日志',
       '帮我制定一个复习计划',
       '有哪些建议能让我更自律？',
+      '创建每天喝水的习惯',
+      '创建每天喝水的待办',
+      '创建每天喝水',
     ]);
 
     return suggestions.toSet().toList();

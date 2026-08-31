@@ -54,7 +54,8 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         CoachMarkStep(
           targetKey: _inputKey,
           title: '智能输入区',
-          description: '你可以用自然语言输入需求（比如“明天上午9点有个组会”），AI 助手会自动判断它应是日程、待办还是规划块。',
+          description:
+              '你可以用自然语言输入需求（比如“明天上午9点有个组会”），AI 助手会自动判断它应是习惯、日程、待办还是规划块；周期性事项类型不明确时会先询问。',
         ),
       ],
       onFinish: () {
@@ -165,18 +166,13 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     }
 
     addIf(
-      prompt.contains('create_todo') ||
-          prompt.contains('update_todo') ||
-          prompt.contains('complete_todo') ||
-          prompt.contains('delete_todo') ||
-          prompt.contains('reschedule_todo') ||
-          prompt.contains('bulk_reschedule') ||
-          prompt.contains('categorize_todo') ||
-          prompt.contains('split_todo') ||
-          prompt.contains('merge_todos') ||
-          prompt.contains('plan_todos'),
+      prompt.contains('- create_todo:') ||
+          prompt.contains('- update_todo') ||
+          prompt.contains('- split_todo') ||
+          prompt.contains('- merge_todos'),
       '待办相关',
     );
+    addIf(prompt.contains('create_habit'), '习惯相关');
     addIf(
       prompt.contains('create_plan_block') ||
           prompt.contains('update_plan_block') ||
