@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:ui';
 import '../services/api_service.dart';
 import '../services/pomodoro_sync_service.dart';
+import '../utils/android_energy_policy.dart';
 import 'platform_backdrop_filter.dart';
 
 enum SyncPathStatus { online, connecting, offline, serverError, success }
@@ -32,7 +33,6 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
 
   // 连接中断后延迟显示 banner 的时间（秒）
   static const int _showDelaySeconds = 5;
-  static const Duration _disconnectedProbeInterval = Duration(minutes: 1);
 
   // 监听 WS 连接状态变化
   StreamSubscription? _wsConnSub;
@@ -101,7 +101,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
     // WebSocket 健康时不再额外轮询 HTTP；仅在断线期间低频区分
     // “无网络”和“服务异常”。
     _heartbeatTimer = Timer.periodic(
-      _disconnectedProbeInterval,
+      AndroidEnergyPolicy.disconnectedSyncProbeInterval,
       (_) => unawaited(_checkRealStatus()),
     );
   }

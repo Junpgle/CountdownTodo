@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:sensors_plus/sensors_plus.dart';
 
+import '../utils/android_energy_policy.dart';
 import '../utils/app_platform.dart';
 
 /// The sensor states used by strict free focus.
@@ -122,7 +123,7 @@ class StrictFocusSensorService {
 
     try {
       _accelerometerSubscription = accelerometerEventStream(
-        samplingPeriod: const Duration(milliseconds: 100),
+        samplingPeriod: AndroidEnergyPolicy.strictFocusSensorPeriod,
       ).listen(
         (event) {
           if (!_running) return;

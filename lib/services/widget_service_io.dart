@@ -12,6 +12,7 @@ import '../models/widget_snapshot.dart';
 import '../storage_service.dart';
 import '../utils/todo_widget_visibility.dart';
 import '../utils/widget_recurrence_series.dart';
+import '../utils/android_energy_policy.dart';
 import '../features/habits/repositories/habit_repository.dart';
 import '../features/habits/services/habit_progress_calculator.dart';
 import '../features/habits/services/habit_rule_resolver.dart';
@@ -80,7 +81,8 @@ class WidgetService {
   static bool _initialized = false;
   static final bool _widgetUpdateDisabled = false;
   static const int maxWidgetItems = 8;
-  static const Duration _periodicRefreshInterval = Duration(minutes: 30);
+  static Duration get _periodicRefreshInterval =>
+      AndroidEnergyPolicy.foregroundWidgetRefreshInterval;
   static Timer? _periodicTimer;
   static bool _appInForeground = true;
   static bool _periodicRefreshConfigured = false;
