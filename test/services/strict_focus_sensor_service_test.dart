@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:countdown_todo/services/pomodoro_service.dart';
+import 'package:countdown_todo/services/power_save_mode_service.dart';
 import 'package:countdown_todo/services/strict_focus_sensor_service.dart';
 
 void main() {
@@ -125,5 +126,29 @@ void main() {
     expect(restoredState.strictFreeFocus, isTrue);
     expect(restoredState.strictWaitingForFlip, isTrue);
     expect(restoredState.isPaused, isTrue);
+  });
+
+  test('power saver platform events publish only real state changes', () {
+    addTearDown(() {
+      PowerSaveModeService.updateFromPlatformForTesting(false);
+    });
+
+    var notifications = 0;
+    void listener() => notifications++;
+    PowerSaveModeService.enabledListenable.addListener(listener);
+    addTearDown(
+      () => PowerSaveModeService.enabledListenable.removeListener(listener),
+    );
+
+    PowerSaveModeService.updateFromPlatformForTesting(true);
+    expect(PowerSaveModeService.enabledListenable.value, isTrue);
+    expect(notifications, 1);
+
+    PowerSaveModeService.updateFromPlatformForTesting(true);
+    expect(notifications, 1);
+
+    PowerSaveModeService.updateFromPlatformForTesting(0);
+    expect(PowerSaveModeService.enabledListenable.value, isFalse);
+    expect(notifications, 2);
   });
 }

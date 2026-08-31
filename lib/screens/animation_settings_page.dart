@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/animation_config_service.dart';
 import '../services/liquid_glass_effect_service.dart';
+import '../services/power_save_mode_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_glass_control.dart';
@@ -215,6 +216,44 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                 isDesktop ? 32 : 16,
               ),
               children: [
+                if (AppPlatform.isAndroid) ...[
+                  ValueListenableBuilder<bool>(
+                    valueListenable: PowerSaveModeService.enabledListenable,
+                    builder: (context, enabled, _) {
+                      return Card(
+                        elevation: 0,
+                        color: enabled
+                            ? colorScheme.primaryContainer
+                                .withValues(alpha: 0.72)
+                            : colorScheme.surfaceContainerLow,
+                        child: ListTile(
+                          leading: Icon(
+                            Icons.battery_saver_rounded,
+                            color: enabled
+                                ? colorScheme.onPrimaryContainer
+                                : colorScheme.primary,
+                          ),
+                          title: const Text('应用省电模式'),
+                          subtitle: Text(
+                            enabled
+                                ? '已跟随 Android 系统自动开启：暂停装饰动画和玻璃特效，并降低传感器与后台探测频率。'
+                                : '自动跟随 Android 系统省电模式；退出系统省电后会恢复你的动效偏好。',
+                          ),
+                          trailing: Text(
+                            enabled ? '已开启' : '跟随系统',
+                            style: TextStyle(
+                              color: enabled
+                                  ? colorScheme.onPrimaryContainer
+                                  : colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  SizedBox(height: isDesktop ? 20 : 16),
+                ],
                 Padding(
                   padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
                   child: Text(

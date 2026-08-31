@@ -41,6 +41,7 @@ import 'services/app_deep_link_service.dart';
 import 'services/platform_bootstrap.dart';
 import 'services/minor_mode_service.dart';
 import 'services/liquid_glass_effect_service.dart';
+import 'services/power_save_mode_service.dart';
 import 'theme/app_liquid_glass_theme.dart';
 import 'widgets/island_debug_host.dart';
 
@@ -98,9 +99,9 @@ Future<T?> _runStartupTask<T>(
 }
 
 Future<void> _initializePlatformBeforeHome(List<String> args) async {
-  // These tasks are independent. Start them together while the Flutter splash
-  // is already visible, then keep the authenticated home flow behind this
-  // readiness barrier so SQLite and platform channels are safe to use.
+  // Read Android Battery Saver first, then start the independent tasks together
+  // while the Flutter splash is visible. This prevents optional shader warm-up
+  // from racing ahead of the system low-power override.
   // Bind the deep-link channel before starting the other platform tasks. A
   // synchronous startup failure in an earlier task must not prevent a widget
   // intent from being captured during a cold start.
@@ -109,6 +110,14 @@ Future<void> _initializePlatformBeforeHome(List<String> args) async {
     AppDeepLinkService.init(args),
     timeout: const Duration(seconds: 2),
   );
+  await _runStartupTask(
+    'PowerSaveModeService.initialize',
+    PowerSaveModeService.initialize(),
+    timeout: const Duration(seconds: 1),
+  );
+  final powerSaveMode = PowerSaveModeService.isEnabled;
+  PageTransitions.setPowerSaveMode(powerSaveMode);
+  await LiquidGlassEffectService.setPowerSaveMode(powerSaveMode);
   await Future.wait<dynamic>([
     _runStartupTask(
       'NotificationService.bindNativeChannel',
@@ -167,7 +176,7 @@ String? _detectInitialShareCode() {
   return null;
 }
 
-void _configureRuntimeCaches() {
+void _configureRuntimeCaches({bool powerSaveMode = false}) {
   final imageCache = PaintingBinding.instance.imageCache;
   if (AppPlatform.isWeb) {
     imageCache.maximumSize = 120;
@@ -176,8 +185,9 @@ void _configureRuntimeCaches() {
   }
 
   if (AppPlatform.isMobile) {
-    imageCache.maximumSize = 100;
-    imageCache.maximumSizeBytes = 96 << 20; // 96MB
+    final useAndroidPowerSaveCache = AppPlatform.isAndroid && powerSaveMode;
+    imageCache.maximumSize = useAndroidPowerSaveCache ? 64 : 100;
+    imageCache.maximumSizeBytes = (useAndroidPowerSaveCache ? 64 : 96) << 20;
   } else {
     imageCache.maximumSize = 180;
     imageCache.maximumSizeBytes = 192 << 20; // Desktop 192MB
@@ -273,6 +283,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     super.initState();
     if (AppPlatform.isAndroid) {
       WidgetsBinding.instance.addObserver(this);
+      PowerSaveModeService.enabledListenable
+          .addListener(_handlePowerSaveModeChanged);
+      _handlePowerSaveModeChanged();
     }
     _shareCode = widget.initialShareCode;
     // ── 最先检查分享路由，避免启动多余逻辑 ──
@@ -313,6 +326,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      unawaited(PowerSaveModeService.refresh());
       WidgetService.setAppForeground(true);
       _scheduleSystemUiRestore();
     } else if (state == AppLifecycleState.inactive ||
@@ -333,6 +347,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     final imageCache = PaintingBinding.instance.imageCache;
     imageCache.clear();
     imageCache.clearLiveImages();
+  }
+
+  void _handlePowerSaveModeChanged() {
+    final enabled = PowerSaveModeService.isEnabled;
+    PageTransitions.setPowerSaveMode(enabled);
+    unawaited(LiquidGlassEffectService.setPowerSaveMode(enabled));
+    _configureRuntimeCaches(powerSaveMode: enabled);
   }
 
   void _scheduleSystemUiRestore() {
@@ -832,6 +853,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _systemUiRestoreTimer?.cancel();
     if (AppPlatform.isAndroid) {
       WidgetsBinding.instance.removeObserver(this);
+      PowerSaveModeService.enabledListenable
+          .removeListener(_handlePowerSaveModeChanged);
     }
     _bandPomodoroSub?.cancel();
     unawaited(FloatWindowService.dispose());
@@ -840,6 +863,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     PomodoroSyncService.instance.dispose();
     StorageService.dispose();
     WidgetService.dispose();
+    unawaited(PowerSaveModeService.dispose());
     super.dispose();
   }
 
@@ -1049,33 +1073,54 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                             .disableShaderContentFade,
                                     child: appContent,
                                     builder: (context, _, child) {
-                                      final content =
-                                          child ?? const SizedBox.shrink();
-                                      final mediaQuery =
-                                          MediaQuery.maybeOf(context);
-                                      final normalizedMediaQuery = mediaQuery ==
-                                              null
-                                          ? null
-                                          : AndroidWindowRenderingPolicy
-                                              .normalizeCompactWindowMediaQuery(
-                                              mediaQuery,
-                                            );
-                                      final adaptedContent =
-                                          normalizedMediaQuery != null &&
-                                                  !identical(
-                                                    normalizedMediaQuery,
-                                                    mediaQuery,
-                                                  )
-                                              ? MediaQuery(
-                                                  data: normalizedMediaQuery,
-                                                  child: content,
-                                                )
-                                              : content;
+                                      return ValueListenableBuilder<bool>(
+                                        valueListenable: PowerSaveModeService
+                                            .enabledListenable,
+                                        child: child,
+                                        builder:
+                                            (context, powerSaveMode, child) {
+                                          final content =
+                                              child ?? const SizedBox.shrink();
+                                          final mediaQuery =
+                                              MediaQuery.maybeOf(context);
+                                          final normalizedMediaQuery =
+                                              mediaQuery == null
+                                                  ? null
+                                                  : AndroidWindowRenderingPolicy
+                                                      .normalizeCompactWindowMediaQuery(
+                                                      mediaQuery,
+                                                    );
+                                          final shouldDisableAnimations =
+                                              AppPlatform.isAndroid &&
+                                                  powerSaveMode;
+                                          final effectiveMediaQuery =
+                                              normalizedMediaQuery != null &&
+                                                      shouldDisableAnimations &&
+                                                      !normalizedMediaQuery
+                                                          .disableAnimations
+                                                  ? normalizedMediaQuery
+                                                      .copyWith(
+                                                      disableAnimations: true,
+                                                    )
+                                                  : normalizedMediaQuery;
+                                          final adaptedContent =
+                                              effectiveMediaQuery != null &&
+                                                      !identical(
+                                                        effectiveMediaQuery,
+                                                        mediaQuery,
+                                                      )
+                                                  ? MediaQuery(
+                                                      data: effectiveMediaQuery,
+                                                      child: content,
+                                                    )
+                                                  : content;
 
-                                      return AppSystemUiRegion(
-                                        backgroundBrightness:
-                                            Theme.of(context).brightness,
-                                        child: adaptedContent,
+                                          return AppSystemUiRegion(
+                                            backgroundBrightness:
+                                                Theme.of(context).brightness,
+                                            child: adaptedContent,
+                                          );
+                                        },
                                       );
                                     },
                                   );

@@ -54,6 +54,9 @@ class LiquidGlassEffectService {
       _configurationNotifier = ValueNotifier(
     const LiquidGlassEffectConfiguration.disabled(),
   );
+  static LiquidGlassEffectConfiguration _preferredConfiguration =
+      const LiquidGlassEffectConfiguration.disabled();
+  static bool _systemPowerSaveMode = false;
   static Future<void>? _loadFuture;
   static Future<void>? _rendererInitialization;
   static Future<void>? _premiumRendererInitialization;
@@ -70,6 +73,10 @@ class LiquidGlassEffectService {
   static LiquidGlassEffectConfiguration get configuration =>
       _configurationNotifier.value;
 
+  /// The persisted user choice, independent of the temporary system override.
+  static LiquidGlassEffectConfiguration get preferredConfiguration =>
+      _preferredConfiguration;
+
   static bool get isEnabled => configuration.enabled;
 
   static LiquidGlassEffectMode get mode => configuration.mode;
@@ -77,23 +84,23 @@ class LiquidGlassEffectService {
   static Future<void> initialize() => _loadFuture ??= _load();
 
   static Future<LiquidGlassEffectConfiguration> loadConfiguration() async {
-    if (_loadFuture != null) return configuration;
+    if (_loadFuture != null) return preferredConfiguration;
     await initialize();
-    return configuration;
+    return preferredConfiguration;
   }
 
   static Future<bool> loadEnabled() async {
     // 加载已完成时直接读取当前配置；跨事件循环区域等待已完成的缓存
     // Future 在测试等自定义 Zone 下可能永不恢复。
-    if (_loadFuture != null) return isEnabled;
+    if (_loadFuture != null) return preferredConfiguration.enabled;
     await initialize();
-    return isEnabled;
+    return preferredConfiguration.enabled;
   }
 
   static Future<LiquidGlassEffectMode> loadMode() async {
-    if (_loadFuture != null) return mode;
+    if (_loadFuture != null) return preferredConfiguration.mode;
     await initialize();
-    return mode;
+    return preferredConfiguration.mode;
   }
 
   /// 引导页是否已经向用户展示过液态玻璃选项（展示一次，不重复打扰）。
@@ -114,38 +121,42 @@ class LiquidGlassEffectService {
       (candidate) => candidate.name == prefs.getString(_keyMode),
       orElse: () => LiquidGlassEffectMode.standard,
     );
-    if (enabled) {
+    _preferredConfiguration = LiquidGlassEffectConfiguration(
+      enabled: enabled,
+      mode: mode,
+    );
+    if (enabled && !_systemPowerSaveMode) {
       try {
         await _ensureRendererInitialized(mode: mode);
       } catch (error) {
         debugPrint(
             '[LiquidGlass] Disabled after initialization failed: $error');
-        _configurationNotifier.value = LiquidGlassEffectConfiguration(
+        _preferredConfiguration = LiquidGlassEffectConfiguration(
           enabled: false,
           mode: mode,
         );
+        _publishEffectiveConfiguration();
         return;
       }
     }
-    _configurationNotifier.value = LiquidGlassEffectConfiguration(
-      enabled: enabled,
-      mode: mode,
-    );
+    _publishEffectiveConfiguration();
   }
 
   static Future<void> setEnabled(bool enabled) {
     final revision = ++_enabledMutationRevision;
     return _enqueueMutation(() async {
       if (revision != _enabledMutationRevision) return;
-      if (enabled) {
-        await _ensureRendererInitialized(mode: configuration.mode);
+      if (enabled && !_systemPowerSaveMode) {
+        await _ensureRendererInitialized(mode: preferredConfiguration.mode);
         if (revision != _enabledMutationRevision) return;
       }
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_keyEnabled, enabled);
       if (revision != _enabledMutationRevision) return;
-      _configurationNotifier.value = configuration.copyWith(enabled: enabled);
+      _preferredConfiguration =
+          preferredConfiguration.copyWith(enabled: enabled);
+      _publishEffectiveConfiguration();
     });
   }
 
@@ -153,7 +164,7 @@ class LiquidGlassEffectService {
     final revision = ++_modeMutationRevision;
     return _enqueueMutation(() async {
       if (revision != _modeMutationRevision) return;
-      if (isEnabled) {
+      if (preferredConfiguration.enabled && !_systemPowerSaveMode) {
         await _ensureRendererInitialized(mode: mode);
         if (revision != _modeMutationRevision) return;
       }
@@ -161,8 +172,46 @@ class LiquidGlassEffectService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_keyMode, mode.name);
       if (revision != _modeMutationRevision) return;
-      _configurationNotifier.value = configuration.copyWith(mode: mode);
+      _preferredConfiguration = preferredConfiguration.copyWith(mode: mode);
+      _publishEffectiveConfiguration();
     });
+  }
+
+  /// Temporarily suppresses shader-backed glass while Android Battery Saver is
+  /// active. The user's preference remains persisted and is restored when the
+  /// system exits Battery Saver.
+  static Future<void> setPowerSaveMode(bool enabled) async {
+    final stateChanged = _systemPowerSaveMode != enabled;
+    _systemPowerSaveMode = enabled;
+
+    if (enabled) {
+      _publishEffectiveConfiguration();
+      return;
+    }
+
+    if (!stateChanged &&
+        (!preferredConfiguration.enabled || configuration.enabled)) {
+      return;
+    }
+
+    if (preferredConfiguration.enabled) {
+      try {
+        await _ensureRendererInitialized(mode: preferredConfiguration.mode);
+      } catch (error) {
+        debugPrint('[LiquidGlass] Restore after Battery Saver failed: $error');
+        return;
+      }
+      if (_systemPowerSaveMode) return;
+    }
+    _publishEffectiveConfiguration();
+  }
+
+  static void _publishEffectiveConfiguration() {
+    final preferred = preferredConfiguration;
+    _configurationNotifier.value = LiquidGlassEffectConfiguration(
+      enabled: preferred.enabled && !_systemPowerSaveMode,
+      mode: preferred.mode,
+    );
   }
 
   static Future<void> _enqueueMutation(Future<void> Function() mutation) {

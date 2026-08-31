@@ -8,8 +8,24 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    await LiquidGlassEffectService.setPowerSaveMode(false);
+  });
+
+  test('system power saver suppresses glass without losing the user choice',
+      () async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setPowerSaveMode(true);
+
+    expect(LiquidGlassEffectService.isEnabled, isFalse);
+    expect(LiquidGlassEffectService.preferredConfiguration.enabled, isTrue);
+    expect(await LiquidGlassEffectService.loadEnabled(), isTrue);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('enable_liquid_glass'), isTrue);
+
+    await LiquidGlassEffectService.setPowerSaveMode(false);
+    expect(LiquidGlassEffectService.isEnabled, isTrue);
   });
 
   testWidgets('guide appearance options offer the liquid glass toggle',

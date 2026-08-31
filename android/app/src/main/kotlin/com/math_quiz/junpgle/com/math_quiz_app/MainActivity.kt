@@ -255,6 +255,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private var methodChannel: MethodChannel? = null
     private var deepLinkChannel: MethodChannel? = null
     private var minorModeManager: MinorModeManager? = null
+    private var powerSaveModeManager: AndroidPowerSaveModeManager? = null
     private var pendingDeepLink: String? = null
     // 保存待处理的番茄钟动作（在methodChannel初始化前）
     private var pendingPomodoroAction: String? = null
@@ -905,6 +906,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         pendingLocalNetworkResults.forEach { it.success(false) }
         bandPlugin?.dispose()
         bandPlugin = null
+        powerSaveModeManager?.dispose()
+        powerSaveModeManager = null
         super.onDestroy()
         minorModeManager?.dispose()
         minorModeManager = null
@@ -1292,6 +1295,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         // 独立的未成年人模式桥接模块：MainActivity 只负责注册入口。
         minorModeManager = MinorModeManager(this).also { manager ->
+            manager.register(flutterEngine)
+        }
+        powerSaveModeManager = AndroidPowerSaveModeManager(this) { enabled ->
+            if (enabled) {
+                window.decorView.removeCallbacks(releaseHighRefreshRatePreferenceRunnable)
+                releaseHighRefreshRatePreference()
+            }
+        }.also { manager ->
             manager.register(flutterEngine)
         }
 

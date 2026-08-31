@@ -71,9 +71,42 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  group('system power saver override', () {
+    setUp(() async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'enable_animations': true,
+      });
+      PageTransitions.setPowerSaveMode(false);
+      await PageTransitions.init();
+    });
+
+    tearDown(() {
+      PageTransitions.setPowerSaveMode(false);
+    });
+
+    test('temporarily removes route animation without changing preferences',
+        () {
+      PageTransitions.setPowerSaveMode(true);
+
+      final route = PageTransitions.material<void>(
+        builder: (_) => const SizedBox.shrink(),
+      );
+      expect(route.transitionDuration, Duration.zero);
+      expect(route.reverseTransitionDuration, Duration.zero);
+      expect(PageTransitions.isPowerSaveMode, isTrue);
+
+      PageTransitions.setPowerSaveMode(false);
+      final restoredRoute = PageTransitions.material<void>(
+        builder: (_) => const SizedBox.shrink(),
+      );
+      expect(restoredRoute.transitionDuration, isNot(Duration.zero));
+    });
+  });
+
   group('predictive back gesture rounded corners', () {
     setUp(() async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
+      PageTransitions.setPowerSaveMode(false);
       await PageTransitions.init();
     });
 
