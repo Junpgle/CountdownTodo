@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
@@ -15,12 +16,14 @@ import '../features/finance/models/finance_models.dart';
 import '../features/finance/services/finance_text_parser.dart';
 import 'llm_service.dart';
 import 'notification_service.dart';
+import 'recognized_todo_adapter.dart';
 
 class ExternalShareHandler {
   static StreamSubscription? _intentDataStreamSubscription;
   static bool _isProcessing = false;
   static final List<String> _processedFileKeys = [];
-  static const int _maxProcessedKeys = 10;
+  static final Set<String> _processingFileKeys = <String>{};
+  static const int _maxProcessedKeys = 50;
 
   /// 初始化监听，放在主页的 initState 中调用
   /// [onCourseImported] 课表导入成功回调
@@ -164,6 +167,7 @@ class ExternalShareHandler {
       },
     );
 
+    String? claimedFileKey;
     try {
       await Future.delayed(const Duration(milliseconds: 400));
 
@@ -171,15 +175,23 @@ class ExternalShareHandler {
       File file = File(filePath);
       String ext = filePath.split('.').last.toLowerCase();
 
-      // 生成文件唯一标识并检查是否已处理（仅对getInitialMedia去重，防止重复处理）
+      // 生成文件唯一标识。getInitialMedia 和 getMediaStream 可能同时返回
+      // 同一份分享内容，因此两条入口必须使用同一套去重规则。
       final fileKey = await _generateFileKey(filePath);
-      if (fromInitial && await _isFileProcessed(fileKey)) {
-        // debugPrint("文件已处理过，跳过: $filePath");
+      if (await _isShareAlreadyHandled(fileKey, filePath)) {
+        // debugPrint("文件已处理或正在处理，跳过: $filePath");
         closeDialogSafely();
         ReceiveSharingIntent.instance.reset();
         _isProcessing = false;
         return;
       }
+      if (!_processingFileKeys.add(fileKey)) {
+        closeDialogSafely();
+        ReceiveSharingIntent.instance.reset();
+        _isProcessing = false;
+        return;
+      }
+      claimedFileKey = fileKey;
 
       // 检测是否为图片
       final imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
@@ -222,6 +234,7 @@ class ExternalShareHandler {
           imagePath: filePath,
           status: 'processing',
           compressedPath: compressedPath,
+          sourceKey: fileKey,
           currentAttempt: 1,
           maxAttempts: 1,
         );
@@ -254,6 +267,7 @@ class ExternalShareHandler {
                 financeDrafts.map((draft) => draft.toJson()).toList(),
             status: 'success',
             compressedPath: compressedPath,
+            sourceKey: fileKey,
           );
 
           // 显示成功通知
@@ -315,6 +329,7 @@ class ExternalShareHandler {
               status: 'failed',
               compressedPath: compressedPath,
               errorMsg: errorMsg,
+              sourceKey: fileKey,
             );
 
             // 显示失败通知
@@ -543,6 +558,9 @@ class ExternalShareHandler {
       closeDialogSafely();
     } finally {
       ReceiveSharingIntent.instance.reset();
+      if (claimedFileKey != null) {
+        _processingFileKeys.remove(claimedFileKey);
+      }
       _isProcessing = false;
       statusNotifier.dispose();
     }
@@ -572,9 +590,10 @@ class ExternalShareHandler {
       ),
     ]);
 
-    final todoResults = results.first
-        .where((result) => !FinanceTextParser.isFinanceResult(result))
-        .toList();
+    final todoResults = RecognizedTodoAdapter.normalizeImageResults(
+      results.first
+          .where((result) => !FinanceTextParser.isFinanceResult(result)),
+    );
     final financeDrafts = FinanceTextParser.fromRecognitionResults(
       [...results.first, ...results.last],
       source: FinanceEntrySource.import,
@@ -632,15 +651,70 @@ class ExternalShareHandler {
     }
   }
 
-  /// 生成文件唯一标识（路径 + 修改时间 + 大小）
+  /// 生成文件内容指纹。
+  ///
+  /// 分享插件在不同生命周期可能为同一张图片返回不同的临时路径，
+  /// 因此不能再用路径/修改时间作为唯一标识；内容哈希才能跨重启和
+  /// getInitialMedia/getMediaStream 两条回调稳定去重。
   static Future<String> _generateFileKey(String filePath) async {
     try {
       final file = File(filePath);
-      if (!await file.exists()) return filePath;
+      if (!await file.exists()) return 'path:$filePath';
+      final digest = sha256.convert(await file.readAsBytes());
+      return 'sha256:${digest.toString()}';
+    } catch (e) {
+      return 'path:$filePath';
+    }
+  }
+
+  /// 检查当前分享是否已经被本次运行、历史运行或待确认记录接收。
+  ///
+  /// 待确认记录是跨进程的最后一道保护：如果 App 在识别过程中被杀，
+  /// 下次启动时即使内存缓存消失，也不会再次发起同一张图片的模型请求；
+  /// 用户仍可通过确认卡片上的“重试”主动重新识别。
+  static Future<bool> _isShareAlreadyHandled(
+    String fileKey,
+    String filePath,
+  ) async {
+    if (_processingFileKeys.contains(fileKey) ||
+        await _isFileProcessed(fileKey) ||
+        await _isLegacyFileProcessed(filePath)) {
+      return true;
+    }
+
+    try {
+      final pending = await StorageService.getPendingTodoConfirm();
+      if (pending == null) return false;
+
+      final pendingSourceKey = pending['sourceKey']?.toString().trim();
+      if (pendingSourceKey != null && pendingSourceKey.isNotEmpty) {
+        if (pendingSourceKey == fileKey) return true;
+        // 兼容升级前的路径+修改时间标识。
+        final legacyKey = await _legacyFileKey(filePath);
+        return legacyKey != null && pendingSourceKey == legacyKey;
+      }
+
+      // 兼容旧版没有 sourceKey 的待确认记录。这个兜底只比较原始路径，
+      // 新版记录优先使用内容指纹，避免同路径被复用时误判。
+      return pending['imagePath']?.toString() == filePath;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> _isLegacyFileProcessed(String filePath) async {
+    final legacyKey = await _legacyFileKey(filePath);
+    return legacyKey != null && await _isFileProcessed(legacyKey);
+  }
+
+  static Future<String?> _legacyFileKey(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) return null;
       final stat = await file.stat();
       return '${filePath}_${stat.modified.millisecondsSinceEpoch}_${stat.size}';
-    } catch (e) {
-      return filePath;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -662,6 +736,7 @@ class ExternalShareHandler {
   /// 标记文件为已处理（持久化存储）
   static Future<void> _markFileProcessed(String fileKey) async {
     // 更新内存缓存
+    _processedFileKeys.remove(fileKey);
     _processedFileKeys.add(fileKey);
     while (_processedFileKeys.length > _maxProcessedKeys) {
       _processedFileKeys.removeAt(0);
@@ -671,7 +746,9 @@ class ExternalShareHandler {
     try {
       final prefs = await SharedPreferences.getInstance();
       List<String> processedKeys =
-          prefs.getStringList('processed_file_keys') ?? [];
+          (prefs.getStringList('processed_file_keys') ?? [])
+              .where((key) => key != fileKey)
+              .toList();
       processedKeys.add(fileKey);
       // 限制列表大小
       while (processedKeys.length > _maxProcessedKeys) {
@@ -790,6 +867,7 @@ class ExternalShareHandler {
         financeResults: financeDrafts.map((draft) => draft.toJson()).toList(),
         status: 'success',
         compressedPath: compressedPath,
+        sourceKey: fileKey,
       );
 
       // 发送成功通知
@@ -866,6 +944,9 @@ class ExternalShareHandler {
 
     // 优先使用压缩后的图片路径
     final retryPath = compressedPath ?? imagePath;
+    // 无论待确认记录来自哪个版本，重试时都重新计算当前原图指纹，
+    // 让旧版路径标识也迁移到新版的跨重启去重协议。
+    final sourceKey = await _generateFileKey(imagePath);
 
     // 检查图片文件是否存在
     final file = File(retryPath);
@@ -905,8 +986,7 @@ class ExternalShareHandler {
 
       if (totalCount > 0) {
         // 标记文件为已处理
-        final fileKey = await _generateFileKey(imagePath);
-        await _markFileProcessed(fileKey);
+        await _markFileProcessed(sourceKey);
 
         // 保存成功状态
         await StorageService.savePendingTodoConfirm(
@@ -915,6 +995,7 @@ class ExternalShareHandler {
           financeResults: financeDrafts.map((draft) => draft.toJson()).toList(),
           status: 'success',
           compressedPath: compressedPath,
+          sourceKey: sourceKey,
         );
 
         // 显示成功通知

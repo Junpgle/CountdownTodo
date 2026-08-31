@@ -8,6 +8,7 @@ import '../services/notification_service.dart';
 import '../services/item_semantics_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
 import '../services/reminder_schedule_service.dart';
+import '../services/recognized_todo_adapter.dart';
 import '../utils/local_image_provider.dart';
 import '../utils/persistent_image_storage.dart';
 
@@ -54,19 +55,30 @@ class ParsedTodoResult {
   });
 
   Map<String, dynamic> toMap() {
+    final isDateOnly =
+        isAllDay || timeSemantics == ParsedTimeSemantics.dateOnly;
+    final dueForWrite =
+        timeSemantics == ParsedTimeSemantics.deadline && endTime == null
+            ? startTime
+            : endTime;
     final normalizedTime = TodoItem.normalizeTimeForWrite(
       selectedDate: startTime,
-      dueDate: endTime,
-      isDateOnly: isAllDay,
+      dueDate: dueForWrite,
+      isDateOnly: isDateOnly,
     );
     return {
       'title': title,
       'remark': remark,
       'location': location,
-      'isAllDay': isAllDay,
+      'isAllDay': isDateOnly,
       'startTime': normalizedTime.start?.toIso8601String(),
       'endTime': normalizedTime.due?.toIso8601String(),
-      'timeMode': timeSemantics.name,
+      'dueDate': normalizedTime.due?.toIso8601String(),
+      'timeMode': isDateOnly
+          ? TodoTimeMode.dateOnly.name
+          : timeSemantics == ParsedTimeSemantics.range
+              ? TodoTimeMode.deadline.name
+              : timeSemantics.name,
       'recurrence': recurrence.name,
       'customIntervalDays': customIntervalDays,
       'originalText': originalText,
@@ -139,46 +151,92 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   }
 
   List<ParsedTodoResult> _parseResults(List<Map<String, dynamic>> results) {
-    return results.map((result) {
-      final startTime = result['startTime'] != null
-          ? DateTime.tryParse(result['startTime'])
-          : null;
-      final endTime = result['endTime'] != null
-          ? DateTime.tryParse(result['endTime'])
-          : null;
-      final isAllDay = result['isAllDay'] ?? false;
+    return results.map((rawResult) {
+      // Pending image results may have been produced by an older prompt or
+      // stored before the timeMode migration. Normalize them again here so a
+      // process restart cannot reintroduce the old start/end representation.
+      final result = widget.imagePath != null
+          ? RecognizedTodoAdapter.normalizeImageResult(rawResult)
+          : Map<String, dynamic>.from(rawResult);
+      final rawTimeMode = result['timeMode'] ?? result['time_mode'];
+      final declaredTimeMode = RecognizedTodoAdapter.parseTimeMode(rawTimeMode);
+      final startTime = RecognizedTodoAdapter.parseDateTime(
+        result['startTime'] ??
+            result['start_time'] ??
+            result['createdDate'] ??
+            result['created_date'],
+      );
+      final endTime = RecognizedTodoAdapter.parseDateTime(
+        result['endTime'] ??
+            result['end_time'] ??
+            result['dueDate'] ??
+            result['due_date'],
+      );
+      final isAllDay = RecognizedTodoAdapter.parseBool(
+            result['isAllDay'] ?? result['is_all_day'],
+          ) ||
+          declaredTimeMode == TodoTimeMode.dateOnly ||
+          (startTime != null &&
+              endTime != null &&
+              TodoItem.looksLikeLegacyDateOnlyRange(startTime, endTime));
       return ParsedTodoResult(
-        title: result['title'] ?? '',
-        remark: result['remark'],
+        title:
+            result['title']?.toString() ?? result['content']?.toString() ?? '',
+        remark:
+            (result['remark'] ?? result['notes'] ?? result['note'])?.toString(),
         location: result['location']?.toString(),
         isAllDay: isAllDay,
         startTime: startTime,
         endTime: endTime,
         timeSemantics: _parseTimeSemantics(
-          result['timeMode'],
+          rawTimeMode,
           isAllDay: isAllDay,
           startTime: startTime,
           endTime: endTime,
         ),
         recurrence: _parseRecurrenceType(result['recurrence']),
-        customIntervalDays: result['customIntervalDays'],
-        originalText: widget.originalText, // 📄 传入原始文本
-        reminderMinutes: result['reminderMinutes'],
-        groupId: result['groupId'],
-        collabType: result['collab_type'] ?? 0,
-        itemKind: result['itemKind']?.toString(),
-        teamUuid: widget.initialTeamUuid,
-        teamName: widget.initialTeamName,
-        recurrenceEndDate: DateTime.tryParse(
-          (result['recurrenceEndDate'] ?? result['recurrence_end_date'] ?? '')
-              .toString(),
+        customIntervalDays: _parseNullableInt(
+          result['customIntervalDays'] ?? result['custom_interval_days'],
+        ),
+        originalText: (result['originalText'] ??
+                result['original_text'] ??
+                widget.originalText)
+            ?.toString(),
+        reminderMinutes: _parseNullableInt(
+          result['reminderMinutes'] ?? result['reminder_minutes'],
+        ),
+        groupId: (result['groupId'] ?? result['group_id'])?.toString(),
+        collabType: _parseNullableInt(
+              result['collab_type'] ?? result['collabType'],
+            ) ??
+            0,
+        itemKind: (result['itemKind'] ?? result['item_kind'])?.toString(),
+        teamUuid: (result['team_uuid'] ??
+                result['teamUuid'] ??
+                widget.initialTeamUuid)
+            ?.toString(),
+        teamName: (result['team_name'] ??
+                result['teamName'] ??
+                widget.initialTeamName)
+            ?.toString(),
+        recurrenceEndDate: RecognizedTodoAdapter.parseDateTime(
+          result['recurrenceEndDate'] ?? result['recurrence_end_date'],
         ),
       );
     }).toList();
   }
 
-  RecurrenceType _parseRecurrenceType(String? type) {
-    switch (type) {
+  int? _parseNullableInt(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  RecurrenceType _parseRecurrenceType(dynamic type) {
+    final index = _parseNullableInt(type);
+    if (index != null && index >= 0 && index < RecurrenceType.values.length) {
+      return RecurrenceType.values[index];
+    }
+    switch (type?.toString()) {
       case 'daily':
         return RecurrenceType.daily;
       case 'weekly':
@@ -203,13 +261,18 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     required DateTime? endTime,
   }) {
     if (isAllDay) return ParsedTimeSemantics.dateOnly;
-    final name = raw?.toString();
-    return ParsedTimeSemantics.values.firstWhere(
-      (value) => value.name == name,
-      orElse: () => startTime != null && endTime != null
-          ? ParsedTimeSemantics.range
-          : ParsedTimeSemantics.unscheduled,
-    );
+    if (raw?.toString().trim().toLowerCase() == 'range') {
+      return ParsedTimeSemantics.range;
+    }
+    final mode = RecognizedTodoAdapter.parseTimeMode(raw);
+    if (mode == TodoTimeMode.dateOnly) return ParsedTimeSemantics.dateOnly;
+    if (mode == TodoTimeMode.deadline) return ParsedTimeSemantics.deadline;
+    if (mode == TodoTimeMode.unscheduled) {
+      return ParsedTimeSemantics.unscheduled;
+    }
+    return startTime != null && endTime != null
+        ? ParsedTimeSemantics.range
+        : ParsedTimeSemantics.unscheduled;
   }
 
   Future<void> _retryRecognition() async {
@@ -629,6 +692,13 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
               ),
               FilledButton(
                 onPressed: () {
+                  final editedTimeSemantics = isAllDay
+                      ? ParsedTimeSemantics.dateOnly
+                      : todo.timeSemantics == ParsedTimeSemantics.dateOnly
+                          ? dueDate == null
+                              ? ParsedTimeSemantics.unscheduled
+                              : ParsedTimeSemantics.deadline
+                          : todo.timeSemantics;
                   setState(() {
                     _allTodos[_currentIndex] = ParsedTodoResult(
                       title: titleCtrl.text,
@@ -637,9 +707,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       isAllDay: isAllDay,
                       startTime: createdAt,
                       endTime: dueDate,
-                      timeSemantics: isAllDay
-                          ? ParsedTimeSemantics.dateOnly
-                          : todo.timeSemantics,
+                      timeSemantics: editedTimeSemantics,
                       recurrence: recurrence,
                       customIntervalDays: customDays,
                       recurrenceEndDate: recurrenceEndDate,

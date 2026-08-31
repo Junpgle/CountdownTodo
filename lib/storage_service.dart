@@ -755,6 +755,7 @@ class StorageService {
     List<Map<String, dynamic>> financeResults = const [],
     String status = 'success',
     String? compressedPath,
+    String? sourceKey,
     int currentAttempt = 1,
     int maxAttempts = 1,
     String? errorMsg,
@@ -765,6 +766,7 @@ class StorageService {
           financeResults: financeResults,
           status: status,
           compressedPath: compressedPath,
+          sourceKey: sourceKey,
           currentAttempt: currentAttempt,
           maxAttempts: maxAttempts,
           errorMsg: errorMsg);

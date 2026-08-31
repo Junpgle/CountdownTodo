@@ -565,6 +565,7 @@ abstract class _StorageServiceBase {
     List<Map<String, dynamic>> financeResults = const [],
     String status = 'success',
     String? compressedPath,
+    String? sourceKey,
     int currentAttempt = 1,
     int maxAttempts = 1,
     String? errorMsg,
