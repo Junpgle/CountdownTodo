@@ -16,9 +16,73 @@ int _readNonNegativeInt(Object? value) {
   return parsed < 0 ? 0 : parsed;
 }
 
+int? _readNullableNonNegativeInt(Object? value) {
+  if (value == null) return null;
+  return _readNonNegativeInt(value);
+}
+
 /// One model's configured CNY prices.  Prices use micro-yuan so a low-cost
 /// request is retained accurately even when its eventual ledger total is
 /// still below one fen.
+class AiUsagePriceTier {
+  final int minPromptTokens;
+  final int? maxPromptTokens;
+  final int minCompletionTokens;
+  final int? maxCompletionTokens;
+  final int cachedInputMicrosPerMillion;
+  final int inputMicrosPerMillion;
+  final int outputMicrosPerMillion;
+
+  const AiUsagePriceTier({
+    this.minPromptTokens = 0,
+    this.maxPromptTokens,
+    this.minCompletionTokens = 0,
+    this.maxCompletionTokens,
+    this.cachedInputMicrosPerMillion = 0,
+    this.inputMicrosPerMillion = 0,
+    this.outputMicrosPerMillion = 0,
+  });
+
+  bool matches({
+    required int promptTokens,
+    required int completionTokens,
+  }) {
+    return promptTokens >= minPromptTokens &&
+        (maxPromptTokens == null || promptTokens < maxPromptTokens!) &&
+        completionTokens >= minCompletionTokens &&
+        (maxCompletionTokens == null ||
+            completionTokens < maxCompletionTokens!);
+  }
+
+  Map<String, dynamic> toJson() => {
+        'min_prompt_tokens': minPromptTokens,
+        'max_prompt_tokens': maxPromptTokens,
+        'min_completion_tokens': minCompletionTokens,
+        'max_completion_tokens': maxCompletionTokens,
+        'cached_input_micros_per_million': cachedInputMicrosPerMillion,
+        'input_micros_per_million': inputMicrosPerMillion,
+        'output_micros_per_million': outputMicrosPerMillion,
+      };
+
+  factory AiUsagePriceTier.fromJson(Map<String, dynamic> json) =>
+      AiUsagePriceTier(
+        minPromptTokens: _readNonNegativeInt(json['min_prompt_tokens']),
+        maxPromptTokens: _readNullableNonNegativeInt(
+          json['max_prompt_tokens'],
+        ),
+        minCompletionTokens: _readNonNegativeInt(json['min_completion_tokens']),
+        maxCompletionTokens: _readNullableNonNegativeInt(
+          json['max_completion_tokens'],
+        ),
+        cachedInputMicrosPerMillion:
+            _readNonNegativeInt(json['cached_input_micros_per_million']),
+        inputMicrosPerMillion:
+            _readNonNegativeInt(json['input_micros_per_million']),
+        outputMicrosPerMillion:
+            _readNonNegativeInt(json['output_micros_per_million']),
+      );
+}
+
 class AiUsagePricing {
   final String provider;
   final String model;
@@ -27,6 +91,12 @@ class AiUsagePricing {
   final int outputMicrosPerMillion;
   final int imageMicrosPerImage;
   final int audioMicrosPerHour;
+  final int peakCachedInputMicrosPerMillion;
+  final int peakInputMicrosPerMillion;
+  final int peakOutputMicrosPerMillion;
+  final bool imageTokensIncluded;
+  final bool isFree;
+  final List<AiUsagePriceTier> tiers;
 
   const AiUsagePricing({
     required this.provider,
@@ -36,6 +106,12 @@ class AiUsagePricing {
     this.outputMicrosPerMillion = 0,
     this.imageMicrosPerImage = 0,
     this.audioMicrosPerHour = 0,
+    this.peakCachedInputMicrosPerMillion = 0,
+    this.peakInputMicrosPerMillion = 0,
+    this.peakOutputMicrosPerMillion = 0,
+    this.imageTokensIncluded = false,
+    this.isFree = false,
+    this.tiers = const [],
   });
 
   String get id => '$provider::$model';
@@ -48,21 +124,63 @@ class AiUsagePricing {
         'output_micros_per_million': outputMicrosPerMillion,
         'image_micros_per_image': imageMicrosPerImage,
         'audio_micros_per_hour': audioMicrosPerHour,
+        'peak_cached_input_micros_per_million': peakCachedInputMicrosPerMillion,
+        'peak_input_micros_per_million': peakInputMicrosPerMillion,
+        'peak_output_micros_per_million': peakOutputMicrosPerMillion,
+        'image_tokens_included': imageTokensIncluded,
+        'is_free': isFree,
+        'tiers': tiers.map((item) => item.toJson()).toList(),
       };
 
-  factory AiUsagePricing.fromJson(Map<String, dynamic> json) => AiUsagePricing(
-        provider: json['provider']?.toString() ?? '',
-        model: json['model']?.toString() ?? '',
-        cachedInputMicrosPerMillion:
-            _readNonNegativeInt(json['cached_input_micros_per_million']),
-        inputMicrosPerMillion:
-            _readNonNegativeInt(json['input_micros_per_million']),
-        outputMicrosPerMillion:
-            _readNonNegativeInt(json['output_micros_per_million']),
-        imageMicrosPerImage:
-            _readNonNegativeInt(json['image_micros_per_image']),
-        audioMicrosPerHour: _readNonNegativeInt(json['audio_micros_per_hour']),
-      );
+  factory AiUsagePricing.fromJson(Map<String, dynamic> json) {
+    final rawTiers = json['tiers'];
+    final tiers = rawTiers is List
+        ? rawTiers
+            .whereType<Map>()
+            .map((item) => AiUsagePriceTier.fromJson(
+                  Map<String, dynamic>.from(item),
+                ))
+            .toList()
+        : const <AiUsagePriceTier>[];
+    return AiUsagePricing(
+      provider: json['provider']?.toString() ?? '',
+      model: json['model']?.toString() ?? '',
+      cachedInputMicrosPerMillion:
+          _readNonNegativeInt(json['cached_input_micros_per_million']),
+      inputMicrosPerMillion:
+          _readNonNegativeInt(json['input_micros_per_million']),
+      outputMicrosPerMillion:
+          _readNonNegativeInt(json['output_micros_per_million']),
+      imageMicrosPerImage: _readNonNegativeInt(json['image_micros_per_image']),
+      audioMicrosPerHour: _readNonNegativeInt(json['audio_micros_per_hour']),
+      peakCachedInputMicrosPerMillion: _readNonNegativeInt(
+        json['peak_cached_input_micros_per_million'],
+      ),
+      peakInputMicrosPerMillion:
+          _readNonNegativeInt(json['peak_input_micros_per_million']),
+      peakOutputMicrosPerMillion:
+          _readNonNegativeInt(json['peak_output_micros_per_million']),
+      imageTokensIncluded: json['image_tokens_included'] == true,
+      isFree: json['is_free'] == true,
+      tiers: tiers,
+    );
+  }
+}
+
+class _AiUsageRates {
+  final int cachedInputMicrosPerMillion;
+  final int inputMicrosPerMillion;
+  final int outputMicrosPerMillion;
+  final int imageMicrosPerImage;
+  final int audioMicrosPerHour;
+
+  const _AiUsageRates({
+    required this.cachedInputMicrosPerMillion,
+    required this.inputMicrosPerMillion,
+    required this.outputMicrosPerMillion,
+    required this.imageMicrosPerImage,
+    required this.audioMicrosPerHour,
+  });
 }
 
 class AiUsageRecord {
@@ -190,9 +308,16 @@ abstract final class AiUsageCostService {
   static const _microsPerFen = 10000;
   static const _tokensPerMillion = 1000000;
 
-  // Domestic MiMo pay-as-you-go prices, stored as micro-yuan per million
-  // tokens. Token Plan is deliberately excluded: its quota is not the same
-  // billing system as the ordinary MiMo API balance.
+  // Prices are stored as micro-yuan per million tokens. The Zhipu and
+  // DeepSeek entries below were checked against their official domestic
+  // pricing pages on 2026-08-31. NIM is deliberately not included: NVIDIA's
+  // hosted models do not have one universal public per-token price.
+  // Sources: https://bigmodel.cn/pricing and
+  // https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
+  //
+  // Domestic MiMo pay-as-you-go prices are included, while Token Plan is
+  // deliberately excluded: its quota is not the same billing system as the
+  // ordinary MiMo API balance.
   static const List<AiUsagePricing> _builtInPricing = [
     AiUsagePricing(
       provider: 'mimo',
@@ -200,6 +325,7 @@ abstract final class AiUsageCostService {
       cachedInputMicrosPerMillion: 20000,
       inputMicrosPerMillion: 1000000,
       outputMicrosPerMillion: 2000000,
+      imageTokensIncluded: true,
     ),
     AiUsagePricing(
       provider: 'mimo',
@@ -207,11 +333,214 @@ abstract final class AiUsageCostService {
       cachedInputMicrosPerMillion: 25000,
       inputMicrosPerMillion: 3000000,
       outputMicrosPerMillion: 6000000,
+      imageTokensIncluded: true,
     ),
     AiUsagePricing(
       provider: 'mimo',
       model: 'mimo-v2.5-asr',
       audioMicrosPerHour: 500000,
+    ),
+    AiUsagePricing(
+      provider: 'zhipu',
+      model: 'glm-5',
+      cachedInputMicrosPerMillion: 1000000,
+      inputMicrosPerMillion: 4000000,
+      outputMicrosPerMillion: 18000000,
+      tiers: [
+        AiUsagePriceTier(
+          maxPromptTokens: 32000,
+          cachedInputMicrosPerMillion: 1000000,
+          inputMicrosPerMillion: 4000000,
+          outputMicrosPerMillion: 18000000,
+        ),
+        AiUsagePriceTier(
+          minPromptTokens: 32000,
+          cachedInputMicrosPerMillion: 1500000,
+          inputMicrosPerMillion: 6000000,
+          outputMicrosPerMillion: 22000000,
+        ),
+      ],
+    ),
+    AiUsagePricing(
+      provider: 'zhipu',
+      model: 'glm-5-turbo',
+      cachedInputMicrosPerMillion: 1200000,
+      inputMicrosPerMillion: 5000000,
+      outputMicrosPerMillion: 22000000,
+      tiers: [
+        AiUsagePriceTier(
+          maxPromptTokens: 32000,
+          cachedInputMicrosPerMillion: 1200000,
+          inputMicrosPerMillion: 5000000,
+          outputMicrosPerMillion: 22000000,
+        ),
+        AiUsagePriceTier(
+          minPromptTokens: 32000,
+          cachedInputMicrosPerMillion: 1800000,
+          inputMicrosPerMillion: 7000000,
+          outputMicrosPerMillion: 26000000,
+        ),
+      ],
+    ),
+    AiUsagePricing(
+      provider: 'zhipu',
+      model: 'glm-4.7',
+      cachedInputMicrosPerMillion: 400000,
+      inputMicrosPerMillion: 2000000,
+      outputMicrosPerMillion: 8000000,
+      tiers: [
+        AiUsagePriceTier(
+          maxPromptTokens: 32000,
+          maxCompletionTokens: 200000,
+          cachedInputMicrosPerMillion: 400000,
+          inputMicrosPerMillion: 2000000,
+          outputMicrosPerMillion: 8000000,
+        ),
+        AiUsagePriceTier(
+          maxPromptTokens: 32000,
+          minCompletionTokens: 200000,
+          cachedInputMicrosPerMillion: 600000,
+          inputMicrosPerMillion: 3000000,
+          outputMicrosPerMillion: 14000000,
+        ),
+        AiUsagePriceTier(
+          minPromptTokens: 32000,
+          cachedInputMicrosPerMillion: 800000,
+          inputMicrosPerMillion: 4000000,
+          outputMicrosPerMillion: 16000000,
+        ),
+      ],
+    ),
+    AiUsagePricing(
+      provider: 'zhipu',
+      model: 'glm-4.7-flashx',
+      cachedInputMicrosPerMillion: 100000,
+      inputMicrosPerMillion: 500000,
+      outputMicrosPerMillion: 3000000,
+    ),
+    AiUsagePricing(
+      provider: 'zhipu',
+      model: 'glm-4.5-air',
+      cachedInputMicrosPerMillion: 160000,
+      inputMicrosPerMillion: 800000,
+      outputMicrosPerMillion: 2000000,
+      tiers: [
+        AiUsagePriceTier(
+          maxPromptTokens: 32000,
+          maxCompletionTokens: 200000,
+          cachedInputMicrosPerMillion: 160000,
+          inputMicrosPerMillion: 800000,
+          outputMicrosPerMillion: 2000000,
+        ),
+        AiUsagePriceTier(
+          maxPromptTokens: 32000,
+          minCompletionTokens: 200000,
+          cachedInputMicrosPerMillion: 160000,
+          inputMicrosPerMillion: 800000,
+          outputMicrosPerMillion: 6000000,
+        ),
+        AiUsagePriceTier(
+          minPromptTokens: 32000,
+          cachedInputMicrosPerMillion: 240000,
+          inputMicrosPerMillion: 1200000,
+          outputMicrosPerMillion: 8000000,
+        ),
+      ],
+    ),
+    AiUsagePricing(
+      provider: 'zhipu',
+      model: 'glm-4.6v',
+      cachedInputMicrosPerMillion: 200000,
+      inputMicrosPerMillion: 1000000,
+      outputMicrosPerMillion: 3000000,
+      imageTokensIncluded: true,
+      tiers: [
+        AiUsagePriceTier(
+          maxPromptTokens: 32000,
+          cachedInputMicrosPerMillion: 200000,
+          inputMicrosPerMillion: 1000000,
+          outputMicrosPerMillion: 3000000,
+        ),
+        AiUsagePriceTier(
+          minPromptTokens: 32000,
+          cachedInputMicrosPerMillion: 400000,
+          inputMicrosPerMillion: 2000000,
+          outputMicrosPerMillion: 6000000,
+        ),
+      ],
+    ),
+    AiUsagePricing(
+      provider: 'zhipu',
+      model: 'glm-4.7-flash',
+      isFree: true,
+    ),
+    AiUsagePricing(
+      provider: 'zhipu',
+      model: 'glm-4-flash-250414',
+      isFree: true,
+    ),
+    AiUsagePricing(
+      provider: 'zhipu',
+      model: 'glm-4.5-flash',
+      isFree: true,
+    ),
+    AiUsagePricing(
+      provider: 'zhipu',
+      model: 'glm-4.6v-flash',
+      isFree: true,
+      imageTokensIncluded: true,
+    ),
+    AiUsagePricing(
+      provider: 'zhipu',
+      model: 'glm-4.1v-thinking-flash',
+      isFree: true,
+      imageTokensIncluded: true,
+    ),
+    AiUsagePricing(
+      provider: 'zhipu',
+      model: 'glm-4v-flash',
+      isFree: true,
+      imageTokensIncluded: true,
+    ),
+    // The official model guide currently describes AutoGLM-Phone as
+    // temporarily free. Keep the entry free until the provider publishes a
+    // paid input/output split that can be represented here.
+    AiUsagePricing(
+      provider: 'zhipu',
+      model: 'autoglm-phone',
+      isFree: true,
+      imageTokensIncluded: true,
+    ),
+    AiUsagePricing(
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash',
+      cachedInputMicrosPerMillion: 50000,
+      inputMicrosPerMillion: 1500000,
+      outputMicrosPerMillion: 4500000,
+      peakCachedInputMicrosPerMillion: 100000,
+      peakInputMicrosPerMillion: 3000000,
+      peakOutputMicrosPerMillion: 9000000,
+    ),
+    AiUsagePricing(
+      provider: 'deepseek',
+      model: 'deepseek-v4-pro',
+      cachedInputMicrosPerMillion: 150000,
+      inputMicrosPerMillion: 4500000,
+      outputMicrosPerMillion: 13500000,
+      peakCachedInputMicrosPerMillion: 300000,
+      peakInputMicrosPerMillion: 9000000,
+      peakOutputMicrosPerMillion: 27000000,
+    ),
+    AiUsagePricing(
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash-vision-exp',
+      cachedInputMicrosPerMillion: 50000,
+      inputMicrosPerMillion: 1500000,
+      outputMicrosPerMillion: 4500000,
+      peakCachedInputMicrosPerMillion: 100000,
+      peakInputMicrosPerMillion: 3000000,
+      peakOutputMicrosPerMillion: 9000000,
+      imageTokensIncluded: true,
     ),
   ];
 
@@ -351,6 +680,7 @@ abstract final class AiUsageCostService {
         normalizedCachedPromptTokens > normalizedPromptTokens
             ? normalizedPromptTokens
             : normalizedCachedPromptTokens;
+    final timestamp = now ?? DateTime.now();
     final settings = await _loadSettings();
     final pricing = settings.prices
         .where((item) => item.provider == provider && item.model == model)
@@ -366,9 +696,9 @@ abstract final class AiUsageCostService {
             imageTokens: normalizedImageTokens,
             audioSeconds: normalizedAudioSeconds,
             imageCount: normalizedImageCount,
+            at: timestamp,
           )
         : null;
-    final timestamp = now ?? DateTime.now();
     final ledgerKey =
         costMicros == null ? null : '${dateKey(timestamp)}|$provider|$model';
     final db = await _database;
@@ -414,8 +744,10 @@ abstract final class AiUsageCostService {
     required int imageTokens,
     required int audioSeconds,
     required int imageCount,
+    required DateTime at,
   }) {
     if (pricing == null) return null;
+    if (pricing.isFree) return 0;
     final normalizedPromptTokens = _readNonNegativeInt(promptTokens);
     final normalizedCompletionTokens = _readNonNegativeInt(completionTokens);
     final normalizedCachedPromptTokens = _readNonNegativeInt(
@@ -425,44 +757,114 @@ abstract final class AiUsageCostService {
         ? normalizedPromptTokens
         : normalizedCachedPromptTokens;
     final uncachedTokens = normalizedPromptTokens - cachedTokens;
-    final isMimo = provider == 'mimo' || provider == 'mimo_token_plan';
+    final normalizedProvider = provider.toLowerCase();
+    final isMimo =
+        normalizedProvider == 'mimo' || normalizedProvider == 'mimo_token_plan';
+    final rates = _ratesFor(
+      pricing,
+      promptTokens: normalizedPromptTokens,
+      completionTokens: normalizedCompletionTokens,
+      at: at,
+    );
+    if (rates == null) return null;
 
     // MiMo ASR is billed by audio duration, not by the token fields in the
     // response. A missing duration must remain unpriced instead of guessing.
     if (model == 'mimo-v2.5-asr' || audioSeconds > 0) {
-      if (audioSeconds <= 0 || pricing.audioMicrosPerHour <= 0) return null;
-      return _roundProduct(audioSeconds, pricing.audioMicrosPerHour, 3600);
+      if (audioSeconds <= 0 || rates.audioMicrosPerHour <= 0) return null;
+      return _roundProduct(audioSeconds, rates.audioMicrosPerHour, 3600);
     }
 
-    if (uncachedTokens > 0 && pricing.inputMicrosPerMillion <= 0) {
+    if (uncachedTokens > 0 && rates.inputMicrosPerMillion <= 0) {
       return null;
     }
-    if (normalizedCompletionTokens > 0 && pricing.outputMicrosPerMillion <= 0) {
+    if (normalizedCompletionTokens > 0 && rates.outputMicrosPerMillion <= 0) {
       return null;
     }
-    final cachedInputRate = pricing.cachedInputMicrosPerMillion > 0
-        ? pricing.cachedInputMicrosPerMillion
-        : pricing.inputMicrosPerMillion;
+    final cachedInputRate = rates.cachedInputMicrosPerMillion > 0
+        ? rates.cachedInputMicrosPerMillion
+        : rates.inputMicrosPerMillion;
     if (cachedTokens > 0 && cachedInputRate <= 0) {
       return null;
     }
-    if (isMimo && imageTokens > 0 && normalizedPromptTokens <= 0) {
+    final imageTokensIncluded = pricing.imageTokensIncluded || isMimo;
+    if (imageTokensIncluded && imageTokens > 0 && normalizedPromptTokens <= 0) {
       return null;
     }
-    if (!isMimo && imageCount > 0 && pricing.imageMicrosPerImage <= 0) {
+    if (!imageTokensIncluded &&
+        !isMimo &&
+        imageCount > 0 &&
+        rates.imageMicrosPerImage <= 0) {
       return null;
     }
 
-    // MiMo reports image/audio/video tokens as parts of prompt_tokens. Do not
-    // add a per-image fee on top of that total. For other providers, retain
-    // the existing optional fixed image fee behavior.
-    final tokenNumerator = uncachedTokens * pricing.inputMicrosPerMillion +
+    // MiMo, Zhipu vision, and DeepSeek vision report media as parts of the
+    // prompt token total. Do not add a per-image fee on top of those tokens.
+    // For other providers, retain the existing optional fixed image fee.
+    final tokenNumerator = uncachedTokens * rates.inputMicrosPerMillion +
         cachedTokens * cachedInputRate +
-        normalizedCompletionTokens * pricing.outputMicrosPerMillion;
+        normalizedCompletionTokens * rates.outputMicrosPerMillion;
     final tokenCostMicros =
         (tokenNumerator + (_tokensPerMillion ~/ 2)) ~/ _tokensPerMillion;
     return tokenCostMicros +
-        (isMimo ? 0 : imageCount * pricing.imageMicrosPerImage);
+        (imageTokensIncluded || isMimo
+            ? 0
+            : imageCount * rates.imageMicrosPerImage);
+  }
+
+  static _AiUsageRates? _ratesFor(
+    AiUsagePricing pricing, {
+    required int promptTokens,
+    required int completionTokens,
+    required DateTime at,
+  }) {
+    AiUsagePriceTier? tier;
+    if (pricing.tiers.isNotEmpty) {
+      for (final candidate in pricing.tiers) {
+        if (candidate.matches(
+          promptTokens: promptTokens,
+          completionTokens: completionTokens,
+        )) {
+          tier = candidate;
+          break;
+        }
+      }
+      if (tier == null) return null;
+    }
+
+    var cachedInputMicrosPerMillion = tier?.cachedInputMicrosPerMillion ??
+        pricing.cachedInputMicrosPerMillion;
+    var inputMicrosPerMillion =
+        tier?.inputMicrosPerMillion ?? pricing.inputMicrosPerMillion;
+    var outputMicrosPerMillion =
+        tier?.outputMicrosPerMillion ?? pricing.outputMicrosPerMillion;
+    if (_isDeepSeekPeakPeriod(pricing.provider, at)) {
+      if (pricing.peakCachedInputMicrosPerMillion > 0) {
+        cachedInputMicrosPerMillion = pricing.peakCachedInputMicrosPerMillion;
+      }
+      if (pricing.peakInputMicrosPerMillion > 0) {
+        inputMicrosPerMillion = pricing.peakInputMicrosPerMillion;
+      }
+      if (pricing.peakOutputMicrosPerMillion > 0) {
+        outputMicrosPerMillion = pricing.peakOutputMicrosPerMillion;
+      }
+    }
+    return _AiUsageRates(
+      cachedInputMicrosPerMillion: cachedInputMicrosPerMillion,
+      inputMicrosPerMillion: inputMicrosPerMillion,
+      outputMicrosPerMillion: outputMicrosPerMillion,
+      imageMicrosPerImage: pricing.imageMicrosPerImage,
+      audioMicrosPerHour: pricing.audioMicrosPerHour,
+    );
+  }
+
+  static bool _isDeepSeekPeakPeriod(String provider, DateTime at) {
+    if (provider.toLowerCase() != 'deepseek') return false;
+    final beijing = at.toUtc().add(const Duration(hours: 8));
+    if (beijing.weekday > DateTime.friday) return false;
+    final minute = beijing.hour * 60 + beijing.minute;
+    return (minute >= 9 * 60 && minute < 12 * 60) ||
+        (minute >= 14 * 60 && minute < 18 * 60);
   }
 
   static int _roundProduct(int value, int microsPerUnit, int divisor) {

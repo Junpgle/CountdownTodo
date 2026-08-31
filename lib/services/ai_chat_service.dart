@@ -44,7 +44,9 @@ class AiTokenUsage {
     final completionDetails = _asMap(
       json['completion_tokens_details'] ?? json['output_tokens_details'],
     );
-    final cachedPromptTokens = _readInt(promptDetails?['cached_tokens']);
+    final cachedPromptTokens = _readInt(
+      promptDetails?['cached_tokens'] ?? json['prompt_cache_hit_tokens'],
+    );
     final imageTokens = _readInt(promptDetails?['image_tokens']);
     final audioTokens = _readInt(promptDetails?['audio_tokens']);
     final videoTokens = _readInt(promptDetails?['video_tokens']);
