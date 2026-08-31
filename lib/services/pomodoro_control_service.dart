@@ -114,6 +114,9 @@ class PomodoroControlService {
         totalCycles: settings.cycles,
         tagNames: tagNames,
         alertKey: 'pomo_start_$end',
+        timerMode: isCountUp ? 'countUp' : 'countdown',
+        timerAnchorMs: isStrictWaiting ? null : (isCountUp ? now : end),
+        isPaused: isStrictWaiting,
       );
       if (!isCountUp) {
         _scheduleFocusEndReminder(

@@ -83,7 +83,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   // ── Timer ──
   Timer? _ticker;
-  int _notifyTickCount = 0;
   final ValueNotifier<int> _timerTickNotifier = ValueNotifier<int>(0);
   bool _appInForeground = true;
   bool _tickerModeEnabled = true;
@@ -376,7 +375,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     }
     if (state == AppLifecycleState.resumed) {
       _appInForeground = true;
-      _notifyTickCount = 0;
       unawaited(_resumeUiTickers());
       unawaited(_syncService.resumeFromBackground());
       if (_isStrictFreeFocus && _phase == PomodoroPhase.focusing && _isPaused) {
@@ -1418,6 +1416,18 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   void _pushPomodoroNotification(
       {int? overrideRemaining, String alertKey = ''}) {
     final remaining = overrideRemaining ?? _remainingSeconds;
+    final isRemoteWatching = _phase == PomodoroPhase.remoteWatching;
+    final isCountUp = isRemoteWatching
+        ? _remoteState?.mode == 1
+        : _phase == PomodoroPhase.focusing &&
+            _settings.mode == TimerMode.countUp;
+    final timerAnchorMs = _isPaused
+        ? null
+        : isCountUp
+            ? (isRemoteWatching
+                ? _sessionStartMs
+                : _sessionStartMs + _accumulatedMs)
+            : _targetEndMs;
     final tagNames = _tags
         .where((t) => _selectedTagUuids.contains(t.uuid))
         .map((t) => t.name)
@@ -1430,13 +1440,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       totalCycles: _settings.cycles,
       tagNames: tagNames,
       alertKey: alertKey,
+      timerMode: isCountUp ? 'countUp' : 'countdown',
+      timerAnchorMs: timerAnchorMs,
+      isPaused: _isPaused,
     );
   }
 
   void _startTicker() {
     _ticker?.cancel();
     _ticker = null;
-    _notifyTickCount = 0;
     if (!_shouldRunUiTickers) return;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) async {
       // debugPrint('[Ticker] Tick fired, _isPaused: $_isPaused, _phase: $_phase');
@@ -1467,12 +1479,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _remainingSeconds = elapsed;
           _timerTickNotifier.value++;
         }
-        _notifyTickCount++;
-        if (_notifyTickCount >= 60) {
-          _notifyTickCount = 0;
-          _pushPomodoroNotification(overrideRemaining: elapsed);
-          await _saveCurrentRunState();
-        }
       } else {
         final remaining = ((_targetEndMs - now) / 1000).ceil();
         if (remaining <= 0) {
@@ -1486,13 +1492,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         } else {
           _remainingSeconds = remaining;
           _timerTickNotifier.value++;
-          _notifyTickCount++;
-          final int interval = remaining <= 60 ? 1 : 60;
-          if (_notifyTickCount >= interval) {
-            _notifyTickCount = 0;
-            _pushPomodoroNotification(overrideRemaining: remaining);
-            await _saveCurrentRunState();
-          }
         }
       }
     });

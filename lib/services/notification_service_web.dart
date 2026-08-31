@@ -175,6 +175,9 @@ class NotificationService {
     int totalCycles = 4,
     List<String> tagNames = const [],
     String alertKey = '',
+    String timerMode = 'countdown',
+    int? timerAnchorMs,
+    bool isPaused = false,
   }) async {}
 
   static Future<void> sendPomodoroEndAlert({
@@ -197,7 +200,7 @@ class NotificationService {
   }
 
   static Future<void> scheduleReminders(List<Map<String, dynamic>> reminders,
-      {bool clearFirst = true}) async {
+      {bool clearFirst = true, bool forceReschedule = false}) async {
     if (clearFirst) {
       _clearScheduledReminders();
     }

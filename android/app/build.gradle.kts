@@ -136,6 +136,7 @@ dependencies {
     implementation("io.github.d4viddf:hyperisland_kit:0.4.3")
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
+    testImplementation("junit:junit:4.13.2")
 
     // 加载 libs 目录下的本地依赖
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))

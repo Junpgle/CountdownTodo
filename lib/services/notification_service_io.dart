@@ -520,6 +520,9 @@ class NotificationService {
     int totalCycles = 4,
     List<String> tagNames = const [],
     String alertKey = '',
+    String timerMode = 'countdown',
+    int? timerAnchorMs,
+    bool isPaused = false,
   }) async {
     if (!await AppSettingsStorage.isPomodoroNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
@@ -541,6 +544,9 @@ class NotificationService {
         'totalCycles': totalCycles,
         'tagNames': tagNames,
         'alertKey': alertKey,
+        'timerMode': timerMode,
+        'timerAnchorMs': timerAnchorMs ?? 0,
+        'isPaused': isPaused,
       });
     } catch (_) {
       // Native notification calls are best-effort.
@@ -614,7 +620,7 @@ class NotificationService {
   }
 
   static Future<void> scheduleReminders(List<Map<String, dynamic>> reminders,
-      {bool clearFirst = true}) async {
+      {bool clearFirst = true, bool forceReschedule = false}) async {
     if (!await AppSettingsStorage.isReminderNotificationEnabled() &&
         !(clearFirst && reminders.isEmpty)) {
       return;
@@ -717,6 +723,7 @@ class NotificationService {
       await _channel.invokeMethod('scheduleReminders', {
         'remindersJson': jsonEncode(payload),
         'clearFirst': clearFirst,
+        'forceReschedule': forceReschedule,
       });
     } catch (_) {
       // Native notification calls are best-effort.
