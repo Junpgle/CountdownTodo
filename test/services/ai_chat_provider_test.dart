@@ -135,6 +135,19 @@ void main() {
     expect(usage.audioSeconds, 4);
   });
 
+  test('parses DeepSeek top-level cache usage fields', () {
+    final usage = AiTokenUsage.fromJson({
+      'prompt_tokens': 1000,
+      'completion_tokens': 100,
+      'total_tokens': 1100,
+      'prompt_cache_hit_tokens': 600,
+      'prompt_cache_miss_tokens': 400,
+    });
+
+    expect(usage, isNotNull);
+    expect(usage!.cachedPromptTokens, 600);
+  });
+
   test('keeps LLM API keys out of SharedPreferences', () async {
     SharedPreferences.setMockInitialValues({});
 

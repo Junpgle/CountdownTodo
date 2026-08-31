@@ -351,6 +351,36 @@ void main() {
     );
   });
 
+  test('pricing settings preserve tier and peak metadata', () {
+    const pricing = AiUsagePricing(
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash',
+      cachedInputMicrosPerMillion: 50000,
+      inputMicrosPerMillion: 1500000,
+      outputMicrosPerMillion: 4500000,
+      peakCachedInputMicrosPerMillion: 100000,
+      peakInputMicrosPerMillion: 3000000,
+      peakOutputMicrosPerMillion: 9000000,
+      imageTokensIncluded: true,
+      tiers: [
+        AiUsagePriceTier(
+          maxPromptTokens: 32000,
+          maxCompletionTokens: 200000,
+          cachedInputMicrosPerMillion: 400000,
+          inputMicrosPerMillion: 2000000,
+          outputMicrosPerMillion: 8000000,
+        ),
+      ],
+    );
+
+    final restored = AiUsagePricing.fromJson(pricing.toJson());
+    expect(restored.provider, pricing.provider);
+    expect(restored.peakInputMicrosPerMillion, 3000000);
+    expect(restored.imageTokensIncluded, isTrue);
+    expect(restored.tiers.single.maxPromptTokens, 32000);
+    expect(restored.tiers.single.maxCompletionTokens, 200000);
+  });
+
   test('MiMo pricing separates cached input and does not add image fees',
       () async {
     SharedPreferences.setMockInitialValues({
@@ -438,6 +468,181 @@ void main() {
     // 4 seconds * ¥0.5/hour = ¥0.000555..., rounded to 556 micro-yuan.
     expect(records.single.costMicros, 556);
     expect(records.single.isPriced, isTrue);
+  });
+
+  test('Zhipu pricing applies prompt and completion token tiers', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'zhipu-tier-cost-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+
+    final pricing = (await AiUsageCostService.getPricing()).firstWhere(
+      (item) => item.provider == 'zhipu' && item.model == 'glm-4.7',
+    );
+    expect(pricing.tiers, hasLength(3));
+
+    await AiUsageCostService.recordUsage(
+      provider: 'zhipu',
+      model: 'glm-4.7',
+      operation: 'chat',
+      promptTokens: 10000,
+      completionTokens: 100000,
+      totalTokens: 110000,
+      cachedPromptTokens: 2000,
+      now: DateTime.utc(2026, 8, 30, 10),
+    );
+    await AiUsageCostService.recordUsage(
+      provider: 'zhipu',
+      model: 'glm-4.7',
+      operation: 'chat',
+      promptTokens: 40000,
+      completionTokens: 100000,
+      totalTokens: 140000,
+      cachedPromptTokens: 10000,
+      now: DateTime.utc(2026, 8, 31, 10),
+    );
+    await AiUsageCostService.recordUsage(
+      provider: 'zhipu',
+      model: 'glm-4.7',
+      operation: 'chat',
+      promptTokens: 10000,
+      completionTokens: 200000,
+      totalTokens: 210000,
+      cachedPromptTokens: 2000,
+      now: DateTime.utc(2026, 8, 31, 11),
+    );
+
+    final records = await AiUsageCostService.getRecords();
+    expect(
+        records.map((item) => item.costMicros),
+        containsAll(<int?>[
+          816800,
+          1728000,
+          2825200,
+        ]));
+    expect(records.every((item) => item.isPriced), isTrue);
+  });
+
+  test('Zhipu visual token pricing does not add a per-image fee', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'zhipu-vision-cost-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+
+    await AiUsageCostService.recordUsage(
+      provider: 'zhipu',
+      model: 'glm-4.6v',
+      operation: 'vision_todo',
+      promptTokens: 10000,
+      completionTokens: 1000,
+      totalTokens: 11000,
+      cachedPromptTokens: 1000,
+      imageTokens: 1500,
+      imageCount: 1,
+      now: DateTime.utc(2026, 8, 31, 1),
+    );
+
+    final record = (await AiUsageCostService.getRecords()).single;
+    // 9,000 * ¥1/M + 1,000 * ¥0.2/M + 1,000 * ¥3/M = ¥0.0122.
+    expect(record.costMicros, 12200);
+    expect(record.isPriced, isTrue);
+  });
+
+  test('DeepSeek pricing switches between Beijing peak and off-peak rates',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'deepseek-peak-cost-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+
+    for (final timestamp in <DateTime>[
+      DateTime.utc(2026, 8, 31, 0), // Beijing 08:00, off-peak.
+      DateTime.utc(2026, 8, 31, 2), // Beijing 10:00, peak.
+    ]) {
+      await AiUsageCostService.recordUsage(
+        provider: 'deepseek',
+        model: 'deepseek-v4-flash',
+        operation: 'chat',
+        promptTokens: 1000000,
+        completionTokens: 100000,
+        totalTokens: 1100000,
+        cachedPromptTokens: 400000,
+        now: timestamp,
+      );
+    }
+
+    final records = await AiUsageCostService.getRecords();
+    expect(
+        records.map((item) => item.costMicros),
+        containsAll(<int?>[
+          1370000,
+          2740000,
+        ]));
+  });
+
+  test('free provider models are priced at zero when usage is available',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'free-model-cost-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+
+    await AiUsageCostService.recordUsage(
+      provider: 'zhipu',
+      model: 'glm-4.7-flash',
+      operation: 'chat',
+      promptTokens: 100000,
+      completionTokens: 100000,
+      totalTokens: 200000,
+      now: DateTime.utc(2026, 8, 31, 1),
+    );
+
+    final record = (await AiUsageCostService.getRecords()).single;
+    expect(record.costMicros, 0);
+    expect(record.isPriced, isTrue);
+  });
+
+  test('NVIDIA NIM has no guessed universal built-in price', () async {
+    SharedPreferences.setMockInitialValues({});
+
+    final pricing = await AiUsageCostService.getPricing();
+    expect(pricing.where((item) => item.provider == 'nvidia_nim'), isEmpty);
   });
 
   test('unpriced AI usage is retained without creating a guessed expense',
