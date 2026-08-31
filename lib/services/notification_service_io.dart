@@ -500,8 +500,10 @@ class NotificationService {
         'timeStr': timeStr,
         'todoType': todoType,
         'notificationId': notifId,
-        'imagePath': isSpecialTodo ? null : todo.imagePath,
-        'originalText': isSpecialTodo ? null : todo.originalText,
+        // Special todos can also originate from image analysis. Keep the
+        // source data so Android can expose the corresponding actions.
+        'imagePath': todo.imagePath,
+        'originalText': todo.originalText,
       });
 //       debugPrint(
 //           "✅ 通知发送成功: type=${isSpecialTodo ? 'special_todo' : 'upcoming_todo'}, title=${todo.title}, notifId=$notifId");
