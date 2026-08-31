@@ -313,8 +313,26 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      WidgetService.setAppForeground(true);
       _scheduleSystemUiRestore();
+    } else if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      WidgetService.setAppForeground(false);
     }
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    if (!AppPlatform.isAndroid) return;
+
+    // Android 17 can terminate a process that exceeds the device-specific
+    // memory budget. Drop decoded images as soon as the framework signals
+    // pressure so the next frame can rebuild only what is visible.
+    final imageCache = PaintingBinding.instance.imageCache;
+    imageCache.clear();
+    imageCache.clearLiveImages();
   }
 
   void _scheduleSystemUiRestore() {

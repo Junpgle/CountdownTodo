@@ -80,7 +80,10 @@ class WidgetService {
   static bool _initialized = false;
   static final bool _widgetUpdateDisabled = false;
   static const int maxWidgetItems = 8;
+  static const Duration _periodicRefreshInterval = Duration(minutes: 30);
   static Timer? _periodicTimer;
+  static bool _appInForeground = true;
+  static bool _periodicRefreshConfigured = false;
 
   static const MethodChannel _macOSWidgetChannel =
       MethodChannel('com.countdowntodo/widget');
@@ -88,6 +91,20 @@ class WidgetService {
   static Future<void> dispose() async {
     _periodicTimer?.cancel();
     _periodicTimer = null;
+    _widgetRefreshDebouncer?.cancel();
+    _widgetRefreshDebouncer = null;
+    _periodicRefreshConfigured = false;
+  }
+
+  static void setAppForeground(bool isForeground) {
+    if (_appInForeground == isForeground) return;
+    _appInForeground = isForeground;
+    if (!isForeground) {
+      _periodicTimer?.cancel();
+      _periodicTimer = null;
+    } else {
+      _startPeriodicRefresh();
+    }
   }
 
   /// 数据变更（习惯打卡、待办增删等）后的即时小组件刷新。
@@ -103,10 +120,22 @@ class WidgetService {
   static Future<void> _updateCurrentUserWidgets({
     List<TodoItem>? todos,
   }) async {
+    if (!await _hasInstalledWidgets()) return;
     final username = await StorageService.getCurrentUsername();
     if (username == null || username.isEmpty) return;
     final items = todos ?? await StorageService.getTodos(username);
     await updateAllWidgetData(username, items);
+  }
+
+  static Future<bool> _hasInstalledWidgets() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return true;
+    try {
+      return (await HomeWidget.getInstalledWidgets()).isNotEmpty;
+    } catch (_) {
+      // Older vendor launchers may not expose installed-widget metadata. Keep
+      // the existing refresh behavior when detection is unavailable.
+      return true;
+    }
   }
 
   static Future<void> _refreshWidgetsAfterDataChange() async {
@@ -140,15 +169,11 @@ class WidgetService {
       unawaited(_refreshWidgetsAfterDataChange());
     };
 
-    // 启动 15 分钟一次的周期刷新（确保在应用运行期间定期更新 widget，减少能耗）
-    _periodicTimer?.cancel();
-    _periodicTimer = Timer.periodic(const Duration(minutes: 15), (timer) async {
-      try {
-        await _updateCurrentUserWidgets();
-      } catch (e) {
-//         print('Widget periodic refresh error: $e');
-      }
-    });
+    // Data changes refresh widgets immediately. Keep a low-frequency fallback
+    // only while the app is visible; Android's provider handles daily updates
+    // when the process is not running.
+    _periodicRefreshConfigured = true;
+    _startPeriodicRefresh();
 
     // 立即触发一次更新
     try {
@@ -156,6 +181,17 @@ class WidgetService {
     } catch (e) {
 //       print('Widget initial update error: $e');
     }
+  }
+
+  static void _startPeriodicRefresh() {
+    _periodicTimer?.cancel();
+    _periodicTimer = null;
+    if (!_periodicRefreshConfigured || !_appInForeground) return;
+    _periodicTimer = Timer.periodic(_periodicRefreshInterval, (_) async {
+      try {
+        await _updateCurrentUserWidgets();
+      } catch (_) {}
+    });
   }
 
   static String _getDueDateLabel(DateTime? dueDate) {

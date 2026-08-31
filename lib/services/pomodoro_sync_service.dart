@@ -185,10 +185,12 @@ class PomodoroSyncService {
   StreamSubscription? _wsSub;
   Timer? _reconnectTimer;
   Timer? _heartbeatTimer;
+  Future<void>? _transportSuspendFuture;
   bool _connecting = false;
   String? _focusSourceDevice;
   DateTime _lastMessageTime = DateTime.now(); // 记录最后一次收到消息的时间
   bool _isLocalFocusing = false; // 本地是否处于专注/休息计时中
+  bool _isInBackground = false;
   int _retryCount = 0; // 🚀 新增：当前重试次数
 
   // ── 公开广播流 ─────────────────────────────────────────────
@@ -218,6 +220,19 @@ class PomodoroSyncService {
   bool isFromCurrentDevice(String? sourceDevice) =>
       deviceIdsMatch(_deviceId, sourceDevice);
 
+  bool get _shouldSuspendTransport => shouldSuspendTransport(
+        isInBackground: _isInBackground,
+        isLocalFocusing: _isLocalFocusing,
+      );
+
+  @visibleForTesting
+  static bool shouldSuspendTransport({
+    required bool isInBackground,
+    required bool isLocalFocusing,
+  }) {
+    return isInBackground && !isLocalFocusing;
+  }
+
   @visibleForTesting
   static bool deviceIdsMatch(String? currentDevice, String? sourceDevice) {
     if (currentDevice == null || sourceDevice == null) return false;
@@ -235,6 +250,8 @@ class PomodoroSyncService {
 
   Future<void> ensureConnected(String userId, String deviceId,
       {String? authToken, String? appVersion}) async {
+    _isInBackground = false;
+    await _transportSuspendFuture;
     if (appVersion != null) _appVersion = appVersion;
     if (authToken != null) _authToken = authToken;
 
@@ -252,6 +269,8 @@ class PomodoroSyncService {
 
   Future<void> forceReconnect(String userId, String deviceId,
       {String? authToken, String? appVersion}) async {
+    _isInBackground = false;
+    await _transportSuspendFuture;
     if (appVersion != null) _appVersion = appVersion;
     if (authToken != null) _authToken = authToken;
     _userId = userId;
@@ -267,12 +286,33 @@ class PomodoroSyncService {
   }
 
   Future<void> resumeSync() async {
+    _isInBackground = false;
+    await _transportSuspendFuture;
     if (_userId == null || _deviceId == null) return;
     await _doConnect();
   }
 
+  /// Restores a connection that was intentionally closed while the app was
+  /// backgrounded without tearing down a healthy focus-session connection.
+  Future<void> resumeFromBackground() async {
+    _isInBackground = false;
+    await _transportSuspendFuture;
+    if (_userId == null || _deviceId == null) return;
+    if (_connState == SyncConnectionState.connected || _connecting) return;
+    await _doConnect();
+  }
+
+  /// Stops heartbeats and reconnect attempts while the app is not visible.
+  /// A local focus session keeps the transport alive for cross-device control.
+  Future<void> suspendForBackground() async {
+    _isInBackground = true;
+    await _suspendTransportIfIdle();
+  }
+
   /// 🚀 新增：手动强制重连（忽略 _connecting 锁）
   Future<void> manualReconnect() async {
+    _isInBackground = false;
+    await _transportSuspendFuture;
     _reconnectTimer?.cancel(); // 取消正在排队的自动重连
     _retryCount = 0; // 重置指数退避计数
 
@@ -287,7 +327,7 @@ class PomodoroSyncService {
   }
 
   Future<void> _doConnect() async {
-    if (_connecting) return;
+    if (_connecting || _shouldSuspendTransport) return;
     _connecting = true;
 
     _reconnectTimer?.cancel();
@@ -332,6 +372,11 @@ class PomodoroSyncService {
         const Duration(seconds: 10),
         onTimeout: () => throw TimeoutException('WebSocket 握手超时'),
       );
+
+      if (_shouldSuspendTransport) {
+        await _suspendTransportIfIdle();
+        return;
+      }
 
       _setConnState(SyncConnectionState.connected);
       _retryCount = 0; // 重连成功，重置重试计数
@@ -479,6 +524,8 @@ class PomodoroSyncService {
 
   void _scheduleReconnect() {
     _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    if (_shouldSuspendTransport) return;
 
     // 🚀 指数退避：重试延迟随次数增加 2s, 5s, 10s, 30s, 60s(max)
     _retryCount++;
@@ -489,7 +536,7 @@ class PomodoroSyncService {
     // debugPrint('[PomodoroSync] 🔄 将在 $delaySecs 秒后进行第 $_retryCount 次重连尝试...');
 
     _reconnectTimer = Timer(Duration(seconds: delaySecs), () {
-      if (_userId != null) {
+      if (_userId != null && !_shouldSuspendTransport) {
         _doConnect();
       }
     });
@@ -604,7 +651,48 @@ class PomodoroSyncService {
   /// 🚀 新增：设置本地专注状态标签，由 WorkbenchView 维护
   void setLocalFocusing(bool focusing) {
     _isLocalFocusing = focusing;
+    if (!focusing && _isInBackground) {
+      unawaited(_suspendTransportIfIdle());
+    }
     // debugPrint('[PomodoroSync] 更新本地专注状态标签: $focusing');
+  }
+
+  Future<void> _suspendTransportIfIdle() async {
+    if (!_shouldSuspendTransport) return;
+
+    final pending = _transportSuspendFuture;
+    if (pending != null) {
+      await pending;
+      return;
+    }
+
+    final future = _performTransportSuspend();
+    _transportSuspendFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_transportSuspendFuture, future)) {
+        _transportSuspendFuture = null;
+      }
+    }
+  }
+
+  Future<void> _performTransportSuspend() async {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+    await _wsSub?.cancel();
+    _wsSub = null;
+    final channel = _channel;
+    _channel = null;
+    try {
+      await channel?.sink
+          .close(ws_status.goingAway)
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {}
+    _connecting = false;
+    _setConnState(SyncConnectionState.disconnected);
   }
 
   void sendSwitchSignal(
@@ -714,6 +802,7 @@ class PomodoroSyncService {
   }
 
   Future<void> forceDisconnect() async {
+    _isInBackground = false;
     _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();
     await _wsSub?.cancel();

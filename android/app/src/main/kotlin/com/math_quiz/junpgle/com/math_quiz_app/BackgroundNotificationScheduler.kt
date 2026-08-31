@@ -2,6 +2,7 @@ package com.math_quiz.junpgle.com.math_quiz_app
 
 import android.content.Context
 import android.util.Log
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -18,6 +19,7 @@ object BackgroundNotificationScheduler {
     fun startImportantNotificationPoll(context: Context) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
+            .setRequiresBatteryNotLow(true)
             .build()
 
         val request = PeriodicWorkRequestBuilder<NotificationPollWorker>(
@@ -25,11 +27,16 @@ object BackgroundNotificationScheduler {
             TimeUnit.MINUTES
         )
             .setConstraints(constraints)
+            .setBackoffCriteria(
+                BackoffPolicy.EXPONENTIAL,
+                10,
+                TimeUnit.MINUTES
+            )
             .build()
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             IMPORTANT_WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             request
         )
         Log.d(TAG, "Scheduled periodic notification poll")

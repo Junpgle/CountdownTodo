@@ -16,7 +16,8 @@ class SyncStatusBanner extends StatefulWidget {
   State<SyncStatusBanner> createState() => _SyncStatusBannerState();
 }
 
-class _SyncStatusBannerState extends State<SyncStatusBanner> {
+class _SyncStatusBannerState extends State<SyncStatusBanner>
+    with WidgetsBindingObserver {
   SyncPathStatus _status = SyncPathStatus.connecting;
   SyncPathStatus _pendingStatus = SyncPathStatus.connecting;
   String _detailMessage = "正在确认同步链路...";
@@ -26,9 +27,12 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
   Timer? _heartbeatTimer;
   Timer? _autoHideTimer;
   Timer? _showDelayTimer;
+  bool _isForeground = true;
+  bool _statusCheckInFlight = false;
 
   // 连接中断后延迟显示 banner 的时间（秒）
   static const int _showDelaySeconds = 5;
+  static const Duration _disconnectedProbeInterval = Duration(minutes: 1);
 
   // 监听 WS 连接状态变化
   StreamSubscription? _wsConnSub;
@@ -36,18 +40,23 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    _isForeground =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     // 订阅 WS 状态变化流，实时响应断线/重连
     _wsConnSub = PomodoroSyncService.instance.onConnectionChanged
         .listen(_onWsStateChanged);
 
     // 🚀 初始化时立即评估一次当前连接状态，防止错过已处于连接状态的情况
-    _evaluateStatus(PomodoroSyncService.instance.connectionState);
-
-    _startHeartbeat();
+    final connectionState = PomodoroSyncService.instance.connectionState;
+    _evaluateStatus(connectionState);
+    _updateStatusProbe(connectionState);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _heartbeatTimer?.cancel();
     _autoHideTimer?.cancel();
     _showDelayTimer?.cancel();
@@ -60,32 +69,80 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
     if (!mounted) return;
     // WS 状态一变化就立即重新评估，不等下次 heartbeat
     _evaluateStatus(wsState);
+    if (wsState is SyncConnectionState) {
+      _updateStatusProbe(wsState);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _isForeground = state == AppLifecycleState.resumed;
+    if (!_isForeground) {
+      _stopHeartbeat();
+      return;
+    }
+
+    final connectionState = PomodoroSyncService.instance.connectionState;
+    _evaluateStatus(connectionState);
+    _updateStatusProbe(connectionState);
+  }
+
+  void _updateStatusProbe(SyncConnectionState state) {
+    if (!_isForeground || state == SyncConnectionState.connected) {
+      _stopHeartbeat();
+      return;
+    }
+    _startHeartbeat();
   }
 
   void _startHeartbeat() {
-    // 立即执行一次
-    _checkRealStatus();
-    // 随后每 30 秒探测一次真实链路状况
-    _heartbeatTimer =
-        Timer.periodic(const Duration(seconds: 30), (_) => _checkRealStatus());
+    if (!_isForeground || _heartbeatTimer?.isActive == true) return;
+    unawaited(_checkRealStatus());
+    // WebSocket 健康时不再额外轮询 HTTP；仅在断线期间低频区分
+    // “无网络”和“服务异常”。
+    _heartbeatTimer = Timer.periodic(
+      _disconnectedProbeInterval,
+      (_) => unawaited(_checkRealStatus()),
+    );
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
   }
 
   Future<void> _checkRealStatus() async {
+    if (!_isForeground || _statusCheckInFlight) return;
     // 先取当前 WS 状态（同步读取，无需 await）
     final wsState = PomodoroSyncService.instance.connectionState;
+    if (wsState == SyncConnectionState.connected) {
+      _evaluateStatus(wsState);
+      _stopHeartbeat();
+      return;
+    }
+
+    _statusCheckInFlight = true;
     try {
       // 🚀 核心逻辑：发起一个轻量级的健康检查
       final isAlive = await ApiService.ping();
-      if (!mounted) return;
+      if (!mounted || !_isForeground) return;
+      final latestState = PomodoroSyncService.instance.connectionState;
+      if (latestState == SyncConnectionState.connected) {
+        _evaluateStatus(latestState);
+        _stopHeartbeat();
+        return;
+      }
       if (isAlive) {
         // HTTP 通了再看 WS 是否也连上了
-        _evaluateStatus(wsState);
+        _evaluateStatus(latestState);
       } else {
         updateStatus(SyncPathStatus.serverError, message: "同步服务器响应异常");
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_isForeground) return;
       updateStatus(SyncPathStatus.offline, message: "网络连接已断开，进入离线模式");
+    } finally {
+      _statusCheckInFlight = false;
     }
   }
 

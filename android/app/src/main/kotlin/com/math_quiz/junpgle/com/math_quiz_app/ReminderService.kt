@@ -117,8 +117,8 @@ class ReminderService : Service() {
                     )
                     // 发完通知就结束，不常驻
                     stopSelf(startId)
-                    // 顺手重新调度下一个 Alarm（因为 setExactAndAllowWhileIdle 只触发一次）
-                    rescheduleAll()
+                    // 每个未来提醒在 scheduleReminders 时都已独立注册；触发后
+                    // 不再重复遍历并重注册全部 Alarm，避免无意义的后台工作。
                 }
             }
             ACTION_RESCHEDULE -> {
@@ -570,4 +570,3 @@ class ReminderService : Service() {
         }
     }
 }
-

@@ -650,5 +650,29 @@ void main() {
         isFalse,
       );
     });
+
+    test('后台空闲时暂停传输，本地专注时保持实时连接', () {
+      expect(
+        PomodoroSyncService.shouldSuspendTransport(
+          isInBackground: true,
+          isLocalFocusing: false,
+        ),
+        isTrue,
+      );
+      expect(
+        PomodoroSyncService.shouldSuspendTransport(
+          isInBackground: true,
+          isLocalFocusing: true,
+        ),
+        isFalse,
+      );
+      expect(
+        PomodoroSyncService.shouldSuspendTransport(
+          isInBackground: false,
+          isLocalFocusing: false,
+        ),
+        isFalse,
+      );
+    });
   });
 }
