@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:countdown_todo/screens/pomodoro/widgets/fading_indexed_stack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -205,10 +206,14 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     final int tabIndex = _tabController.index;
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
+    final windowWidth = MediaQuery.sizeOf(context).width;
     final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
 
-    // Landscape: use a two-column layout (big timer/workbench left, stats/controls right)
-    if (isLandscape) {
+    // Keep the side-by-side layout for wide windows. Compact Android 17
+    // freeform windows reuse the tab layout below so the fixed stats column
+    // cannot squeeze the workbench into an unusable or overflowing width.
+    final useWideLandscapeLayout = isLandscape && windowWidth >= 720;
+    if (useWideLandscapeLayout) {
       return Scaffold(
         body: SafeArea(
           bottom: false,
@@ -248,12 +253,11 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                 ),
               ),
 
-              // Right: fixed-width column with stats and compact controls
+              // Right: bounded column with stats and compact controls
               // Only show the right column when the timer is idle/finished to avoid distraction
               if (showLandscapeStats)
                 Container(
-                  width:
-                      420, // Increased width for better visibility on wide screens
+                  width: math.min(420.0, math.max(300.0, windowWidth * 0.38)),
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(

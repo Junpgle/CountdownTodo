@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../services/file_open_service.dart';
 import '../../services/lan_sync_service.dart';
+import '../../services/permission_request_coordinator.dart';
 import '../../utils/app_platform.dart';
 import '../../widgets/floating_glass_control.dart';
 
@@ -13,8 +17,10 @@ class LanSyncScreen extends StatefulWidget {
   State<LanSyncScreen> createState() => _LanSyncScreenState();
 }
 
-class _LanSyncScreenState extends State<LanSyncScreen> {
+class _LanSyncScreenState extends State<LanSyncScreen>
+    with WidgetsBindingObserver {
   final LanSyncService _service = LanSyncService.instance;
+  late final PermissionRequestCoordinator _permissionCoordinator;
   List<LanDevice> _devices = [];
   String _status = '未启动';
   String _progress = '';
@@ -22,27 +28,66 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
   bool _isLoading = false;
   bool _discoverAll = false;
 
+  StreamSubscription<List<LanDevice>>? _devicesSubscription;
+  StreamSubscription<String>? _statusSubscription;
+  StreamSubscription<String>? _progressSubscription;
+  StreamSubscription<double>? _progressValueSubscription;
+  StreamSubscription<LanDevice>? _incomingRequestSubscription;
+  StreamSubscription<Map<String, String>>? _fileReceivedSubscription;
+
   @override
   void initState() {
     super.initState();
-    _service.onDevicesChanged.listen((devices) {
+    WidgetsBinding.instance.addObserver(this);
+    _permissionCoordinator = PermissionRequestCoordinator(context: context);
+    _devicesSubscription = _service.onDevicesChanged.listen((devices) {
       if (mounted) setState(() => _devices = List.from(devices));
     });
-    _service.onStatusChanged.listen((status) {
+    _statusSubscription = _service.onStatusChanged.listen((status) {
       if (mounted) setState(() => _status = status);
     });
-    _service.onSyncProgress.listen((progress) {
+    _progressSubscription = _service.onSyncProgress.listen((progress) {
       if (mounted) setState(() => _progress = progress);
     });
-    _service.onProgressChanged.listen((value) {
+    _progressValueSubscription = _service.onProgressChanged.listen((value) {
       if (mounted) setState(() => _progressValue = value);
     });
-    _service.onIncomingRequest.listen(_showIncomingRequestDialog);
-    _service.onFileReceived.listen(_showFileReceivedDialog);
+    _incomingRequestSubscription =
+        _service.onIncomingRequest.listen(_showIncomingRequestDialog);
+    _fileReceivedSubscription =
+        _service.onFileReceived.listen(_showFileReceivedDialog);
 
     _devices = _service.devices;
     _status = _service.isRunning ? '运行中' : '已停止';
     _discoverAll = _service.discoverAllDevices;
+    if (AppPlatform.isAndroid) {
+      unawaited(_stopIfLocalNetworkAccessWasRevoked());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && AppPlatform.isAndroid) {
+      unawaited(_stopIfLocalNetworkAccessWasRevoked());
+    }
+  }
+
+  Future<void> _stopIfLocalNetworkAccessWasRevoked() async {
+    if (!_service.isRunning) return;
+
+    final status = await _permissionCoordinator.status(
+      AppPermissionKind.localNetwork,
+    );
+    if (status.isGranted || !_service.isRunning) return;
+
+    await _service.stop();
+    if (!mounted) return;
+    setState(() => _status = '已停止');
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('局域网访问权限已撤销，局域网同步已停止。'),
+      ),
+    );
   }
 
   void _showFileReceivedDialog(Map<String, String> data) {
@@ -210,6 +255,20 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
     if (_service.isRunning) {
       await _service.stop();
     } else {
+      if (AppPlatform.isAndroid) {
+        final permission = await _permissionCoordinator.request(
+          AppPermissionKind.localNetwork,
+        );
+        if (!mounted) return;
+        if (!permission.granted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('未获得局域网访问权限，局域网同步未启动。'),
+            ),
+          );
+          return;
+        }
+      }
       await _service.start();
     }
     if (mounted) {
@@ -472,6 +531,23 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // The service is only consumed by this page. Keeping its HTTP server and
+    // multicast timer alive after the page is gone cannot surface an incoming
+    // approval dialog, so release them together with the UI.
+    unawaited(_service.stop());
+    unawaited(_devicesSubscription?.cancel());
+    unawaited(_statusSubscription?.cancel());
+    unawaited(_progressSubscription?.cancel());
+    unawaited(_progressValueSubscription?.cancel());
+    unawaited(_incomingRequestSubscription?.cancel());
+    unawaited(_fileReceivedSubscription?.cancel());
+    _permissionCoordinator.dispose();
+    super.dispose();
   }
 
   Widget _buildStatusCard() {

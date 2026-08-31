@@ -66,6 +66,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val BACKGROUND_NOTIFICATION_CHANNEL = "com.math_quiz_app/background_notifications"
     private val APP_UPDATE_CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/app_update"
     private val CALENDAR_PERMISSION_REQUEST = 2407
+    private val LOCAL_NETWORK_PERMISSION_REQUEST = 2408
+    private val ACCESS_LOCAL_NETWORK_PERMISSION = "android.permission.ACCESS_LOCAL_NETWORK"
     private val CALENDAR_APP_MARKER = "CountDownTodo"
     private val CALENDAR_EXT_NAME = "countdowntodo_source"
     private val CALENDAR_EXT_VALUE = "CountDownTodo"
@@ -259,6 +261,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private var pendingPlanBlockId: String? = null
     private var pendingPlanBlockTodoId: String? = null
     private val pendingCalendarPermissionResults = mutableListOf<MethodChannel.Result>()
+    private val pendingLocalNetworkPermissionResults = mutableListOf<MethodChannel.Result>()
     // 手环通信插件，全局可访问
     private var bandPlugin: BandCommunicationPlugin? = null
 
@@ -832,6 +835,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     override fun onDestroy() {
         window.decorView.removeCallbacks(restoreWindowAfterResizeRunnable)
+        val pendingLocalNetworkResults = pendingLocalNetworkPermissionResults.toList()
+        pendingLocalNetworkPermissionResults.clear()
+        pendingLocalNetworkResults.forEach { it.success(false) }
         super.onDestroy()
         minorModeManager?.dispose()
         minorModeManager = null
@@ -891,7 +897,46 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             val pendingResults = pendingCalendarPermissionResults.toList()
             pendingCalendarPermissionResults.clear()
             pendingResults.forEach { it.success(granted) }
+        } else if (requestCode == LOCAL_NETWORK_PERMISSION_REQUEST) {
+            val granted = grantResults.isNotEmpty() &&
+                grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            val pendingResults = pendingLocalNetworkPermissionResults.toList()
+            pendingLocalNetworkPermissionResults.clear()
+            pendingResults.forEach { it.success(granted) }
         }
+    }
+
+    /**
+     * Android 17 only enforces ACCESS_LOCAL_NETWORK for apps targeting API 37.
+     * Older target versions retain the INTERNET-based compatibility grant, so
+     * they must not show a new permission prompt.
+     */
+    private fun isLocalNetworkPermissionEnforced(): Boolean =
+        Build.VERSION.SDK_INT >= 37 && applicationInfo.targetSdkVersion >= 37
+
+    private fun hasLocalNetworkPermission(): Boolean {
+        if (!isLocalNetworkPermissionEnforced()) return true
+        return ContextCompat.checkSelfPermission(
+            this,
+            ACCESS_LOCAL_NETWORK_PERMISSION
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestLocalNetworkPermission(result: MethodChannel.Result) {
+        if (!isLocalNetworkPermissionEnforced() || hasLocalNetworkPermission()) {
+            result.success(true)
+            return
+        }
+
+        val shouldStartRequest = pendingLocalNetworkPermissionResults.isEmpty()
+        pendingLocalNetworkPermissionResults.add(result)
+        if (!shouldStartRequest) return
+
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(ACCESS_LOCAL_NETWORK_PERMISSION),
+            LOCAL_NETWORK_PERMISSION_REQUEST
+        )
     }
 
     private fun requestCalendarPermission(result: MethodChannel.Result) {
@@ -1570,6 +1615,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         (getSystemService(Context.ALARM_SERVICE) as AlarmManager).canScheduleExactAlarms()
                     } else true
                     result.success(canSchedule)
+                }
+
+                "checkLocalNetworkPermission" -> {
+                    result.success(hasLocalNetworkPermission())
+                }
+
+                "requestLocalNetworkPermission" -> {
+                    requestLocalNetworkPermission(result)
                 }
 
                 "openExactAlarmSettings" -> {

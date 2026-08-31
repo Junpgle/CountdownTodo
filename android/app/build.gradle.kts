@@ -62,7 +62,7 @@ android {
     defaultConfig {
         applicationId = "com.math_quiz.junpgle.com.math_quiz_app"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = versionCodeFromVersionName(flutter.versionName)
         versionName = flutter.versionName
     }
