@@ -113,6 +113,7 @@ todo.md
 !/test/services/data_import_fixed_schedule_preview_test.dart
 !/test/services/data_refresh_domain_test.dart
 !/test/services/timeout_http_client_test.dart
+!/test/services/band_service_settings_test.dart
 !/test/services/animation_config_service_test.dart
 !/test/services/item_semantics_service_test.dart
 !/test/services/schedule_conflict_service_test.dart
