@@ -108,7 +108,9 @@ class _IridescentActionPanelState extends State<_IridescentActionPanel>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 5200),
-    )..repeat();
+    )..repeat(
+        count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 2),
+      );
   }
 
   @override
@@ -374,7 +376,10 @@ class _PulseAvatarState extends State<_PulseAvatar>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
+    )..repeat(
+        reverse: true,
+        count: AndroidEnergyPolicy.decorativeRepeatCount(),
+      );
   }
 
   @override
@@ -564,15 +569,19 @@ class _DanmakuSuggestionsState extends State<_DanmakuSuggestions>
     _timer = null;
     if (!_shouldScroll) return;
 
-    // 20fps is sufficient for the small suggestion chips and reduces timer
-    // wakeups by 40% compared with the previous 30ms loop. Distances are
-    // scaled to preserve the original pixels-per-second speed.
-    final moved1 = _autoScroll(_scrollCtrl1, 0.35 * 50 / 30);
-    final moved2 = _autoScroll(_scrollCtrl2, 0.55 * 50 / 30);
-    final moved3 = _autoScroll(_scrollCtrl3, 0.45 * 50 / 30);
+    final scrollInterval = AndroidEnergyPolicy.decorativeScrollInterval(
+      const Duration(milliseconds: 50),
+    );
+    // Distances scale with the interval so Android halves timer wakeups while
+    // preserving the original pixels-per-second speed.
+    final intervalScale = scrollInterval.inMicroseconds /
+        const Duration(milliseconds: 30).inMicroseconds;
+    final moved1 = _autoScroll(_scrollCtrl1, 0.35 * intervalScale);
+    final moved2 = _autoScroll(_scrollCtrl2, 0.55 * intervalScale);
+    final moved3 = _autoScroll(_scrollCtrl3, 0.45 * intervalScale);
     final moved = moved1 || moved2 || moved3;
     _scheduleScrollTick(
-      moved ? const Duration(milliseconds: 50) : const Duration(seconds: 1),
+      moved ? scrollInterval : const Duration(seconds: 1),
     );
   }
 

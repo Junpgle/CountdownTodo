@@ -10,6 +10,7 @@ import 'package:countdown_todo/screens/app_board_screen.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../widgets/home_sections.dart';
 import '../widgets/floating_glass_control.dart';
+import '../utils/android_energy_policy.dart';
 import '../utils/page_transitions.dart';
 import 'platform_backdrop_filter.dart';
 import 'optional_liquid_glass_surface.dart';
@@ -460,7 +461,10 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                 final controller = AnimationController(
                   duration: const Duration(milliseconds: 800),
                   vsync: this,
-                )..repeat(reverse: true);
+                )..repeat(
+                    reverse: true,
+                    count: AndroidEnergyPolicy.decorativeRepeatCount(),
+                  );
                 _pulseControllers[item.id] = controller;
               } else if ((!isUrgent || isHoliday) &&
                   _pulseControllers.containsKey(item.id)) {

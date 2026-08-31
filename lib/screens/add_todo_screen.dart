@@ -193,7 +193,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     _dotsController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
-    )..repeat();
+    );
     _titleCtrl.addListener(_onTitleChanged);
     _remarkCtrl.addListener(_onTitleChanged);
     _loadCategoryDefaults().then((_) {
@@ -529,6 +529,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       return;
     }
     setState(() => _isParsing = true);
+    _startParsingAnimation();
     await Future.delayed(const Duration(milliseconds: 150));
 
     final results = TodoParserService.parseMulti(_aiInputCtrl.text);
@@ -538,6 +539,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       _isParsing = false;
       _currentOriginalText = _aiInputCtrl.text;
     });
+    _stopParsingAnimation();
 
     if (_parsedResults.isNotEmpty) {
       if (widget.onLLMResultsParsed != null && _parsedResults.length > 1) {
@@ -593,6 +595,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     }
 
     setState(() => _isParsing = true);
+    _startParsingAnimation();
 
     try {
       final results = await LLMService.parseTodoWithLLM(_aiInputCtrl.text);
@@ -602,6 +605,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           _isParsing = false;
           _currentOriginalText = _aiInputCtrl.text;
         });
+        _stopParsingAnimation();
         final currentTeamName = _selectedTeamUuid != null
             ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name
             : null;
@@ -649,6 +653,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         _isParsing = false;
         _currentOriginalText = _aiInputCtrl.text;
       });
+      _stopParsingAnimation();
 
       if (_parsedResults.isNotEmpty) {
         _applyParsedResult(_parsedResults[0]);
@@ -661,6 +666,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       }
     } catch (e) {
       setState(() => _isParsing = false);
+      _stopParsingAnimation();
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text("大模型解析失败: $e")));
@@ -2629,5 +2635,16 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         );
       }),
     );
+  }
+
+  void _startParsingAnimation() {
+    if (_dotsController.isAnimating) return;
+    _dotsController.repeat();
+  }
+
+  void _stopParsingAnimation() {
+    _dotsController
+      ..stop()
+      ..reset();
   }
 }

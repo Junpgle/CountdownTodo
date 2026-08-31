@@ -7,6 +7,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../utils/app_color_utils.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/android_energy_policy.dart';
 import '../utils/local_image_provider.dart';
 import '../utils/page_transitions.dart';
 import 'time_log_screen.dart';

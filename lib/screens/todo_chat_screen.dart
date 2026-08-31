@@ -25,6 +25,7 @@ import '../screens/settings/llm_config_page.dart';
 import '../storage_service.dart';
 import '../utils/page_transitions.dart';
 import '../utils/app_platform.dart';
+import '../utils/android_energy_policy.dart';
 import '../services/feature_tip_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../widgets/coach_mark_overlay.dart';

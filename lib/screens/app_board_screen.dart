@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
+import '../utils/android_energy_policy.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
 // Custom Colors to match Tailwind Emerald
@@ -119,13 +120,18 @@ class _AppBoardScreenState extends State<AppBoardScreen>
     if (_marqueeController.hasClients) {
       final maxScroll = _marqueeController.position.maxScrollExtent;
       if (maxScroll > 1) {
+        final scrollInterval = AndroidEnergyPolicy.decorativeScrollInterval(
+          const Duration(milliseconds: 100),
+        );
+        final scrollDistance =
+            30 * scrollInterval.inMicroseconds / Duration.microsecondsPerSecond;
         final currentScroll = _marqueeController.offset;
         _marqueeController.jumpTo(
-          currentScroll >= maxScroll - 1 ? 0 : currentScroll + 3,
+          currentScroll >= maxScroll - 1 ? 0 : currentScroll + scrollDistance,
         );
-        // 100ms with a 3px step keeps the original ~30px/s motion. When the
-        // content does not overflow, the next check is delayed for one second.
-        nextDelay = const Duration(milliseconds: 100);
+        // Keep the original ~30px/s speed while Android batches the decorative
+        // movement into half as many timer wakeups.
+        nextDelay = scrollInterval;
       }
     }
     _scheduleMarqueeTick(nextDelay);
@@ -667,7 +673,10 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
-    )..repeat(reverse: true);
+    )..repeat(
+        reverse: true,
+        count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 2),
+      );
   }
 
   @override

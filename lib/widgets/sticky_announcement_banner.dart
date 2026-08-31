@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import 'package:intl/intl.dart';
 import 'dart:ui';
+import '../utils/android_energy_policy.dart';
 import '../utils/app_platform.dart';
 
 class StickyAnnouncementBanner extends StatefulWidget {
@@ -30,10 +31,28 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000),
-    )..repeat(reverse: true);
+    );
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
+    _startPulse();
+  }
+
+  @override
+  void didUpdateWidget(covariant StickyAnnouncementBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.announcement.uuid != widget.announcement.uuid) {
+      _startPulse();
+    }
+  }
+
+  void _startPulse() {
+    _controller
+      ..reset()
+      ..repeat(
+        reverse: true,
+        count: AndroidEnergyPolicy.decorativeRepeatCount(),
+      );
   }
 
   @override

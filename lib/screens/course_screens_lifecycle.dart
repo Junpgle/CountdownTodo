@@ -8,7 +8,10 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
+    )..repeat(
+        reverse: true,
+        count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 5),
+      );
     _pulseAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
@@ -147,7 +150,10 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
         if (mounted) {
           _courseExpandCtrl.forward();
           if (_viewMode == 0 && !_pulseController.isAnimating) {
-            _pulseController.repeat(reverse: true);
+            _pulseController.repeat(
+              reverse: true,
+              count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 5),
+            );
           }
         }
         _checkCoachMarks();

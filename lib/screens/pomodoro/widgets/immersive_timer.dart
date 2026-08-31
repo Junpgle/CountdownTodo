@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../services/pomodoro_sync_service.dart';
 import '../../../services/strict_focus_sensor_service.dart';
+import '../../../utils/android_energy_policy.dart';
 
 class ImmersiveTimer extends StatefulWidget {
   final PomodoroPhase phase;
@@ -54,11 +55,63 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
     _celebrationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
-    )..repeat();
+    );
     _breathingController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2500),
-    )..repeat(reverse: true);
+    );
+    if (_shouldCelebrate(widget)) _startCelebration();
+    if (_shouldBreathe(widget)) _startBreathing();
+  }
+
+  @override
+  void didUpdateWidget(covariant ImmersiveTimer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    final wasCelebrating = _shouldCelebrate(oldWidget);
+    final shouldCelebrate = _shouldCelebrate(widget);
+    if (shouldCelebrate && !wasCelebrating) {
+      _startCelebration();
+    } else if (!shouldCelebrate && wasCelebrating) {
+      _celebrationController
+        ..stop()
+        ..reset();
+    }
+
+    final wasBreathing = _shouldBreathe(oldWidget);
+    final shouldBreathe = _shouldBreathe(widget);
+    if (shouldBreathe && !wasBreathing) {
+      _startBreathing();
+    } else if (!shouldBreathe && wasBreathing) {
+      _breathingController
+        ..stop()
+        ..reset();
+    }
+  }
+
+  bool _shouldCelebrate(ImmersiveTimer value) =>
+      value.phase == PomodoroPhase.finished;
+
+  bool _shouldBreathe(ImmersiveTimer value) =>
+      value.phase == PomodoroPhase.focusing &&
+      !value.isPaused &&
+      !value.isStrictWaitingForFlip;
+
+  void _startCelebration() {
+    _celebrationController
+      ..reset()
+      ..repeat(
+        count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 3),
+      );
+  }
+
+  void _startBreathing() {
+    _breathingController
+      ..reset()
+      ..repeat(
+        reverse: true,
+        count: AndroidEnergyPolicy.decorativeRepeatCount(),
+      );
   }
 
   @override

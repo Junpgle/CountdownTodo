@@ -32,7 +32,10 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       if (mode == 0) {
         _updateWeekTodos();
         if (!_pulseController.isAnimating) {
-          _pulseController.repeat(reverse: true);
+          _pulseController.repeat(
+            reverse: true,
+            count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 5),
+          );
         }
       } else {
         if (_pulseController.isAnimating) {
