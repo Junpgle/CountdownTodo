@@ -2,6 +2,7 @@ import 'package:countdown_todo/services/liquid_glass_effect_service.dart';
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/screens/animation_settings_page.dart';
 import 'package:countdown_todo/theme/app_liquid_glass_theme.dart';
+import 'package:countdown_todo/widgets/app_detail_widgets.dart';
 import 'package:countdown_todo/widgets/app_settings_widgets.dart';
 import 'package:countdown_todo/widgets/course_section_widget.dart';
 import 'package:countdown_todo/widgets/home_sections.dart';
@@ -662,6 +663,33 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(find.text('高等数学'), findsOneWidget);
+  });
+
+  testWidgets('detail header avoids the black first-frame glass layer',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AppDetailHeader(
+            icon: Icons.class_rounded,
+            title: '高等数学',
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(
+      find.byKey(
+        const ValueKey<String>('optional-liquid-glass-static-panel'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(GlassContainer), findsNothing);
     expect(find.text('高等数学'), findsOneWidget);
   });
 
