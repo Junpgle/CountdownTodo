@@ -40,11 +40,24 @@ class AiActionParser {
       try {
         final data = jsonDecode(_repairJson(jsonStr.trim()));
         if (data is Map<String, dynamic>) {
-          actions.addAll(_processActionMap(
-            data,
-            existingTodoTitles,
-            existingScheduleTitles,
-          ));
+          final envelopeActions = data['actions'];
+          if (envelopeActions is List &&
+              (data['version'] == 2 ||
+                  data['protocol']?.toString() == 'cdt.actions')) {
+            for (final item in envelopeActions.whereType<Map>()) {
+              actions.addAll(_processActionMap(
+                Map<String, dynamic>.from(item),
+                existingTodoTitles,
+                existingScheduleTitles,
+              ));
+            }
+          } else {
+            actions.addAll(_processActionMap(
+              data,
+              existingTodoTitles,
+              existingScheduleTitles,
+            ));
+          }
         } else if (data is List) {
           for (final item in data) {
             if (item is Map<String, dynamic>) {

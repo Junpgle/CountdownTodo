@@ -23,6 +23,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   String _pendingManualSmartContext = '';
   List<ChatSession> _sessions = [];
   bool _smartContext = true;
+  bool _showInjectedContextPreview = false;
   bool _injectMoreContext = false;
   bool _useCustomInjectRange = false;
   DateTime? _customInjectStart;
@@ -31,6 +32,8 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   String _liveSmartContextPreview = '';
   String _liveActionProtocolPreview = '';
   int _liveEstimatedTokens = 0;
+  ChatImageAttachment? _pendingAttachment;
+  bool _isPickingAttachment = false;
   String? _activeSessionId;
   Map<String, int> _categoryReminderDefaults = {};
   final GlobalKey _historyKey = GlobalKey();
@@ -80,7 +83,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   String _buildActionProtocolPreview(String userText);
   Future<void> _pickCustomInjectRange();
   int _estimateTokensForPendingInput(String text);
-  int _estimateRequestTokens(List<Map<String, String>> messages);
+  int _estimateRequestTokens(List<Map<String, dynamic>> messages);
   int _estimateTextTokens(String text);
   Future<void> _initSessions();
   Future<void> _switchSession(String sessionId);
@@ -94,15 +97,20 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   Future<void> _openTutorialPage();
   void _scrollToBottom();
   String _buildSystemPrompt();
-  List<Map<String, String>> _buildApiMessages({
+  List<Map<String, dynamic>> _buildApiMessages({
     String? pendingUserText,
     bool trackSmartContext = true,
     String financeContext = '',
   });
   String _latestUserTextFromHistory();
-  String _injectContext(List<Map<String, String>> apiMessages);
+  String _injectContext(List<Map<String, dynamic>> apiMessages);
   String _buildContextSummary();
   Future<void> _sendMessage();
+  Future<void> _pickChatAttachment();
+  Future<List<Map<String, dynamic>>> _buildApiMessagesForRequest({
+    required String financeContext,
+    required String provider,
+  });
   Future<void> _copyManualPromptFromInput();
   Future<void> _pasteManualReplyFromClipboard();
   Future<void> _importManualAiReply(String fullContent);
@@ -206,6 +214,10 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   );
   Widget _buildStreamingBubble(bool isDark);
   Widget _buildInputArea(ColorScheme colorScheme);
+  Widget _buildChatAttachmentPreview(
+    ChatImageAttachment attachment, {
+    bool compact = false,
+  });
   Widget _buildIconButtonOption({
     required IconData icon,
     required bool isSelected,

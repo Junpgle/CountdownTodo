@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../features/finance/services/ai_usage_cost_service.dart';
+import '../models/chat_message.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
 
@@ -96,11 +97,13 @@ class AiChatStreamChunk {
     this.content = '',
     this.reasoningContent = '',
     this.usage,
+    this.usageSummary,
   });
 
   final String content;
   final String reasoningContent;
   final AiTokenUsage? usage;
+  final ChatUsageSummary? usageSummary;
 }
 
 class AiChatService {
@@ -164,16 +167,35 @@ class AiChatService {
     return '${key.substring(0, 8)}...${key.substring(key.length - 4)}';
   }
 
-  static List<Map<String, String>> normalizeMessagesForNim(
-    List<Map<String, String>> messages,
+  static ChatUsageSummary usageSummaryFromRecord(AiUsageRecord record) {
+    return ChatUsageSummary(
+      provider: record.provider,
+      model: record.model,
+      promptTokens: record.promptTokens,
+      completionTokens: record.completionTokens,
+      totalTokens: record.totalTokens,
+      cachedPromptTokens: record.cachedPromptTokens,
+      imageTokens: record.imageTokens,
+      audioTokens: record.audioTokens,
+      videoTokens: record.videoTokens,
+      reasoningTokens: record.reasoningTokens,
+      audioSeconds: record.audioSeconds,
+      imageCount: record.imageCount,
+      costMicros: record.costMicros,
+      unpricedCalls: record.isPriced ? 0 : 1,
+    );
+  }
+
+  static List<Map<String, dynamic>> normalizeMessagesForNim(
+    List<Map<String, dynamic>> messages,
   ) {
     final systemParts = <String>[];
-    final others = <Map<String, String>>[];
+    final others = <Map<String, dynamic>>[];
 
     for (final msg in messages) {
       if (msg['role'] == 'system') {
-        final content = msg['content'];
-        if (content != null && content.trim().isNotEmpty) {
+        final content = _contentAsText(msg['content']);
+        if (content.trim().isNotEmpty) {
           systemParts.add(content.trim());
         }
       } else {
@@ -182,7 +204,7 @@ class AiChatService {
     }
 
     // 确保角色严格交替 user/assistant/user/assistant
-    final alternated = <Map<String, String>>[];
+    final alternated = <Map<String, dynamic>>[];
     String? lastRole;
     for (final msg in others) {
       final role = msg['role'] ?? 'user';
@@ -190,7 +212,7 @@ class AiChatService {
         final last = alternated.removeLast();
         alternated.add({
           'role': role,
-          'content': '${last['content']}\n\n${msg['content'] ?? ''}',
+          'content': _mergeContent(last['content'], msg['content']),
         });
       } else {
         alternated.add({...msg});
@@ -209,11 +231,44 @@ class AiChatService {
     ];
   }
 
+  static String _contentAsText(Object? content) {
+    if (content is String) return content;
+    if (content is List) {
+      return content
+          .whereType<Map>()
+          .map((part) => part['text']?.toString() ?? '')
+          .where((text) => text.isNotEmpty)
+          .join('\n');
+    }
+    return content?.toString() ?? '';
+  }
+
+  static Object _mergeContent(Object? first, Object? second) {
+    if (first is String && second is String) {
+      return '$first\n\n$second';
+    }
+    final firstParts = first is List
+        ? List<dynamic>.from(first)
+        : [
+            {'type': 'text', 'text': _contentAsText(first)},
+          ];
+    final secondParts = second is List
+        ? List<dynamic>.from(second)
+        : [
+            {'type': 'text', 'text': _contentAsText(second)},
+          ];
+    return [
+      ...firstParts,
+      {'type': 'text', 'text': '\n\n'},
+      ...secondParts,
+    ];
+  }
+
   static Stream<AiChatStreamChunk> streamChat({
     required String apiUrl,
     required String apiKey,
     required String model,
-    required List<Map<String, String>> messages,
+    required List<Map<String, dynamic>> messages,
     required bool deepThinking,
     String provider = 'zhipu',
     double temperature = 0.7,
@@ -221,6 +276,7 @@ class AiChatService {
     Duration timeout = const Duration(seconds: 60),
     Completer<void>? cancelToken,
     String usageOperation = 'chat',
+    int imageCount = 0,
   }) async* {
     await _ensureAiInteractionAllowed();
     final client = http.Client();
@@ -326,19 +382,26 @@ class AiChatService {
             }
 
             final usage = AiTokenUsage.fromJson(json['usage']);
-            if (usage != null) {
-              await _recordUsage(
+            ChatUsageSummary? usageSummary;
+            if (usage != null && !usageRecorded) {
+              usageSummary = await _recordUsage(
                 provider: effective,
                 model: model,
                 operation: usageOperation,
                 usage: usage,
+                imageCount: imageCount,
               );
               usageRecorded = true;
             }
 
             final choices = json['choices'] as List?;
             if (choices == null || choices.isEmpty) {
-              if (usage != null) yield AiChatStreamChunk(usage: usage);
+              if (usage != null) {
+                yield AiChatStreamChunk(
+                  usage: usage,
+                  usageSummary: usageSummary,
+                );
+              }
               continue;
             }
 
@@ -365,6 +428,7 @@ class AiChatService {
                 reasoningContent: reasoningContent,
                 content: content,
                 usage: usage,
+                usageSummary: usageSummary,
               );
             }
 
@@ -385,6 +449,7 @@ class AiChatService {
           provider: effective,
           model: model,
           operation: usageOperation,
+          imageCount: imageCount,
         );
       }
     } finally {
@@ -396,7 +461,7 @@ class AiChatService {
     required String apiUrl,
     required String apiKey,
     required String model,
-    required List<Map<String, String>> messages,
+    required List<Map<String, dynamic>> messages,
     String provider = 'zhipu',
     double temperature = 0.5,
     int maxTokens = 30,
@@ -452,14 +517,15 @@ class AiChatService {
     return (message?['content'] as String?) ?? '';
   }
 
-  static Future<void> _recordUsage({
+  static Future<ChatUsageSummary?> _recordUsage({
     required String provider,
     required String model,
     required String operation,
     AiTokenUsage? usage,
+    int imageCount = 0,
   }) async {
     try {
-      await AiUsageCostService.recordUsage(
+      final record = await AiUsageCostService.recordUsage(
         provider: provider.isEmpty ? 'custom' : provider,
         model: model,
         operation: operation,
@@ -472,10 +538,14 @@ class AiChatService {
         videoTokens: usage?.videoTokens ?? 0,
         reasoningTokens: usage?.reasoningTokens ?? 0,
         audioSeconds: usage?.audioSeconds ?? 0,
+        imageCount: imageCount,
         usageAvailable: usage != null,
       );
+      if (record == null) return null;
+      return usageSummaryFromRecord(record);
     } catch (_) {
       // Observability must never turn a successful AI reply into an error.
+      return null;
     }
   }
 

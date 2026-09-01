@@ -4,13 +4,14 @@ part of 'todo_chat_screen.dart';
 mixin _TodoChatSend on _TodoChatScreenStateBase {
   Future<void> _sendMessage() async {
     final text = _inputCtrl.text.trim();
-    if (text.isEmpty || _isLoading) return;
+    final attachment = _pendingAttachment;
+    if ((text.isEmpty && attachment == null) || _isLoading) return;
 
     // The explicit #记账 format is intentionally handled locally. This keeps
     // a simple import usable without an AI key and makes its result editable
     // immediately; natural-language finance requests still go through the
     // assistant below.
-    if (await _tryHandleExplicitFinanceText(text)) return;
+    if (attachment == null && await _tryHandleExplicitFinanceText(text)) return;
 
     String model = _chatModel;
     String apiKey = _chatApiKey;
@@ -68,19 +69,111 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       }
     }
 
+    // Binary multimodal inputs use the configured multimodal model. Plain
+    // text documents are expanded into a guarded text block and can stay on
+    // the current conversation model.
+    if (attachment != null &&
+        !AiMultimodalMessageBuilder.isTextDocument(attachment)) {
+      final visionConfig = await LLMService.getConfig();
+      if (visionConfig != null &&
+          visionConfig.isConfigured &&
+          visionConfig.visionModel.trim().isNotEmpty) {
+        final configuredVisionProvider =
+            visionConfig.visionProvider?.trim() ?? '';
+        final visionProvider = configuredVisionProvider.isNotEmpty
+            ? configuredVisionProvider
+            : visionConfig.provider;
+        final endpoint = await LLMService.resolveVisionEndpoint(
+          visionConfig.visionModel,
+          provider: visionProvider,
+        );
+        model = visionConfig.visionModel;
+        provider = visionProvider;
+        apiUrl = endpoint.url.isNotEmpty ? endpoint.url : visionConfig.apiUrl;
+        apiKey = endpoint.key.isNotEmpty ? endpoint.key : visionConfig.apiKey;
+        final capabilities = await LLMService.getMultimodalCapabilities(
+          visionConfig.visionModel,
+          provider: visionProvider,
+        );
+        final requiredCapability = switch (attachment.kind) {
+          ChatAttachmentKind.image => 'image',
+          ChatAttachmentKind.audio => 'audio',
+          ChatAttachmentKind.video => 'video',
+          ChatAttachmentKind.document => 'file',
+        };
+        if (!capabilities.contains(requiredCapability)) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '当前多模态模型不支持${attachment.typeLabel}输入，'
+                  '请在“模型与 API 配置”中更换模型。',
+                ),
+              ),
+            );
+          }
+          return;
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('请先配置支持该输入的多模态模型')),
+          );
+        }
+        return;
+      }
+    }
+
     if (apiUrl.isEmpty) apiUrl = AiChatService.defaultApiUrl;
     final sessionId = _activeSessionId;
     if (sessionId == null) return;
 
+    var attachmentForMessage = attachment;
+    if (attachment != null &&
+        attachment.path.isNotEmpty &&
+        !attachment.path.startsWith('data:')) {
+      try {
+        final persistedPath = await persistImagePath(
+          attachment.path,
+          'chat_attachments',
+        );
+        if (persistedPath != null && persistedPath.isNotEmpty) {
+          attachmentForMessage = ChatImageAttachment(
+            path: persistedPath,
+            name: attachment.name,
+            mimeType: attachment.mimeType,
+            sizeBytes: attachment.sizeBytes,
+            bytes: attachment.bytes,
+            kind: attachment.kind,
+          );
+        }
+      } catch (_) {
+        // The in-memory bytes remain usable even if a durable copy is not
+        // available (for example, a content URI on Android).
+      }
+    }
+
     final userMsg = ChatMessage(
       role: ChatRole.user,
-      content: text,
+      content: text.isEmpty
+          ? switch (attachment?.kind) {
+              ChatAttachmentKind.image => '请分析图片内容，并提取重要信息、待办与建议。',
+              ChatAttachmentKind.audio => '请理解这段音频，并提取重要信息、待办与建议。',
+              ChatAttachmentKind.video => '请分析这段视频，并提取重要信息、待办与建议。',
+              ChatAttachmentKind.document => '请阅读这份文件，并提取重要信息、待办与建议。',
+              null => '',
+            }
+          : text,
+      attachment: attachmentForMessage,
     );
+    final requestText = userMsg.content;
 
     setState(() {
       _messages.add(userMsg);
       _streamingContent = '';
+      _streamingReasoning = '';
       _isLoading = true;
+      _pendingAttachment = null;
     });
     await ChatStorageService.addMessage(userMsg, sessionId: sessionId);
     _inputCtrl.clear();
@@ -90,13 +183,16 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
 
     try {
       final financeContext = await FinanceAiContextService.buildContext(
-        userMessage: text,
+        userMessage: requestText,
       );
-      final List<Map<String, String>> apiMessages = _buildApiMessages(
+      final List<Map<String, dynamic>> apiMessages =
+          await _buildApiMessagesForRequest(
         financeContext: financeContext,
+        provider: provider,
       );
       String fullContent = '';
       String reasoningContent = '';
+      ChatUsageSummary? usageSummary;
 
       await for (final chunk in AiChatService.streamChat(
         apiUrl: apiUrl,
@@ -106,7 +202,11 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         deepThinking: _deepThinking,
         provider: provider,
         cancelToken: _cancelGeneration,
+        imageCount: attachment?.kind == ChatAttachmentKind.image ? 1 : 0,
       )) {
+        if (chunk.usageSummary != null) {
+          usageSummary = chunk.usageSummary;
+        }
         if (chunk.reasoningContent.isNotEmpty) {
           reasoningContent += chunk.reasoningContent;
           if (mounted) {
@@ -140,7 +240,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           };
           final todoActions = AiActionParser.extractTodoActions(
             fullContent,
-            originalText: text,
+            originalText: requestText,
             existingTodoTitles: existingTodoTitles,
             existingScheduleTitles: existingScheduleTitles,
           );
@@ -161,6 +261,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
               rawContent: fullContent,
               reasoningContent: reasoningContent,
               smartContext: _lastRequestSmartContext,
+              usageSummary: usageSummary,
               todoActions: todoActions.isNotEmpty ? todoActions : null,
               financeDrafts: financeDrafts.isNotEmpty ? financeDrafts : null,
               financeActions: financeActions.isNotEmpty ? financeActions : null,
@@ -198,7 +299,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       };
       final todoActions = AiActionParser.extractTodoActions(
         fullContent,
-        originalText: text,
+        originalText: requestText,
         existingTodoTitles: existingTodoTitles,
         existingScheduleTitles: existingScheduleTitles,
       );
@@ -225,6 +326,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           rawContent: fullContent,
           reasoningContent: reasoningContent,
           smartContext: _lastRequestSmartContext,
+          usageSummary: usageSummary,
           todoActions: todoActions.isNotEmpty ? todoActions : null,
           financeDrafts: financeDrafts.isNotEmpty ? financeDrafts : null,
           financeActions: financeActions.isNotEmpty ? financeActions : null,
@@ -257,6 +359,150 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         );
       }
     }
+  }
+
+  Future<void> _pickChatAttachment() async {
+    if (_isLoading || _isPickingAttachment) return;
+    setState(() => _isPickingAttachment = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const [
+          'jpg',
+          'jpeg',
+          'png',
+          'gif',
+          'webp',
+          'bmp',
+          'mp3',
+          'wav',
+          'mp4',
+          'mov',
+          'webm',
+          'pdf',
+          'txt',
+          'md',
+          'csv',
+          'json',
+          'xml',
+          'yaml',
+          'yml',
+        ],
+        allowMultiple: false,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.single;
+      final path = file.path ?? '';
+      final bytes = file.bytes;
+      if (path.isEmpty && bytes == null) {
+        throw Exception('未读取到附件内容');
+      }
+      final extension = file.extension?.toLowerCase();
+      final mimeType = switch (extension) {
+        'png' => 'image/png',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+        'bmp' => 'image/bmp',
+        'jpg' || 'jpeg' => 'image/jpeg',
+        'mp3' => 'audio/mpeg',
+        'wav' => 'audio/wav',
+        'mp4' => 'video/mp4',
+        'mov' => 'video/quicktime',
+        'webm' => 'video/webm',
+        'pdf' => 'application/pdf',
+        'json' => 'application/json',
+        'xml' => 'application/xml',
+        'yaml' || 'yml' => 'application/yaml',
+        'csv' => 'text/csv',
+        'md' => 'text/markdown',
+        _ => 'text/plain',
+      };
+      final attachment = ChatImageAttachment(
+        path: path,
+        name: file.name.isEmpty ? '附件' : file.name,
+        mimeType: mimeType,
+        sizeBytes: file.size,
+        bytes: bytes,
+      );
+      final maxBytes = AiMultimodalMessageBuilder.maxBytesFor(attachment.kind);
+      if (file.size > maxBytes) {
+        throw Exception(
+          '${attachment.typeLabel}过大，请选择 '
+          '${(maxBytes / 1024 / 1024).round()}MB 以内的文件',
+        );
+      }
+      setState(() {
+        _pendingAttachment = attachment;
+      });
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('选择附件失败: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isPickingAttachment = false);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _buildApiMessagesForRequest({
+    required String financeContext,
+    required String provider,
+  }) async {
+    final baseMessages = _buildApiMessages(financeContext: financeContext);
+    final prepared = <Map<String, dynamic>>[];
+    for (final baseMessage in baseMessages) {
+      final messageId = baseMessage['_messageId']?.toString();
+      final sourceMessage = messageId == null
+          ? null
+          : _messages.cast<ChatMessage?>().firstWhere(
+                (message) => message?.id == messageId,
+                orElse: () => null,
+              );
+      final message = Map<String, dynamic>.from(baseMessage)
+        ..remove('_messageId');
+      final attachment = sourceMessage?.attachment;
+      if (sourceMessage?.role == ChatRole.user &&
+          sourceMessage?.kind == ChatMessageKind.conversation &&
+          attachment != null) {
+        final text = message['content']?.toString().trim() ?? '';
+        try {
+          final imageInput = attachment.bytes != null
+              ? ImageInputData(
+                  bytes: attachment.bytes!,
+                  mimeType: attachment.mimeType,
+                  displayName: attachment.name,
+                )
+              : await readImageInput(attachment.path);
+          final maxBytes =
+              AiMultimodalMessageBuilder.maxBytesFor(attachment.kind);
+          if (imageInput.length > maxBytes) {
+            throw Exception(
+              '${attachment.typeLabel}过大，请选择 '
+              '${(maxBytes / 1024 / 1024).round()}MB 以内的文件',
+            );
+          }
+          message['content'] = AiMultimodalMessageBuilder.buildContent(
+            text: text,
+            attachment: attachment,
+            bytes: imageInput.bytes,
+            provider: provider,
+          );
+        } catch (_) {
+          final isCurrentMessage =
+              _messages.isNotEmpty && sourceMessage?.id == _messages.last.id;
+          if (isCurrentMessage) rethrow;
+          message['content'] = [
+            text,
+            '[历史${attachment.typeLabel}“${attachment.name}”当前不可读取，'
+                '本轮仅保留文字内容。]',
+          ].where((part) => part.isNotEmpty).join('\n\n');
+        }
+      }
+      prepared.add(message);
+    }
+    return prepared;
   }
 
   Future<bool> _tryHandleExplicitFinanceText(String text) async {
@@ -453,12 +699,13 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       (m) => m.role == ChatRole.user,
       orElse: () => ChatMessage(role: ChatRole.user, content: ''),
     );
-    if (lastUserMsg.content.isEmpty) return;
+    if (lastUserMsg.content.isEmpty && lastUserMsg.attachment == null) return;
     // 删除最后一条助手消息（如果有）
     if (_messages.isNotEmpty && _messages.last.role == ChatRole.assistant) {
       _messages.removeLast();
     }
     _inputCtrl.text = lastUserMsg.content;
+    _pendingAttachment = lastUserMsg.attachment;
     _sendMessage();
   }
 
@@ -562,12 +809,42 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   Future<void> _showPromptSettings() async {
     final promptCtrl = TextEditingController(text: _customPrompt);
     bool enabled = _promptEnabled;
+    bool smartContext = _smartContext;
+    bool showContextPreview = _showInjectedContextPreview;
+    bool injectMoreContext = _injectMoreContext;
+    bool deepThinking = _deepThinking;
+
+    Future<void> persistAssistantSettings() async {
+      await ChatStorageService.saveCustomPrompt(promptCtrl.text);
+      await ChatStorageService.setPromptEnabled(enabled);
+      await Future.wait([
+        ChatStorageService.setSmartContextEnabled(smartContext),
+        ChatStorageService.setShowContextPreview(showContextPreview),
+        ChatStorageService.setInjectMoreContext(injectMoreContext),
+        ChatStorageService.setDeepThinkingEnabled(deepThinking),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _customPrompt = promptCtrl.text;
+        _promptEnabled = enabled;
+        _smartContext = smartContext;
+        _showInjectedContextPreview = showContextPreview;
+        _injectMoreContext = injectMoreContext;
+        _deepThinking = deepThinking;
+        _liveSmartContextPreview =
+            _buildSmartContextPreview(_inputCtrl.text.trim());
+        _liveActionProtocolPreview =
+            _buildActionProtocolPreview(_inputCtrl.text.trim());
+        _liveEstimatedTokens =
+            _estimateTokensForPendingInput(_inputCtrl.text.trim());
+      });
+    }
 
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('提示词设置'),
+          title: const Text('AI 助手设置'),
           content: SizedBox(
             width: MediaQuery.of(context).size.width * 0.85,
             child: SingleChildScrollView(
@@ -575,6 +852,80 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(
+                    '这里管理助手的行为、上下文与协议。模型、API Key 和服务商在独立的“模型与 API 配置”中管理。',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    '行为与上下文',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  LiquidGlassSwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('智能上下文'),
+                    subtitle: const Text('按当前问题注入待办、日程、规划、账单等只读数据'),
+                    value: smartContext,
+                    onChanged: (value) =>
+                        setDialogState(() => smartContext = value),
+                  ),
+                  LiquidGlassSwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('在输入区显示注入预览'),
+                    subtitle: const Text('关闭只会隐藏 UI 详情，不会停止上下文注入'),
+                    value: showContextPreview,
+                    onChanged: smartContext
+                        ? (value) => setDialogState(
+                              () => showContextPreview = value,
+                            )
+                        : null,
+                  ),
+                  LiquidGlassSwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('默认扩展上下文范围'),
+                    subtitle: const Text('相关日期问题默认查看未来 30 天'),
+                    value: injectMoreContext,
+                    onChanged: smartContext
+                        ? (value) => setDialogState(
+                              () => injectMoreContext = value,
+                            )
+                        : null,
+                  ),
+                  LiquidGlassSwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('默认开启深度思考'),
+                    subtitle: const Text('模型支持时附带 thinking 参数'),
+                    value: deepThinking,
+                    onChanged: (value) =>
+                        setDialogState(() => deepThinking = value),
+                  ),
+                  const Divider(height: 24),
+                  const Text(
+                    '动作与上下文协议',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest
+                          .withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'CDT Actions v2 · Smart Context v2\n'
+                      '新回复使用带版本的动作信封；仍可读取旧版 ACTION 数组和历史聊天记录。',
+                      style: TextStyle(fontSize: 12.5, height: 1.45),
+                    ),
+                  ),
+                  const Divider(height: 24),
                   LiquidGlassSwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('启用自定义提示词'),
@@ -628,6 +979,20 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                       ),
                     ],
                   ),
+                  const Divider(height: 24),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.hub_rounded),
+                    title: const Text('模型与 API 配置'),
+                    subtitle: const Text('服务商、API Key、文本模型与多模态模型'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () async {
+                      await persistAssistantSettings();
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+                      if (mounted) unawaited(_openLlmConfigPage());
+                    },
+                  ),
                 ],
               ),
             ),
@@ -639,14 +1004,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             ),
             FilledButton(
               onPressed: () async {
-                await ChatStorageService.saveCustomPrompt(promptCtrl.text);
-                await ChatStorageService.setPromptEnabled(enabled);
-                if (mounted) {
-                  setState(() {
-                    _customPrompt = promptCtrl.text;
-                    _promptEnabled = enabled;
-                  });
-                }
+                await persistAssistantSettings();
                 if (ctx.mounted) Navigator.pop(ctx);
               },
               child: const Text('保存'),
@@ -655,6 +1013,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         ),
       ),
     );
+    promptCtrl.dispose();
   }
 
   void _showPromptPreview(String prompt, bool enabled) {

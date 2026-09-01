@@ -149,7 +149,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
           key: _settingsKey,
           icon: const Icon(Icons.tune_rounded, size: 22),
           onPressed: _showPromptSettings,
-          tooltip: '提示词设置',
+          tooltip: 'AI 助手设置',
         ),
         const SizedBox(width: 4),
       ],
@@ -1030,7 +1030,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
             children: [
               Icon(Icons.settings_outlined, size: 16),
               SizedBox(width: 8),
-              Text('打开LLM配置...'),
+              Text('打开模型与 API 配置...'),
             ],
           ),
         ),

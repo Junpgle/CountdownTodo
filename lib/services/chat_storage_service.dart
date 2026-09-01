@@ -54,6 +54,9 @@ class ChatStorageService {
   static const String _chatApiUrlKey = 'chat_api_url';
   static const String _chatProviderKey = 'chat_provider';
   static const String _deepThinkingKey = 'chat_deep_thinking';
+  static const String _smartContextKey = 'chat_smart_context';
+  static const String _showContextPreviewKey = 'chat_show_context_preview';
+  static const String _injectMoreContextKey = 'chat_inject_more_context';
 
   // 🚀 私有助手：获取隔离的存储 Key
   static Future<String> _getScopedKey(String baseKey) async {
@@ -429,6 +432,42 @@ class ChatStorageService {
   static Future<void> setDeepThinkingEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_deepThinkingKey);
+    await prefs.setBool(scopedKey, enabled);
+  }
+
+  static Future<bool> isSmartContextEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_smartContextKey);
+    return prefs.getBool(scopedKey) ?? true;
+  }
+
+  static Future<void> setSmartContextEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_smartContextKey);
+    await prefs.setBool(scopedKey, enabled);
+  }
+
+  static Future<bool> shouldShowContextPreview() async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_showContextPreviewKey);
+    return prefs.getBool(scopedKey) ?? false;
+  }
+
+  static Future<void> setShowContextPreview(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_showContextPreviewKey);
+    await prefs.setBool(scopedKey, enabled);
+  }
+
+  static Future<bool> shouldInjectMoreContext() async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_injectMoreContextKey);
+    return prefs.getBool(scopedKey) ?? false;
+  }
+
+  static Future<void> setInjectMoreContext(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_injectMoreContextKey);
     await prefs.setBool(scopedKey, enabled);
   }
 }

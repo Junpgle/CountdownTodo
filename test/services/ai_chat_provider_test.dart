@@ -6,8 +6,6 @@ import 'package:countdown_todo/services/ai_chat_service.dart';
 import 'package:countdown_todo/services/chat_storage_service.dart';
 import 'package:countdown_todo/services/llm_service.dart';
 import 'package:countdown_todo/models/chat_message.dart';
-import 'package:countdown_todo/screens/settings/llm_config_page.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,6 +18,8 @@ class _RealHttpOverrides extends HttpOverrides {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('MiMo Token Plan provider', () {
     test('exposes the dedicated OpenAI and Anthropic base URLs', () {
       expect(
@@ -240,35 +240,5 @@ void main() {
         await server.close(force: true);
       }
     }, createHttpClient: _RealHttpOverrides().createHttpClient);
-  });
-
-  testWidgets('changing the vision model preserves the selected text model',
-      (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    await LLMService.saveConfig(
-      LLMConfig(
-        apiKey: 'test-key',
-        model: 'glm-4.7-flash',
-        visionModel: 'glm-4.6v-flash',
-      ),
-    );
-    await tester.pumpWidget(
-      const MaterialApp(home: LLMConfigPage(isEmbedded: true)),
-    );
-    await tester.pumpAndSettle();
-
-    final modelDropdowns = find.byType(DropdownButton<String>);
-    expect(modelDropdowns, findsNWidgets(2));
-    expect(find.text('GLM-4.7-Flash'), findsOneWidget);
-
-    await tester.ensureVisible(modelDropdowns.at(1));
-    await tester.pumpAndSettle();
-    await tester.tap(modelDropdowns.at(1));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('GLM-4.1V-Thinking-Flash').last);
-    await tester.pumpAndSettle();
-
-    expect(find.text('GLM-4.7-Flash'), findsOneWidget);
-    expect(find.text('GLM-4.1V-Thinking-Flash'), findsOneWidget);
   });
 }

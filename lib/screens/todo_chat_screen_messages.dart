@@ -79,53 +79,74 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                             ),
                     ),
                     child: isUser
-                        ? Text(
-                            msg.content,
-                            style: TextStyle(
-                              color: colorScheme.onPrimary,
-                              fontSize: 15,
-                              height: 1.42,
-                            ),
-                          )
-                        : MarkdownBody(
-                            data: msg.content,
-                            styleSheet: MarkdownStyleSheet(
-                              p: TextStyle(
-                                color: colorScheme.onSurface,
-                                fontSize: 15,
-                                height: 1.45,
-                              ),
-                              strong: TextStyle(
-                                color: colorScheme.primary,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              listBullet: TextStyle(
-                                color: colorScheme.primary,
-                                fontSize: 15,
-                              ),
-                              code: TextStyle(
-                                color: colorScheme.secondary,
-                                backgroundColor: colorScheme.secondaryContainer
-                                    .withValues(alpha: 0.5),
-                                fontSize: 14,
-                                fontFamily: 'monospace',
-                              ),
-                              blockquote: TextStyle(
-                                color: colorScheme.onSurfaceVariant,
-                                fontStyle: FontStyle.italic,
-                              ),
-                              blockquoteDecoration: BoxDecoration(
-                                border: Border(
-                                  left: BorderSide(
-                                    color: colorScheme.primary,
-                                    width: 4,
+                        ? Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (msg.attachment != null)
+                                _buildChatAttachmentPreview(msg.attachment!),
+                              if (msg.content.isNotEmpty)
+                                Text(
+                                  msg.content,
+                                  style: TextStyle(
+                                    color: colorScheme.onPrimary,
+                                    fontSize: 15,
+                                    height: 1.42,
                                   ),
                                 ),
-                                color: colorScheme.primaryContainer
-                                    .withValues(alpha: 0.1),
-                              ),
-                            ),
-                            selectable: true,
+                            ],
+                          )
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (msg.recognition != null)
+                                _buildRecognitionMessage(msg, isDark)
+                              else
+                                MarkdownBody(
+                                  data: msg.content,
+                                  styleSheet: MarkdownStyleSheet(
+                                    p: TextStyle(
+                                      color: colorScheme.onSurface,
+                                      fontSize: 15,
+                                      height: 1.45,
+                                    ),
+                                    strong: TextStyle(
+                                      color: colorScheme.primary,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    listBullet: TextStyle(
+                                      color: colorScheme.primary,
+                                      fontSize: 15,
+                                    ),
+                                    code: TextStyle(
+                                      color: colorScheme.secondary,
+                                      backgroundColor: colorScheme
+                                          .secondaryContainer
+                                          .withValues(alpha: 0.5),
+                                      fontSize: 14,
+                                      fontFamily: 'monospace',
+                                    ),
+                                    blockquote: TextStyle(
+                                      color: colorScheme.onSurfaceVariant,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                    blockquoteDecoration: BoxDecoration(
+                                      border: Border(
+                                        left: BorderSide(
+                                          color: colorScheme.primary,
+                                          width: 4,
+                                        ),
+                                      ),
+                                      color: colorScheme.primaryContainer
+                                          .withValues(alpha: 0.1),
+                                    ),
+                                  ),
+                                  selectable: true,
+                                ),
+                              if (msg.usageSummary != null)
+                                _buildUsageSummaryFooter(msg.usageSummary!),
+                            ],
                           ),
                   ),
                   if (!_shouldDetachActions &&
@@ -313,6 +334,302 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
     );
   }
 
+  Widget _buildChatAttachmentPreview(
+    ChatImageAttachment attachment, {
+    bool compact = false,
+  }) {
+    final width = compact ? 64.0 : 180.0;
+    final height = compact ? 52.0 : 132.0;
+    final scheme = Theme.of(context).colorScheme;
+    final Widget preview;
+    if (attachment.kind == ChatAttachmentKind.image) {
+      preview = attachment.bytes != null
+          ? Image.memory(
+              attachment.bytes!,
+              width: width,
+              height: height,
+              fit: BoxFit.cover,
+            )
+          : attachment.path.isNotEmpty && localImageExists(attachment.path)
+              ? localImageWidget(
+                  attachment.path,
+                  width: width,
+                  height: height,
+                  fit: BoxFit.cover,
+                )
+              : Container(
+                  width: width,
+                  height: compact ? 52 : 72,
+                  alignment: Alignment.center,
+                  color: Colors.black.withValues(alpha: 0.08),
+                  child: const Icon(Icons.image_not_supported_outlined),
+                );
+    } else {
+      final icon = switch (attachment.kind) {
+        ChatAttachmentKind.audio => Icons.audio_file_rounded,
+        ChatAttachmentKind.video => Icons.video_file_rounded,
+        ChatAttachmentKind.document => Icons.description_rounded,
+        ChatAttachmentKind.image => Icons.image_rounded,
+      };
+      final size = attachment.sizeBytes;
+      final sizeLabel = size == null
+          ? ''
+          : size >= 1024 * 1024
+              ? '${(size / 1024 / 1024).toStringAsFixed(1)} MB'
+              : '${(size / 1024).ceil()} KB';
+      preview = Container(
+        width: compact ? 180 : 260,
+        constraints: BoxConstraints(minHeight: compact ? 52 : 64),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: scheme.primary, size: compact ? 22 : 28),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    attachment.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: scheme.onSurface,
+                      fontWeight: FontWeight.w600,
+                      fontSize: compact ? 11 : 13,
+                    ),
+                  ),
+                  Text(
+                    [attachment.typeLabel, sizeLabel]
+                        .where((item) => item.isNotEmpty)
+                        .join(' · '),
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: preview,
+      ),
+    );
+  }
+
+  Widget _buildUsageSummaryFooter(ChatUsageSummary usage) {
+    final scheme = Theme.of(context).colorScheme;
+    final parts = <String>[];
+    if (usage.costMicros != null) {
+      parts.add('本次花费 ${AiUsageCostService.formatMicros(usage.costMicros!)}');
+    } else {
+      parts.add('本次费用暂无可用价格');
+    }
+    if (usage.totalTokens > 0) parts.add('${usage.totalTokens} tokens');
+    if (usage.calls > 1) parts.add('${usage.calls} 次调用');
+    if (usage.unpricedCalls > 0 && usage.costMicros != null) {
+      parts.add('含 ${usage.unpricedCalls} 次未定价');
+    }
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 9),
+      padding: const EdgeInsets.only(top: 7),
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(
+            color: scheme.outlineVariant.withValues(alpha: 0.55),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.toll_rounded,
+            size: 12,
+            color: scheme.onSurfaceVariant.withValues(alpha: 0.75),
+          ),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Text(
+              parts.join(' · '),
+              style: TextStyle(
+                color: scheme.onSurfaceVariant.withValues(alpha: 0.8),
+                fontSize: 10.5,
+                height: 1.25,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecognitionMessage(ChatMessage msg, bool isDark) {
+    final info = msg.recognition!;
+    final scheme = Theme.of(context).colorScheme;
+    final isProcessing = info.status == ChatRecognitionStatus.processing;
+    final isFailed = info.status == ChatRecognitionStatus.failed;
+    final statusColor = isProcessing
+        ? scheme.tertiary
+        : isFailed
+            ? scheme.error
+            : scheme.primary;
+    final statusLabel = isProcessing
+        ? '正在识别'
+        : isFailed
+            ? '识别失败'
+            : '识别完成';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              isProcessing
+                  ? Icons.auto_awesome_rounded
+                  : isFailed
+                      ? Icons.error_outline_rounded
+                      : Icons.check_circle_outline_rounded,
+              size: 18,
+              color: statusColor,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '${info.recognizer} · $statusLabel',
+              style: TextStyle(
+                color: statusColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+            if (isProcessing) ...[
+              const Spacer(),
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.8,
+                  color: statusColor,
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (msg.content.isNotEmpty) ...[
+          const SizedBox(height: 7),
+          MarkdownBody(
+            data: msg.content,
+            styleSheet: MarkdownStyleSheet(
+              p: TextStyle(
+                color: scheme.onSurface,
+                fontSize: 15,
+                height: 1.45,
+              ),
+              strong: TextStyle(
+                color: scheme.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            selectable: true,
+          ),
+        ],
+        if (info.todoResults.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: scheme.primaryContainer.withValues(alpha: 0.45),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: info.todoResults.asMap().entries.map((entry) {
+                final result = entry.value;
+                final title = (result['title'] ?? result['content'] ?? '')
+                    .toString()
+                    .trim();
+                final detail = (result['remark'] ?? result['notes'] ?? '')
+                    .toString()
+                    .trim();
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: entry.key == info.todoResults.length - 1 ? 0 : 5,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${entry.key + 1}.',
+                        style: TextStyle(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          detail.isEmpty ? title : '$title · $detail',
+                          style: TextStyle(
+                            color: scheme.onSurface,
+                            fontSize: 13,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+        if (info.suggestions.isNotEmpty) ...[
+          const SizedBox(height: 9),
+          Text(
+            '建议下一步',
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: info.suggestions.map((suggestion) {
+              return ActionChip(
+                label: Text(suggestion),
+                onPressed: () {
+                  _inputCtrl
+                    ..text = suggestion
+                    ..selection = TextSelection.collapsed(
+                      offset: suggestion.length,
+                    );
+                },
+                visualDensity: VisualDensity.compact,
+              );
+            }).toList(),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildInputArea(ColorScheme colorScheme) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final useFloating = floatingBottomBarShouldFloat(context);
@@ -414,7 +731,7 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                     Row(
                       children: [
                         Text(
-                          '发送预览',
+                          '智能上下文',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -426,6 +743,11 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                           onPressed: () {
                             setState(() {
                               _injectMoreContext = !_injectMoreContext;
+                              unawaited(
+                                ChatStorageService.setInjectMoreContext(
+                                  _injectMoreContext,
+                                ),
+                              );
                               if (_injectMoreContext) {
                                 _useCustomInjectRange = false;
                               }
@@ -499,33 +821,44 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                         ),
                       ),
                     const SizedBox(height: 6),
-                    if (_liveSmartContextPreview.isNotEmpty)
-                      SelectableText(
-                        _liveSmartContextPreview,
-                        maxLines: 2,
-                        style: TextStyle(
-                          fontSize: 12,
-                          height: 1.35,
-                          color: colorScheme.onSurface.withValues(alpha: 0.8),
+                    if (_showInjectedContextPreview) ...[
+                      if (_liveSmartContextPreview.isNotEmpty)
+                        SelectableText(
+                          _liveSmartContextPreview,
+                          maxLines: 2,
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.35,
+                            color: colorScheme.onSurface.withValues(alpha: 0.8),
+                          ),
                         ),
-                      ),
-                    if (_liveSmartContextPreview.isEmpty)
+                      if (_liveSmartContextPreview.isEmpty)
+                        Text(
+                          '将注入：无（当前消息无需额外业务上下文）',
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.35,
+                            color:
+                                colorScheme.onSurface.withValues(alpha: 0.65),
+                          ),
+                        ),
+                      if (_liveActionProtocolPreview.isNotEmpty)
+                        SelectableText(
+                          _liveActionProtocolPreview,
+                          maxLines: 3,
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.35,
+                            color: colorScheme.onSurface.withValues(alpha: 0.8),
+                          ),
+                        ),
+                    ] else
                       Text(
-                        '将注入：无（当前消息无需额外业务上下文）',
+                        '注入详情已隐藏，内容仍会随请求发送。可在“AI 助手设置”中开启预览。',
                         style: TextStyle(
                           fontSize: 12,
                           height: 1.35,
-                          color: colorScheme.onSurface.withValues(alpha: 0.65),
-                        ),
-                      ),
-                    if (_liveActionProtocolPreview.isNotEmpty)
-                      SelectableText(
-                        _liveActionProtocolPreview,
-                        maxLines: 3,
-                        style: TextStyle(
-                          fontSize: 12,
-                          height: 1.35,
-                          color: colorScheme.onSurface.withValues(alpha: 0.8),
+                          color: colorScheme.onSurface.withValues(alpha: 0.68),
                         ),
                       ),
                     SelectableText(
@@ -538,6 +871,39 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                       ),
                     ),
                   ],
+                ),
+              ),
+            ],
+            if (_pendingAttachment != null) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildChatAttachmentPreview(
+                        _pendingAttachment!,
+                        compact: true,
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        onPressed: () =>
+                            setState(() => _pendingAttachment = null),
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        tooltip: '移除附件',
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(),
+                        style: floatingGlassPlainIconButtonStyle(),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -563,6 +929,29 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const SizedBox(width: 4),
+                  IconButton(
+                    onPressed: _isLoading ? null : _pickChatAttachment,
+                    icon: _isPickingAttachment
+                        ? SizedBox(
+                            width: 17,
+                            height: 17,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: colorScheme.primary,
+                            ),
+                          )
+                        : Icon(
+                            Icons.attach_file_rounded,
+                            size: 18,
+                            color: colorScheme.onSurfaceVariant
+                                .withValues(alpha: 0.65),
+                          ),
+                    tooltip: '添加图片、音频、视频或文件',
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.all(8),
+                    constraints: const BoxConstraints(),
+                    style: floatingGlassPlainIconButtonStyle(),
+                  ),
                   _buildIconButtonOption(
                     icon: Icons.psychology_rounded,
                     isSelected: _deepThinking,
@@ -576,15 +965,18 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                     icon: Icons.auto_awesome_rounded,
                     isSelected: _smartContext,
                     tooltip: '智能上下文',
-                    onTap: (val) => setState(() {
-                      _smartContext = val;
-                      _liveSmartContextPreview =
-                          _buildSmartContextPreview(_inputCtrl.text.trim());
-                      _liveActionProtocolPreview =
-                          _buildActionProtocolPreview(_inputCtrl.text.trim());
-                      _liveEstimatedTokens = _estimateTokensForPendingInput(
-                          _inputCtrl.text.trim());
-                    }),
+                    onTap: (val) async {
+                      setState(() {
+                        _smartContext = val;
+                        _liveSmartContextPreview =
+                            _buildSmartContextPreview(_inputCtrl.text.trim());
+                        _liveActionProtocolPreview =
+                            _buildActionProtocolPreview(_inputCtrl.text.trim());
+                        _liveEstimatedTokens = _estimateTokensForPendingInput(
+                            _inputCtrl.text.trim());
+                      });
+                      await ChatStorageService.setSmartContextEnabled(val);
+                    },
                   ),
                   const SizedBox(width: 4),
                   Container(
