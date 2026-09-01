@@ -1634,6 +1634,7 @@ class FloatingGlassAppBar extends StatelessWidget
     this.clipBehavior,
     this.actionsPadding,
     this.animateColor = false,
+    this.useFloatingControls = true,
     this.floatingControlTint,
     this.floatingControlIsDark,
     this.floatingControlScrollDistance = _floatingGlassAppBarScrollDistance,
@@ -1672,6 +1673,11 @@ class FloatingGlassAppBar extends StatelessWidget
   final Clip? clipBehavior;
   final EdgeInsetsGeometry? actionsPadding;
   final bool animateColor;
+
+  /// Whether leading/actions become independent glass lenses as the bar
+  /// collapses. Disable this when a screen already owns one continuous top
+  /// surface; the controls then remain plain inside that surface.
+  final bool useFloatingControls;
 
   /// Optional appearance override for the independently floating controls.
   /// This is useful when the native AppBar remains transparent over a custom
@@ -1712,7 +1718,7 @@ class FloatingGlassAppBar extends StatelessWidget
         );
     final resolvedLeading = _resolveFloatingAppBarLeading(context);
     final resolvedActions = _resolveFloatingAppBarActions(context);
-    final decoratedLeading = resolvedLeading == null
+    final decoratedLeading = !useFloatingControls || resolvedLeading == null
         ? null
         : FloatingGlassAppBarAction(
             tint: glassTint,
@@ -1721,69 +1727,89 @@ class FloatingGlassAppBar extends StatelessWidget
             isDark: glassIsDark,
             child: resolvedLeading,
           );
-    final decoratedActions = resolvedActions
-        ?.map(
-          (action) => _isFloatingGlassAppBarLayoutOnly(action) ||
-                  action is FloatingGlassAppBarAction
-              ? action
-              : FloatingGlassAppBarAction(
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  tint: glassTint,
-                  haloColor: colorScheme.primary,
-                  useTopBarGlass: true,
-                  isDark: glassIsDark,
-                  child: action,
-                ),
-        )
-        .toList(growable: false);
+    final decoratedActions = !useFloatingControls
+        ? resolvedActions
+        : resolvedActions
+            ?.map(
+              (action) => _isFloatingGlassAppBarLayoutOnly(action) ||
+                      action is FloatingGlassAppBarAction
+                  ? action
+                  : FloatingGlassAppBarAction(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      tint: glassTint,
+                      haloColor: colorScheme.primary,
+                      useTopBarGlass: true,
+                      isDark: glassIsDark,
+                      child: action,
+                    ),
+            )
+            .toList(growable: false);
+
+    Widget buildAppBar(ValueNotifier<double> collapseProgress) {
+      final appBar = AppBar(
+        leading:
+            decoratedLeading ?? (useFloatingControls ? null : resolvedLeading),
+        automaticallyImplyLeading: false,
+        title: title,
+        actions: decoratedActions,
+        automaticallyImplyActions: false,
+        flexibleSpace: _FloatingGlassCollapseReporter(
+          collapseProgress: collapseProgress,
+          child: flexibleSpace ?? const FloatingGlassTopBarBackground(),
+        ),
+        bottom: bottom,
+        elevation: resolvedElevation,
+        scrolledUnderElevation: resolvedScrolledUnderElevation,
+        notificationPredicate: notificationPredicate,
+        shadowColor: resolvedShadowColor,
+        surfaceTintColor: resolvedSurfaceTintColor,
+        shape: shape,
+        backgroundColor: resolvedBackgroundColor,
+        foregroundColor: resolvedForegroundColor,
+        iconTheme: iconTheme,
+        actionsIconTheme: actionsIconTheme,
+        primary: primary,
+        centerTitle: centerTitle,
+        excludeHeaderSemantics: excludeHeaderSemantics,
+        titleSpacing: titleSpacing,
+        toolbarOpacity: toolbarOpacity,
+        bottomOpacity: bottomOpacity,
+        toolbarHeight: toolbarHeight,
+        leadingWidth: leadingWidth ??
+            (useFloatingControls && decoratedLeading != null
+                ? _floatingAppBarLeadingWidth
+                : null),
+        toolbarTextStyle: toolbarTextStyle,
+        titleTextStyle: titleTextStyle,
+        systemOverlayStyle: resolvedSystemOverlayStyle,
+        forceMaterialTransparency: resolvedForceMaterialTransparency,
+        useDefaultSemanticsOrder: useDefaultSemanticsOrder,
+        clipBehavior: clipBehavior,
+        actionsPadding: actionsPadding ??
+            (!useFloatingControls ||
+                    decoratedActions == null ||
+                    decoratedActions.isEmpty
+                ? null
+                : _floatingAppBarActionsPadding),
+        animateColor: animateColor,
+      );
+
+      return useFloatingControls
+          ? appBar
+          : Theme(
+              // A continuous top surface owns the visual treatment. Neutralize
+              // the app-wide button glass theme for its plain child controls.
+              data: _floatingGlassChildTheme(context),
+              child: appBar,
+            );
+    }
 
     return _FloatingGlassAppBarHost(
       notificationPredicate: notificationPredicate,
       scrollDistance: floatingControlScrollDistance,
       builder: (context, collapseProgress) => _FloatingGlassAppBarScope(
         collapseProgress: collapseProgress,
-        child: AppBar(
-          leading: decoratedLeading,
-          automaticallyImplyLeading: false,
-          title: title,
-          actions: decoratedActions,
-          automaticallyImplyActions: false,
-          flexibleSpace: _FloatingGlassCollapseReporter(
-            collapseProgress: collapseProgress,
-            child: flexibleSpace ?? const FloatingGlassTopBarBackground(),
-          ),
-          bottom: bottom,
-          elevation: resolvedElevation,
-          scrolledUnderElevation: resolvedScrolledUnderElevation,
-          notificationPredicate: notificationPredicate,
-          shadowColor: resolvedShadowColor,
-          surfaceTintColor: resolvedSurfaceTintColor,
-          shape: shape,
-          backgroundColor: resolvedBackgroundColor,
-          foregroundColor: resolvedForegroundColor,
-          iconTheme: iconTheme,
-          actionsIconTheme: actionsIconTheme,
-          primary: primary,
-          centerTitle: centerTitle,
-          excludeHeaderSemantics: excludeHeaderSemantics,
-          titleSpacing: titleSpacing,
-          toolbarOpacity: toolbarOpacity,
-          bottomOpacity: bottomOpacity,
-          toolbarHeight: toolbarHeight,
-          leadingWidth: leadingWidth ??
-              (decoratedLeading == null ? null : _floatingAppBarLeadingWidth),
-          toolbarTextStyle: toolbarTextStyle,
-          titleTextStyle: titleTextStyle,
-          systemOverlayStyle: resolvedSystemOverlayStyle,
-          forceMaterialTransparency: resolvedForceMaterialTransparency,
-          useDefaultSemanticsOrder: useDefaultSemanticsOrder,
-          clipBehavior: clipBehavior,
-          actionsPadding: actionsPadding ??
-              (decoratedActions == null || decoratedActions.isEmpty
-                  ? null
-                  : _floatingAppBarActionsPadding),
-          animateColor: animateColor,
-        ),
+        child: buildAppBar(collapseProgress),
       ),
     );
   }

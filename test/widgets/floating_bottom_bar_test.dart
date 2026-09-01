@@ -450,6 +450,48 @@ void main() {
     expect(find.text('Floating controls'), findsOneWidget);
   });
 
+  testWidgets('can keep AppBar controls inside one continuous top surface',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+    final theme = applyAppLiquidGlassTheme(
+      ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+      ),
+      enabled: true,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: Scaffold(
+          appBar: FloatingGlassAppBar(
+            useFloatingControls: false,
+            leading: IconButton(
+              tooltip: 'Back',
+              onPressed: () {},
+              icon: const Icon(Icons.arrow_back),
+            ),
+            title: const Text('Single surface'),
+            actions: [
+              IconButton(
+                tooltip: 'Action',
+                onPressed: () {},
+                icon: const Icon(Icons.more_horiz),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(find.byType(FloatingGlassAppBarAction), findsNothing);
+    expect(find.byType(GlassContainer), findsNothing);
+    expect(find.text('Single surface'), findsOneWidget);
+  });
+
   testWidgets('keeps text actions at their intrinsic width', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

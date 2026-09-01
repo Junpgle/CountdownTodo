@@ -68,6 +68,9 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
       surfaceTintColor: Colors.transparent,
       shadowColor: Colors.transparent,
       forceMaterialTransparency: true,
+      // The chat page already has one continuous top surface. Keeping its
+      // actions plain avoids placing a second circular glass lens inside it.
+      useFloatingControls: false,
       systemOverlayStyle: floatingGlassTopBarSystemOverlayStyle(context),
       flexibleSpace: const FloatingGlassTopBarBackground(),
       centerTitle: true,
