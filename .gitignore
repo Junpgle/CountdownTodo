@@ -164,6 +164,9 @@ todo.md
 !/test/utils/page_transitions_test.dart
 !/test/features/
 /test/features/*
+!/test/features/thirty_day_challenge/
+/test/features/thirty_day_challenge/*
+!/test/features/thirty_day_challenge/challenge_center_screen_test.dart
 !/test/features/habits/
 /test/features/habits/*
 !/test/features/habits/habit_models_test.dart
