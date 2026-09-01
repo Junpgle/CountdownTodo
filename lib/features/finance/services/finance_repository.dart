@@ -26,6 +26,26 @@ abstract final class FinanceRepository {
     return FinanceStorage.getTransaction(uuid);
   }
 
+  static Future<List<FinanceTransaction>> getRefundsForTransaction(
+    String transactionUuid, {
+    bool includeDeleted = false,
+  }) {
+    return FinanceStorage.getRefundsForTransaction(
+      transactionUuid,
+      includeDeleted: includeDeleted,
+    );
+  }
+
+  static Future<int> getRemainingRefundableMinor(
+    String transactionUuid, {
+    String? excludingRefundUuid,
+  }) {
+    return FinanceStorage.getRemainingRefundableMinor(
+      transactionUuid,
+      excludingRefundUuid: excludingRefundUuid,
+    );
+  }
+
   static Future<FinanceSummary> getSummary({
     required DateTime from,
     required DateTime to,
@@ -286,10 +306,14 @@ abstract final class FinanceRepository {
           transaction.transactionDate,
           transaction.type.label,
           (amount / 100).toStringAsFixed(2),
-          category == null ? '未分类' : '${category.icon} ${category.name}',
-          payment == null ? '未指定' : '${payment.icon} ${payment.name}',
-          transaction.merchant ?? '',
-          transaction.note ?? '',
+          sanitizeFinanceCsvText(
+            category == null ? '未分类' : '${category.icon} ${category.name}',
+          ),
+          sanitizeFinanceCsvText(
+            payment == null ? '未指定' : '${payment.icon} ${payment.name}',
+          ),
+          sanitizeFinanceCsvText(transaction.merchant ?? ''),
+          sanitizeFinanceCsvText(transaction.note ?? ''),
           transaction.source.label,
           transaction.installmentLabel ?? '',
           transaction.isInstallment && transaction.installmentTotalMinor != null
@@ -316,6 +340,15 @@ abstract final class FinanceRepository {
     }
     return '"${value.replaceAll('"', '""')}"';
   }
+}
+
+/// Prevent spreadsheet programs from interpreting user-controlled cells as
+/// formulas when a CSV export is opened.
+String sanitizeFinanceCsvText(String value) {
+  final leading = value.trimLeft();
+  if (leading.isEmpty) return value;
+  const formulaPrefixes = {'=', '+', '-', '@'};
+  return formulaPrefixes.contains(leading[0]) ? "'$value" : value;
 }
 
 /// 将用户输入的人民币金额转换为分，拒绝负数和超过两位小数的值。

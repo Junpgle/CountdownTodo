@@ -13,6 +13,14 @@ enum FinanceCategoryType { expense, income }
 
 enum FinanceEntrySource { manual, import, ai, automation }
 
+FinanceCategoryType financeCategoryTypeForTransaction(
+  FinanceTransactionType type,
+) {
+  return type == FinanceTransactionType.income
+      ? FinanceCategoryType.income
+      : FinanceCategoryType.expense;
+}
+
 /// 一笔账单的分期金额和发生日期。
 class FinanceInstallmentAllocation {
   final int index;
@@ -682,7 +690,7 @@ abstract final class FinanceDefaults {
       'uuid': 'finance-system-category-refund',
       'name': '退款',
       'icon': '↩️',
-      'type': 'income',
+      'type': 'expense',
       'sort_order': 40,
     },
     {
@@ -1183,6 +1191,8 @@ FinanceTransactionType _draftTransactionType(dynamic raw) {
 }
 
 class FinanceBudget {
+  static const String _uuidNamespace = '6ba7b812-9dad-11d1-80b4-00c04fd430c8';
+
   String uuid;
   String monthKey;
   String? categoryUuid;
@@ -1212,6 +1222,16 @@ class FinanceBudget {
   })  : uuid = uuid ?? const Uuid().v4(),
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+
+  static String stableUuid(String monthKey, String? categoryUuid) {
+    final scope = categoryUuid?.trim().isNotEmpty == true
+        ? categoryUuid!.trim()
+        : 'overall';
+    return const Uuid().v5(
+      _uuidNamespace,
+      'countdown-todo/finance-budget/v1/$monthKey/$scope',
+    );
+  }
 
   bool get isOverall => categoryUuid == null;
 

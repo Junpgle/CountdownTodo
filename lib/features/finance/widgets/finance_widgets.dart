@@ -346,6 +346,7 @@ class FinanceLedgerPanel extends StatelessWidget {
   final ValueChanged<FinanceTransactionType?> onFilterChanged;
   final ValueChanged<FinanceTransaction> onEdit;
   final ValueChanged<FinanceTransaction> onDelete;
+  final ValueChanged<FinanceTransaction> onRefund;
 
   const FinanceLedgerPanel({
     super.key,
@@ -358,6 +359,7 @@ class FinanceLedgerPanel extends StatelessWidget {
     required this.onFilterChanged,
     required this.onEdit,
     required this.onDelete,
+    required this.onRefund,
   });
 
   @override
@@ -492,12 +494,18 @@ class FinanceLedgerPanel extends StatelessWidget {
             ),
             PopupMenuButton<String>(
               onSelected: (value) {
+                if (value == 'refund') onRefund(transaction);
                 if (value == 'edit') onEdit(transaction);
                 if (value == 'delete') onDelete(transaction);
               },
-              itemBuilder: (context) => const [
-                PopupMenuItem(value: 'edit', child: Text('编辑')),
-                PopupMenuItem(value: 'delete', child: Text('删除')),
+              itemBuilder: (context) => [
+                if (transaction.type == FinanceTransactionType.expense)
+                  const PopupMenuItem(
+                    value: 'refund',
+                    child: Text('退款'),
+                  ),
+                const PopupMenuItem(value: 'edit', child: Text('编辑')),
+                const PopupMenuItem(value: 'delete', child: Text('删除')),
               ],
             ),
           ],

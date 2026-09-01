@@ -137,9 +137,29 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     if (result != null && mounted) await _load();
   }
 
+  Future<void> _openRefund(FinanceTransaction original) async {
+    final remaining =
+        await FinanceRepository.getRemainingRefundableMinor(original.uuid);
+    if (!mounted) return;
+    if (remaining <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('该账单已全部退款')),
+      );
+      return;
+    }
+    final result = await Navigator.of(context).push<FinanceTransaction>(
+      PageTransitions.material(
+        builder: (_) => FinanceEntryScreen(originalTransaction: original),
+      ),
+    );
+    if (result != null && mounted) await _load();
+  }
+
   Future<void> _openSettings() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const FinanceSettingsScreen()),
+      MaterialPageRoute(
+        builder: (_) => FinanceSettingsScreen(username: widget.username),
+      ),
     );
     if (mounted) await _load();
   }
@@ -419,6 +439,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                             onEdit: (transaction) =>
                                 _openEntry(transaction: transaction),
                             onDelete: _deleteTransaction,
+                            onRefund: _openRefund,
                           ),
                         ],
                       ),

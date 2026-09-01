@@ -9,12 +9,14 @@ import '../services/finance_text_parser.dart';
 
 class FinanceEntryScreen extends StatefulWidget {
   final FinanceTransaction? transaction;
+  final FinanceTransaction? originalTransaction;
   final FinanceEntryTemplate? initialTemplate;
   final FinanceEntryDraft? initialDraft;
 
   const FinanceEntryScreen({
     super.key,
     this.transaction,
+    this.originalTransaction,
     this.initialTemplate,
     this.initialDraft,
   });
@@ -40,6 +42,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   String? _paymentMethodUuid;
   String? _selectedTemplateUuid;
   List<FinanceTransaction> _existingInstallments = const [];
+  FinanceTransaction? _originalTransaction;
+  int _remainingRefundableMinor = 0;
   bool _installmentEnabled = false;
   int _installmentCount = FinanceInstallmentCalculator.minCount;
   bool _isLoading = true;
@@ -47,6 +51,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
 
   bool get _isEditing => widget.transaction != null;
   bool get _isEditingInstallment => widget.transaction?.isInstallment == true;
+  bool get _hasRefundBinding =>
+      widget.originalTransaction != null ||
+      widget.transaction?.relatedTransactionUuid?.isNotEmpty == true;
+  bool get _isBoundRefund =>
+      _type == FinanceTransactionType.refund && _hasRefundBinding;
 
   @override
   void initState() {
@@ -54,10 +63,13 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     final transaction = widget.transaction;
     final template = transaction == null ? widget.initialTemplate : null;
     final draft = transaction == null ? widget.initialDraft : null;
-    _type = transaction?.type ??
-        draft?.type ??
-        template?.type ??
-        FinanceTransactionType.expense;
+    _originalTransaction = widget.originalTransaction;
+    _type = widget.originalTransaction != null
+        ? FinanceTransactionType.refund
+        : transaction?.type ??
+            draft?.type ??
+            template?.type ??
+            FinanceTransactionType.expense;
     if (_isEditingInstallment) {
       _installmentEnabled = true;
       _installmentCount = transaction!.installmentCount ??
@@ -80,8 +92,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
               .replaceFirst(RegExp(r'\.00$'), ''),
     );
     _merchantController = TextEditingController(
-      text:
-          transaction?.merchant ?? draft?.merchant ?? template?.merchant ?? '',
+      text: transaction?.merchant ??
+          widget.originalTransaction?.merchant ??
+          draft?.merchant ??
+          template?.merchant ??
+          '',
     );
     _noteController = TextEditingController(
       text: transaction?.note ?? draft?.note ?? template?.note ?? '',
@@ -91,9 +106,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       text: _installmentCount.toString(),
     );
     _categoryUuid = transaction?.categoryUuid ??
+        widget.originalTransaction?.categoryUuid ??
         draft?.categoryUuid ??
         template?.categoryUuid;
     _paymentMethodUuid = transaction?.paymentMethodUuid ??
+        widget.originalTransaction?.paymentMethodUuid ??
         draft?.paymentMethodUuid ??
         template?.paymentMethodUuid;
     _selectedTemplateUuid = template?.uuid;
@@ -112,6 +129,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
 
   Future<void> _loadOptions() async {
     try {
+      final boundOriginalUuid = widget.originalTransaction?.uuid ??
+          widget.transaction?.relatedTransactionUuid;
       final options = await Future.wait<dynamic>([
         FinanceStorage.getCategories(includeArchived: true),
         FinanceStorage.getPaymentMethods(includeArchived: true),
@@ -122,9 +141,22 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 includeDeleted: true,
               )
             : Future.value(const <FinanceTransaction>[]),
+        widget.originalTransaction != null
+            ? Future.value(widget.originalTransaction)
+            : boundOriginalUuid == null
+                ? Future.value(null)
+                : FinanceRepository.getTransaction(boundOriginalUuid),
+        boundOriginalUuid == null
+            ? Future.value(0)
+            : FinanceRepository.getRemainingRefundableMinor(
+                boundOriginalUuid,
+                excludingRefundUuid: widget.transaction?.uuid,
+              ),
       ]);
       if (!mounted) return;
       final installmentGroup = options[3] as List<FinanceTransaction>;
+      final originalTransaction = options[4] as FinanceTransaction?;
+      final remainingRefundableMinor = options[5] as int;
       if (installmentGroup.isNotEmpty) {
         final first = installmentGroup.firstWhere(
           (item) => item.installmentIndex == 1,
@@ -151,6 +183,17 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         _categories = options[0] as List<FinanceCategory>;
         _paymentMethods = options[1] as List<FinancePaymentMethod>;
         _templates = options[2] as List<FinanceEntryTemplate>;
+        _originalTransaction = originalTransaction;
+        _remainingRefundableMinor = remainingRefundableMinor;
+        if (!_isEditing &&
+            originalTransaction != null &&
+            _amountController.text.trim().isEmpty &&
+            remainingRefundableMinor > 0) {
+          _amountController.text = formatFinanceAmount(
+            remainingRefundableMinor,
+            withSymbol: false,
+          );
+        }
         _isLoading = false;
       });
       _resolveDraftSelections();
@@ -173,10 +216,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       final wanted = _normalizeOptionName(draft.categoryName!);
       _categoryUuid = _categories
           .where((item) =>
-              item.type ==
-                  (_type == FinanceTransactionType.expense
-                      ? FinanceCategoryType.expense
-                      : FinanceCategoryType.income) &&
+              item.type == financeCategoryTypeForTransaction(_type) &&
               !item.isDeleted)
           .where((item) => _normalizeOptionName(item.name) == wanted)
           .map((item) => item.uuid)
@@ -200,9 +240,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   }
 
   List<FinanceCategory> get _visibleCategories {
-    final type = _type == FinanceTransactionType.expense
-        ? FinanceCategoryType.expense
-        : FinanceCategoryType.income;
+    final type = financeCategoryTypeForTransaction(_type);
     final result = _categories
         .where(
           (item) => item.type == type && !item.isArchived && !item.isDeleted,
@@ -295,6 +333,17 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _showError('请输入大于 0 且不超过两位小数的金额');
       return;
     }
+    if (_isBoundRefund && _originalTransaction == null) {
+      _showError('原账单不存在或已删除，无法保存这笔退款');
+      return;
+    }
+    if (_isBoundRefund && amount > _remainingRefundableMinor) {
+      _showError(
+        '退款金额不能超过剩余可退金额 '
+        '${formatFinanceAmount(_remainingRefundableMinor)}',
+      );
+      return;
+    }
 
     final installmentCount = _installmentEnabled
         ? int.tryParse(_installmentCountController.text.trim())
@@ -335,7 +384,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           FinanceEntrySource.manual,
       relatedTodoUuid: old?.relatedTodoUuid,
       relatedPlanBlockUuid: old?.relatedPlanBlockUuid,
-      relatedTransactionUuid: old?.relatedTransactionUuid,
+      relatedTransactionUuid:
+          _originalTransaction?.uuid ?? old?.relatedTransactionUuid,
       isDeleted: false,
       version: old?.version ?? 1,
       createdAt: old?.createdAt ?? now,
@@ -503,8 +553,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
             ),
           ),
       ],
-      onChanged:
-          _isSaving ? null : (value) => setState(() => _categoryUuid = value),
+      onChanged: _isSaving || _isBoundRefund
+          ? null
+          : (value) => setState(() => _categoryUuid = value),
     );
     final payment = DropdownButtonFormField<String>(
       key: ValueKey('finance-payment-$_paymentMethodUuid'),
@@ -777,11 +828,13 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(
-          _isEditingInstallment
-              ? '编辑分期账单'
-              : _isEditing
-                  ? '编辑账单'
-                  : '记一笔',
+          _isBoundRefund
+              ? (_isEditing ? '编辑退款' : '原单退款')
+              : _isEditingInstallment
+                  ? '编辑分期账单'
+                  : _isEditing
+                      ? '编辑账单'
+                      : '记一笔',
         ),
         actions: [
           TextButton(
@@ -809,7 +862,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                     ),
                     children: [
                       _buildTypeSelector(colorScheme),
-                      if (!_isEditing) ...[
+                      if (_isBoundRefund) ...[
+                        const SizedBox(height: 12),
+                        _buildRefundContextCard(colorScheme),
+                      ],
+                      if (!_isEditing && !_isBoundRefund) ...[
                         const SizedBox(height: 16),
                         _buildOneSentenceEntry(colorScheme),
                       ],
@@ -909,7 +966,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(10),
                   onTap: () {
-                    if (type == _type || _isEditingInstallment) return;
+                    if (type == _type ||
+                        _isEditingInstallment ||
+                        _hasRefundBinding) {
+                      return;
+                    }
                     setState(() {
                       _type = type;
                       if (type != FinanceTransactionType.expense) {
@@ -942,6 +1003,63 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRefundContextCard(ColorScheme colorScheme) {
+    final original = _originalTransaction;
+    if (original == null) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: colorScheme.errorContainer,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Text(
+          '原账单不存在或已删除，这笔退款暂时无法编辑。',
+          style: TextStyle(color: colorScheme.onErrorContainer),
+        ),
+      );
+    }
+    final refundedMinor = (original.amountMinor - _remainingRefundableMinor)
+        .clamp(0, original.amountMinor)
+        .toInt();
+    final title = original.merchant?.trim().isNotEmpty == true
+        ? original.merchant!.trim()
+        : original.categoryUuid;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.secondaryContainer.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '关联原账单',
+            style: TextStyle(
+              color: colorScheme.onSecondaryContainer,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '$title  ·  ${formatFinanceAmount(original.amountMinor)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colorScheme.onSecondaryContainer),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '已退 ${formatFinanceAmount(refundedMinor)}  ·  '
+            '剩余可退 ${formatFinanceAmount(_remainingRefundableMinor)}',
+            style: TextStyle(
+              color: colorScheme.onSecondaryContainer.withValues(alpha: 0.78),
+            ),
+          ),
         ],
       ),
     );

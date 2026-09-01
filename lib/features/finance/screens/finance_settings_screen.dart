@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../../../services/storage/app_settings_storage.dart';
+import '../../../storage_service.dart';
 import 'finance_automation_screen.dart';
 
 class FinanceSettingsScreen extends StatefulWidget {
-  const FinanceSettingsScreen({super.key});
+  final String username;
+
+  const FinanceSettingsScreen({super.key, required this.username});
 
   @override
   State<FinanceSettingsScreen> createState() => _FinanceSettingsScreenState();
@@ -17,6 +20,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
   List<FinanceCategory> _categories = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
   bool _budgetAlertsEnabled = true;
+  bool _cloudSyncEnabled = false;
   bool _isLoading = true;
 
   @override
@@ -30,12 +34,14 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
       FinanceRepository.getCategories(includeArchived: true),
       FinanceRepository.getPaymentMethods(includeArchived: true),
       AppSettingsStorage.isFinanceBudgetAlertEnabled(),
+      AppSettingsStorage.isFinanceCloudSyncEnabled(widget.username),
     ]);
     if (!mounted) return;
     setState(() {
       _categories = values[0] as List<FinanceCategory>;
       _paymentMethods = values[1] as List<FinancePaymentMethod>;
       _budgetAlertsEnabled = values[2] as bool;
+      _cloudSyncEnabled = values[3] as bool;
       _isLoading = false;
     });
   }
@@ -320,6 +326,32 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
                   Card(
                     child: Column(
                       children: [
+                        LiquidGlassSwitchListTile(
+                          value: _cloudSyncEnabled,
+                          onChanged: widget.username.trim().isEmpty
+                              ? null
+                              : (value) async {
+                                  setState(() => _cloudSyncEnabled = value);
+                                  await AppSettingsStorage
+                                      .setFinanceCloudSyncEnabled(
+                                    widget.username,
+                                    value,
+                                  );
+                                  if (value) {
+                                    StorageService.requestSync(widget.username);
+                                  }
+                                  if (!mounted) return;
+                                  _showMessage(
+                                    value
+                                        ? '已开启记账云同步，现有本地数据将排队同步'
+                                        : '已停止后续记账同步；不会中断待办、习惯等其他正在进行的同步',
+                                  );
+                                },
+                          title: const Text('记账云同步'),
+                          subtitle: const Text('默认仅保存在本机；开启后同步到当前账号'),
+                          secondary: const Icon(Icons.cloud_sync_outlined),
+                        ),
+                        const Divider(height: 1),
                         LiquidGlassSwitchListTile(
                           value: _budgetAlertsEnabled,
                           onChanged: (value) async {
