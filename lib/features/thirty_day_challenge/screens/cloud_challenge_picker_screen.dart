@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/cloud_challenge.dart';
 import '../services/cloud_challenge_service.dart';
-import '../../../widgets/floating_bottom_bar.dart';
+import '../../../widgets/floating_glass_control.dart';
 
 class CloudChallengePickerScreen extends StatefulWidget {
   const CloudChallengePickerScreen({super.key});
@@ -144,10 +144,30 @@ class _CloudChallengePickerScreenState
               : catalog == null
                   ? _buildErrorState(scheme)
                   : _buildCatalog(catalog, scheme),
-      bottomNavigationBar: FloatingBottomBar(
-        height: 96,
-        child: _buildExitAction(scheme),
-      ),
+      bottomNavigationBar: useFloatingBottomBar
+          ? SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Center(
+                  child: SizedBox(
+                    width: 180,
+                    child: FloatingGlassControl(
+                      // This is a single compact action, not a navigation
+                      // bar. Keep the glass shell at the button's height.
+                      height: null,
+                      margin: EdgeInsets.zero,
+                      borderRadius: 28,
+                      child: _buildExitAction(
+                        scheme,
+                        includeSafeArea: false,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          : _buildExitAction(scheme),
     );
   }
 
@@ -568,27 +588,30 @@ class _CloudChallengePickerScreenState
     );
   }
 
-  Widget _buildExitAction(ColorScheme scheme) {
-    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
-    return SafeArea(
-      top: false,
-      child: Container(
-        decoration: BoxDecoration(
-          color: useFloatingBottomBar
-              ? scheme.surface.withValues(alpha: 0)
-              : scheme.surface,
-          border: useFloatingBottomBar
-              ? null
-              : Border(top: BorderSide(color: scheme.outlineVariant)),
-        ),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-        child: TextButton.icon(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.schedule_outlined),
-          label: const Text('暂时退出'),
+  Widget _buildExitAction(
+    ColorScheme scheme, {
+    bool includeSafeArea = true,
+  }) {
+    final action = Container(
+      decoration: BoxDecoration(
+        color: includeSafeArea
+            ? scheme.surface
+            : scheme.surface.withValues(alpha: 0),
+        border: includeSafeArea
+            ? Border(top: BorderSide(color: scheme.outlineVariant))
+            : null,
+      ),
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+      child: TextButton.icon(
+        onPressed: () => Navigator.of(context).pop(),
+        icon: const Icon(Icons.schedule_outlined),
+        label: const Text('暂时退出'),
+        style: TextButton.styleFrom(
+          minimumSize: const Size.fromHeight(40),
         ),
       ),
     );
+    return includeSafeArea ? SafeArea(top: false, child: action) : action;
   }
 
   Widget _buildInfoChip(String label, IconData icon, ColorScheme scheme) {
