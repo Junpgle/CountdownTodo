@@ -358,7 +358,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     VisionModelInfo(
       id: 'mimo-v2-omni',
       name: 'MiMo-V2-Omni',
-      description: '多模态理解与推理，支持图像分析和视觉问答',
+      description: '多模态理解与推理，支持图像和视频分析',
       context: '128K',
       maxOutput: '32K',
       isPaid: false,
@@ -367,7 +367,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     VisionModelInfo(
       id: 'mimo-v2.5',
       name: 'MiMo-V2.5（Token Plan）',
-      description: 'Token Plan 专属入口，支持图像理解',
+      description: 'Token Plan 专属入口，支持图像/视频/音频理解',
       context: '1M',
       maxOutput: '32K',
       isPaid: true,
@@ -899,7 +899,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '本应用基于 OpenAI API 兼容接口开发，已深度适配以下大模型平台。下一步填写 API Key，最后再选择文本和视觉模型。',
+              '这里只管理服务商、API Key 和模型连接。助手行为、智能上下文和对话提示词请在“AI 助手设置”中调整。',
               style:
                   TextStyle(fontSize: 13, color: Colors.grey[700], height: 1.5),
             ),
@@ -1118,7 +1118,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '配置您需要使用的 API Key。文本模型和视觉模型可以来自不同服务商，请按需填写；填写后点击“下一步”选择模型。',
+              '配置您需要使用的 API Key。文本模型和多模态模型可以来自不同服务商，请按需填写；填写后点击“下一步”选择模型。',
               style:
                   TextStyle(fontSize: 13, color: Colors.grey[600], height: 1.5),
             ),
@@ -1471,7 +1471,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           customLabel: '自定义文本模型',
         );
         final visionModelSection = _buildModelSection(
-          title: '视觉模型',
+          title: '多模态模型',
           selectionTarget: _ModelSelectionTarget.vision,
           selectedProvider: _selectedVisionModelProvider,
           onProviderChanged: (provider) {
@@ -1496,14 +1496,14 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           onCustomEdit: _showEditCustomVisionModelDialog,
           onCustomDelete: _deleteCustomVisionModel,
           onAddCustom: _showAddCustomVisionModelDialog,
-          customLabel: '自定义视觉模型',
+          customLabel: '自定义多模态模型',
         );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '分别选择文本模型和视觉模型的服务商及模型，支持混搭。',
+              '分别选择对话文本模型和图片/音频/视频输入使用的多模态模型，支持混搭。',
               style:
                   TextStyle(fontSize: 13, color: Colors.grey[600], height: 1.5),
             ),
@@ -1565,7 +1565,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     );
 
     return ExpansionTile(
-      title: Text('高级设置 (自定义Prompt)',
+      title: Text('识别服务高级配置（不影响对话助手）',
           style: TextStyle(fontSize: 13, color: Colors.grey[700])),
       tilePadding: EdgeInsets.zero,
       childrenPadding: const EdgeInsets.only(bottom: 8),
@@ -2066,7 +2066,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           ? null
           : FloatingGlassAppBar(
               flexibleSpace: const FloatingGlassTopBarBackground(),
-              title: const Text('大模型API配置'),
+              title: const Text('模型与 API 配置'),
               actions: _accessDenied
                   ? const []
                   : [
@@ -2289,96 +2289,143 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     final apiUrlCtrl = TextEditingController(text: existing?.apiUrl ?? '');
     final apiKeyCtrl = TextEditingController(text: existing?.apiKey ?? '');
     final formKey = GlobalKey<FormState>();
+    final selectedModalities = <String>{
+      'image',
+      ...?existing?.modalities,
+    };
 
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(existing == null ? '添加自定义视觉模型' : '编辑自定义视觉模型'),
-        content: SingleChildScrollView(
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '模型名称',
-                    hintText: '如: 我的视觉模型',
-                    border: OutlineInputBorder(),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(existing == null ? '添加自定义多模态模型' : '编辑自定义多模态模型'),
+          content: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '模型名称',
+                      hintText: '如: 我的多模态模型',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? '请输入模型名称' : null,
                   ),
-                  validator: (v) =>
-                      v == null || v.trim().isEmpty ? '请输入模型名称' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: modelIdCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '模型ID',
-                    hintText: '如: gpt-4o',
-                    border: OutlineInputBorder(),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: modelIdCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '模型ID',
+                      hintText: '如: gpt-4o',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? '请输入模型ID' : null,
                   ),
-                  validator: (v) =>
-                      v == null || v.trim().isEmpty ? '请输入模型ID' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: apiUrlCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'API 地址',
-                    hintText: 'https://api.openai.com/v1/chat/completions',
-                    border: OutlineInputBorder(),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: apiUrlCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'API 地址',
+                      hintText: 'https://api.openai.com/v1/chat/completions',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? '请输入API地址' : null,
                   ),
-                  validator: (v) =>
-                      v == null || v.trim().isEmpty ? '请输入API地址' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: apiKeyCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'API Key',
-                    hintText: '输入您的 API Key',
-                    border: OutlineInputBorder(),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: apiKeyCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'API Key',
+                      hintText: '输入您的 API Key',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? '请输入API Key' : null,
                   ),
-                  validator: (v) =>
-                      v == null || v.trim().isEmpty ? '请输入API Key' : null,
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '模型支持的输入',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: const {
+                      'image': '图片',
+                      'audio': '音频',
+                      'video': '视频',
+                      'file': 'PDF/文件',
+                    }.entries.map((entry) {
+                      return FilterChip(
+                        label: Text(entry.value),
+                        selected: selectedModalities.contains(entry.key),
+                        onSelected: entry.key == 'image'
+                            ? null
+                            : (selected) {
+                                setDialogState(() {
+                                  if (selected) {
+                                    selectedModalities.add(entry.key);
+                                  } else {
+                                    selectedModalities.remove(entry.key);
+                                  }
+                                });
+                              },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    '图片默认开启；其他类型必须与服务商的 Chat Completions 协议一致。',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                if (formKey.currentState!.validate()) {
+                  final model = CustomVisionModel(
+                    id: existing?.id ?? _uuid.v4(),
+                    name: nameCtrl.text.trim(),
+                    modelId: modelIdCtrl.text.trim(),
+                    apiUrl: apiUrlCtrl.text.trim(),
+                    apiKey: apiKeyCtrl.text.trim(),
+                    modalities: selectedModalities,
+                  );
+                  await LLMService.saveCustomVisionModel(model);
+                  if (!mounted || !ctx.mounted) return;
+                  setState(() {
+                    if (existing != null) {
+                      final idx = _customVisionModels
+                          .indexWhere((m) => m.id == existing.id);
+                      if (idx >= 0) _customVisionModels[idx] = model;
+                    } else {
+                      _customVisionModels.add(model);
+                    }
+                  });
+                  Navigator.pop(ctx);
+                }
+              },
+              child: const Text('保存'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (formKey.currentState!.validate()) {
-                final model = CustomVisionModel(
-                  id: existing?.id ?? _uuid.v4(),
-                  name: nameCtrl.text.trim(),
-                  modelId: modelIdCtrl.text.trim(),
-                  apiUrl: apiUrlCtrl.text.trim(),
-                  apiKey: apiKeyCtrl.text.trim(),
-                );
-                await LLMService.saveCustomVisionModel(model);
-                if (!mounted || !ctx.mounted) return;
-                setState(() {
-                  if (existing != null) {
-                    final idx = _customVisionModels
-                        .indexWhere((m) => m.id == existing.id);
-                    if (idx >= 0) _customVisionModels[idx] = model;
-                  } else {
-                    _customVisionModels.add(model);
-                  }
-                });
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text('保存'),
-          ),
-        ],
       ),
     );
   }
@@ -2393,7 +2440,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除确认'),
-        content: Text('确定要删除自定义视觉模型 "${model.name}" 吗？'),
+        content: Text('确定要删除自定义多模态模型 "${model.name}" 吗？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
