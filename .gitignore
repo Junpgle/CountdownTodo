@@ -167,6 +167,8 @@ todo.md
 !/test/features/thirty_day_challenge/
 /test/features/thirty_day_challenge/*
 !/test/features/thirty_day_challenge/challenge_center_screen_test.dart
+!/test/features/thirty_day_challenge/cloud_challenge_picker_screen_test.dart
+!/test/features/thirty_day_challenge/new_challenge_screen_test.dart
 !/test/features/habits/
 /test/features/habits/*
 !/test/features/habits/habit_models_test.dart
@@ -194,3 +196,5 @@ todo.md
 /assets/ChatGPT Image 2026年8月27日 10_49_00 (2).png
 /assets/ChatGPT Image 2026年8月27日 10_49_39.png
 /assets/ChatGPT Image 2026年8月27日 10_50_43.png
+/test/features/thirty_day_challenge/cloud_challenge_picker_screen_test.dart
+/test/features/thirty_day_challenge/new_challenge_screen_test.dart

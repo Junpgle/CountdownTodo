@@ -183,6 +183,7 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
 
     return Scaffold(
       backgroundColor: scheme.surface,
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('挑战中心'),
@@ -197,51 +198,54 @@ class _ChallengeCenterScreenState extends State<ChallengeCenterScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Stack(
-              children: [
-                Positioned.fill(child: _buildBackdrop(scheme)),
-                RefreshIndicator(
-                  onRefresh: () => _load(showLoading: false),
-                  color: scheme.primary,
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final isWide = constraints.maxWidth >= 760;
-                      return SingleChildScrollView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: EdgeInsets.fromLTRB(
-                          isWide ? 28 : 16,
-                          16,
-                          isWide ? 28 : 16,
-                          40,
-                        ),
-                        child: Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 1080),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _buildHero(scheme, isWide: isWide),
-                                const SizedBox(height: 28),
-                                if (_hasStarted && _currentChallenge != null)
-                                  _buildActiveSection(
-                                    scheme,
-                                    _currentChallenge!,
-                                  )
-                                else
-                                  _buildEmptyState(scheme),
-                                const SizedBox(height: 28),
-                                _buildStartSection(scheme, isWide: isWide),
-                                const SizedBox(height: 28),
-                                _buildRulesSection(scheme, isWide: isWide),
-                              ],
+          : FloatingGlassTopBarContentFade(
+              topBarHeight: kToolbarHeight,
+              child: Stack(
+                children: [
+                  Positioned.fill(child: _buildBackdrop(scheme)),
+                  RefreshIndicator(
+                    onRefresh: () => _load(showLoading: false),
+                    color: scheme.primary,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isWide = constraints.maxWidth >= 760;
+                        return SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: EdgeInsets.fromLTRB(
+                            isWide ? 28 : 16,
+                            floatingGlassTopBarHeight(context) + 16,
+                            isWide ? 28 : 16,
+                            40,
+                          ),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 1080),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _buildHero(scheme, isWide: isWide),
+                                  const SizedBox(height: 28),
+                                  if (_hasStarted && _currentChallenge != null)
+                                    _buildActiveSection(
+                                      scheme,
+                                      _currentChallenge!,
+                                    )
+                                  else
+                                    _buildEmptyState(scheme),
+                                  const SizedBox(height: 28),
+                                  _buildStartSection(scheme, isWide: isWide),
+                                  const SizedBox(height: 28),
+                                  _buildRulesSection(scheme, isWide: isWide),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
     );
   }
