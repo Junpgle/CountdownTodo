@@ -638,6 +638,7 @@ class StorageService {
     bool syncFixedSchedules = true,
     bool syncHabits = true,
     bool syncFinance = true,
+    bool financeSyncExplicitlyAuthorized = false,
   }) =>
       _storage.syncData(username,
           syncTodos: syncTodos,
@@ -651,7 +652,8 @@ class StorageService {
           syncPlanBlocks: syncPlanBlocks,
           syncFixedSchedules: syncFixedSchedules,
           syncHabits: syncHabits,
-          syncFinance: syncFinance);
+          syncFinance: syncFinance,
+          financeSyncExplicitlyAuthorized: financeSyncExplicitlyAuthorized);
 
   static bool recomputeLocalTodoScheduleConflictsForTest(
     List<TodoItem> todos,

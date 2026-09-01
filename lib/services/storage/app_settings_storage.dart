@@ -23,6 +23,7 @@ class AppSettingsStorage {
   static const String _notifyReminderEnabled = "notify_reminder_enabled";
   static const String _notifyFinanceBudgetEnabled =
       "notify_finance_budget_enabled";
+  static const String _financeCloudSyncEnabled = "finance_cloud_sync_enabled";
   static const String _courseReminderMinutes = "course_reminder_minutes";
 
   static const String _privacyAgreed = "privacy_policy_agreed";
@@ -169,6 +170,25 @@ class AppSettingsStorage {
   static Future<void> setFinanceBudgetAlertEnabled(bool enabled) async {
     final prefs = await _prefs;
     await prefs.setBool(_notifyFinanceBudgetEnabled, enabled);
+  }
+
+  static String _financeCloudSyncKey(String username) =>
+      '${_financeCloudSyncEnabled}_${username.trim()}';
+
+  /// Personal finance stays local unless this account explicitly opts in.
+  static Future<bool> isFinanceCloudSyncEnabled(String username) async {
+    if (username.trim().isEmpty) return false;
+    final prefs = await _prefs;
+    return prefs.getBool(_financeCloudSyncKey(username)) ?? false;
+  }
+
+  static Future<void> setFinanceCloudSyncEnabled(
+    String username,
+    bool enabled,
+  ) async {
+    if (username.trim().isEmpty) return;
+    final prefs = await _prefs;
+    await prefs.setBool(_financeCloudSyncKey(username), enabled);
   }
 
   static Future<int> getCourseReminderMinutes() async {
