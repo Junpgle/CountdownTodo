@@ -44,6 +44,13 @@ class DataExportService {
         (financeBundle['templates'] as List<dynamic>? ?? const [])
             .where((item) => item is Map && item['is_deleted'] != 1)
             .toList();
+    final financeLoans = (financeBundle['loans'] as List<dynamic>? ?? const [])
+        .where((item) => item is Map && item['is_deleted'] != 1)
+        .toList();
+    final financeLoanInstallments =
+        (financeBundle['loan_installments'] as List<dynamic>? ?? const [])
+            .where((item) => item is Map && item['is_deleted'] != 1)
+            .toList();
 
     return [
       ExportTypeOption(
@@ -116,8 +123,10 @@ class DataExportService {
         count: financeTransactions.length +
             financeBudgets.length +
             financeRecurringRules.length +
-            financeTemplates.length,
-        description: '账单、预算、周期账单、模板、分类和付款方式',
+            financeTemplates.length +
+            financeLoans.length +
+            financeLoanInstallments.length,
+        description: '账单、预算、贷款、周期账单、模板、分类和付款方式',
       ),
       ExportTypeOption(
         key: 'settings',
@@ -309,20 +318,7 @@ class DataExportService {
       if (selectedTypes.contains('finance')) {
         final bundle = await FinanceStorage.getExportBundle();
         if (options.removeDeviceId) {
-          for (final key in [
-            'transactions',
-            'categories',
-            'payment_methods',
-            'budgets',
-            'recurring_rules',
-            'templates',
-          ]) {
-            final items = bundle[key];
-            if (items is! List) continue;
-            for (final item in items) {
-              if (item is Map<String, dynamic>) item['device_id'] = null;
-            }
-          }
+          FinanceStorage.removeDeviceIdsFromExportBundle(bundle);
         }
         data['finance'] = bundle;
         totalItems +=
@@ -332,6 +328,9 @@ class DataExportService {
             (bundle['recurring_rules'] as List<dynamic>? ?? const []).length;
         totalItems +=
             (bundle['templates'] as List<dynamic>? ?? const []).length;
+        totalItems += (bundle['loans'] as List<dynamic>? ?? const []).length;
+        totalItems +=
+            (bundle['loan_installments'] as List<dynamic>? ?? const []).length;
       }
 
       if (selectedTypes.contains('settings')) {
@@ -342,7 +341,7 @@ class DataExportService {
       final exportJson = {
         'version': _exportVersion,
         'exportedAt': DateTime.now().millisecondsSinceEpoch,
-        'deviceId': deviceId,
+        'deviceId': options.removeDeviceId ? null : deviceId,
         'userId': ApiService.currentUserId,
         'username': username,
         'selectedTypes': selectedTypes,
