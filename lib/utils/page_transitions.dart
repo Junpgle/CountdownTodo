@@ -182,6 +182,7 @@ class PageTransitions {
     // ── 成就 / 挑战 ──
     ('MedalWallPage', Icons.military_tech_rounded),
     ('MedalRecommendationCard', Icons.military_tech_rounded),
+    ('ChallengeCenterScreen', Icons.auto_awesome_rounded),
     ('ThirtyDayChallengeScreen', Icons.local_fire_department_rounded),
     // ── 数据 / 同步 ──
     ('ConflictInboxScreen', Icons.rule_rounded),

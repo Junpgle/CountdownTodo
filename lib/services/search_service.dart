@@ -20,7 +20,7 @@ import '../features/habits/repositories/habit_repository.dart';
 import '../features/habits/screens/habit_detail_screen.dart';
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
-import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
+import '../features/thirty_day_challenge/screens/challenge_center_screen.dart';
 
 class SearchResultWithScore {
   final SearchResult result;
@@ -627,8 +627,8 @@ class SearchService {
     ),
     SearchResult(
       id: 'feature_challenge_center',
-      title: '30天找到全新自我 / 挑战中心 / 自定义挑战',
-      subtitle: '创建、记录和分享自己的挑战',
+      title: '挑战中心 / 自定义挑战 / 30天找到全新自我',
+      subtitle: '探索、创建、记录和分享自己的挑战',
       icon: Icons.auto_awesome_rounded,
       type: SearchResultType.challenge,
       extraData: {'route': '/challenge'},
@@ -1880,7 +1880,7 @@ class SearchNavigationHandler {
         }
         break;
       case '/challenge':
-        page = const ThirtyDayChallengeScreen();
+        page = const ChallengeCenterScreen();
         break;
     }
 

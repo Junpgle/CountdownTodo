@@ -37,7 +37,14 @@ String _safeHashTag(String value) {
 }
 
 class ThirtyDayChallengeScreen extends StatefulWidget {
-  const ThirtyDayChallengeScreen({super.key});
+  const ThirtyDayChallengeScreen({
+    super.key,
+    this.showBuiltInIntroduction = false,
+  });
+
+  /// Opens the original built-in challenge introduction without loading or
+  /// displaying another challenge that may currently be in progress.
+  final bool showBuiltInIntroduction;
 
   @override
   State<ThirtyDayChallengeScreen> createState() =>
@@ -83,9 +90,15 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   }
 
   Future<void> _load() async {
-    final state = await ThirtyDayChallengeRepository.load();
-    final introSeen = await ThirtyDayChallengeRepository.hasSeenIntro();
-    final isPaused = await ThirtyDayChallengeRepository.isPaused();
+    final state = widget.showBuiltInIntroduction
+        ? ThirtyDayChallengeState.initial()
+        : await ThirtyDayChallengeRepository.load();
+    final introSeen = widget.showBuiltInIntroduction
+        ? false
+        : await ThirtyDayChallengeRepository.hasSeenIntro();
+    final isPaused = widget.showBuiltInIntroduction
+        ? false
+        : await ThirtyDayChallengeRepository.isPaused();
     if (!mounted) return;
     setState(() {
       _state = state;
@@ -136,8 +149,15 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   Future<void> _startNewChallenge(ChallengeDraft draft) async {
     if (!mounted) return;
 
-    if (!_showWelcome) {
-      final currentState = _state;
+    final hasExistingChallenge = widget.showBuiltInIntroduction
+        ? await ThirtyDayChallengeRepository.hasStarted()
+        : false;
+    if (!mounted) return;
+    if (!_showWelcome || hasExistingChallenge) {
+      final currentState = hasExistingChallenge
+          ? await ThirtyDayChallengeRepository.load()
+          : _state;
+      if (!mounted) return;
       final shouldReplace = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -219,6 +239,57 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     if (shouldStart != true || !mounted) return;
 
     try {
+      if (widget.showBuiltInIntroduction) {
+        final hasExistingChallenge =
+            await ThirtyDayChallengeRepository.hasStarted();
+        if (!mounted) return;
+        if (hasExistingChallenge) {
+          final currentState = await ThirtyDayChallengeRepository.load();
+          if (!mounted) return;
+          final shouldReplace = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              icon: const Icon(Icons.auto_awesome_rounded),
+              title: const Text('开始经典挑战？'),
+              content: Text(
+                '当前正在进行「${currentState.challengeTitle}」。开始经典挑战后，当前挑战的完成状态、感受和图片将被替换，无法恢复。',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('继续当前挑战'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('开始经典挑战'),
+                ),
+              ],
+            ),
+          );
+          if (shouldReplace != true || !mounted) return;
+        }
+
+        final builtInState = ThirtyDayChallengeState.initial();
+        final state = await ThirtyDayChallengeRepository.startNewChallenge(
+          title: builtInState.challengeTitle,
+          taskTitles: builtInState.tasks.map((task) => task.title),
+        );
+        if (!mounted) return;
+        setState(() {
+          _state = state;
+          _showWelcome = false;
+          _showOverview = false;
+          _isPaused = false;
+          _currentIndex = 0;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _pageController.hasClients) {
+            _pageController.jumpToPage(0);
+          }
+        });
+        return;
+      }
+
       await ThirtyDayChallengeRepository.markIntroSeen();
       if (!mounted) return;
       setState(() {

@@ -1092,7 +1092,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             if (!context.mounted) return;
             await Navigator.of(context, rootNavigator: true).push(
               PageTransitions.slideHorizontal(
-                const ThirtyDayChallengeScreen(),
+                const ChallengeCenterScreen(),
               ),
             );
             if (mounted) _loadThirtyDayChallengeStatus();

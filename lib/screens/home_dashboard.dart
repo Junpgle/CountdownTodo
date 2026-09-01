@@ -86,6 +86,7 @@ import '../features/habits/services/habit_reminder_service.dart';
 import '../features/habits/widgets/habit_today_section.dart';
 import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
 import '../features/thirty_day_challenge/models/thirty_day_challenge.dart';
+import '../features/thirty_day_challenge/screens/challenge_center_screen.dart';
 import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
 import '../features/thirty_day_challenge/screens/new_challenge_screen.dart';
 import '../features/thirty_day_challenge/services/clipboard_share_detector.dart';
