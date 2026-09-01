@@ -975,11 +975,31 @@ abstract final class FinanceStorage {
     rule.pendingSync = true;
     await ensureReady();
     final db = await _database;
-    await db.insert(
-      'finance_recurring_rules',
-      _localValues(rule.toMap()),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.transaction((txn) async {
+      final existingRows = await txn.query(
+        'finance_recurring_rules',
+        where: 'uuid = ?',
+        whereArgs: [rule.uuid],
+        limit: 1,
+      );
+      if (existingRows.isNotEmpty) {
+        final existing = FinanceRecurringRule.fromMap(existingRows.first);
+        // 生成标记是幂等状态，不属于编辑表单的可回退字段。编辑页或
+        // 并发请求拿到旧快照时，不能把已生成的较新周期覆盖掉。
+        final latestPeriod = _latestGeneratedPeriod(
+          existing.lastGeneratedPeriod,
+          rule.lastGeneratedPeriod,
+        );
+        if (latestPeriod != rule.lastGeneratedPeriod) {
+          rule.lastGeneratedPeriod = latestPeriod;
+        }
+      }
+      await txn.insert(
+        'finance_recurring_rules',
+        _localValues(rule.toMap()),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
     _notifyChanged();
   }
 
@@ -1035,11 +1055,37 @@ abstract final class FinanceStorage {
         return false;
       }
 
+      final stableTransactionUuid = _recurringTransactionUuid(
+        current.uuid,
+        periodKey,
+      );
+      final existingStableTransaction = await txn.query(
+        'finance_transactions',
+        columns: ['uuid'],
+        where: 'uuid = ?',
+        whereArgs: [stableTransactionUuid],
+        limit: 1,
+      );
+      if (existingStableTransaction.isNotEmpty) {
+        // 新版本使用确定性交易 UUID。即使规则标记曾被旧快照清空，
+        // 同一规则和周期也只会命中这一笔账单。
+        current.lastGeneratedPeriod = periodKey;
+        current.markAsChanged();
+        await txn.update(
+          'finance_recurring_rules',
+          _localValues(current.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [current.uuid],
+        );
+        return false;
+      }
+
       final detail = <String>[
         if (current.note?.trim().isNotEmpty == true) current.note!.trim(),
         '自动生成 · ${current.name}',
       ].join(' · ');
       final transaction = FinanceTransaction(
+        uuid: stableTransactionUuid,
         type: current.type,
         amountMinor: current.amountMinor,
         currencyCode: current.currencyCode,
@@ -1072,6 +1118,27 @@ abstract final class FinanceStorage {
     });
     if (generated) _notifyChanged();
     return generated;
+  }
+
+  static String _recurringTransactionUuid(String ruleUuid, String periodKey) {
+    return const Uuid().v5(
+      '6ba7b810-9dad-11d1-80b4-00c04fd430c8',
+      'countdown-todo/finance-recurring/v1/$ruleUuid/$periodKey',
+    );
+  }
+
+  static String? _latestGeneratedPeriod(String? current, String? incoming) {
+    if (current == null || incoming == null) return current ?? incoming;
+    return _generatedPeriodOrder(incoming) >= _generatedPeriodOrder(current)
+        ? incoming
+        : current;
+  }
+
+  static int _generatedPeriodOrder(String value) {
+    final parts = value.split('-');
+    final year = int.tryParse(parts.first) ?? -1;
+    final month = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+    return year * 100 + month;
   }
 
   static Future<List<FinanceEntryTemplate>> getTemplates({
@@ -2009,6 +2076,15 @@ abstract final class FinanceStorage {
           !_isIncomingWinner(item.updatedAt, item.version, current.updatedAt,
               current.version)) {
         continue;
+      }
+      final latestPeriod = _latestGeneratedPeriod(
+        current.lastGeneratedPeriod,
+        item.lastGeneratedPeriod,
+      );
+      if (latestPeriod != item.lastGeneratedPeriod) {
+        // 服务端/旧设备返回的编辑快照可能带着较旧的运行时生成标记；
+        // 该标记只能向前保留，否则下一次调度会把同一周期再次记账。
+        item.lastGeneratedPeriod = latestPeriod;
       }
       await db.update(
         'finance_recurring_rules',
