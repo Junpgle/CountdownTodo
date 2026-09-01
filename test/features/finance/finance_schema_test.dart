@@ -12,6 +12,42 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 void main() {
   sqfliteFfiInit();
 
+  FinanceTransaction refundTestExpense({
+    String uuid = 'original-expense',
+    int amountMinor = 10000,
+    int updatedAt = 10,
+  }) {
+    return FinanceTransaction(
+      uuid: uuid,
+      type: FinanceTransactionType.expense,
+      amountMinor: amountMinor,
+      categoryUuid: 'category-food',
+      paymentMethodUuid: 'payment-card',
+      transactionDate: '2026-09-01',
+      merchant: '原单商户',
+      createdAt: 10,
+      updatedAt: updatedAt,
+    );
+  }
+
+  FinanceTransaction refundTestTransaction({
+    required String uuid,
+    required String originalUuid,
+    required int amountMinor,
+    int updatedAt = 20,
+  }) {
+    return FinanceTransaction(
+      uuid: uuid,
+      type: FinanceTransactionType.refund,
+      amountMinor: amountMinor,
+      categoryUuid: 'category-other',
+      transactionDate: '2026-09-02',
+      relatedTransactionUuid: originalUuid,
+      createdAt: updatedAt,
+      updatedAt: updatedAt,
+    );
+  }
+
   test(
       'finance schema creates transaction, catalog, budget and automation tables',
       () async {
@@ -152,6 +188,215 @@ void main() {
     );
   });
 
+  test('同一预算范围使用稳定 UUID，远端重复范围只保留较新记录', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'budget-scope-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final local = FinanceBudget(
+      monthKey: '2026-09',
+      categoryUuid: 'category-food',
+      amountMinor: 30000,
+    );
+    await FinanceStorage.saveBudget(local);
+    expect(
+      local.uuid,
+      FinanceBudget.stableUuid('2026-09', 'category-food'),
+    );
+    await expectLater(
+      FinanceStorage.saveBudget(FinanceBudget(
+        monthKey: '2026-09',
+        categoryUuid: 'category-food',
+        amountMinor: 40000,
+      )),
+      throwsStateError,
+    );
+
+    await FinanceStorage.mergeRemoteBundle({
+      'budgets': [
+        {
+          'uuid': 'remote-newer-budget',
+          'month_key': '2026-09',
+          'category_uuid': 'category-food',
+          'amount_minor': 50000,
+          'updated_at': local.updatedAt + 100,
+          'created_at': local.createdAt,
+          'version': 2,
+        },
+      ],
+    });
+    final budgets = await FinanceStorage.getBudgets(monthKey: '2026-09');
+    expect(budgets, hasLength(1));
+    expect(budgets.single.uuid, 'remote-newer-budget');
+    expect(budgets.single.amountMinor, 50000);
+  });
+
+  test('远端较新预算墓碑会压住同范围的历史活动副本', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'budget-tombstone-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    await FinanceStorage.mergeRemoteBundle({
+      'budgets': [
+        {
+          'uuid': 'old-active-budget',
+          'month_key': '2026-09',
+          'category_uuid': 'category-food',
+          'amount_minor': 30000,
+          'is_deleted': 0,
+          'updated_at': 100,
+          'created_at': 100,
+          'version': 1,
+        },
+        {
+          'uuid': 'new-budget-tombstone',
+          'month_key': '2026-09',
+          'category_uuid': 'category-food',
+          'amount_minor': 30000,
+          'is_deleted': 1,
+          'updated_at': 200,
+          'created_at': 100,
+          'version': 2,
+        },
+      ],
+    });
+
+    expect(await FinanceStorage.getBudgets(monthKey: '2026-09'), isEmpty);
+    final stored = await db.query('finance_budgets');
+    expect(stored, hasLength(1));
+    expect(stored.single['uuid'], 'new-budget-tombstone');
+    expect(stored.single['is_deleted'], 1);
+  });
+
+  test('记账导出脱敏覆盖贷款和还款明细', () {
+    final bundle = <String, dynamic>{
+      for (final key in [
+        'transactions',
+        'categories',
+        'payment_methods',
+        'budgets',
+        'recurring_rules',
+        'templates',
+        'loans',
+        'loan_installments',
+      ])
+        key: [
+          <String, dynamic>{
+            'uuid': '$key-1',
+            'device_id': 'private-device',
+          },
+        ],
+    };
+
+    FinanceStorage.removeDeviceIdsFromExportBundle(bundle);
+
+    for (final items in bundle.values) {
+      expect((items as List).single['device_id'], isNull);
+    }
+  });
+
+  test('导入跳过无效账单和孤立还款计划', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-import-validation-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final result = await FinanceStorage.importBundle({
+      'transactions': [
+        {
+          'uuid': 'zero-amount',
+          'type': 'expense',
+          'amount_minor': 0,
+          'transaction_date': '2026-09-01',
+        },
+        {
+          'uuid': 'bad-date',
+          'type': 'expense',
+          'amount_minor': 100,
+          'transaction_date': 'not-a-date',
+        },
+      ],
+      'loan_installments': [
+        {
+          'uuid': 'orphan-installment',
+          'loan_uuid': 'missing-loan',
+          'installment_index': 1,
+          'due_date': '2026-09-01',
+          'payment_minor': 110,
+          'principal_minor': 100,
+          'interest_minor': 10,
+          'remaining_principal_minor': 0,
+        },
+      ],
+    });
+
+    expect(result['imported'], 0);
+    expect(result['skipped'], 3);
+    expect(await db.query('finance_transactions'), isEmpty);
+    expect(await db.query('finance_loan_installments'), isEmpty);
+  });
+
+  test('历史退款分类迁移到支出侧的专用分类', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'refund-migration-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+    await FinanceStorage.ensureReady();
+    final oldUpdatedAt = DateTime(2026, 1, 1).millisecondsSinceEpoch;
+    await db.insert('finance_transactions', {
+      'uuid': 'legacy-refund',
+      'type': 'refund',
+      'amount_minor': 1200,
+      'currency_code': 'CNY',
+      'category_uuid': 'finance-system-category-salary',
+      'transaction_date': '2026-01-01',
+      'timezone_offset_minutes': 480,
+      'source': 'manual',
+      'is_deleted': 0,
+      'version': 1,
+      'created_at': oldUpdatedAt,
+      'updated_at': oldUpdatedAt,
+      'pending_sync': 0,
+    });
+
+    final transactions = await FinanceStorage.getTransactions();
+    final refundCategory = await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: ['finance-system-category-refund'],
+    );
+
+    expect(transactions.single.categoryUuid, 'finance-system-category-refund');
+    expect(transactions.single.pendingSync, isTrue);
+    expect(refundCategory.single['type'], 'expense');
+  });
+
   test('贷款保存还款计划，已还利息进入支出并支持删除恢复', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'loan-test',
@@ -203,6 +448,7 @@ void main() {
       interestRows.single['category_uuid'],
       'finance-system-category-loan-interest',
     );
+    final stableInterestUuid = paid!.interestTransactionUuid;
 
     await FinanceStorage.setLoanInstallmentPaid(installments.first.uuid, false);
     expect(
@@ -212,6 +458,18 @@ void main() {
         whereArgs: [installments.first.uuid],
       ),
       isEmpty,
+    );
+    await FinanceStorage.setLoanInstallmentPaid(installments.first.uuid, true);
+    final repaid =
+        await FinanceStorage.getLoanInstallment(installments.first.uuid);
+    expect(repaid?.interestTransactionUuid, stableInterestUuid);
+    expect(
+      await db.query(
+        'finance_transactions',
+        where: 'related_transaction_uuid = ? AND is_deleted = 0',
+        whereArgs: [installments.first.uuid],
+      ),
+      hasLength(1),
     );
 
     await FinanceStorage.deleteLoan('loan-1');
@@ -686,5 +944,394 @@ void main() {
     expect(records, hasLength(1));
     expect(records.single.isPriced, isFalse);
     expect(await db.query('finance_transactions'), isEmpty);
+  });
+
+  test('备份导入不能覆盖或伪造系统目录', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-system-import-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+    await FinanceStorage.ensureReady();
+
+    final result = await FinanceStorage.importBundle({
+      'categories': [
+        {
+          'uuid': 'finance-system-category-food',
+          'name': '被篡改的分类',
+          'type': 'income',
+          'is_system': 0,
+          'updated_at': 9999999999999,
+        },
+        {
+          'uuid': 'fake-system-category',
+          'name': '伪系统分类',
+          'type': 'expense',
+          'is_system': 1,
+          'updated_at': 9999999999999,
+        },
+      ],
+      'payment_methods': [
+        {
+          'uuid': 'finance-system-payment-cash',
+          'name': '被篡改的现金',
+          'is_system': 0,
+          'updated_at': 9999999999999,
+        },
+      ],
+    });
+
+    expect(result['skipped'], 3);
+    final food = await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: ['finance-system-category-food'],
+    );
+    final cash = await db.query(
+      'finance_payment_methods',
+      where: 'uuid = ?',
+      whereArgs: ['finance-system-payment-cash'],
+    );
+    expect(food.single['name'], isNot('被篡改的分类'));
+    expect(cash.single['name'], isNot('被篡改的现金'));
+    expect(
+      await db.query(
+        'finance_categories',
+        where: 'uuid = ?',
+        whereArgs: ['fake-system-category'],
+      ),
+      isEmpty,
+    );
+  });
+
+  test('旧版数字交易类型备份仍可正常导入', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-numeric-type-import-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final result = await FinanceStorage.importBundle({
+      'transactions': [
+        {
+          'uuid': 'legacy-numeric-refund',
+          'type': 2,
+          'amount_minor': 880,
+          'transaction_date': '2026-08-31',
+          'created_at': 10,
+          'updated_at': 10,
+        },
+      ],
+    });
+    expect(result['imported'], 1);
+    expect(
+      (await FinanceStorage.getTransaction('legacy-numeric-refund'))!.type,
+      FinanceTransactionType.refund,
+    );
+  });
+
+  test('已删除贷款不接受活动还款计划', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-deleted-loan-import-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+    final loan = FinanceLoan(
+      uuid: 'deleted-loan',
+      name: '已删除贷款',
+      principalMinor: 100000,
+      annualInterestRateBps: 300,
+      termMonths: 12,
+      startDate: '2026-01-01',
+      repaymentDay: 1,
+      isDeleted: true,
+      createdAt: 10,
+      updatedAt: 10,
+    );
+    final installment = FinanceLoanInstallment(
+      uuid: 'orphan-active-installment',
+      loanUuid: loan.uuid,
+      installmentIndex: 1,
+      dueDate: '2026-02-01',
+      paymentMinor: 8500,
+      principalMinor: 8300,
+      interestMinor: 200,
+      remainingPrincipalMinor: 91700,
+      createdAt: 11,
+      updatedAt: 11,
+    );
+
+    final result = await FinanceStorage.importBundle({
+      'loans': [loan.toMap()],
+      'loan_installments': [installment.toMap()],
+    });
+    expect(result['imported'], 1);
+    expect(result['skipped'], 1);
+    expect(
+      await db.query('finance_loan_installments'),
+      isEmpty,
+    );
+    expect(
+      await FinanceStorage.mergeRemoteBundle({
+        'loan_installments': [
+          {...installment.toMap(), 'uuid': 'remote-active-installment'},
+        ],
+      }),
+      0,
+    );
+  });
+
+  test('记账备份导入中途失败时整批回滚', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-atomic-import-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+    await db.execute('''
+      CREATE TRIGGER fail_finance_budget_import
+      BEFORE INSERT ON finance_budgets
+      BEGIN
+        SELECT RAISE(ABORT, 'forced import failure');
+      END
+    ''');
+
+    await expectLater(
+      FinanceStorage.importBundle({
+        'categories': [
+          {
+            'uuid': 'category-before-failure',
+            'name': '应当回滚',
+            'type': 'expense',
+            'updated_at': 10,
+          },
+        ],
+        'budgets': [
+          {
+            'uuid': 'budget-trigger-failure',
+            'month_key': '2026-09',
+            'amount_minor': 10000,
+            'updated_at': 11,
+          },
+        ],
+      }),
+      throwsA(isA<DatabaseException>()),
+    );
+    expect(
+      await db.query(
+        'finance_categories',
+        where: 'uuid = ?',
+        whereArgs: ['category-before-failure'],
+      ),
+      isEmpty,
+    );
+  });
+
+  test('删除后重建稳定范围预算会超过旧墓碑版本', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-budget-recreate-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final first = FinanceBudget(
+      monthKey: '2026-09',
+      categoryUuid: 'category-food',
+      amountMinor: 10000,
+      updatedAt: 10,
+    );
+    await FinanceStorage.saveBudget(first);
+    await FinanceStorage.deleteBudget(first.uuid);
+    final tombstone = (await FinanceStorage.getBudget(first.uuid))!;
+    tombstone.updatedAt = 9999999999999;
+    await db.update(
+      'finance_budgets',
+      tombstone.toMap(),
+      where: 'uuid = ?',
+      whereArgs: [tombstone.uuid],
+    );
+
+    final recreated = FinanceBudget(
+      monthKey: first.monthKey,
+      categoryUuid: first.categoryUuid,
+      amountMinor: 20000,
+      updatedAt: 20,
+    );
+    await FinanceStorage.saveBudget(recreated);
+    final stored = (await FinanceStorage.getBudget(first.uuid))!;
+    expect(recreated.uuid, first.uuid);
+    expect(stored.isDeleted, isFalse);
+    expect(stored.amountMinor, 20000);
+    expect(stored.version, greaterThan(tombstone.version));
+    expect(stored.updatedAt, greaterThan(tombstone.updatedAt));
+  });
+
+  test('原单支持多次部分退款，累计不能超过原金额', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-refund-binding-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final original = refundTestExpense();
+    await FinanceStorage.saveTransaction(original);
+    final first = refundTestTransaction(
+      uuid: 'refund-1',
+      originalUuid: original.uuid,
+      amountMinor: 3000,
+    );
+    await FinanceStorage.saveTransaction(first);
+    expect(
+      await FinanceStorage.getRemainingRefundableMinor(original.uuid),
+      7000,
+    );
+    final storedFirst = await FinanceStorage.getTransaction(first.uuid);
+    expect(storedFirst!.relatedTransactionUuid, original.uuid);
+    expect(storedFirst.categoryUuid, original.categoryUuid);
+
+    final second = refundTestTransaction(
+      uuid: 'refund-2',
+      originalUuid: original.uuid,
+      amountMinor: 7000,
+    );
+    await FinanceStorage.saveTransaction(second);
+    expect(
+      await FinanceStorage.getRemainingRefundableMinor(original.uuid),
+      0,
+    );
+    await expectLater(
+      FinanceStorage.saveTransaction(refundTestTransaction(
+        uuid: 'refund-overflow',
+        originalUuid: original.uuid,
+        amountMinor: 1,
+      )),
+      throwsStateError,
+    );
+
+    first
+      ..amountMinor = 2000
+      ..updatedAt = 30;
+    await FinanceStorage.saveTransaction(first);
+    expect(
+      await FinanceStorage.getRemainingRefundableMinor(original.uuid),
+      1000,
+    );
+    original
+      ..isDeleted = true
+      ..updatedAt = 40;
+    await expectLater(
+      FinanceStorage.saveTransaction(original),
+      throwsStateError,
+    );
+  });
+
+  test('退款只能绑定存在且未删除的支出原单', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-refund-target-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    await expectLater(
+      FinanceStorage.saveTransaction(refundTestTransaction(
+        uuid: 'missing-original-refund',
+        originalUuid: 'missing-original',
+        amountMinor: 100,
+      )),
+      throwsStateError,
+    );
+    final income = refundTestExpense(uuid: 'income-original')
+      ..type = FinanceTransactionType.income;
+    await FinanceStorage.saveTransaction(income);
+    await expectLater(
+      FinanceStorage.saveTransaction(refundTestTransaction(
+        uuid: 'income-refund',
+        originalUuid: income.uuid,
+        amountMinor: 100,
+      )),
+      throwsStateError,
+    );
+  });
+
+  test('云端合并先落原单再校验退款，超额记录会被忽略', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-refund-merge-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final original = refundTestExpense(
+      uuid: 'remote-original',
+      updatedAt: 10,
+    );
+    final partial = refundTestTransaction(
+      uuid: 'remote-refund',
+      originalUuid: original.uuid,
+      amountMinor: 4000,
+      updatedAt: 11,
+    );
+    expect(
+      await FinanceStorage.mergeRemoteBundle({
+        'transactions': [partial.toMap(), original.toMap()],
+      }),
+      2,
+    );
+    expect(
+      await FinanceStorage.getRemainingRefundableMinor(original.uuid),
+      6000,
+    );
+
+    final overflow = refundTestTransaction(
+      uuid: 'remote-overflow',
+      originalUuid: original.uuid,
+      amountMinor: 6001,
+      updatedAt: 12,
+    );
+    expect(
+      await FinanceStorage.mergeRemoteBundle({
+        'transactions': [overflow.toMap()],
+      }),
+      0,
+    );
+    expect(await FinanceStorage.getTransaction(overflow.uuid), isNull);
   });
 }

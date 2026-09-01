@@ -39,6 +39,7 @@ void main() {
       ),
       1,
     );
+    expect(await FinanceStorage.getTransactions(), hasLength(1));
     final generated = await FinanceStorage.getTransactions(
       from: DateTime(2026, 8, 1),
       to: DateTime(2026, 9, 1),

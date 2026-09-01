@@ -1,6 +1,8 @@
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/services/finance_repository.dart';
+import 'package:countdown_todo/services/storage/app_settings_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('记账金额解析', () {
@@ -175,6 +177,27 @@ void main() {
       formatSignedFinanceAmount(800, FinanceTransactionType.refund),
       '+¥8.00',
     );
+    expect(
+      financeCategoryTypeForTransaction(FinanceTransactionType.refund),
+      FinanceCategoryType.expense,
+    );
+    expect(
+      financeCategoryTypeForTransaction(FinanceTransactionType.income),
+      FinanceCategoryType.income,
+    );
+  });
+
+  test('预算范围和 CSV 文本使用稳定、安全的表示', () {
+    expect(
+      FinanceBudget.stableUuid('2026-09', 'category-food'),
+      FinanceBudget.stableUuid('2026-09', 'category-food'),
+    );
+    expect(
+      FinanceBudget.stableUuid('2026-09', 'category-food'),
+      isNot(FinanceBudget.stableUuid('2026-09', null)),
+    );
+    expect(sanitizeFinanceCsvText('=HYPERLINK("x")'), '\'=HYPERLINK("x")');
+    expect(sanitizeFinanceCsvText(' 午餐'), ' 午餐');
   });
 
   test('汇总会将退款从实际支出中扣除', () {
@@ -198,4 +221,23 @@ void main() {
       FinanceDefaults.paymentMethods.length,
     );
   });
+
+  test('记账云同步按账号默认关闭并相互隔离', () async {
+    SharedPreferences.setMockInitialValues({});
+
+    expect(
+      await AppSettingsStorage.isFinanceCloudSyncEnabled('alice'),
+      isFalse,
+    );
+    await AppSettingsStorage.setFinanceCloudSyncEnabled('alice', true);
+    expect(
+      await AppSettingsStorage.isFinanceCloudSyncEnabled('alice'),
+      isTrue,
+    );
+    expect(
+      await AppSettingsStorage.isFinanceCloudSyncEnabled('bob'),
+      isFalse,
+    );
+  });
+
 }
