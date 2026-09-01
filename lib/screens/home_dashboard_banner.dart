@@ -81,19 +81,19 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
       statusIcon = Icons.hourglass_top;
       iconColor = Colors.orange;
       title = 'AI识别中...';
-      subtitle = '第$currentAttempt/$maxAttempts次尝试，请稍候';
+      subtitle = '第$currentAttempt/$maxAttempts次尝试，点击查看 AI 输出与进度';
     } else if (isFailed) {
       statusIcon = Icons.error_outline;
       iconColor = Colors.red;
       title = 'AI识别失败';
       subtitle = errorMsg != null && errorMsg.length > 30
           ? '${errorMsg.substring(0, 30)}...'
-          : (errorMsg ?? '点击重试');
+          : (errorMsg ?? '点击查看 AI 输出，可选择重试');
     } else {
       statusIcon = Icons.check_circle_outline;
       iconColor = Colors.green;
       title = 'AI识别完成';
-      subtitle = '发现 $todoCount 个事项，点击查看';
+      subtitle = '发现 $todoCount 个事项，点击查看 AI 输出与建议';
     }
 
     return Container(
@@ -103,11 +103,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
         borderRadius: BorderRadius.circular(16),
         elevation: 2,
         child: InkWell(
-          onTap: isProcessing
-              ? null // 处理中不允许点击
-              : (isFailed
-                  ? _retryPendingTodoRecognition
-                  : _openPendingTodoConfirm),
+          onTap: _openPendingRecognitionChat,
           borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -180,7 +176,11 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
                 ),
                 // 右侧操作按钮
                 if (isProcessing)
-                  const SizedBox.shrink()
+                  Icon(
+                    Icons.arrow_forward_ios,
+                    size: 16,
+                    color: Colors.grey[400],
+                  )
                 else if (isFailed)
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -229,10 +229,9 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
                     ],
                   )
                 else
-                  Icon(
-                    Icons.arrow_forward_ios,
-                    size: 16,
-                    color: Colors.grey[400],
+                  TextButton(
+                    onPressed: _openPendingTodoConfirm,
+                    child: const Text('去确认'),
                   ),
               ],
             ),

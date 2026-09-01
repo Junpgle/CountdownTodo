@@ -756,6 +756,9 @@ class StorageService {
     String status = 'success',
     String? compressedPath,
     String? sourceKey,
+    String? processingSessionId,
+    String? recognitionChatSessionId,
+    String? recognitionChatMessageId,
     int currentAttempt = 1,
     int maxAttempts = 1,
     String? errorMsg,
@@ -767,6 +770,9 @@ class StorageService {
           status: status,
           compressedPath: compressedPath,
           sourceKey: sourceKey,
+          processingSessionId: processingSessionId,
+          recognitionChatSessionId: recognitionChatSessionId,
+          recognitionChatMessageId: recognitionChatMessageId,
           currentAttempt: currentAttempt,
           maxAttempts: maxAttempts,
           errorMsg: errorMsg);
@@ -778,6 +784,9 @@ class StorageService {
     String? errorMsg,
     List<Map<String, dynamic>>? results,
     List<Map<String, dynamic>>? financeResults,
+    String? processingSessionId,
+    String? recognitionChatSessionId,
+    String? recognitionChatMessageId,
   }) =>
       _storage.updatePendingTodoConfirmStatus(
           status: status,
@@ -785,7 +794,10 @@ class StorageService {
           maxAttempts: maxAttempts,
           errorMsg: errorMsg,
           results: results,
-          financeResults: financeResults);
+          financeResults: financeResults,
+          processingSessionId: processingSessionId,
+          recognitionChatSessionId: recognitionChatSessionId,
+          recognitionChatMessageId: recognitionChatMessageId);
 
   static Future<Map<String, dynamic>?> getPendingTodoConfirm() =>
       _storage.getPendingTodoConfirm();

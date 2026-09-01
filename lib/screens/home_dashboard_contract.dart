@@ -6,6 +6,8 @@ part of 'home_dashboard.dart';
 mixin _HomeDashboardContract {
   Future<void> _openAiAssistantFromAppBar();
 
+  Future<void> _openPendingRecognitionChat();
+
   Future<void> _handleAiTodoGroupsChanged(List<TodoGroup> groups);
 
   Future<void> _handleAiTodosBatchAction(

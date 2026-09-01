@@ -226,6 +226,9 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
 
   /// 检查是否有待确认的事项数据（从通知点击进入）
   Future<void> _checkPendingTodoConfirm() async {
+    // App 进程重启后没有任务实例可以继续处理旧的 processing 状态，
+    // 先把这类中断任务收口为失败，避免首页永久显示加载圈。
+    await ExternalShareHandler.recoverInterruptedTodoRecognition();
     var pendingData = await ExternalShareHandler.getPendingTodoConfirm();
     if (!mounted) return;
 

@@ -2575,16 +2575,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             contentIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val extras = Bundle().apply {
-            putBoolean("android.extra.requestPromotedOngoing", true)
-        }
         val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(smallIcon)
             .setLargeIcon(Icon.createWithResource(this, R.drawable.ic_notification))
             .setContentTitle(title)
             .setContentText(text)
             .setSubText(subText)
-            .setOngoing(true)
+            // 成功/失败只是结果提示，不应继续占用 ongoing/live-update 槽位。
+            .setOngoing(false)
             .setOnlyAlertOnce(true)
             .setWhen(System.currentTimeMillis())
             .setShowWhen(true)
@@ -2594,13 +2592,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             .setColorized(false)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
-            .setRequestPromotedOngoing(true)
-            .addExtras(extras)
             .build()
 
         try {
             val notificationManager =
                 getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            // 先撤销识别中的 promoted notification，避免 HyperOS 继续显示旧的
+            // 进度胶囊，再用同一 ID 发布可自动消失的结果通知。
+            notificationManager.cancel(TODO_RECOGNIZE_NOTIFICATION_ID)
             notificationManager.notify(TODO_RECOGNIZE_NOTIFICATION_ID, notification)
         } catch (e: Exception) {
             Log.e(TAG, "showTodoRecognitionNotification error", e)

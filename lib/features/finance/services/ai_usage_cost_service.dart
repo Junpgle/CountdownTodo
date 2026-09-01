@@ -643,7 +643,7 @@ abstract final class AiUsageCostService {
     );
   }
 
-  static Future<void> recordUsage({
+  static Future<AiUsageRecord?> recordUsage({
     required String provider,
     required String model,
     required String operation,
@@ -660,7 +660,7 @@ abstract final class AiUsageCostService {
     bool usageAvailable = true,
     DateTime? now,
   }) async {
-    if (provider.trim().isEmpty || model.trim().isEmpty) return;
+    if (provider.trim().isEmpty || model.trim().isEmpty) return null;
     final normalizedPromptTokens = _readNonNegativeInt(promptTokens);
     final normalizedCompletionTokens = _readNonNegativeInt(completionTokens);
     final suppliedTotalTokens = _readNonNegativeInt(totalTokens);
@@ -701,10 +701,30 @@ abstract final class AiUsageCostService {
         : null;
     final ledgerKey =
         costMicros == null ? null : '${dateKey(timestamp)}|$provider|$model';
+    final uuid = const Uuid().v4();
+    final record = AiUsageRecord(
+      uuid: uuid,
+      provider: provider,
+      model: model,
+      operation: operation,
+      promptTokens: normalizedPromptTokens,
+      completionTokens: normalizedCompletionTokens,
+      totalTokens: normalizedTotalTokens,
+      cachedPromptTokens: clampedCachedPromptTokens,
+      imageTokens: normalizedImageTokens,
+      audioTokens: normalizedAudioTokens,
+      videoTokens: normalizedVideoTokens,
+      reasoningTokens: normalizedReasoningTokens,
+      audioSeconds: normalizedAudioSeconds,
+      imageCount: normalizedImageCount,
+      costMicros: costMicros,
+      isPriced: costMicros != null,
+      createdAt: timestamp,
+    );
     final db = await _database;
     await DatabaseHelper.ensureAiUsageSchema(db);
     await db.insert('ai_usage_records', {
-      'uuid': const Uuid().v4(),
+      'uuid': uuid,
       'provider': provider,
       'model': model,
       'operation': operation,
@@ -732,6 +752,7 @@ abstract final class AiUsageCostService {
         model: model,
       );
     }
+    return record;
   }
 
   static int? _calculateCostMicros(

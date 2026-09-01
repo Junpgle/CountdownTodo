@@ -44,6 +44,8 @@ import '../services/item_semantics_service.dart';
 import '../services/conflict_visibility_service.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/ai_todo_chat_launcher.dart';
+import '../services/ai_recognition_chat_bridge.dart';
+import '../services/chat_storage_service.dart';
 import '../services/recognized_todo_adapter.dart';
 import '../utils/app_platform.dart';
 import '../utils/json_value_parser.dart';

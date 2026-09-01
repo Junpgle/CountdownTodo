@@ -566,6 +566,9 @@ abstract class _StorageServiceBase {
     String status = 'success',
     String? compressedPath,
     String? sourceKey,
+    String? processingSessionId,
+    String? recognitionChatSessionId,
+    String? recognitionChatMessageId,
     int currentAttempt = 1,
     int maxAttempts = 1,
     String? errorMsg,
@@ -577,6 +580,9 @@ abstract class _StorageServiceBase {
     String? errorMsg,
     List<Map<String, dynamic>>? results,
     List<Map<String, dynamic>>? financeResults,
+    String? processingSessionId,
+    String? recognitionChatSessionId,
+    String? recognitionChatMessageId,
   });
   Future<Map<String, dynamic>?> getPendingTodoConfirm();
   Future<void> clearPendingTodoConfirm();

@@ -844,8 +844,11 @@ class NotificationService {
   static Future<void> showTodoRecognizeSuccess({
     required int todoCount,
   }) async {
-    if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    // 先撤掉 ongoing 进度通知，再发送可点击的普通结果通知；否则系统/小岛
+    // 会继续把上一条“识别中”当作活动任务保留在顶部。
+    await cancelTodoRecognizeNotification();
+    if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     await ensureInitialized();
 
     final title = '✅ 图片识别完成';
@@ -877,8 +880,9 @@ class NotificationService {
   static Future<void> showTodoRecognizeFailed({
     required String errorMsg,
   }) async {
-    if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    await cancelTodoRecognizeNotification();
+    if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     await ensureInitialized();
 
     final title = '❌ 图片识别失败';

@@ -267,6 +267,18 @@ class ChatStorageService {
     }
   }
 
+  static Future<bool> updateMessage(
+    ChatMessage message, {
+    required String sessionId,
+  }) async {
+    final history = await loadHistory(sessionId);
+    final index = history.indexWhere((item) => item.id == message.id);
+    if (index == -1) return false;
+    history[index] = message;
+    await saveHistory(history, sessionId);
+    return true;
+  }
+
   static Future<void> clearHistory() async {
     final prefs = await SharedPreferences.getInstance();
     final sid = await getActiveSessionId();

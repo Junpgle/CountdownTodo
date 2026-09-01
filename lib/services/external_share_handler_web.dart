@@ -22,6 +22,8 @@ class ExternalShareHandler {
     return StorageService.clearPendingTodoConfirm();
   }
 
+  static Future<bool> recoverInterruptedTodoRecognition() async => false;
+
   static Future<void> clearPendingFinanceRecognized() async {
     final pending = await StorageService.getPendingTodoConfirm();
     if (pending == null) return;

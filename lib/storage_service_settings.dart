@@ -367,6 +367,9 @@ mixin _StorageSettings on _StorageServiceBase {
     String status = 'success',
     String? compressedPath,
     String? sourceKey,
+    String? processingSessionId,
+    String? recognitionChatSessionId,
+    String? recognitionChatMessageId,
     int currentAttempt = 1,
     int maxAttempts = 1,
     String? errorMsg,
@@ -379,6 +382,9 @@ mixin _StorageSettings on _StorageServiceBase {
       'status': status,
       'compressedPath': compressedPath,
       'sourceKey': sourceKey,
+      'processingSessionId': processingSessionId,
+      'recognitionChatSessionId': recognitionChatSessionId,
+      'recognitionChatMessageId': recognitionChatMessageId,
       'currentAttempt': currentAttempt,
       'maxAttempts': maxAttempts,
       'errorMsg': errorMsg,
@@ -394,6 +400,9 @@ mixin _StorageSettings on _StorageServiceBase {
     String? errorMsg,
     List<Map<String, dynamic>>? results,
     List<Map<String, dynamic>>? financeResults,
+    String? processingSessionId,
+    String? recognitionChatSessionId,
+    String? recognitionChatMessageId,
   }) async {
     final existing = await getPendingTodoConfirm();
     if (existing == null) return;
@@ -407,6 +416,12 @@ mixin _StorageSettings on _StorageServiceBase {
       'errorMsg': errorMsg ?? existing['errorMsg'],
       'results': results ?? existing['results'] ?? [],
       'financeResults': financeResults ?? existing['financeResults'] ?? [],
+      'processingSessionId':
+          processingSessionId ?? existing['processingSessionId'],
+      'recognitionChatSessionId':
+          recognitionChatSessionId ?? existing['recognitionChatSessionId'],
+      'recognitionChatMessageId':
+          recognitionChatMessageId ?? existing['recognitionChatMessageId'],
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
     await prefs.setString(keyPendingTodoConfirm, data);

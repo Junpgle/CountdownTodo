@@ -2,6 +2,7 @@ import '../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../models/chat_message.dart';
 import '../storage_service.dart';
 import '../services/llm_service.dart';
 import '../services/notification_service.dart';
@@ -9,6 +10,7 @@ import '../services/item_semantics_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/recognized_todo_adapter.dart';
+import '../services/ai_recognition_chat_bridge.dart';
 import '../utils/local_image_provider.dart';
 import '../utils/persistent_image_storage.dart';
 
@@ -279,6 +281,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     final imagePath = widget.imagePath;
     if (imagePath == null) return;
 
+    AiRecognitionHandle? recognitionHandle;
+
     setState(() {
       _isRetrying = true;
       _retryStatus = '正在重试...';
@@ -296,9 +300,21 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         return;
       }
 
+      final pending = await StorageService.getPendingTodoConfirm();
+      recognitionHandle = AiRecognitionChatBridge.handleFromPending(pending);
+      if (recognitionHandle == null) {
+        try {
+          recognitionHandle =
+              await AiRecognitionChatBridge.startImage(imagePath);
+        } catch (_) {}
+      } else {
+        await AiRecognitionChatBridge.markProcessing(recognitionHandle);
+      }
+
       bool success = false;
       List<Map<String, dynamic>>? results;
       String? lastError;
+      final usageSummaries = <ChatUsageSummary>[];
 
       for (int attempt = 1; attempt <= maxRetries + 1; attempt++) {
         try {
@@ -312,8 +328,10 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
             status: '正在分析图片...',
           );
 
-          results = await LLMService.parseTodoFromImage(imagePath)
-              .timeout(const Duration(seconds: 90));
+          results = await LLMService.parseTodoFromImage(
+            imagePath,
+            onUsage: usageSummaries.add,
+          ).timeout(const Duration(seconds: 90));
 
           success = true;
           break;
@@ -327,9 +345,19 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         }
       }
 
-      if (success && results != null && results.isNotEmpty) {
+      final recognizedResults = results;
+      if (success &&
+          recognizedResults != null &&
+          recognizedResults.isNotEmpty) {
+        if (recognitionHandle != null) {
+          await AiRecognitionChatBridge.complete(
+            recognitionHandle,
+            todoResults: recognizedResults,
+            usageSummary: ChatUsageSummary.combine(usageSummaries),
+          );
+        }
         setState(() {
-          _allTodos = _parseResults(results!);
+          _allTodos = _parseResults(recognizedResults);
           _currentIndex = 0;
           _confirmedTodos.clear();
           _isRetrying = false;
@@ -337,9 +365,15 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         });
 
         await NotificationService.showTodoRecognizeSuccess(
-          todoCount: results.length,
+          todoCount: recognizedResults.length,
         );
       } else {
+        if (recognitionHandle != null) {
+          await AiRecognitionChatBridge.fail(
+            recognitionHandle,
+            lastError ?? '未识别到可添加的事项',
+          );
+        }
         setState(() {
           _isRetrying = false;
           _retryStatus = '重试失败: ${lastError ?? "未知错误"}';
@@ -350,6 +384,9 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         );
       }
     } catch (e) {
+      if (recognitionHandle != null) {
+        await AiRecognitionChatBridge.fail(recognitionHandle, e);
+      }
       setState(() {
         _isRetrying = false;
         _retryStatus = '重试失败: $e';

@@ -44,6 +44,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     StorageService.scopedDataRefreshNotifier.addListener(_onScopedDataRefresh);
     StorageService.wallpaperRefreshNotifier.addListener(_onWallpaperRefresh);
     ScreenTimeService.dataRefreshNotifier.addListener(_onScreenTimeDataRefresh);
+    AiRecognitionChatBridge.changes.addListener(_onAiRecognitionChatChanged);
     // 在细粒度通知器和刷新监听都就绪后再启动首轮数据读取。
     unawaited(_loadAllData());
 
@@ -247,6 +248,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     StorageService.wallpaperRefreshNotifier.removeListener(_onWallpaperRefresh);
     ScreenTimeService.dataRefreshNotifier
         .removeListener(_onScreenTimeDataRefresh);
+    AiRecognitionChatBridge.changes.removeListener(_onAiRecognitionChatChanged);
     ThirtyDayChallengeRepository.activityRevision
         .removeListener(_onThirtyDayChallengeActivityChanged);
     _todosNotifier.dispose();
@@ -287,6 +289,16 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     MacPomodoroStatusBarService.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _onAiRecognitionChatChanged() {
+    if (!mounted) return;
+    // 外部分享会先创建聊天事件，再持久化首页待确认记录；延迟一次刷新，
+    // 确保首页能看到刚启动的 processing 状态。
+    unawaited(_checkPendingTodoConfirm());
+    Future.delayed(const Duration(milliseconds: 250), () {
+      if (mounted) unawaited(_checkPendingTodoConfirm());
+    });
   }
 
   @override
