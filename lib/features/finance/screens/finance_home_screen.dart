@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../models/finance_models.dart';
 import '../services/finance_automation_service.dart';
 import '../services/finance_repository.dart';
+import '../services/ai_usage_cost_service.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/home_bottom_navigation_content.dart';
@@ -82,6 +83,11 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         await FinanceAutomationService.reconcileCurrentPeriod();
       } catch (_) {
         // 自动化异常不应阻断已有账单的查看和手动记账。
+      }
+      try {
+        await AiUsageCostService.reconcileCurrentMonth();
+      } catch (_) {
+        // AI 费用补偿失败不应阻断已有账单的查看和手动记账。
       }
       final from = DateTime(_month.year, _month.month);
       final to = DateTime(_month.year, _month.month + 1);

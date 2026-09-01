@@ -29,6 +29,11 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
   }
 
   Future<void> _load() async {
+    try {
+      await AiUsageCostService.reconcileCurrentMonth();
+    } catch (_) {
+      // 费用明细仍可查看，下一次进入页面时继续尝试补齐账本。
+    }
     final values = await Future.wait<dynamic>([
       AiUsageCostService.isAutoLedgerEnabled(),
       AiUsageCostService.getSummary(from: _monthStart, to: _monthEnd),

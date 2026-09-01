@@ -304,6 +304,8 @@ abstract final class AiUsageCostService {
   static const _settingsPrefix = 'ai_usage_cost_settings';
   static const _aiCategoryUuid = 'finance-system-category-ai-service';
   static const _otherPaymentMethodUuid = 'finance-system-payment-other';
+  static const _monthlyLedgerKeyPrefix = 'finance-ai-month-v2';
+  static const _ledgerUuidNamespace = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
   static const _microsPerYuan = 1000000;
   static const _microsPerFen = 10000;
   static const _tokensPerMillion = 1000000;
@@ -617,6 +619,14 @@ abstract final class AiUsageCostService {
   static Future<void> setAutoLedgerEnabled(bool enabled) async {
     final settings = await _loadSettings();
     await _saveSettings(autoLedger: enabled, prices: settings.prices);
+    if (enabled) {
+      // 费用明细可能是在关闭自动记账期间产生的，开启后立即补齐本月账本。
+      try {
+        await reconcileCurrentMonth();
+      } catch (_) {
+        // 记账补偿失败不应阻止开关状态保存，后续打开记账页会再次重试。
+      }
+    }
   }
 
   static Future<List<AiUsagePricing>> getPricing() async =>
@@ -699,8 +709,9 @@ abstract final class AiUsageCostService {
             at: timestamp,
           )
         : null;
-    final ledgerKey =
-        costMicros == null ? null : '${dateKey(timestamp)}|$provider|$model';
+    final ledgerKey = costMicros == null
+        ? null
+        : _monthlyLedgerKey(financeMonthKey(timestamp), provider, model);
     final uuid = const Uuid().v4();
     final record = AiUsageRecord(
       uuid: uuid,
@@ -746,13 +757,46 @@ abstract final class AiUsageCostService {
     if (settings.autoLedger && ledgerKey != null) {
       await _syncLedgerAggregate(
         db: db,
-        ledgerKey: ledgerKey,
-        date: timestamp,
+        monthStart: DateTime(timestamp.year, timestamp.month),
+        monthEnd: DateTime(timestamp.year, timestamp.month + 1),
         provider: provider,
         model: model,
       );
     }
     return record;
+  }
+
+  /// 将本月已记录的、可计价的调用重新汇总到个人账本。
+  ///
+  /// 这一步既覆盖自动记账关闭期间积累的明细，也会把旧版本按日生成的
+  /// AI 账单合并为本月账单，避免低于 1 分的 MiMo 调用永远无法出现在账本。
+  static Future<void> reconcileCurrentMonth({DateTime? now}) async {
+    final settings = await _loadSettings();
+    if (!settings.autoLedger) return;
+
+    final current = now ?? DateTime.now();
+    final monthStart = DateTime(current.year, current.month);
+    final monthEnd = DateTime(current.year, current.month + 1);
+    final db = await _database;
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    final providersAndModels = await db.rawQuery(
+      'SELECT DISTINCT provider, model FROM ai_usage_records '
+      'WHERE is_priced = 1 AND created_at >= ? AND created_at < ?',
+      [monthStart.millisecondsSinceEpoch, monthEnd.millisecondsSinceEpoch],
+    );
+    for (final row in providersAndModels) {
+      final provider = row['provider']?.toString() ?? '';
+      final model = row['model']?.toString() ?? '';
+      if (provider.isEmpty || model.isEmpty) continue;
+      await _syncLedgerAggregate(
+        db: db,
+        monthStart: monthStart,
+        monthEnd: monthEnd,
+        provider: provider,
+        model: model,
+      );
+    }
   }
 
   static int? _calculateCostMicros(
@@ -895,48 +939,93 @@ abstract final class AiUsageCostService {
 
   static Future<void> _syncLedgerAggregate({
     required Database db,
-    required String ledgerKey,
-    required DateTime date,
+    required DateTime monthStart,
+    required DateTime monthEnd,
     required String provider,
     required String model,
   }) async {
+    final monthKey = financeMonthKey(monthStart);
+    final ledgerKey = _monthlyLedgerKey(monthKey, provider, model);
     final totalMicros = Sqflite.firstIntValue(await db.rawQuery(
           'SELECT COALESCE(SUM(cost_micros), 0) FROM ai_usage_records '
-          'WHERE ledger_key = ? AND is_priced = 1',
-          [ledgerKey],
+          'WHERE provider = ? AND model = ? AND is_priced = 1 '
+          'AND created_at >= ? AND created_at < ?',
+          [
+            provider,
+            model,
+            monthStart.millisecondsSinceEpoch,
+            monthEnd.millisecondsSinceEpoch,
+          ],
         )) ??
         0;
     final amountMinor = (totalMicros + (_microsPerFen ~/ 2)) ~/ _microsPerFen;
     if (amountMinor <= 0) return;
 
-    final links = await db.query(
+    final allLinks = await db.query(
       'ai_usage_ledger_links',
-      where: 'ledger_key = ?',
-      whereArgs: [ledgerKey],
-      limit: 1,
     );
-    final existing = links.isEmpty
-        ? null
-        : await FinanceRepository.getTransaction(
-            links.single['finance_transaction_uuid']?.toString() ?? '',
-          );
-    final transaction = existing == null || existing.isDeleted
-        ? FinanceTransaction(
-            type: FinanceTransactionType.expense,
-            amountMinor: amountMinor,
-            categoryUuid: _aiCategoryUuid,
-            paymentMethodUuid: _otherPaymentMethodUuid,
-            transactionDate: dateKey(date),
-            merchant: '$provider · $model',
-            note: 'AI 调用费用自动汇总（${dateKey(date)}）',
-            source: FinanceEntrySource.ai,
-          )
-        : existing;
-    if (existing != null && !existing.isDeleted) {
+    final links = allLinks.where((row) {
+      final key = row['ledger_key']?.toString() ?? '';
+      return key == ledgerKey ||
+          _isLegacyDailyLedgerKey(key, monthKey, provider, model);
+    }).toList(growable: false);
+    final linkedUuids = links
+        .map((row) => row['finance_transaction_uuid']?.toString() ?? '')
+        .where((uuid) => uuid.isNotEmpty)
+        .toSet();
+    final linkedTransactions = <String, FinanceTransaction>{};
+    if (linkedUuids.isNotEmpty) {
+      final placeholders = List.filled(linkedUuids.length, '?').join(',');
+      final rows = await db.query(
+        'finance_transactions',
+        where: 'uuid IN ($placeholders)',
+        whereArgs: linkedUuids.toList(),
+      );
+      for (final row in rows) {
+        final transaction = FinanceTransaction.fromMap(row);
+        linkedTransactions[transaction.uuid] = transaction;
+      }
+    }
+
+    final existing =
+        linkedTransactions.values.where((item) => !item.isDeleted).firstOrNull;
+    final transaction = existing ??
+        FinanceTransaction(
+          uuid: _monthlyLedgerTransactionUuid(monthKey, provider, model),
+          type: FinanceTransactionType.expense,
+          amountMinor: amountMinor,
+          categoryUuid: _aiCategoryUuid,
+          paymentMethodUuid: _otherPaymentMethodUuid,
+          transactionDate: dateKey(monthStart),
+          merchant: '$provider · $model',
+          note: 'AI 调用费用自动汇总（$monthKey）',
+          source: FinanceEntrySource.ai,
+        );
+    final shouldSaveTransaction =
+        existing == null || existing.amountMinor != amountMinor;
+    if (existing != null && shouldSaveTransaction) {
       transaction.amountMinor = amountMinor;
       transaction.markAsChanged();
     }
-    await FinanceRepository.saveTransaction(transaction);
+    if (shouldSaveTransaction) {
+      await FinanceRepository.saveTransaction(transaction);
+    }
+
+    // 同一月份的旧按日账单已包含在本次月度总额中，保留一笔即可。
+    for (final duplicate in linkedTransactions.values) {
+      if (duplicate.uuid == transaction.uuid || duplicate.isDeleted) continue;
+      await FinanceRepository.deleteTransaction(duplicate.uuid);
+    }
+    for (final link in links) {
+      final key = link['ledger_key']?.toString() ?? '';
+      if (key != ledgerKey) {
+        await db.delete(
+          'ai_usage_ledger_links',
+          where: 'ledger_key = ?',
+          whereArgs: [key],
+        );
+      }
+    }
     await db.insert(
       'ai_usage_ledger_links',
       {
@@ -945,6 +1034,33 @@ abstract final class AiUsageCostService {
         'updated_at': DateTime.now().millisecondsSinceEpoch,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  static String _monthlyLedgerKey(
+    String monthKey,
+    String provider,
+    String model,
+  ) =>
+      '$_monthlyLedgerKeyPrefix|$monthKey|$provider|$model';
+
+  static bool _isLegacyDailyLedgerKey(
+    String key,
+    String monthKey,
+    String provider,
+    String model,
+  ) {
+    return key.startsWith('$monthKey-') && key.endsWith('|$provider|$model');
+  }
+
+  static String _monthlyLedgerTransactionUuid(
+    String monthKey,
+    String provider,
+    String model,
+  ) {
+    return const Uuid().v5(
+      _ledgerUuidNamespace,
+      'countdown-todo/finance-ai-ledger/v2/$monthKey/$provider/$model',
     );
   }
 
