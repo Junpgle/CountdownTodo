@@ -177,6 +177,8 @@ mixin _HomeDashboardContract {
 
   Future<void> _checkCoachMarks();
 
+  Future<void> _checkDeviceCalendarReadCoachMark();
+
   Future<void> _checkFocusTabCoachMarks();
 
   Future<void> _dismissCoachMarks({String tipId = 'coach_home_intro'});

@@ -103,4 +103,48 @@ void main() {
     expect(await result, isFalse);
     expect(find.text('首页指引'), findsNothing);
   });
+
+  testWidgets('an action can finish the guide before opening a setting',
+      (tester) async {
+    final targetKey = GlobalKey();
+    late BuildContext pageContext;
+    var openedSettings = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            pageContext = context;
+            return Scaffold(
+              body: SizedBox(key: targetKey, child: const Text('target')),
+            );
+          },
+        ),
+      ),
+    );
+
+    final result = CoachMarkOverlay.show(
+      context: pageContext,
+      steps: [
+        CoachMarkStep(
+          targetKey: targetKey,
+          title: '手机日历',
+          description: '只读展示',
+          buttonLabel: '去设置',
+          finishOnButtonTap: true,
+          onButtonTap: () => openedSettings = true,
+        ),
+      ],
+      onFinish: () {},
+      onSkip: () {},
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('去设置'));
+    await tester.pumpAndSettle();
+
+    expect(openedSettings, isTrue);
+    expect(await result, isTrue);
+    expect(find.text('手机日历'), findsNothing);
+  });
 }

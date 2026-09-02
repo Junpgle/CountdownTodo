@@ -32,6 +32,8 @@ import '../widgets/app_settings_widgets.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import 'animation_settings_page.dart';
+import '../services/device_calendar_read_service.dart';
+import 'settings/device_calendar_read_page.dart';
 
 /// 控制功能页的入口展示范围。
 enum FeatureGuideMode {
@@ -267,6 +269,10 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   /// 本次引导是否包含外观设置页（用于完成时写入已展示标记）。
   bool _themeSetupPageIncluded = false;
 
+  /// 手机日历读取开关只在自动版本引导中主动提供一次。
+  bool _deviceCalendarReadGuideOffered = false;
+  bool _deviceCalendarReadSetupPageIncluded = false;
+
   // 云端数据
   bool _checkingCloudData = false;
   bool _hasCloudCourses = false;
@@ -310,6 +316,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       _checkPermissions(),
       _loadGlobalSettings(),
       _loadLiquidGlassState(),
+      _loadDeviceCalendarReadGuideState(),
       _loadMinorModeGuideState(),
     ];
     if (AppPlatform.isWindows) tasks.add(_loadTaiConfig());
@@ -319,6 +326,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   Future<void> _loadLiquidGlassState() async {
     final offered = await LiquidGlassEffectService.isGuideOfferDone();
     if (mounted) setState(() => _guideOffered = offered);
+  }
+
+  Future<void> _loadDeviceCalendarReadGuideState() async {
+    final offered = await DeviceCalendarReadService.isGuideOfferDone();
+    if (mounted) setState(() => _deviceCalendarReadGuideOffered = offered);
   }
 
   Future<void> _setupPages() async {
@@ -358,6 +370,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     // "已展示"标记，之后不再重复展示（用户可能不想要，不能反复打扰）。
     _themeSetupPageIncluded =
         shouldShowGuide && pages.contains(_buildGlobalThemeSetupPage);
+    _deviceCalendarReadSetupPageIncluded =
+        shouldShowGuide && pages.contains(_buildDeviceCalendarReadSetupPage);
 
     if (mounted) {
       setState(() {
@@ -419,6 +433,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         _buildAndroidFeaturePage2,
         _buildAndroidWidgetGuidePage,
         _buildMinorModeGuidePage,
+        if (!_deviceCalendarReadGuideOffered) _buildDeviceCalendarReadSetupPage,
         _buildGlobalCourseSetupPage,
         _buildGlobalThemeSetupPage,
       ];
@@ -426,6 +441,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
     if (!AppPlatform.isAndroid) {
       return [
+        if (DeviceCalendarReadService.isSupported &&
+            !_deviceCalendarReadGuideOffered)
+          _buildDeviceCalendarReadSetupPage,
         if (!_semesterEnabled) _buildGlobalCourseSetupPage,
         if (!_guideOffered) _buildGlobalThemeSetupPage,
       ];
@@ -436,6 +454,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       if (_notificationStatus?.isGranted != true || !_hasExactAlarm)
         _buildAndroidFeaturePage2,
       if (!_minorModeGuideConfigured) _buildMinorModeGuidePage,
+      if (!_deviceCalendarReadGuideOffered) _buildDeviceCalendarReadSetupPage,
       if (!_semesterEnabled) _buildGlobalCourseSetupPage,
       if (!_guideOffered) _buildGlobalThemeSetupPage,
     ];
@@ -854,6 +873,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       // 本次引导包含液态玻璃选项且用户走完了流程 → 记为已展示。
       if (_themeSetupPageIncluded) {
         await LiquidGlassEffectService.markGuideOffered();
+      }
+      if (_deviceCalendarReadSetupPageIncluded) {
+        await DeviceCalendarReadService.markGuideOffered();
       }
     }
     if (!mounted) return;
@@ -2364,6 +2386,33 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         ],
       ],
     ));
+  }
+
+  Widget _buildDeviceCalendarReadSetupPage() {
+    return _buildPageContainer(
+      content: Column(
+        children: [
+          const SizedBox(height: 16),
+          _buildStepHeader(
+            icon: Icons.calendar_view_week_outlined,
+            iconColor: Colors.teal,
+            title: '可选：读取手机日历',
+            subtitle: '把手机中的日程只读展示到首页和周视图。默认关闭；不会写回系统日历、生成待办、上传或参与同步。',
+          ),
+          const SizedBox(height: 24),
+          const GuideDeviceCalendarReadToggle(),
+          const SizedBox(height: 12),
+          Text(
+            '不想现在开启也没关系，之后可在 设置 → 互联服务 → 读取手机日历 随时调整。',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.45,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // ── 辅助 UI 工具 ────────────────────────────────────────

@@ -1,5 +1,6 @@
 import 'package:countdown_todo/screens/feature_guide_screen.dart';
 import 'package:countdown_todo/services/liquid_glass_effect_service.dart';
+import 'package:countdown_todo/services/device_calendar_read_service.dart';
 import 'package:countdown_todo/widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -97,5 +98,16 @@ void main() {
     // 已展示过的用户重新走引导时不再受开关状态影响。
     await LiquidGlassEffectService.setEnabled(true);
     expect(await LiquidGlassEffectService.isGuideOfferDone(), isTrue);
+  });
+
+  test('calendar read guide offer persists independently of its switch',
+      () async {
+    expect(await DeviceCalendarReadService.isGuideOfferDone(), isFalse);
+
+    await DeviceCalendarReadService.markGuideOffered();
+    expect(await DeviceCalendarReadService.isGuideOfferDone(), isTrue);
+
+    // The feature remains off unless the user explicitly turns it on.
+    expect(await DeviceCalendarReadService.isEnabled(), isFalse);
   });
 }

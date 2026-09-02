@@ -8,6 +8,7 @@ class CoachMarkStep {
   final String description;
   final String? buttonLabel;
   final VoidCallback? onButtonTap;
+  final bool finishOnButtonTap;
 
   const CoachMarkStep({
     required this.targetKey,
@@ -15,6 +16,7 @@ class CoachMarkStep {
     required this.description,
     this.buttonLabel,
     this.onButtonTap,
+    this.finishOnButtonTap = false,
   });
 }
 
@@ -266,7 +268,11 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
                           child: TextButton(
                             onPressed: () {
                               step.onButtonTap?.call();
-                              _nextStep();
+                              if (step.finishOnButtonTap) {
+                                widget.onFinish();
+                              } else {
+                                _nextStep();
+                              }
                             },
                             child: Text(step.buttonLabel!),
                           ),
