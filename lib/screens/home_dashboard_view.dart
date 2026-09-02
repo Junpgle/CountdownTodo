@@ -3,6 +3,17 @@ part of 'home_dashboard.dart';
 
 enum _HomeAddAction { todo, countdown, finance }
 
+/// The phone homepage body is painted underneath its pinned header. Its final
+/// spacer must therefore reserve both the floating bottom bar and the header;
+/// otherwise a short page has no positive scroll extent and a slow upward
+/// drag only produces an overscroll bounce.
+@visibleForTesting
+double homeDashboardPhoneScrollTailExtent({
+  required double headerExtent,
+  required double bottomInset,
+}) =>
+    headerExtent.clamp(0.0, 2000.0).toDouble() + 100.0 + bottomInset;
+
 mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
   Widget build(BuildContext context) {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -736,10 +747,18 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                       isLight);
                                                 }
                                                 return SizedBox(
-                                                  // 浮动底栏原有 100dp 余量之外，再补上
-                                                  // 系统手势区，使最后一张卡片能完整滚出遮挡。
+                                                  // The header is an overlay rather
+                                                  // than a ListView inset. Reserve it
+                                                  // at the trailing edge too, so a
+                                                  // short home page can actually move
+                                                  // past the fixed header instead of
+                                                  // springing back at offset zero.
                                                   height:
-                                                      100 + bottomSystemInset,
+                                                      homeDashboardPhoneScrollTailExtent(
+                                                    headerExtent: headerExtent,
+                                                    bottomInset:
+                                                        bottomSystemInset,
+                                                  ),
                                                 );
                                               },
                                             ),
