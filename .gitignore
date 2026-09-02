@@ -156,6 +156,9 @@ todo.md
 !/test/widgets/home_bottom_navigation_content_test.dart
 !/test/widgets/floating_bottom_bar_test.dart
 !/test/widgets/home_drawer_menu_test.dart
+!/test/widgets/management_pages_test.dart
+!/test/widgets/management_components_test.dart
+!/test/widgets/history_and_messages_ui_test.dart
 !/test/utils/
 /test/utils/*
 !/test/utils/todo_recurrence_picker_test.dart
@@ -182,6 +185,9 @@ todo.md
 !/test/features/finance/finance_models_test.dart
 !/test/features/finance/finance_schema_test.dart
 !/test/features/finance/finance_automation_test.dart
+!/test/features/finance/finance_catalog_ui_test.dart
+!/test/features/finance/finance_management_ui_test.dart
+!/test/features/finance/finance_management_screens_test.dart
 !/test/utils/todo_widget_visibility_test.dart
 /macos/build/
 /globalize.md
