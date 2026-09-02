@@ -1,4 +1,5 @@
 import '../../widgets/floating_glass_control.dart';
+import '../../widgets/management_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -36,6 +37,17 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
   late List<String> _selected;
   late List<PomodoroTag> _archivedTags;
   bool _showArchived = false;
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  bool _matches(PomodoroTag tag) => tag.name
+      .toLowerCase()
+      .contains(_searchController.text.trim().toLowerCase());
 
   PomodoroTag? _editingTag;
   bool _isAddingNewTag = false;
@@ -109,6 +121,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
       _archivedTags.remove(tag);
       tag.isArchived = false;
       _tags.add(tag);
+      _searchController.clear();
+      _showArchived = false;
     });
     _notifyChanges();
   }
@@ -128,6 +142,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
           );
           setState(() {
             _tags.add(tag);
+            _searchController.clear();
+            _showArchived = false;
           });
           _notifyChanges();
           Navigator.pop(ctx);
@@ -160,349 +176,233 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
     );
   }
 
+  void _addTag(bool isWide) {
+    if (isWide) {
+      setState(() {
+        _isAddingNewTag = true;
+        _editingTag = null;
+      });
+    } else {
+      _showAddTagDialog();
+    }
+  }
+
+  void _editTag(PomodoroTag tag, bool isWide) {
+    if (isWide) {
+      setState(() {
+        _editingTag = tag;
+        _isAddingNewTag = false;
+      });
+    } else {
+      _showEditTagDialog(tag, _tags.indexOf(tag));
+    }
+  }
+
+  Future<void> _openTagTool(bool batch) async {
+    final prefs = await SharedPreferences.getInstance();
+    final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
+    if (!mounted) return;
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => batch
+              ? BatchTagPage(username: username, isEmbedded: false)
+              : RebindTagPage(username: username),
+          settings: RouteSettings(name: batch ? '批量添加标签' : '重新绑定标签'),
+        ));
+  }
+
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final scheme = Theme.of(context).colorScheme;
+    final isWide = MediaQuery.sizeOf(context).width >= 1000 &&
+        MediaQuery.textScalerOf(context).scale(14) < 21;
+    final visible =
+        (_showArchived ? _archivedTags : _tags).where(_matches).toList();
+    final canReorder = !_showArchived && _searchController.text.trim().isEmpty;
+    final list =
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      ManagementSearchField(
+        controller: _searchController,
+        hintText: '搜索标签名称',
+        onChanged: (_) => setState(() {}),
+      ),
+      const SizedBox(height: 14),
+      ManagementFilterBar<bool>(
+          value: _showArchived,
+          onChanged: (value) => setState(() => _showArchived = value),
+          options: [
+            ManagementFilterOption(value: false, label: '使用中 ${_tags.length}'),
+            if (widget.showArchive)
+              ManagementFilterOption(
+                  value: true, label: '已归档 ${_archivedTags.length}')
+          ]),
+      const SizedBox(height: 12),
+      Text(
+          _showArchived
+              ? '归档标签仍保留在历史记录中，可随时恢复。'
+              : canReorder
+                  ? '拖动右侧手柄排序，点击标签编辑。'
+                  : '搜索时暂停排序，清空搜索后可拖动调整。',
+          style: Theme.of(context)
+              .textTheme
+              .bodySmall
+              ?.copyWith(color: scheme.onSurfaceVariant)),
+      const SizedBox(height: 16),
+      if (visible.isEmpty)
+        ManagementEmptyState(
+          icon:
+              _showArchived ? Icons.inventory_2_outlined : Icons.label_outline,
+          title: _searchController.text.trim().isNotEmpty
+              ? '没有找到匹配的标签'
+              : _showArchived
+                  ? '暂无归档标签'
+                  : '还没有标签',
+          description: _searchController.text.trim().isNotEmpty
+              ? '试试其他关键词，或清空搜索。'
+              : _showArchived
+                  ? '不常用的标签可以归档，不会删除历史记录。'
+                  : '点击“添加标签”，为专注和时间日志分类。',
+        )
+      else if (canReorder)
+        ReorderableListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          buildDefaultDragHandles: false,
+          itemCount: visible.length,
+          onReorderItem: (oldIndex, newIndex) {
+            setState(() {
+              final tag = _tags.removeAt(oldIndex);
+              _tags.insert(newIndex, tag);
+            });
+            _notifyChanges();
+          },
+          itemBuilder: (_, index) =>
+              _buildTagCard(visible[index], isWide, index),
+        )
+      else
+        ...visible.map((tag) => _buildTagCard(tag, isWide, null)),
+    ]);
 
     return Scaffold(
-      backgroundColor: colorScheme.surface,
+      backgroundColor: scheme.surface,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('管理标签'),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                GestureDetector(
-                  onTap: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    final username =
-                        prefs.getString(StorageService.keyCurrentUser) ?? '';
-                    if (!context.mounted) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => BatchTagPage(
-                          username: username,
-                          isEmbedded: false,
-                        ),
-                        settings: const RouteSettings(name: '批量添加标签'),
-                      ),
-                    );
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 2.0),
-                    child: Text(
-                      '想要批量给事件添加标签？',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: colorScheme.primary,
-                        decoration: TextDecoration.underline,
-                        decorationColor: colorScheme.primary,
-                      ),
-                    ),
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    final username =
-                        prefs.getString(StorageService.keyCurrentUser) ?? '';
-                    if (!context.mounted) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => RebindTagPage(
-                          username: username,
-                        ),
-                        settings: const RouteSettings(name: '重新绑定标签'),
-                      ),
-                    );
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 4.0),
-                    child: Text(
-                      '需要重新绑定已删除的标签？',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: colorScheme.error,
-                        decoration: TextDecoration.underline,
-                        decorationColor: colorScheme.error,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        scrolledUnderElevation: 0,
-        backgroundColor: colorScheme.surface,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: '添加标签',
-            onPressed: () {
-              if (MediaQuery.of(context).size.width >= 800) {
-                setState(() {
-                  _isAddingNewTag = true;
-                  _editingTag = null;
-                });
-              } else {
-                _showAddTagDialog();
-              }
-            },
-          ),
-          const SizedBox(width: 8),
-        ],
+        title: const Text('管理标签'),
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isWide = constraints.maxWidth >= 800;
-
-          if (isWide) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    child: Column(
-                      children: [
-                        if (_tags.isEmpty)
-                          _buildEmptyState(colorScheme)
-                        else
-                          _buildTagList(colorScheme, isWide: true),
-                      ],
-                    ),
-                  ),
-                ),
-                VerticalDivider(
-                    width: 1,
-                    color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                Expanded(
-                  flex: 4,
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildRightPanel(colorScheme),
-                        const SizedBox(height: 32),
-                        if (widget.showArchive && _archivedTags.isNotEmpty)
-                          _buildArchivedSection(colorScheme, isWide: true),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            );
-          } else {
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: Column(
-                    children: [
-                      if (_tags.isEmpty)
-                        _buildEmptyState(colorScheme)
-                      else
-                        _buildTagList(colorScheme, isWide: false),
-                      const SizedBox(height: 16),
-                      if (widget.showArchive && _archivedTags.isNotEmpty)
-                        _buildArchivedSection(colorScheme, isWide: false),
-                      const SizedBox(height: 48),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }
-        },
-      ),
+      body: ManagementPage(maxWidth: 1160, children: [
+        const ManagementIntro(
+            icon: Icons.label_outline_rounded,
+            title: '让专注更有条理',
+            description: '整理专注与时间日志的标签，保留每一次投入的线索。'),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.icon(
+              onPressed: () => _addTag(isWide),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('添加标签')),
+          TextButton.icon(
+              onPressed: () => _openTagTool(true),
+              icon: const Icon(Icons.playlist_add_rounded),
+              label: const Text('批量添加标签')),
+          TextButton.icon(
+              onPressed: () => _openTagTool(false),
+              icon: const Icon(Icons.link_rounded),
+              label: const Text('重新绑定标签')),
+        ]),
+        const SizedBox(height: 24),
+        if (isWide)
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: list),
+            const SizedBox(width: 24),
+            Expanded(child: _buildRightPanel(scheme)),
+          ])
+        else
+          list,
+      ]),
     );
   }
 
-  Widget _buildEmptyState(ColorScheme colorScheme) {
-    return OptionalLiquidGlassCard(
-      width: double.infinity,
-      padding: const EdgeInsets.all(32),
-      margin: const EdgeInsets.only(bottom: 16),
-      borderRadius: 16,
-      fallbackDecoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-      ),
-      child: Column(
-        children: [
-          Icon(Icons.label_outline,
-              size: 48,
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
-          const SizedBox(height: 12),
-          Text(
-            '还没有标签',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '点击右上角 + 创建你的第一个标签吧',
-            style: TextStyle(
-              fontSize: 13,
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTagList(ColorScheme colorScheme, {required bool isWide}) {
-    return ReorderableListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      buildDefaultDragHandles: false,
-      itemCount: _tags.length,
-      onReorderItem: (oldIndex, newIndex) {
-        setState(() {
-          final tag = _tags.removeAt(oldIndex);
-          _tags.insert(newIndex, tag);
-        });
-        _notifyChanges();
-      },
-      itemBuilder: (ctx, index) {
-        final tag = _tags[index];
-        final color =
-            AppColorUtils.hexToColor(tag.color, fallback: colorScheme.primary);
-        return _buildTagItem(tag, index, color, colorScheme, isWide);
-      },
-    );
-  }
-
-  Widget _buildTagItem(PomodoroTag tag, int index, Color color,
-      ColorScheme colorScheme, bool isWide) {
-    final isEditing =
-        isWide && _editingTag?.uuid == tag.uuid && !_isAddingNewTag;
-
-    return OptionalLiquidGlassCard(
+  Widget _buildTagCard(PomodoroTag tag, bool isWide, int? dragIndex) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final color = AppColorUtils.hexToColor(tag.color, fallback: scheme.primary);
+    final editing = isWide && _editingTag?.uuid == tag.uuid && !_isAddingNewTag;
+    return ManagementCard(
       key: ValueKey(tag.uuid),
-      margin: const EdgeInsets.only(bottom: 8),
-      borderRadius: 16,
-      highContrast: true,
-      tint: isEditing ? colorScheme.primary.withValues(alpha: 0.16) : null,
-      fallbackDecoration: BoxDecoration(
-        color: isEditing
-            ? colorScheme.primaryContainer.withValues(alpha: 0.3)
-            : colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isEditing
-              ? colorScheme.primary
-              : colorScheme.outlineVariant.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Material(
-        type: MaterialType.transparency,
-        child: ListTile(
-          onTap: isWide
-              ? () {
-                  setState(() {
-                    _editingTag = tag;
-                    _isAddingNewTag = false;
-                  });
-                }
-              : null,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          leading: GestureDetector(
-            onTap: () {
-              if (isWide) {
-                setState(() {
-                  _editingTag = tag;
-                  _isAddingNewTag = false;
-                });
-              } else {
-                _showEditTagDialog(tag, index);
-              }
-            },
-            child: Container(
-              width: 36,
-              height: 36,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      backgroundColor: editing ? scheme.primaryContainer : null,
+      borderColor: editing ? scheme.primary : null,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Container(
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                      color: color.withValues(alpha: 0.3),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2)),
-                ],
-              ),
-              child: const Icon(Icons.palette_outlined,
-                  color: Colors.white, size: 18),
-            ),
-          ),
-          title: Text(
-            tag.name,
-            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (widget.showSelection)
-                Checkbox(
-                  value: _selected.contains(tag.uuid),
-                  activeColor: color,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6)),
-                  onChanged: (val) {
-                    setState(() {
-                      if (val == true) {
-                        _selected.add(tag.uuid);
-                      } else {
-                        _selected.remove(tag.uuid);
-                      }
-                    });
-                    _notifyChanges();
-                  },
-                ),
-              IconButton(
-                icon: Icon(Icons.archive_outlined,
-                    size: 20, color: colorScheme.onSurfaceVariant),
-                tooltip: '归档',
-                onPressed: () => _archiveTag(index),
-              ),
-              ReorderableDragStartListener(
-                index: index,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: Icon(Icons.drag_indicator,
-                      size: 20,
-                      color:
-                          colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+                  color: color.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(12)),
+              child: Center(
+                  child: Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                          color: color, shape: BoxShape.circle)))),
+          const SizedBox(width: 12),
+          Expanded(
+              child: tag.isArchived
+                  ? Text(tag.name, style: theme.textTheme.titleMedium)
+                  : InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => _editTag(tag, isWide),
+                      child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Text(tag.name,
+                              style: theme.textTheme.titleMedium)),
+                    )),
+          if (dragIndex != null)
+            ReorderableDragStartListener(
+                index: dragIndex,
+                child: Tooltip(
+                    message: '拖动排序',
+                    child: SizedBox(
+                        width: 40,
+                        height: 48,
+                        child: Icon(Icons.drag_indicator_rounded,
+                            color: scheme.onSurfaceVariant)))),
+        ]),
+        const SizedBox(height: 4),
+        ManagementActionBar(spacing: 4, runSpacing: 4, children: [
+          if (widget.showSelection && !tag.isArchived)
+            FilterChip(
+                label: Text(_selected.contains(tag.uuid) ? '已选中' : '选择'),
+                selected: _selected.contains(tag.uuid),
+                onSelected: (value) {
+                  setState(() {
+                    if (value) {
+                      _selected.add(tag.uuid);
+                    } else {
+                      _selected.remove(tag.uuid);
+                    }
+                  });
+                  _notifyChanges();
+                }),
+          if (!tag.isArchived) ...[
+            TextButton.icon(
+                onPressed: () => _editTag(tag, isWide),
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: const Text('编辑')),
+            if (widget.showArchive)
+              TextButton.icon(
+                  onPressed: () => _archiveTag(_tags.indexOf(tag)),
+                  icon: const Icon(Icons.archive_outlined, size: 18),
+                  label: const Text('归档')),
+          ] else
+            FilledButton.tonalIcon(
+                onPressed: () => _restoreTag(tag),
+                icon: const Icon(Icons.unarchive_outlined, size: 18),
+                label: const Text('恢复')),
+        ]),
+      ]),
     );
   }
 
@@ -511,6 +411,7 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
       return _buildRightPanelContainer(
         colorScheme,
         child: _TagForm(
+          key: const ValueKey('new-tag'),
           title: '添加新标签',
           onSubmit: (name, colorHex) {
             final tag = PomodoroTag(
@@ -519,6 +420,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
             );
             setState(() {
               _tags.add(tag);
+              _searchController.clear();
+              _showArchived = false;
               _isAddingNewTag = false;
             });
             _notifyChanges();
@@ -533,6 +436,7 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
       return _buildRightPanelContainer(
         colorScheme,
         child: _TagForm(
+          key: ValueKey(_editingTag!.uuid),
           title: '编辑标签',
           initialName: _editingTag!.name,
           initialColorHex: _editingTag!.color,
@@ -595,109 +499,6 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
       child: child,
     );
   }
-
-  Widget _buildArchivedSection(ColorScheme colorScheme,
-      {required bool isWide}) {
-    return OptionalLiquidGlassCard(
-      borderRadius: 16,
-      highContrast: true,
-      fallbackDecoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-      ),
-      child: Material(
-        type: MaterialType.transparency,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InkWell(
-              onTap: () {
-                setState(() {
-                  _showArchived = !_showArchived;
-                });
-              },
-              borderRadius: BorderRadius.circular(16),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
-                  children: [
-                    Icon(Icons.archive,
-                        size: 20, color: colorScheme.onSurfaceVariant),
-                    const SizedBox(width: 12),
-                    Text(
-                      '已归档 (${_archivedTags.length})',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const Spacer(),
-                    Icon(
-                      _showArchived
-                          ? Icons.keyboard_arrow_up
-                          : Icons.keyboard_arrow_down,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (_showArchived) ...[
-              const Divider(height: 1),
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _archivedTags.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(height: 1, indent: 48),
-                itemBuilder: (ctx, i) {
-                  final tag = _archivedTags[i];
-                  final color = AppColorUtils.hexToColor(tag.color,
-                      fallback: Colors.grey);
-                  return ListTile(
-                    dense: true,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    leading: Container(
-                      width: 16,
-                      height: 16,
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.5),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    title: Text(
-                      tag.name,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: colorScheme.onSurfaceVariant,
-                        decoration: TextDecoration.lineThrough,
-                      ),
-                    ),
-                    trailing: FilledButton.tonal(
-                      onPressed: () => _restoreTag(tag),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        minimumSize: const Size(0, 32),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8)),
-                      ),
-                      child: const Text('恢复', style: TextStyle(fontSize: 12)),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _TagFormSheet extends StatelessWidget {
@@ -717,47 +518,58 @@ class _TagFormSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return OptionalLiquidGlassSheet(
-      topRadius: 24,
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      fallbackDecoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface,
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: OptionalLiquidGlassSheet(
+            topRadius: 24,
+            padding: const EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 20,
+              bottom: 20,
+            ),
+            fallbackDecoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                        child: Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurface,
+                      ),
+                    )),
+                    IconButton(
+                      tooltip: '关闭',
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
+                const SizedBox(height: 16),
+                _TagForm(
+                  title: title,
+                  initialName: initialName,
+                  initialColorHex: initialColorHex,
+                  onSubmit: onSubmit,
+                  isSheet: true,
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          _TagForm(
-            title: title,
-            initialName: initialName,
-            initialColorHex: initialColorHex,
-            onSubmit: onSubmit,
-            isSheet: true,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -771,6 +583,7 @@ class _TagForm extends StatefulWidget {
   final bool isSheet;
 
   const _TagForm({
+    super.key,
     required this.title,
     this.initialName,
     this.initialColorHex,
@@ -785,6 +598,7 @@ class _TagForm extends StatefulWidget {
 class _TagFormState extends State<_TagForm> {
   late TextEditingController _nameController;
   late String _selectedColor;
+  bool _nameMissing = false;
 
   @override
   void initState() {
@@ -816,9 +630,9 @@ class _TagFormState extends State<_TagForm> {
   }
 
   void _submit() {
-    if (_nameController.text.trim().isNotEmpty) {
-      widget.onSubmit(_nameController.text.trim(), _selectedColor);
-    }
+    setState(() => _nameMissing = _nameController.text.trim().isEmpty);
+    if (_nameMissing) return;
+    widget.onSubmit(_nameController.text.trim(), _selectedColor);
   }
 
   void _openColorPicker() {
@@ -885,9 +699,12 @@ class _TagFormState extends State<_TagForm> {
             Expanded(
               child: TextField(
                 controller: _nameController,
+                onChanged: (_) => setState(() => _nameMissing = false),
                 autofocus: widget.isSheet || widget.initialName == null,
                 onSubmitted: (_) => _submit(),
                 decoration: InputDecoration(
+                  labelText: '标签名称',
+                  errorText: _nameMissing ? '请输入标签名称' : null,
                   hintText: '输入标签名称...',
                   hintStyle: TextStyle(
                       color:
@@ -907,6 +724,9 @@ class _TagFormState extends State<_TagForm> {
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        Text('点击左侧色块设置颜色。',
+            style: TextStyle(color: colorScheme.onSurfaceVariant)),
         const SizedBox(height: 24),
         SizedBox(
           width: double.infinity,
