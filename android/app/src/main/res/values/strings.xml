@@ -12,7 +12,7 @@
 
     <!-- App Shortcuts -->
     <string name="shortcut_finance_entry_short">记一笔</string>
-    <string name="shortcut_finance_entry_long">新增记一笔</string>
+    <string name="shortcut_finance_entry_long">记一笔</string>
     <string name="shortcut_finance_entry_disabled">记账不可用</string>
     <string name="shortcut_todo_add_short">待办</string>
     <string name="shortcut_todo_add_long">新增待办</string>

@@ -80,6 +80,10 @@ mixin _HomeDashboardContract {
 
   Future<void> _handleShortcut(String shortcutType);
 
+  Future<void> _openHomeTodo({GlobalKey? sourceKey});
+
+  Future<void> _openHomePomodoro({GlobalKey? sourceKey});
+
   Future<void> _handleOpenPlanBlock(dynamic arguments);
 
   Future<void> _openPendingTodoConfirm();

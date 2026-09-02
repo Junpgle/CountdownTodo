@@ -555,15 +555,53 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
         await _loadHomeTextConfig();
         _loadAllData(deferred: true);
         break;
+      case 'finance_entry':
+        await Navigator.of(context).push(
+          PageTransitions.slideHorizontal(
+            FinanceHomeScreen(
+              username: widget.username,
+              openQuickEntry: true,
+            ),
+          ),
+        );
+        if (mounted) await _loadAllData(deferred: true);
+        break;
+      case 'todo_add':
+        await _openHomeTodo();
+        break;
+      case 'journal':
+        await Navigator.of(context).push(
+          PageTransitions.slideHorizontal(
+            JournalHomeScreen(username: widget.username),
+          ),
+        );
+        break;
+      case 'challenge':
+        await Navigator.of(context, rootNavigator: true).push(
+          PageTransitions.slideHorizontal(const ChallengeCenterScreen()),
+        );
+        if (mounted) _loadThirtyDayChallengeStatus();
+        break;
+      case 'pomodoro':
+        await _openHomePomodoro();
+        break;
+      case 'habits':
+        await Navigator.of(context).push(
+          PageTransitions.slideHorizontal(
+            HabitCenterScreen(username: widget.username),
+          ),
+        );
+        if (mounted) _habitsRevision.value++;
+        break;
       case 'schedule':
-        PageTransitions.pushFromRect(
-          context: context,
-          page: WeeklyCourseScreen(username: widget.username),
-          sourceKey: _courseButtonKey,
+        await Navigator.of(context).push(
+          PageTransitions.slideHorizontal(
+            WeeklyCourseScreen(username: widget.username),
+          ),
         );
         break;
       case 'band':
-        Navigator.of(context).push(
+        await Navigator.of(context).push(
           PageTransitions.slideHorizontal(const BandSyncScreen()),
         );
         break;

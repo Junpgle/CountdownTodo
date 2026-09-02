@@ -723,6 +723,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         if (!action.startsWith("com.math_quiz.ACTION_OPEN_")) return
         
         val shortcutType = when (action) {
+            "com.math_quiz.ACTION_OPEN_FINANCE_ENTRY" -> "finance_entry"
+            "com.math_quiz.ACTION_OPEN_TODO_ADD" -> "todo_add"
+            "com.math_quiz.ACTION_OPEN_JOURNAL" -> "journal"
+            "com.math_quiz.ACTION_OPEN_CHALLENGE" -> "challenge"
+            "com.math_quiz.ACTION_OPEN_POMODORO" -> "pomodoro"
+            "com.math_quiz.ACTION_OPEN_HABITS" -> "habits"
             "com.math_quiz.ACTION_OPEN_SETTINGS" -> "settings"
             "com.math_quiz.ACTION_OPEN_SCHEDULE" -> "schedule"
             "com.math_quiz.ACTION_OPEN_BAND" -> "band"

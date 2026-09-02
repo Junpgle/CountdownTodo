@@ -1217,14 +1217,19 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     return 'jpg';
   }
 
-  Future<void> _openHomePomodoro({required GlobalKey sourceKey}) async {
-    await PageTransitions.pushFromRect(
-      context: context,
-      page: PomodoroScreen(username: widget.username),
-      sourceKey: sourceKey,
-      placeholderIcon: Icons.timer_outlined,
-      sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
-    );
+  Future<void> _openHomePomodoro({GlobalKey? sourceKey}) async {
+    final page = PomodoroScreen(username: widget.username);
+    if (sourceKey == null) {
+      await Navigator.of(context).push(PageTransitions.slideHorizontal(page));
+    } else {
+      await PageTransitions.pushFromRect(
+        context: context,
+        page: page,
+        sourceKey: sourceKey,
+        placeholderIcon: Icons.timer_outlined,
+        sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
+      );
+    }
     if (mounted) {
       _pomodoroRevision.value++;
       _timelineRevision.value++;
@@ -1239,79 +1244,83 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     );
   }
 
-  Future<void> _openHomeTodo({required GlobalKey sourceKey}) async {
-    await PageTransitions.pushFromRect(
-      context: context,
-      page: AddTodoScreen(
-        todoGroups: _todoGroups,
-        initialTeamUuid: _currentSelectedTeamUuid,
-        initialTeamName: _currentSelectedTeamName,
-        onFixedScheduleAdded: (item) async {
-          await StorageService.saveFixedSchedules(
-            widget.username,
-            [item],
+  Future<void> _openHomeTodo({GlobalKey? sourceKey}) async {
+    final page = AddTodoScreen(
+      todoGroups: _todoGroups,
+      initialTeamUuid: _currentSelectedTeamUuid,
+      initialTeamName: _currentSelectedTeamName,
+      onFixedScheduleAdded: (item) async {
+        await StorageService.saveFixedSchedules(
+          widget.username,
+          [item],
+        );
+        if (mounted) {
+          _scheduleRevision.value++;
+          _timelineRevision.value++;
+          await _loadAllData(
+            deferred: true,
+            domains: const {DataRefreshDomain.fixedSchedules},
           );
-          if (mounted) {
-            _scheduleRevision.value++;
-            _timelineRevision.value++;
-            await _loadAllData(
-              deferred: true,
-              domains: const {DataRefreshDomain.fixedSchedules},
-            );
-          }
-        },
-        onTodoAdded: (todo) async {
-          final allTodos = await StorageService.getTodos(widget.username);
-          allTodos.add(todo);
-          await StorageService.saveTodos(widget.username, allTodos);
-          if (todo.teamUuid != null) {
-            PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid!);
-          }
-          await _saveTodosToSharedFile(allTodos);
-          FloatWindowService.triggerReminderCheck();
-          FloatWindowService.invalidateSlotCache();
-          _syncTodoNotification();
-          _rescheduleAlarms();
-          await WidgetService.updateTodoWidget(allTodos);
-          if (mounted) {
-            await _loadAllData(
-              deferred: true,
-              domains: const {DataRefreshDomain.todos},
-            );
-          }
-        },
-        onTodosBatchAdded: (todos) async {
-          final allTodos = await StorageService.getTodos(widget.username);
-          allTodos.addAll(todos);
-          await StorageService.saveTodos(widget.username, allTodos);
-          final updatedTeamUuid = todos
-              .firstWhere((t) => t.teamUuid != null, orElse: () => todos.first)
-              .teamUuid;
-          if (updatedTeamUuid != null) {
-            PomodoroSyncService.instance.sendTeamUpdateSignal(updatedTeamUuid);
-          }
-          await _saveTodosToSharedFile(allTodos);
-          FloatWindowService.triggerReminderCheck();
-          FloatWindowService.invalidateSlotCache();
-          _syncTodoNotification();
-          _rescheduleAlarms();
-          await WidgetService.updateTodoWidget(allTodos);
-          if (mounted) {
-            await _loadAllData(
-              deferred: true,
-              domains: const {DataRefreshDomain.todos},
-            );
-          }
-        },
-        onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
-          Navigator.pop(context);
-          _navigateToTodoConfirm(
-              results, imagePath, originalText, tUuid, tName);
-        },
-      ),
-      sourceKey: sourceKey,
-      sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
+        }
+      },
+      onTodoAdded: (todo) async {
+        final allTodos = await StorageService.getTodos(widget.username);
+        allTodos.add(todo);
+        await StorageService.saveTodos(widget.username, allTodos);
+        if (todo.teamUuid != null) {
+          PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid!);
+        }
+        await _saveTodosToSharedFile(allTodos);
+        FloatWindowService.triggerReminderCheck();
+        FloatWindowService.invalidateSlotCache();
+        _syncTodoNotification();
+        _rescheduleAlarms();
+        await WidgetService.updateTodoWidget(allTodos);
+        if (mounted) {
+          await _loadAllData(
+            deferred: true,
+            domains: const {DataRefreshDomain.todos},
+          );
+        }
+      },
+      onTodosBatchAdded: (todos) async {
+        final allTodos = await StorageService.getTodos(widget.username);
+        allTodos.addAll(todos);
+        await StorageService.saveTodos(widget.username, allTodos);
+        final updatedTeamUuid = todos
+            .firstWhere((t) => t.teamUuid != null, orElse: () => todos.first)
+            .teamUuid;
+        if (updatedTeamUuid != null) {
+          PomodoroSyncService.instance.sendTeamUpdateSignal(updatedTeamUuid);
+        }
+        await _saveTodosToSharedFile(allTodos);
+        FloatWindowService.triggerReminderCheck();
+        FloatWindowService.invalidateSlotCache();
+        _syncTodoNotification();
+        _rescheduleAlarms();
+        await WidgetService.updateTodoWidget(allTodos);
+        if (mounted) {
+          await _loadAllData(
+            deferred: true,
+            domains: const {DataRefreshDomain.todos},
+          );
+        }
+      },
+      onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
+        Navigator.pop(context);
+        _navigateToTodoConfirm(results, imagePath, originalText, tUuid, tName);
+      },
     );
+    if (sourceKey == null) {
+      await Navigator.of(context).push(PageTransitions.slideHorizontal(page));
+    } else {
+      await PageTransitions.pushFromRect(
+        context: context,
+        page: page,
+        sourceKey: sourceKey,
+        sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
+      );
+    }
   }
 
   Future<void> _openHomeAddCountdown() {
