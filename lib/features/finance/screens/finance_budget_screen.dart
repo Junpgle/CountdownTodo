@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
+import '../widgets/finance_management_widgets.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'finance_budget_entry_screen.dart';
 
@@ -178,9 +179,8 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
               ? _buildError(colorScheme)
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                  child: FinancePageList(
+                    bottomPadding: 112,
                     children: [
                       _buildMonthBar(colorScheme),
                       const SizedBox(height: 8),
@@ -209,11 +209,13 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                       if (_budgets.isEmpty)
                         _buildEmptyState(colorScheme)
                       else
-                        for (final budget in _budgets)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: _buildBudgetCard(budget, colorScheme),
-                          ),
+                        FinanceAdaptiveFields(
+                          minChildWidth: 330,
+                          children: [
+                            for (final budget in _budgets)
+                              _buildBudgetCard(budget, colorScheme)
+                          ],
+                        ),
                       if (_budgets.isNotEmpty && _overallBudget == null)
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
@@ -255,9 +257,12 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    '${_month.year} 年 ${_month.month} 月',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  Flexible(
+                    child: Text(
+                      '${_month.year} 年 ${_month.month} 月',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ),
                   const SizedBox(width: 4),
                   Icon(Icons.expand_more,
@@ -294,109 +299,55 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     final isOver = remaining < 0;
     final title = overall == null ? '分类预算合计' : '本月总预算';
     final subtitle = overall == null ? '只汇总已设置分类的预算' : '所有支出按本月账单计算';
-    return Card(
+    final foreground =
+        isOver ? colorScheme.onErrorContainer : colorScheme.onPrimaryContainer;
+    return FinanceSectionCard(
       color: isOver ? colorScheme.errorContainer : colorScheme.primaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          color: isOver
-                              ? colorScheme.onErrorContainer
-                              : colorScheme.onPrimaryContainer,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: (isOver
-                                  ? colorScheme.onErrorContainer
-                                  : colorScheme.onPrimaryContainer)
-                              .withValues(alpha: 0.72),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (overall != null && categoryBudgets.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 12),
-                    child: Text(
-                      '分类独立统计',
-                      style: TextStyle(
-                        color: (isOver
-                                ? colorScheme.onErrorContainer
-                                : colorScheme.onPrimaryContainer)
-                            .withValues(alpha: 0.72),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              formatFinanceAmount(budgetTotal),
-              style: TextStyle(
-                color: isOver
-                    ? colorScheme.onErrorContainer
-                    : colorScheme.onPrimaryContainer,
-                fontSize: 30,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              isOver
-                  ? '已超支 ${formatFinanceAmount(-remaining, withSymbol: true)}'
-                  : '剩余 ${formatFinanceAmount(remaining)}',
-              style: TextStyle(
-                color: isOver
-                    ? colorScheme.onErrorContainer
-                    : colorScheme.onPrimaryContainer,
-              ),
-            ),
-            const SizedBox(height: 14),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                minHeight: 9,
-                value: progress,
-                backgroundColor: (isOver
-                        ? colorScheme.onErrorContainer
-                        : colorScheme.onPrimaryContainer)
-                    .withValues(alpha: 0.18),
-                color: isOver
-                    ? colorScheme.onErrorContainer
-                    : colorScheme.onPrimaryContainer,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '已使用 ${formatFinanceAmount(used)} / ${formatFinanceAmount(budgetTotal)}',
-              style: TextStyle(
-                color: (isOver
-                        ? colorScheme.onErrorContainer
-                        : colorScheme.onPrimaryContainer)
-                    .withValues(alpha: 0.78),
-                fontSize: 12,
-              ),
-            ),
-          ],
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title,
+            style: TextStyle(color: foreground, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
+        Text(subtitle,
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: foreground.withValues(alpha: 0.75))),
+        const SizedBox(height: 16),
+        Text(formatFinanceAmount(budgetTotal),
+            style: Theme.of(context)
+                .textTheme
+                .headlineLarge
+                ?.copyWith(color: foreground, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        Text(
+            isOver
+                ? '已超支 ${formatFinanceAmount(-remaining)}'
+                : '剩余 ${formatFinanceAmount(remaining)}',
+            style: TextStyle(color: foreground)),
+        const SizedBox(height: 20),
+        LinearProgressIndicator(
+          value: progress,
+          minHeight: 8,
+          borderRadius: BorderRadius.circular(8),
+          color: foreground,
+          backgroundColor: foreground.withValues(alpha: 0.14),
         ),
-      ),
+        const SizedBox(height: 10),
+        Text(
+            '已使用 ${formatFinanceAmount(used)} / ${formatFinanceAmount(budgetTotal)}',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: foreground.withValues(alpha: 0.8))),
+        if (overall != null && categoryBudgets.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text('分类预算独立统计，不叠加到总预算。',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: foreground.withValues(alpha: 0.75))),
+        ],
+      ]),
     );
   }
 
@@ -411,111 +362,89 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         ? 0.0
         : (used / budget.amountMinor).clamp(0.0, 1.0).toDouble();
     final progressColor = isOver ? colorScheme.error : colorScheme.primary;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 8, 12),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Text(_budgetIcon(budget), style: const TextStyle(fontSize: 22)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _budgetTitle(budget),
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  onSelected: (value) {
-                    if (value == 'edit') _openEditor(budget);
-                    if (value == 'delete') _deleteBudget(budget);
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(value: 'edit', child: Text('编辑')),
-                    PopupMenuItem(value: 'delete', child: Text('删除')),
-                  ],
-                ),
-              ],
-            ),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '已用 ${formatFinanceAmount(used)}',
-                    style: TextStyle(color: colorScheme.onSurfaceVariant),
-                  ),
-                ),
-                Text(
-                  '预算 ${formatFinanceAmount(budget.amountMinor)}',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                minHeight: 8,
-                value: progress,
-                backgroundColor: colorScheme.surfaceContainerHighest,
-                color: progressColor,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    budget.note ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: colorScheme.onSurfaceVariant,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-                Text(
-                  isOver
-                      ? '超支 ${formatFinanceAmount(-remaining)}'
-                      : '剩余 ${formatFinanceAmount(remaining)}',
-                  style: TextStyle(
-                    color: isOver ? colorScheme.error : colorScheme.primary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ],
+    return FinanceSectionCard(
+      key: ValueKey('finance-budget-card-${budget.uuid}'),
+      onTap: () => _openEditor(budget),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          SizedBox.square(
+              dimension: 36,
+              child: FittedBox(
+                  child: Text(_budgetIcon(budget),
+                      textScaler: TextScaler.noScaling))),
+          const SizedBox(width: 12),
+          Expanded(
+              child: Text(_budgetTitle(budget),
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700))),
+          PopupMenuButton<String>(
+            tooltip: '${_budgetTitle(budget)}预算的更多操作',
+            onSelected: (value) {
+              if (value == 'edit') _openEditor(budget);
+              if (value == 'delete') _deleteBudget(budget);
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'edit', child: Text('编辑')),
+              PopupMenuItem(value: 'delete', child: Text('移入回收站')),
+            ],
+          ),
+        ]),
+        const SizedBox(height: 16),
+        FinanceAdaptiveFields(minChildWidth: 150, children: [
+          _budgetMetric('已使用', used),
+          _budgetMetric('预算额度', budget.amountMinor),
+        ]),
+        const SizedBox(height: 18),
+        LinearProgressIndicator(
+          value: progress,
+          minHeight: 7,
+          borderRadius: BorderRadius.circular(8),
+          backgroundColor: colorScheme.surfaceContainerHighest,
+          color: progressColor,
         ),
-      ),
+        const SizedBox(height: 12),
+        FinanceStatusBadge(
+          label: isOver
+              ? '超支 ${formatFinanceAmount(-remaining)}'
+              : '剩余 ${formatFinanceAmount(remaining)}',
+          isError: isOver,
+          highlighted: !isOver,
+        ),
+        if (budget.note?.isNotEmpty == true) ...[
+          const SizedBox(height: 10),
+          Text(budget.note!,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: colorScheme.onSurfaceVariant)),
+        ],
+      ]),
     );
   }
 
+  Widget _budgetMetric(String label, int amount) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant)),
+      const SizedBox(height: 4),
+      Text(formatFinanceAmount(amount),
+          style: Theme.of(context)
+              .textTheme
+              .titleMedium
+              ?.copyWith(fontWeight: FontWeight.w700)),
+    ]);
+  }
+
   Widget _buildEmptyState(ColorScheme colorScheme) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Icon(Icons.track_changes_outlined,
-                size: 48, color: colorScheme.onSurfaceVariant),
-            const SizedBox(height: 12),
-            Text(
-              '本月还没有预算',
-              style: TextStyle(color: colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.tonalIcon(
-              onPressed: () => _openEditor(),
-              icon: const Icon(Icons.add),
-              label: const Text('添加预算'),
-            ),
-          ],
-        ),
-      ),
+    return FinanceEmptyState(
+      icon: Icons.track_changes_outlined,
+      title: '本月还没有预算',
+      description: '设置总预算或分类额度，随时了解还能花多少。',
+      actionLabel: '添加预算',
+      onAction: () => _openEditor(),
     );
   }
 

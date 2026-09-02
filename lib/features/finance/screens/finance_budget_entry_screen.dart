@@ -1,9 +1,9 @@
 import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
+import '../widgets/finance_management_widgets.dart';
 
 class FinanceBudgetEntryScreen extends StatefulWidget {
   final DateTime month;
@@ -30,6 +30,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
   List<FinanceCategory> _categories = const [];
   String _scopeValue = _overallValue;
   bool _isLoading = true;
+  String? _loadError;
   bool _isSaving = false;
 
   bool get _isEditing => widget.budget != null;
@@ -58,6 +59,10 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
   }
 
   Future<void> _loadCategories() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       final categories = await FinanceRepository.getCategories(
         type: FinanceCategoryType.expense,
@@ -70,8 +75,10 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
       });
     } catch (error) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
-      _showError('加载支出分类失败：$error');
+      setState(() {
+        _isLoading = false;
+        _loadError = error.toString();
+      });
     }
   }
 
@@ -98,7 +105,8 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
       for (final category in _visibleCategories)
         DropdownMenuItem(
           value: category.uuid,
-          child: Text('${category.icon}  ${category.name}'),
+          child: Text('${category.icon}  ${category.name}',
+              overflow: TextOverflow.ellipsis),
         ),
     ];
     if (_scopeValue != _overallValue &&
@@ -114,7 +122,8 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_isSaving || _isLoading || !_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
     final amount = parseFinanceAmount(_amountController.text);
     if (amount == null) {
       _showError('请输入大于 0 且不超过两位小数的预算');
@@ -161,117 +170,87 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: FloatingGlassAppBar(
-        flexibleSpace: const FloatingGlassTopBarBackground(),
-        title: Text(_isEditing ? '编辑预算' : '新增预算'),
-        actions: [
-          TextButton(
-            onPressed: _isSaving || _isLoading ? null : _save,
-            child: const Text('保存'),
-          ),
-        ],
+    return PopScope(
+      canPop: !_isSaving,
+      child: Scaffold(
+        appBar: FloatingGlassAppBar(
+          flexibleSpace: const FloatingGlassTopBarBackground(),
+          title: Text(_isEditing ? '编辑预算' : '新增预算'),
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+                ? FinancePageList(children: [
+                    FinanceEmptyState(
+                      icon: Icons.error_outline_rounded,
+                      title: '预算分类加载失败',
+                      description: '请重新加载后再设置预算。',
+                      actionLabel: '重试',
+                      onAction: _loadCategories,
+                    ),
+                  ])
+                : Column(children: [
+                    Expanded(
+                      child: AbsorbPointer(
+                        absorbing: _isSaving,
+                        child: Form(
+                          key: _formKey,
+                          child: FinancePageList(
+                            maxWidth: 720,
+                            children: [
+                              FinanceSectionCard(
+                                title:
+                                    '${widget.month.year} 年 ${widget.month.month} 月',
+                                description: '预算按这个月份的账单统计。',
+                                icon: Icons.calendar_month_outlined,
+                                child: FinanceAmountField(
+                                  key: const ValueKey('finance-budget-amount'),
+                                  controller: _amountController,
+                                  label: '预算金额',
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              FinanceSectionCard(
+                                title: '预算范围',
+                                icon: Icons.track_changes_outlined,
+                                description: '总预算覆盖全部支出；分类预算独立统计。',
+                                child: DropdownButtonFormField<String>(
+                                  key: ValueKey(
+                                      'finance-budget-scope-$_scopeValue'),
+                                  initialValue: _scopeValue,
+                                  isExpanded: true,
+                                  decoration: financeFieldDecoration(context,
+                                      label: '选择支出范围'),
+                                  items: _scopeItems,
+                                  onChanged: (value) {
+                                    if (value != null) {
+                                      setState(() => _scopeValue = value);
+                                    }
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              FinanceSectionCard(
+                                title: '留个备注',
+                                icon: Icons.notes_outlined,
+                                child: TextFormField(
+                                  controller: _noteController,
+                                  decoration: financeFieldDecoration(context,
+                                      label: '备注（可选）', hint: '例如：本月减少外卖，多做饭'),
+                                  maxLength: 120,
+                                  minLines: 2,
+                                  maxLines: 4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    FinanceFormActions(
+                        isSaving: _isSaving, onSave: _save, label: '保存预算'),
+                  ]),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                children: [
-                  Card(
-                    color: colorScheme.secondaryContainer,
-                    child: ListTile(
-                      leading: Icon(
-                        Icons.calendar_month_outlined,
-                        color: colorScheme.onSecondaryContainer,
-                      ),
-                      title: Text(
-                        '${widget.month.year} 年 ${widget.month.month} 月',
-                        style: TextStyle(
-                          color: colorScheme.onSecondaryContainer,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      subtitle: Text(
-                        '预算只对这个月份的本地账单生效',
-                        style: TextStyle(
-                          color: colorScheme.onSecondaryContainer
-                              .withValues(alpha: 0.75),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    key: ValueKey('finance-budget-scope-$_scopeValue'),
-                    initialValue: _scopeValue,
-                    decoration: const InputDecoration(
-                      labelText: '预算范围',
-                      prefixIcon: Icon(Icons.track_changes_outlined),
-                    ),
-                    items: _scopeItems,
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _scopeValue = value);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _amountController,
-                    autofocus: !_isEditing,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                    ],
-                    decoration: InputDecoration(
-                      labelText: '预算金额',
-                      prefixText: '¥ ',
-                      hintText: '0.00',
-                      prefixStyle: TextStyle(
-                        color: colorScheme.primary,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      labelStyle: TextStyle(color: colorScheme.primary),
-                    ),
-                    style: const TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    validator: (value) =>
-                        parseFinanceAmount(value ?? '') == null
-                            ? '请输入预算金额'
-                            : null,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _noteController,
-                    decoration: const InputDecoration(
-                      labelText: '备注（可选）',
-                      prefixIcon: Icon(Icons.notes_outlined),
-                    ),
-                    maxLength: 120,
-                    maxLines: 2,
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: _isSaving ? null : _save,
-                    icon: _isSaving
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.check),
-                    label: Text(_isSaving ? '保存中...' : '保存预算'),
-                  ),
-                ],
-              ),
-            ),
     );
   }
 }
