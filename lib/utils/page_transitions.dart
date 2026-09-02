@@ -147,6 +147,7 @@ class PageTransitions {
     ('WeeklyCourseScreen', Icons.calendar_month_rounded),
     ('CourseScreensGrid', Icons.calendar_month_rounded),
     ('CourseDetailScreen', Icons.calendar_month_rounded),
+    ('DeviceCalendarEventDetailScreen', Icons.phone_android_rounded),
     ('CourseSettingsPage', Icons.calendar_month_rounded),
     ('FixedScheduleEditorScreen', Icons.calendar_month_rounded),
     // ── 待办 ──

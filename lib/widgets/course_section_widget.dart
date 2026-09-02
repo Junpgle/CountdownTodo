@@ -289,6 +289,12 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     final todayStart = DateTime(now.year, now.month, now.day);
     final tomorrowStart = todayStart.add(const Duration(days: 1));
     final afterTomorrowStart = tomorrowStart.add(const Duration(days: 1));
+    // Read one shared current-week window when the app first needs calendar
+    // data. The week view then reuses the same in-memory range instead of
+    // starting another provider query after the user leaves the homepage.
+    final calendarWeekStart =
+        todayStart.subtract(Duration(days: todayStart.weekday - 1));
+    final calendarWeekEnd = calendarWeekStart.add(const Duration(days: 7));
     final results = await Future.wait([
       StorageService.getPlanBlocksByDay(widget.username, now),
       StorageService.getPlanBlocksByDay(
@@ -302,8 +308,8 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       ),
       CourseService.getAllCourses(widget.username),
       DeviceCalendarReadService.readEvents(
-        start: todayStart,
-        end: afterTomorrowStart,
+        start: calendarWeekStart,
+        end: calendarWeekEnd,
       ),
     ]);
     final blocks = results[0] as List<TodoPlanBlock>;
@@ -577,6 +583,12 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       return _DeviceCalendarCompactCard(
         event: deviceEvent,
         isLight: widget.isLight,
+        onTap: (cardKey) => PageTransitions.pushFromRect(
+          context: context,
+          page: DeviceCalendarEventDetailScreen(event: deviceEvent),
+          sourceKey: cardKey,
+          sourceBorderRadius: const BorderRadius.all(Radius.circular(14)),
+        ),
       );
     }
     return _PlanCompactCard(
@@ -715,100 +727,122 @@ class _TodayScheduleSkeleton extends StatelessWidget {
   }
 }
 
-class _DeviceCalendarCompactCard extends StatelessWidget {
+class _DeviceCalendarCompactCard extends StatefulWidget {
   const _DeviceCalendarCompactCard({
     required this.event,
     required this.isLight,
+    required this.onTap,
   });
 
   final DeviceCalendarEvent event;
   final bool isLight;
+  final void Function(GlobalKey cardKey) onTap;
+
+  @override
+  State<_DeviceCalendarCompactCard> createState() =>
+      _DeviceCalendarCompactCardState();
+}
+
+class _DeviceCalendarCompactCardState
+    extends State<_DeviceCalendarCompactCard> {
+  late final GlobalKey _cardKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final accent =
-        event.colorValue == null ? colors.tertiary : Color(event.colorValue!);
-    final time = event.allDay
+    final accent = widget.event.colorValue == null
+        ? colors.tertiary
+        : Color(widget.event.colorValue!);
+    final time = widget.event.allDay
         ? '全天'
-        : '${DateFormat('HH:mm').format(event.start)}–${DateFormat('HH:mm').format(event.end)}';
+        : '${DateFormat('HH:mm').format(widget.event.start)}–${DateFormat('HH:mm').format(widget.event.end)}';
     return OptionalLiquidGlassCard(
+      key: _cardKey,
       margin: const EdgeInsets.only(bottom: 6),
       borderRadius: 14,
       tint: accent.withValues(alpha: 0.14),
       fallbackDecoration: BoxDecoration(
-        color: colors.surface.withValues(alpha: isLight ? 0.97 : 0.75),
+        color: colors.surface.withValues(alpha: widget.isLight ? 0.97 : 0.75),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: accent.withValues(alpha: 0.22)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          children: [
-            Container(
-              width: 3,
-              height: 38,
-              margin: const EdgeInsets.only(right: 10),
-              decoration: BoxDecoration(
-                color: accent,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            SizedBox(
-              width: 76,
-              child: Text(
-                time,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  color: accent,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => widget.onTap(_cardKey),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 3,
+                  height: 38,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: accent,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
+                SizedBox(
+                  width: 76,
+                  child: Text(
+                    time,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: accent,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.phone_android_rounded,
-                          size: 14, color: accent),
-                      const SizedBox(width: 5),
-                      Expanded(
-                        child: Text(
-                          event.title,
+                      Row(
+                        children: [
+                          Icon(Icons.phone_android_rounded,
+                              size: 14, color: accent),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              widget.event.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w600,
+                                color: colors.onSurface,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (widget.event.location != null) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          widget.event.location!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.w600,
-                            color: colors.onSurface,
-                          ),
+                              fontSize: 11, color: colors.onSurfaceVariant),
                         ),
-                      ),
+                      ],
                     ],
                   ),
-                  if (event.location != null) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      event.location!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 11, color: colors.onSurfaceVariant),
-                    ),
-                  ],
-                ],
-              ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '手机日历',
+                  style:
+                      TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+                ),
+              ],
             ),
-            const SizedBox(width: 4),
-            Text(
-              '手机日历',
-              style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
-            ),
-          ],
+          ),
         ),
       ),
     );

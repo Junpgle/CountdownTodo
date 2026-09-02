@@ -71,6 +71,113 @@ class CourseDetailScreen extends StatelessWidget {
   }
 }
 
+/// 手机上的系统日历事件只借用应用的详情展示，不会被转换为本地待办。
+///
+/// Keeping this as an [AppDetailScreen] rather than a dedicated bottom sheet
+/// makes its hierarchy, glass treatment and page transition match courses and
+/// todos while preserving the read-only boundary of the platform calendar.
+class DeviceCalendarEventDetailScreen extends StatelessWidget {
+  const DeviceCalendarEventDetailScreen({super.key, required this.event});
+
+  final DeviceCalendarEvent event;
+
+  String _dateLabel(DateTime value) => DateFormat('yyyy年M月d日').format(value);
+
+  DateTime get _allDayEndDate {
+    // Android and EventKit expose all-day end times as the following midnight.
+    // Show the inclusive final day to people, without mutating the source data.
+    final end = event.end;
+    if (end.hour == 0 && end.minute == 0 && end.second == 0) {
+      return end.subtract(const Duration(days: 1));
+    }
+    return end;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final accent =
+        event.colorValue == null ? colors.tertiary : Color(event.colorValue!);
+    final isSingleDay = event.allDay
+        ? DateUtils.isSameDay(event.start, _allDayEndDate)
+        : DateUtils.isSameDay(event.start, event.end);
+    final dateValue = isSingleDay
+        ? _dateLabel(event.start)
+        : '${_dateLabel(event.start)} – ${_dateLabel(event.allDay ? _allDayEndDate : event.end)}';
+    final startValue =
+        event.allDay ? '全天' : DateFormat('HH:mm').format(event.start);
+    final endValue =
+        event.allDay ? '全天' : DateFormat('HH:mm').format(event.end);
+
+    return AppDetailScreen(
+      appBarTitle: '日程详情',
+      icon: Icons.phone_android_rounded,
+      title: event.title,
+      headerSubtitle: '手机日历 · 只读',
+      color: accent,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      scrollPhysics: const BouncingScrollPhysics(),
+      sections: [
+        AppDetailSection(
+          title: '日程信息',
+          children: [
+            AppDetailWideCard(
+              icon: Icons.calendar_today_rounded,
+              title: '日期',
+              value: dateValue,
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: AppDetailInfoCard(
+                      icon: Icons.play_arrow_rounded,
+                      title: event.allDay ? '开始' : '开始时间',
+                      value: startValue,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Icon(
+                      Icons.arrow_forward_rounded,
+                      color: colors.onSurfaceVariant,
+                      size: 20,
+                    ),
+                  ),
+                  Expanded(
+                    child: AppDetailInfoCard(
+                      icon: Icons.stop_rounded,
+                      title: event.allDay ? '结束' : '结束时间',
+                      value: endValue,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (event.location?.isNotEmpty == true)
+              AppDetailWideCard(
+                icon: Icons.location_on_rounded,
+                title: '地点',
+                value: event.location!,
+              ),
+          ],
+        ),
+        AppDetailSection(
+          title: '本机日历',
+          children: const [
+            AppDetailWideCard(
+              icon: Icons.lock_outline_rounded,
+              title: '仅展示',
+              value: '此日程不会写入、导入为待办或参与同步。',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class TodoDetailScreen extends StatefulWidget {
   final TodoItem todo;
   const TodoDetailScreen({super.key, required this.todo});

@@ -11,7 +11,10 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     if (!mounted) return;
     setState(() {
       _currentWeek = newWeek;
-      _isLoading = true;
+      // Keep the old grid in the AnimatedSwitcher instead of replacing it
+      // with a skeleton while the optional device-calendar query resolves.
+      _deviceCalendarEvents = [];
+      _updateWeekDeviceCalendarEvents();
     });
 
     // 🚀 核心优化：根据周次自动判断学期，然后过滤课程
@@ -21,10 +24,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     await _loadDeviceCalendarEventsForCurrentWeek();
     if (!mounted || _currentWeek != newWeek) return;
     _checkCollapsedSlots();
-
-    if (mounted) {
-      setState(() => _isLoading = false);
-    }
+    _courseExpandCtrl.forward(from: 0);
+    if (mounted) setState(() {});
   }
 
   void _toggleViewMode(int mode) {

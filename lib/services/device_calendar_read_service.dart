@@ -99,11 +99,22 @@ class DeviceCalendarReadService {
   static const String _enabledKey = 'device_calendar_read_enabled';
   static const String _guideOfferedKey = 'device_calendar_read_guide_offered';
 
+  // Calendar provider queries are relatively expensive on some Android
+  // devices. Keep each foreground range in process memory only: returning to
+  // the homepage or rebuilding a card must not query the provider again.
+  static final List<_DeviceCalendarReadRange> _sessionReadRanges = [];
+  static final Map<String, Future<List<DeviceCalendarEvent>>> _inFlightReads =
+      {};
+
+  @visibleForTesting
+  static bool? debugIsSupportedOverride;
+
   /// Lets foreground presentation widgets reload after the local toggle is
   /// changed. It is not a data-sync signal and has no persistence payload.
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
-  static bool get isSupported => AppPlatform.isAndroid || AppPlatform.isIOS;
+  static bool get isSupported =>
+      debugIsSupportedOverride ?? (AppPlatform.isAndroid || AppPlatform.isIOS);
 
   static Future<bool> isEnabled() async {
     if (!isSupported) return false;
@@ -114,7 +125,16 @@ class DeviceCalendarReadService {
   static Future<void> setEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_enabledKey, enabled);
+    _clearSessionReadCache();
     revision.value++;
+  }
+
+  @visibleForTesting
+  static void clearSessionReadCacheForTesting() => _clearSessionReadCache();
+
+  static void _clearSessionReadCache() {
+    _sessionReadRanges.clear();
+    _inFlightReads.clear();
   }
 
   /// The optional calendar toggle is offered once in the version guide.
@@ -163,6 +183,28 @@ class DeviceCalendarReadService {
     if (!end.isAfter(start) || !await isEnabled() || !await checkPermission()) {
       return const [];
     }
+    final cached =
+        _sessionReadRanges.where((range) => range.covers(start, end));
+    if (cached.isNotEmpty) return cached.first.eventsFor(start, end);
+
+    final rangeKey =
+        '${start.millisecondsSinceEpoch}:${end.millisecondsSinceEpoch}';
+    final pending = _inFlightReads.putIfAbsent(
+      rangeKey,
+      () => _readAndCacheRange(start: start, end: end),
+    );
+    try {
+      final events = await pending;
+      return events.where((event) => event.overlaps(start, end)).toList();
+    } finally {
+      _inFlightReads.remove(rangeKey);
+    }
+  }
+
+  static Future<List<DeviceCalendarEvent>> _readAndCacheRange({
+    required DateTime start,
+    required DateTime end,
+  }) async {
     final raw = await _channel.invokeMethod<List<dynamic>>(
           'readEvents',
           {
@@ -177,6 +219,30 @@ class DeviceCalendarReadService {
         .where((event) => event.id.isNotEmpty && event.overlaps(start, end))
         .toList()
       ..sort((a, b) => a.start.compareTo(b.start));
+    _sessionReadRanges.add(
+      _DeviceCalendarReadRange(start: start, end: end, events: events),
+    );
     return events;
   }
+}
+
+class _DeviceCalendarReadRange {
+  const _DeviceCalendarReadRange({
+    required this.start,
+    required this.end,
+    required this.events,
+  });
+
+  final DateTime start;
+  final DateTime end;
+  final List<DeviceCalendarEvent> events;
+
+  bool covers(DateTime requestedStart, DateTime requestedEnd) =>
+      !requestedStart.isBefore(start) && !requestedEnd.isAfter(end);
+
+  List<DeviceCalendarEvent> eventsFor(
+          DateTime requestedStart, DateTime requestedEnd) =>
+      events
+          .where((event) => event.overlaps(requestedStart, requestedEnd))
+          .toList();
 }

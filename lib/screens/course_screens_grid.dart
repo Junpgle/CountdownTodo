@@ -156,13 +156,29 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                           ? Theme.of(ctx).colorScheme.tertiary
                           : Color(event.colorValue!)),
                   title: Text(event.title),
-                  subtitle:
-                      event.location == null ? null : Text(event.location!),
+                  subtitle: Text(event.location?.isNotEmpty == true
+                      ? event.location!
+                      : '全天 · 手机日历（只读）'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showDeviceCalendarEventDetail(context, event);
+                  },
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showDeviceCalendarEventDetail(
+    BuildContext context,
+    DeviceCalendarEvent event,
+  ) {
+    Navigator.of(context).push(
+      PageTransitions.slideHorizontal(
+        DeviceCalendarEventDetailScreen(event: event),
       ),
     );
   }
@@ -199,9 +215,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           }
 
           String text;
-          if (dayTodos.isNotEmpty && deviceEvents.isNotEmpty) {
-            text = '${dayTodos.length + deviceEvents.length}项全天日程';
-          } else if (deviceEvents.isNotEmpty) {
+          if (deviceEvents.isNotEmpty) {
             text = deviceEvents.length == 1
                 ? deviceEvents.first.title
                 : '${deviceEvents.length}项手机日历';
@@ -212,20 +226,21 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           }
           bool allDone = dayTodos.every((t) => t.isDone);
           final colorScheme = Theme.of(context).colorScheme;
-          final todoColor = deviceEvents.isNotEmpty && dayTodos.isEmpty
+          final todoColor = deviceEvents.isNotEmpty
               ? (deviceEvents.first.colorValue == null
                   ? colorScheme.tertiary
                   : Color(deviceEvents.first.colorValue!))
               : (allDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning);
-          final onTodoColor =
-              allDone ? colorScheme.onTertiary : colorScheme.onSecondary;
+          final onTodoColor = deviceEvents.isNotEmpty
+              ? _colorForAllDayDeviceEvent(context, deviceEvents.first)
+              : (allDone ? colorScheme.onTertiary : colorScheme.onSecondary);
 
           return Expanded(
             child: GestureDetector(
               onTap: () {
                 DateTime currentDay = monday.add(Duration(days: index));
                 String dateStr = DateFormat('MM-dd').format(currentDay);
-                if (deviceEvents.isNotEmpty && dayTodos.isEmpty) {
+                if (deviceEvents.isNotEmpty) {
                   _showAllDayDeviceCalendarEvents(
                       context, deviceEvents, dateStr);
                 } else {
@@ -236,14 +251,17 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
                 padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
                 decoration: BoxDecoration(
-                  color: todoColor.withValues(alpha: allDone ? 0.5 : 0.85),
+                  color: todoColor.withValues(
+                    alpha:
+                        deviceEvents.isNotEmpty ? 0.92 : (allDone ? 0.5 : 0.85),
+                  ),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (deviceEvents.isNotEmpty && dayTodos.isEmpty)
+                    if (deviceEvents.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(right: 2),
                         child: Icon(Icons.phone_android_rounded,
@@ -276,6 +294,16 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         }),
       ),
     );
+  }
+
+  Color _colorForAllDayDeviceEvent(
+      BuildContext context, DeviceCalendarEvent event) {
+    final background = event.colorValue == null
+        ? Theme.of(context).colorScheme.tertiary
+        : Color(event.colorValue!);
+    return ThemeData.estimateBrightnessForColor(background) == Brightness.dark
+        ? Colors.white
+        : Colors.black87;
   }
 
   bool _timeRangesOverlap(
@@ -1447,43 +1475,46 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   left: left,
                   width: width,
                   height: height,
-                  child: Container(
-                    alignment: Alignment.center,
-                    clipBehavior: Clip.hardEdge,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.45),
-                        width: 0.5,
+                  child: GestureDetector(
+                    onTap: () => _showDeviceCalendarEventDetail(context, event),
+                    child: Container(
+                      alignment: Alignment.center,
+                      clipBehavior: Clip.hardEdge,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 2, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.45),
+                          width: 0.5,
+                        ),
                       ),
-                    ),
-                    child: height < 28
-                        ? const Icon(Icons.phone_android_rounded,
-                            size: 9, color: Colors.white)
-                        : Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              if (height >= 40)
-                                const Icon(Icons.phone_android_rounded,
-                                    size: 9, color: Colors.white),
-                              if (height >= 40) const SizedBox(height: 2),
-                              Text(
-                                event.title,
-                                maxLines: height >= 52 ? 2 : 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: titleSize,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1.0,
+                      child: height < 28
+                          ? const Icon(Icons.phone_android_rounded,
+                              size: 9, color: Colors.white)
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                if (height >= 40)
+                                  const Icon(Icons.phone_android_rounded,
+                                      size: 9, color: Colors.white),
+                                if (height >= 40) const SizedBox(height: 2),
+                                Text(
+                                  event.title,
+                                  maxLines: height >= 52 ? 2 : 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: titleSize,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.0,
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
+                              ],
+                            ),
+                    ),
                   ),
                 );
               },
