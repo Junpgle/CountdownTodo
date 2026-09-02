@@ -5,6 +5,7 @@ import android.app.*
 import android.app.usage.UsageStatsManager
 import android.appwidget.AppWidgetManager
 import android.content.BroadcastReceiver
+import android.content.ContentUris
 import android.content.ComponentName
 import android.content.Context
 import android.content.ContentValues
@@ -66,8 +67,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val BAND_CHANNEL = "com.math_quiz_app/band_communication"
     private val BACKGROUND_NOTIFICATION_CHANNEL = "com.math_quiz_app/background_notifications"
     private val APP_UPDATE_CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/app_update"
+    private val DEVICE_CALENDAR_READ_CHANNEL = "countdown_todo/device_calendar_read"
     private val CALENDAR_PERMISSION_REQUEST = 2407
     private val LOCAL_NETWORK_PERMISSION_REQUEST = 2408
+    private val CALENDAR_READ_PERMISSION_REQUEST = 2409
     private val ACCESS_LOCAL_NETWORK_PERMISSION = "android.permission.ACCESS_LOCAL_NETWORK"
     private val CALENDAR_APP_MARKER = "CountDownTodo"
     private val CALENDAR_EXT_NAME = "countdowntodo_source"
@@ -268,6 +271,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private var pendingPlanBlockId: String? = null
     private var pendingPlanBlockTodoId: String? = null
     private val pendingCalendarPermissionResults = mutableListOf<MethodChannel.Result>()
+    private val pendingCalendarReadPermissionResults = mutableListOf<MethodChannel.Result>()
     private val pendingLocalNetworkPermissionResults = mutableListOf<MethodChannel.Result>()
     // 手环通信插件，全局可访问
     private var bandPlugin: BandCommunicationPlugin? = null
@@ -972,6 +976,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             val pendingResults = pendingCalendarPermissionResults.toList()
             pendingCalendarPermissionResults.clear()
             pendingResults.forEach { it.success(granted) }
+        } else if (requestCode == CALENDAR_READ_PERMISSION_REQUEST) {
+            val granted = grantResults.isNotEmpty() &&
+                grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            val pendingResults = pendingCalendarReadPermissionResults.toList()
+            pendingCalendarReadPermissionResults.clear()
+            pendingResults.forEach { it.success(granted) }
         } else if (requestCode == LOCAL_NETWORK_PERMISSION_REQUEST) {
             val granted = grantResults.isNotEmpty() &&
                 grantResults.all { it == PackageManager.PERMISSION_GRANTED }
@@ -1034,6 +1044,32 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         )
     }
 
+    // Separate from the existing calendar-export flow: presenting a system
+    // event must never request WRITE_CALENDAR.
+    private fun requestCalendarReadPermission(result: MethodChannel.Result) {
+        if (hasCalendarReadPermission()) {
+            result.success(true)
+            return
+        }
+
+        val shouldStartRequest = pendingCalendarReadPermissionResults.isEmpty()
+        pendingCalendarReadPermissionResults.add(result)
+        if (!shouldStartRequest) return
+
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.READ_CALENDAR),
+            CALENDAR_READ_PERMISSION_REQUEST
+        )
+    }
+
+    private fun hasCalendarReadPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.READ_CALENDAR
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
     private fun hasCalendarPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
             this,
@@ -1092,6 +1128,93 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     private fun findDefaultWritableCalendarId(): Long? {
         return (getWritableCalendars().firstOrNull()?.get("id") as? Number)?.toLong()
+    }
+
+    private fun getReadableCalendars(): List<Map<String, Any?>> {
+        val calendars = mutableListOf<Map<String, Any?>>()
+        val projection = arrayOf(
+            CalendarContract.Calendars._ID,
+            CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+            CalendarContract.Calendars.ACCOUNT_NAME,
+            CalendarContract.Calendars.CALENDAR_COLOR,
+            CalendarContract.Calendars.IS_PRIMARY
+        )
+        contentResolver.query(
+            CalendarContract.Calendars.CONTENT_URI,
+            projection,
+            "${CalendarContract.Calendars.VISIBLE} = 1",
+            null,
+            "${CalendarContract.Calendars.IS_PRIMARY} DESC, ${CalendarContract.Calendars._ID} ASC"
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                calendars.add(
+                    mapOf(
+                        "id" to cursor.getLong(0),
+                        "name" to (cursor.getString(1) ?: "日历"),
+                        "account" to (cursor.getString(2) ?: ""),
+                        "color" to cursor.getInt(3),
+                        "primary" to (cursor.getInt(4) == 1)
+                    )
+                )
+            }
+        }
+        return calendars
+    }
+
+    private fun readDeviceCalendarEvents(
+        startMs: Long,
+        endMs: Long
+    ): List<Map<String, Any?>> {
+        if (endMs <= startMs) return emptyList()
+        val readableIds = getReadableCalendars()
+            .mapNotNull { (it["id"] as? Number)?.toLong() }
+            .toSet()
+        if (readableIds.isEmpty()) return emptyList()
+
+        val uriBuilder = CalendarContract.Instances.CONTENT_URI.buildUpon()
+        ContentUris.appendId(uriBuilder, startMs)
+        ContentUris.appendId(uriBuilder, endMs)
+        val projection = arrayOf(
+            CalendarContract.Instances.EVENT_ID,
+            CalendarContract.Instances.CALENDAR_ID,
+            CalendarContract.Instances.TITLE,
+            CalendarContract.Instances.BEGIN,
+            CalendarContract.Instances.END,
+            CalendarContract.Instances.ALL_DAY,
+            CalendarContract.Instances.EVENT_LOCATION,
+            CalendarContract.Instances.DISPLAY_COLOR
+        )
+        val events = mutableListOf<Map<String, Any?>>()
+        contentResolver.query(
+            uriBuilder.build(),
+            projection,
+            null,
+            null,
+            "${CalendarContract.Instances.BEGIN} ASC"
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val calendarId = cursor.getLong(1)
+                if (!readableIds.contains(calendarId)) continue
+                val begin = cursor.getLong(3)
+                val end = cursor.getLong(4)
+                if (end <= begin) continue
+                val eventId = cursor.getLong(0)
+                events.add(
+                    mapOf(
+                        // One recurring EVENT_ID can represent many instances.
+                        "id" to "${eventId}_${begin}",
+                        "calendarId" to calendarId,
+                        "title" to (cursor.getString(2) ?: "未命名日程"),
+                        "startMs" to begin,
+                        "endMs" to end,
+                        "allDay" to (cursor.getInt(5) == 1),
+                        "location" to (cursor.getString(6) ?: ""),
+                        "color" to cursor.getInt(7)
+                    )
+                )
+            }
+        }
+        return events
     }
 
     private fun clearCalendarEvents(calendarId: Long?): Int {
@@ -1315,6 +1438,37 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // 赋值给全局变量
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         deepLinkChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DEEP_LINK_CHANNEL)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            DEVICE_CALENDAR_READ_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "checkPermission" -> result.success(hasCalendarReadPermission())
+                "requestPermission" -> requestCalendarReadPermission(result)
+                "getSources" -> {
+                    if (!hasCalendarReadPermission()) {
+                        result.error("NO_PERMISSION", "Calendar read permission is not granted", null)
+                    } else {
+                        result.success(getReadableCalendars())
+                    }
+                }
+                "readEvents" -> {
+                    if (!hasCalendarReadPermission()) {
+                        result.error("NO_PERMISSION", "Calendar read permission is not granted", null)
+                    } else {
+                        val args = call.arguments as? Map<*, *>
+                        val startMs = (args?.get("startMs") as? Number)?.toLong()
+                        val endMs = (args?.get("endMs") as? Number)?.toLong()
+                        if (startMs == null || endMs == null || endMs <= startMs) {
+                            result.error("INVALID_ARGS", "A valid startMs/endMs range is required", null)
+                        } else {
+                            result.success(readDeviceCalendarEvents(startMs, endMs))
+                        }
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
         deepLinkChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "getInitialDeepLink" -> {
