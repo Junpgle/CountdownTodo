@@ -7,7 +7,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     _jumpToWeek(_currentWeek + delta);
   }
 
-  void _jumpToWeek(int newWeek) {
+  Future<void> _jumpToWeek(int newWeek) async {
     if (!mounted) return;
     setState(() {
       _currentWeek = newWeek;
@@ -18,6 +18,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     _updateWeekCourses();
     _updateWeekTodos();
     _updateWeekTimeLogsPomodorosAndPlans();
+    await _loadDeviceCalendarEventsForCurrentWeek();
+    if (!mounted || _currentWeek != newWeek) return;
     _checkCollapsedSlots();
 
     if (mounted) {
@@ -537,8 +539,14 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         _activeDataViews.clear();
         _updateWeekTodos();
       } else if (value == 'selectAll') {
-        _activeDataViews
-            .addAll({'courses', 'todos', 'plans', 'timeLogs', 'pomodoros'});
+        _activeDataViews.addAll({
+          'courses',
+          'todos',
+          'plans',
+          'timeLogs',
+          'pomodoros',
+          'deviceCalendar'
+        });
         _updateWeekTodos();
       } else if (value == 'disableFreeTimeCollapse') {
         _collapseFreeTime = !_collapseFreeTime;
@@ -566,7 +574,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         'todos',
         'timeLogs',
         'plans',
-        'pomodoros'
+        'pomodoros',
+        'deviceCalendar',
       }.where(_activeDataViews.contains).length;
 
   IconData _filterIconForKey(String key) {
@@ -581,6 +590,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         return Icons.event_note_rounded;
       case 'pomodoros':
         return Icons.timer_outlined;
+      case 'deviceCalendar':
+        return Icons.phone_android_rounded;
       case 'hideCrossDay':
         return Icons.layers_clear_outlined;
       case 'disableFreeTimeCollapse':
@@ -601,6 +612,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       case 'timeLogs':
       case 'plans':
       case 'pomodoros':
+      case 'deviceCalendar':
         return colorScheme.tertiary;
       default:
         return colorScheme.primary;
@@ -611,9 +623,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     final colorScheme = Theme.of(context).colorScheme;
     final selectedCount = _selectedFilterCount;
     final width = _filterMenuWidth(context);
-    final statusLabel = selectedCount == 5
+    final statusLabel = selectedCount == 6
         ? '全部'
-        : (selectedCount == 0 ? '未选择' : '$selectedCount/5');
+        : (selectedCount == 0 ? '未选择' : '$selectedCount/6');
 
     return SizedBox(
       width: width,
@@ -650,7 +662,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '$selectedCount/5 项内容显示',
+                    '$selectedCount/6 项内容显示',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -946,6 +958,19 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         final int endMs = record.endTime ??
             (record.startTime + record.effectiveDuration * 1000);
         updateBoundsFromEpochRange(record.startTime, endMs);
+      }
+    }
+
+    // 6. 手机日历只读事件也必须参与空闲时间判断，避免把真实日程压进
+    // 被折叠的区间。事件仍只在内存中使用，不会进入同步数据。
+    if (_activeDataViews.contains('deviceCalendar')) {
+      for (final event in _deviceCalendarEvents) {
+        if (!event.allDay) {
+          updateBoundsFromEpochRange(
+            event.start.millisecondsSinceEpoch,
+            event.end.millisecondsSinceEpoch,
+          );
+        }
       }
     }
 

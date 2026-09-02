@@ -500,6 +500,15 @@ class SearchService {
       extraData: {'route': '/settings', 'target': 'migration'},
     ),
     SearchResult(
+      id: 'setting_calendar_read',
+      title: '读取手机日历',
+      subtitle: '仅本机只读展示到首页和周视图，不写入也不同步',
+      icon: Icons.phone_android_outlined,
+      type: SearchResultType.setting,
+      breadcrumb: '设置 > 数据与互联',
+      extraData: {'route': '/settings', 'target': 'calendar_read'},
+    ),
+    SearchResult(
       id: 'setting_calendar_sync',
       title: '系统日历同步 / 日历 ICS',
       subtitle: '将课程、待办和倒数日写入或导出到日历',

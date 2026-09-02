@@ -12,6 +12,9 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   // 拆分：全天/跨天待办 和 日内局部待办
   Map<int, List<TodoItem>> _allDayTodosPerDay = {};
   Map<int, List<TodoItem>> _intraDayTodosPerDay = {};
+  List<DeviceCalendarEvent> _deviceCalendarEvents = [];
+  Map<int, List<DeviceCalendarEvent>> _allDayDeviceCalendarEventsPerDay = {};
+  Map<int, List<DeviceCalendarEvent>> _timedDeviceCalendarEventsPerDay = {};
 
   bool _isLoading = true;
   DateTime? _semesterMonday;
@@ -31,7 +34,8 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
     'todos',
     'plans',
     'timeLogs',
-    'pomodoros'
+    'pomodoros',
+    'deviceCalendar',
   };
   bool _collapseFreeTime = true;
 
@@ -113,6 +117,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   void initState();
   void dispose();
   Future<void> _loadData();
+  Future<void> _loadDeviceCalendarEventsForCurrentWeek();
   void _updateWeekCourses();
   void _checkCoachMarks();
   void _groupDataForMonthView();
@@ -125,6 +130,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   TodoItem _createRecurringOccurrence(TodoItem todo, DateTime targetDay);
   List<TodoItem> _expandRecurringTodo(TodoItem todo, DateTime weekStart);
   void _updateWeekTodos();
+  void _updateWeekDeviceCalendarEvents();
   void _updateWeekTimeLogsPomodorosAndPlans();
   void _changeWeek(int delta);
   void _jumpToWeek(int newWeek);

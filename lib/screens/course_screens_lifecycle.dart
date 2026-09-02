@@ -23,6 +23,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     PowerSaveModeService.enabledListenable.addListener(_syncPowerSavePulse);
     _syncPowerSavePulse();
     _pageController = PageController(initialPage: 0);
+    DeviceCalendarReadService.revision.addListener(_reloadDeviceCalendar);
     _loadData();
   }
 
@@ -32,7 +33,16 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     _pulseController.dispose();
     _courseExpandCtrl.dispose();
     _pageController.dispose();
+    DeviceCalendarReadService.revision.removeListener(_reloadDeviceCalendar);
     super.dispose();
+  }
+
+  void _reloadDeviceCalendar() {
+    _loadDeviceCalendarEventsForCurrentWeek().then((_) {
+      if (!mounted) return;
+      _checkCollapsedSlots();
+      setState(() {});
+    });
   }
 
   void _syncPowerSavePulse() {
@@ -157,6 +167,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     }
     _updateWeekTodos();
     _updateWeekTimeLogsPomodorosAndPlans();
+    await _loadDeviceCalendarEventsForCurrentWeek();
     _checkCollapsedSlots();
 
     if (mounted) {
@@ -214,6 +225,78 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
         .where((c) =>
             c.semesterId == targetSemesterId && c.weekIndex == relativeWeek)
         .toList();
+  }
+
+  Future<void> _loadDeviceCalendarEventsForCurrentWeek() async {
+    final monday = _semesterMonday;
+    if (monday == null) {
+      _deviceCalendarEvents = [];
+      _updateWeekDeviceCalendarEvents();
+      return;
+    }
+    final requestedWeek = _currentWeek;
+    final start = monday.add(Duration(days: (requestedWeek - 1) * 7));
+    final weekStart = DateTime(start.year, start.month, start.day);
+    try {
+      final events = await DeviceCalendarReadService.readEvents(
+        start: weekStart,
+        end: weekStart.add(const Duration(days: 7)),
+      );
+      if (!mounted || _currentWeek != requestedWeek) return;
+      _deviceCalendarEvents = events;
+    } catch (_) {
+      // A provider can disappear or reject access while the page is open.
+      // Keep the app's own calendar usable and simply hide external entries.
+      if (!mounted || _currentWeek != requestedWeek) return;
+      _deviceCalendarEvents = [];
+    }
+    _updateWeekDeviceCalendarEvents();
+  }
+
+  void _updateWeekDeviceCalendarEvents() {
+    _allDayDeviceCalendarEventsPerDay = {
+      1: [],
+      2: [],
+      3: [],
+      4: [],
+      5: [],
+      6: [],
+      7: [],
+    };
+    _timedDeviceCalendarEventsPerDay = {
+      1: [],
+      2: [],
+      3: [],
+      4: [],
+      5: [],
+      6: [],
+      7: [],
+    };
+    final monday = _semesterMonday;
+    if (monday == null) return;
+    final weekStart = DateTime(
+      monday.year,
+      monday.month,
+      monday.day + (_currentWeek - 1) * 7,
+    );
+    for (var dayIndex = 1; dayIndex <= 7; dayIndex++) {
+      final dayStart = weekStart.add(Duration(days: dayIndex - 1));
+      final dayEnd = dayStart.add(const Duration(days: 1));
+      for (final event in _deviceCalendarEvents) {
+        if (!event.overlaps(dayStart, dayEnd)) continue;
+        if (event.allDay) {
+          _allDayDeviceCalendarEventsPerDay[dayIndex]!.add(event);
+        } else {
+          _timedDeviceCalendarEventsPerDay[dayIndex]!.add(event);
+        }
+      }
+    }
+    for (var dayIndex = 1; dayIndex <= 7; dayIndex++) {
+      _allDayDeviceCalendarEventsPerDay[dayIndex]!
+          .sort((a, b) => a.title.compareTo(b.title));
+      _timedDeviceCalendarEventsPerDay[dayIndex]!
+          .sort((a, b) => a.start.compareTo(b.start));
+    }
   }
 
   void _checkCoachMarks() async {

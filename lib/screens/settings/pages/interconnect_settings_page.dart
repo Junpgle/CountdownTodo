@@ -4,8 +4,10 @@ import '../../../utils/app_platform.dart';
 import '../../../utils/page_transitions.dart';
 import '../../band_sync_screen.dart';
 import '../../../services/band_sync_service.dart';
+import '../../../services/device_calendar_read_service.dart';
 import '../lan_sync_screen.dart';
 import '../calendar_sync_page.dart';
+import '../device_calendar_read_page.dart';
 import '../batch_tag_page.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'data_export_page.dart';
@@ -34,6 +36,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
     'mcp': GlobalKey(),
     'band_sync': GlobalKey(),
     'calendar_sync': GlobalKey(),
+    'calendar_read': GlobalKey(),
     'batch_tag': GlobalKey(),
     'recurrence_merge': GlobalKey(),
     'data_export': GlobalKey(),
@@ -253,11 +256,27 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
               );
             },
           ),
+        if (DeviceCalendarReadService.isSupported)
+          _buildFeatureCard(
+            id: 'calendar_read',
+            icon: Icons.phone_android_outlined,
+            title: '读取手机日历',
+            subtitle: '只读展示到首页和周视图，永不写入或同步',
+            onTap: () {
+              Navigator.push(
+                context,
+                PageTransitions.slideHorizontal(
+                  const DeviceCalendarReadPage(),
+                  settings: const RouteSettings(name: '读取手机日历'),
+                ),
+              );
+            },
+          ),
         _buildFeatureCard(
           id: 'calendar_sync',
           icon: Icons.calendar_month,
-          title: '系统日历',
-          subtitle: '将软件内课表双向同步至系统',
+          title: '写入手机系统日历',
+          subtitle: '将 App 内课程、待办和规划写入系统日历',
           onTap: () {
             Navigator.push(
               context,

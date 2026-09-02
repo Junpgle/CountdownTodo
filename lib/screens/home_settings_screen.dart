@@ -135,6 +135,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'mcp',
       'band_sync',
       'calendar_sync',
+      'calendar_read',
       'batch_tag',
       'recurrence_merge',
       'data_export',

@@ -9,6 +9,7 @@ import '../screens/course_screens.dart';
 import '../screens/fixed_schedule_editor_screen.dart';
 import '../screens/todo_plan_screen.dart';
 import '../services/course_service.dart';
+import '../services/device_calendar_read_service.dart';
 import '../storage_service.dart';
 import '../utils/page_transitions.dart';
 import 'optional_liquid_glass_surface.dart';
@@ -129,38 +130,56 @@ class CourseSectionWidget extends StatelessWidget {
   }
 }
 
-enum _TodayScheduleItemType { course, fixedSchedule, plan, todo }
+enum _TodayScheduleItemType {
+  course,
+  fixedSchedule,
+  plan,
+  todo,
+  deviceCalendar
+}
 
 class _TodayScheduleItem {
   const _TodayScheduleItem.course(this.course)
       : block = null,
         todo = null,
         fixedSchedule = null,
+        deviceCalendar = null,
         type = _TodayScheduleItemType.course;
 
   const _TodayScheduleItem.fixedSchedule(this.fixedSchedule)
       : course = null,
         block = null,
         todo = null,
+        deviceCalendar = null,
         type = _TodayScheduleItemType.fixedSchedule;
 
   const _TodayScheduleItem.plan(this.block)
       : course = null,
         todo = null,
         fixedSchedule = null,
+        deviceCalendar = null,
         type = _TodayScheduleItemType.plan;
 
   const _TodayScheduleItem.todo(this.todo)
       : course = null,
         block = null,
         fixedSchedule = null,
+        deviceCalendar = null,
         type = _TodayScheduleItemType.todo;
+
+  const _TodayScheduleItem.deviceCalendar(this.deviceCalendar)
+      : course = null,
+        block = null,
+        fixedSchedule = null,
+        todo = null,
+        type = _TodayScheduleItemType.deviceCalendar;
 
   final _TodayScheduleItemType type;
   final CourseItem? course;
   final FixedScheduleItem? fixedSchedule;
   final TodoPlanBlock? block;
   final TodoItem? todo;
+  final DeviceCalendarEvent? deviceCalendar;
 
   int get startMs {
     final plan = block;
@@ -169,6 +188,8 @@ class _TodayScheduleItem {
     if (schedule != null) return schedule.startTime ?? _dateStartMs(schedule);
     final todoValue = todo;
     if (todoValue != null) return _todoStartMs(todoValue);
+    final deviceEvent = deviceCalendar;
+    if (deviceEvent != null) return deviceEvent.start.millisecondsSinceEpoch;
     final courseValue = course!;
     return _courseTimeMs(courseValue, courseValue.startTime);
   }
@@ -182,6 +203,8 @@ class _TodayScheduleItem {
     if (todoValue != null) {
       return todoValue.dueDate?.millisecondsSinceEpoch ?? 0;
     }
+    final deviceEvent = deviceCalendar;
+    if (deviceEvent != null) return deviceEvent.end.millisecondsSinceEpoch;
     final courseValue = course!;
     return _courseTimeMs(courseValue, courseValue.endTime);
   }
@@ -233,13 +256,22 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
   List<FixedScheduleItem> _tomorrowFixedSchedules = [];
   List<CourseItem> _todayCourses = [];
   List<CourseItem> _tomorrowCourses = [];
+  List<DeviceCalendarEvent> _todayDeviceCalendarEvents = [];
+  List<DeviceCalendarEvent> _tomorrowDeviceCalendarEvents = [];
   bool _loading = true;
   bool _showEnded = false;
 
   @override
   void initState() {
     super.initState();
+    DeviceCalendarReadService.revision.addListener(_loadBlocks);
     _loadBlocks();
+  }
+
+  @override
+  void dispose() {
+    DeviceCalendarReadService.revision.removeListener(_loadBlocks);
+    super.dispose();
   }
 
   @override
@@ -254,6 +286,9 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
   Future<void> _loadBlocks() async {
     setState(() => _loading = true);
     final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final tomorrowStart = todayStart.add(const Duration(days: 1));
+    final afterTomorrowStart = tomorrowStart.add(const Duration(days: 1));
     final results = await Future.wait([
       StorageService.getPlanBlocksByDay(widget.username, now),
       StorageService.getPlanBlocksByDay(
@@ -266,12 +301,17 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
         now.add(const Duration(days: 1)),
       ),
       CourseService.getAllCourses(widget.username),
+      DeviceCalendarReadService.readEvents(
+        start: todayStart,
+        end: afterTomorrowStart,
+      ),
     ]);
     final blocks = results[0] as List<TodoPlanBlock>;
     final tomorrowBlocks = results[1] as List<TodoPlanBlock>;
     final todayFixedSchedules = results[2] as List<FixedScheduleItem>;
     final tomorrowFixedSchedules = results[3] as List<FixedScheduleItem>;
     final allCourses = results[4] as List<CourseItem>;
+    final deviceCalendarEvents = results[5] as List<DeviceCalendarEvent>;
     final today = DateFormat('yyyy-MM-dd').format(now);
     final tomorrow =
         DateFormat('yyyy-MM-dd').format(now.add(const Duration(days: 1)));
@@ -311,6 +351,12 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
           .where((course) => !course.isDeleted && course.date == tomorrow)
           .toList()
         ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      _todayDeviceCalendarEvents = deviceCalendarEvents
+          .where((event) => event.overlaps(todayStart, tomorrowStart))
+          .toList();
+      _tomorrowDeviceCalendarEvents = deviceCalendarEvents
+          .where((event) => event.overlaps(tomorrowStart, afterTomorrowStart))
+          .toList();
       _loading = false;
     });
   }
@@ -406,6 +452,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       ..._todayFixedSchedules.map(_TodayScheduleItem.fixedSchedule),
       ..._blocks.map(_TodayScheduleItem.plan),
       ...todayTimedTodos.map(_TodayScheduleItem.todo),
+      ..._todayDeviceCalendarEvents.map(_TodayScheduleItem.deviceCalendar),
     ]..sort((a, b) => a.startMs.compareTo(b.startMs));
     final endedItems = todayItems
         .where((item) => item.endMs > 0 && item.endMs < nowMs)
@@ -418,6 +465,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       ..._tomorrowFixedSchedules.map(_TodayScheduleItem.fixedSchedule),
       ..._tomorrowBlocks.map(_TodayScheduleItem.plan),
       ...tomorrowTimedTodos.map(_TodayScheduleItem.todo),
+      ..._tomorrowDeviceCalendarEvents.map(_TodayScheduleItem.deviceCalendar),
     ]..sort((a, b) => a.startMs.compareTo(b.startMs));
 
     final showingTomorrow = activeItems.isEmpty &&
@@ -430,7 +478,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       content = const _TodayScheduleSkeleton();
     } else if (items.isEmpty && endedItems.isEmpty) {
       content = EmptyState(
-        text: '今日和明日暂无课程、固定日程与规划',
+        text: '今日和明日暂无课程、日程与规划',
         isLight: widget.isLight,
       );
     } else {
@@ -522,6 +570,13 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
           sourceKey: cardKey,
           sourceBorderRadius: const BorderRadius.all(Radius.circular(14)),
         ),
+      );
+    }
+    final deviceEvent = item.deviceCalendar;
+    if (deviceEvent != null) {
+      return _DeviceCalendarCompactCard(
+        event: deviceEvent,
+        isLight: widget.isLight,
       );
     }
     return _PlanCompactCard(
@@ -654,6 +709,106 @@ class _TodayScheduleSkeleton extends StatelessWidget {
             color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.18),
             borderRadius: BorderRadius.circular(14),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DeviceCalendarCompactCard extends StatelessWidget {
+  const _DeviceCalendarCompactCard({
+    required this.event,
+    required this.isLight,
+  });
+
+  final DeviceCalendarEvent event;
+  final bool isLight;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final accent =
+        event.colorValue == null ? colors.tertiary : Color(event.colorValue!);
+    final time = event.allDay
+        ? '全天'
+        : '${DateFormat('HH:mm').format(event.start)}–${DateFormat('HH:mm').format(event.end)}';
+    return OptionalLiquidGlassCard(
+      margin: const EdgeInsets.only(bottom: 6),
+      borderRadius: 14,
+      tint: accent.withValues(alpha: 0.14),
+      fallbackDecoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: isLight ? 0.97 : 0.75),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.22)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 3,
+              height: 38,
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(
+                color: accent,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            SizedBox(
+              width: 76,
+              child: Text(
+                time,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: accent,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.phone_android_rounded,
+                          size: 14, color: accent),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          event.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w600,
+                            color: colors.onSurface,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (event.location != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      event.location!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11, color: colors.onSurfaceVariant),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '手机日历',
+              style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+            ),
+          ],
         ),
       ),
     );
