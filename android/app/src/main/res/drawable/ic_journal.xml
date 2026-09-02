@@ -6,5 +6,5 @@
     android:viewportHeight="24">
     <path
         android:fillColor="@color/shortcut_icon"
-        android:pathData="M19,4h-1V2h-2v2H8V2H6v2H5c-1.11,0 -1.99,0.89 -1.99,2L3,20c0,1.1 0.89,2 2,2h14c1.1,0 2,-0.9 2,-2V6c0,-1.11 -0.9,-2 -2,-2zM19,20H5V9h14v11zM7,11h5v5H7v-5z" />
+        android:pathData="M21,4H3c-1.1,0 -2,0.9 -2,2v13c0,1.1 0.9,2 2,2h18c1.1,0 2,-0.9 2,-2V6c0,-1.1 -0.9,-2 -2,-2zM11,19H3V6h8v13zm10,0h-8V6h8v13z" />
 </vector>
