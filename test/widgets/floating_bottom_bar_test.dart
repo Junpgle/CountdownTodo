@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:countdown_todo/screens/pomodoro/widgets/fading_indexed_stack.dart';
 import 'package:countdown_todo/widgets/floating_bottom_bar.dart';
 import 'package:countdown_todo/widgets/home_app_bar.dart';
 import 'package:countdown_todo/widgets/home_quick_action_button.dart';
 import 'package:countdown_todo/widgets/home_sections.dart';
 import 'package:countdown_todo/theme/app_liquid_glass_theme.dart';
+import 'package:countdown_todo/services/android_window_rendering_policy.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -134,6 +136,40 @@ void main() {
     expect(find.text('Content-sized control'), findsOneWidget);
   });
 
+  testWidgets('does not add a second glass layer to stock buttons',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+    final theme = applyAppLiquidGlassTheme(
+      ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+      ),
+      enabled: true,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: Scaffold(
+          body: FloatingGlassControl(
+            height: 64,
+            margin: EdgeInsets.zero,
+            mobilePortraitOnly: false,
+            child: FilledButton(
+              onPressed: () {},
+              child: const Text('Action'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(find.byType(GlassContainer), findsOneWidget);
+    expect(find.byType(FilledButton), findsOneWidget);
+  });
+
   testWidgets('can keep interactive content on the native fallback',
       (tester) async {
     await LiquidGlassEffectService.setEnabled(true);
@@ -210,6 +246,86 @@ void main() {
     expect(find.byType(ShaderMask), findsOneWidget);
     expect(find.byType(BackdropFilter), findsNothing);
     expect(find.text('Faded content'), findsOneWidget);
+  });
+
+  testWidgets('keeps content visible when Android 17 disables shader fades',
+      (tester) async {
+    final previousPolicy =
+        AndroidWindowRenderingPolicy.disableShaderContentFade.value;
+    addTearDown(() {
+      AndroidWindowRenderingPolicy.disableShaderContentFade.value =
+          previousPolicy;
+    });
+    AndroidWindowRenderingPolicy.disableShaderContentFade.value = true;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FloatingGlassTopBarContentFade(
+            topBarHeight: 80,
+            child: ListView(
+              children: const [
+                SizedBox(height: 240, child: Text('Unmasked content')),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(ShaderMask), findsNothing);
+    expect(find.text('Unmasked content'), findsOneWidget);
+  });
+
+  test('clamps a malformed Android 17 freeform top inset', () {
+    final previousPolicy =
+        AndroidWindowRenderingPolicy.disableShaderContentFade.value;
+    addTearDown(() {
+      AndroidWindowRenderingPolicy.disableShaderContentFade.value =
+          previousPolicy;
+    });
+    AndroidWindowRenderingPolicy.disableShaderContentFade.value = true;
+
+    const malformed = MediaQueryData(
+      size: Size(360, 760),
+      padding: EdgeInsets.only(top: 760),
+      viewPadding: EdgeInsets.only(top: 760, bottom: 24),
+      viewInsets: EdgeInsets.only(top: 760),
+    );
+
+    final normalized =
+        AndroidWindowRenderingPolicy.normalizeCompactWindowMediaQuery(
+            malformed);
+
+    expect(normalized.padding.top, 64);
+    expect(normalized.viewPadding.top, 64);
+    expect(normalized.viewInsets.top, 64);
+    expect(normalized.viewPadding.bottom, 24);
+  });
+
+  test('clamps an oversized top inset even before native mode detection', () {
+    final previousPolicy =
+        AndroidWindowRenderingPolicy.disableShaderContentFade.value;
+    addTearDown(() {
+      AndroidWindowRenderingPolicy.disableShaderContentFade.value =
+          previousPolicy;
+    });
+    AndroidWindowRenderingPolicy.disableShaderContentFade.value = false;
+
+    const malformed = MediaQueryData(
+      size: Size(360, 760),
+      padding: EdgeInsets.only(top: 760),
+      viewPadding: EdgeInsets.only(top: 760, bottom: 24),
+    );
+
+    final normalized =
+        AndroidWindowRenderingPolicy.normalizeCompactWindowMediaQuery(
+            malformed);
+
+    expect(normalized.padding.top, 64);
+    expect(normalized.viewPadding.top, 64);
+    expect(normalized.viewPadding.bottom, 24);
   });
 
   testWidgets('fades grouped sliver content beneath a pinned top bar',
@@ -332,6 +448,48 @@ void main() {
     expect(find.byType(FloatingGlassAppBarAction), findsNWidgets(2));
     expect(find.byKey(actionKey), findsOneWidget);
     expect(find.text('Floating controls'), findsOneWidget);
+  });
+
+  testWidgets('can keep AppBar controls inside one continuous top surface',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+    final theme = applyAppLiquidGlassTheme(
+      ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+      ),
+      enabled: true,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: Scaffold(
+          appBar: FloatingGlassAppBar(
+            useFloatingControls: false,
+            leading: IconButton(
+              tooltip: 'Back',
+              onPressed: () {},
+              icon: const Icon(Icons.arrow_back),
+            ),
+            title: const Text('Single surface'),
+            actions: [
+              IconButton(
+                tooltip: 'Action',
+                onPressed: () {},
+                icon: const Icon(Icons.more_horiz),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(find.byType(FloatingGlassAppBarAction), findsNothing);
+    expect(find.byType(GlassContainer), findsNothing);
+    expect(find.text('Single surface'), findsOneWidget);
   });
 
   testWidgets('keeps text actions at their intrinsic width', (tester) async {
@@ -862,5 +1020,64 @@ void main() {
 
     expect(find.byType(BackdropFilter), findsOneWidget);
     controller.dispose();
+  });
+
+  testWidgets('enables tickers only for the visible indexed child',
+      (tester) async {
+    final tickerModes = <String, bool>{};
+
+    Widget probe(String name) {
+      return Builder(
+        builder: (context) {
+          tickerModes[name] = TickerMode.valuesOf(context).enabled;
+          return Text(name);
+        },
+      );
+    }
+
+    Widget app(int index) {
+      return MaterialApp(
+        home: FadingIndexedStack(
+          index: index,
+          duration: const Duration(milliseconds: 20),
+          children: [probe('workbench'), probe('stats')],
+        ),
+      );
+    }
+
+    await tester.pumpWidget(app(0));
+    await tester.pumpAndSettle();
+    expect(tickerModes, {'workbench': true, 'stats': false});
+
+    await tester.pumpWidget(app(1));
+    await tester.pumpAndSettle();
+    expect(tickerModes, {'workbench': false, 'stats': true});
+  });
+
+  testWidgets('does not re-enable tickers disabled by a parent route',
+      (tester) async {
+    final tickerModes = <bool>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TickerMode(
+          enabled: false,
+          child: FadingIndexedStack(
+            index: 0,
+            children: List<Widget>.generate(2, (_) {
+              return Builder(
+                builder: (context) {
+                  tickerModes.add(TickerMode.valuesOf(context).enabled);
+                  return const SizedBox();
+                },
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+
+    expect(tickerModes, isNotEmpty);
+    expect(tickerModes, everyElement(isFalse));
   });
 }

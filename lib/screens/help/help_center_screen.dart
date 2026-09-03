@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/help_article.dart';
 import '../../features/habits/screens/habit_center_screen.dart';
-import '../../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
+import '../../features/thirty_day_challenge/screens/challenge_center_screen.dart';
 import '../../services/feature_tip_service.dart';
 import '../../update_service.dart';
 import '../../utils/app_platform.dart';
@@ -75,14 +75,14 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
               scheme.tertiary,
               [
                 _HelpEntry(
-                  '30天找到全新自我',
-                  '用 30 个小任务，重新找回生活中的兴奋感',
+                  '挑战中心',
+                  '探索、创建并记录属于你的挑战',
                   Icons.auto_awesome_rounded,
                   scheme.tertiary,
                   () {
                     Navigator.of(context, rootNavigator: true).push(
                       PageTransitions.slideHorizontal(
-                        const ThirtyDayChallengeScreen(),
+                        const ChallengeCenterScreen(),
                       ),
                     );
                   },
@@ -182,8 +182,8 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
           icon: Icons.auto_awesome_rounded,
           iconColor: Colors.deepOrange,
           steps: [
-            '从设置 > 帮助与反馈 > 30天找到全新自我进入挑战中心。',
-            '30 个任务顺序可以自由调整，不需要连续 30 天，每项任务完成一次即可。',
+            '从设置 > 帮助与反馈 > 挑战中心进入挑战中心。',
+            '任务顺序可以自由调整，不需要连续打卡，每项任务完成一次即可。',
             '点击“创建自己的挑战”，输入挑战名称和任务清单；文本按行拆分，也可以导入 .txt / .md / .csv / .json 文件。',
             '新建页还可以从 GitHub 云端挑战清单获取公共挑战内容，再按自己的需要修改。',
             '可以点击“分享挑战”复制结构化内容发给朋友；朋友打开 App 首页后会自动识别，并询问是否导入挑战或加入团队。',
@@ -192,11 +192,11 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
             '完成后可以生成带有任务、感受和图片的挑战报告，导出成图片并分享给朋友。',
             '挑战可以暂时暂停；放弃挑战会清空之前的完成状态、感受和图片记录。',
           ],
-          actionLabel: '打开 30 天挑战',
+          actionLabel: '打开挑战中心',
           onAction: () {
             Navigator.of(context, rootNavigator: true).push(
               PageTransitions.slideHorizontal(
-                const ThirtyDayChallengeScreen(),
+                const ChallengeCenterScreen(),
               ),
             );
           },
@@ -405,7 +405,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
             '精确闹钟权限：确保按时推送提醒（Android）。',
             if (!kIsWeb && AppPlatform.isAndroid) ...[
               '使用情况权限：用于屏幕时间统计（Android）。',
-              '电池优化：防止专注时被系统杀后台（Android）。',
+              '电池优化：默认建议保留系统优化；仅在锁屏跨端实时控制持续异常时再手动调整（Android）。',
             ],
             if (!kIsWeb && AppPlatform.isMacOS) ...[
               '通知权限：macOS 系统通知。',

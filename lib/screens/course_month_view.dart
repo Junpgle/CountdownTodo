@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../services/device_calendar_read_service.dart';
 import '../services/pomodoro_service.dart';
 import '../utils/app_color_utils.dart';
 
@@ -11,6 +12,7 @@ class CourseMonthView extends StatelessWidget {
   final Map<String, List<TodoItem>> crossDayTodoMap;
   final Map<String, List<TimeLogItem>> logMap;
   final Map<String, List<PomodoroRecord>> pomMap;
+  final Map<String, List<DeviceCalendarEvent>> deviceCalendarMap;
   final List<PomodoroTag> pomodoroTags;
   final Set<String> activeDataViews;
   final Function(DateTime) onMonthChanged;
@@ -19,6 +21,10 @@ class CourseMonthView extends StatelessWidget {
   final int viewMode;
   final Function(TodoItem)? onGanttTodoTap;
   final DateTime? currentWeekMonday;
+  final void Function(DeviceCalendarEvent event, GlobalKey? sourceKey)?
+      onDeviceCalendarTap;
+  final GlobalKey? Function(DeviceCalendarEvent event, String dateKey)?
+      deviceCalendarCardKeyBuilder;
 
   const CourseMonthView({
     super.key,
@@ -28,6 +34,7 @@ class CourseMonthView extends StatelessWidget {
     required this.crossDayTodoMap,
     required this.logMap,
     required this.pomMap,
+    this.deviceCalendarMap = const {},
     required this.pomodoroTags,
     required this.activeDataViews,
     required this.onMonthChanged,
@@ -36,6 +43,8 @@ class CourseMonthView extends StatelessWidget {
     this.viewMode = 2,
     this.onGanttTodoTap,
     this.currentWeekMonday,
+    this.onDeviceCalendarTap,
+    this.deviceCalendarCardKeyBuilder,
   });
 
   @override
@@ -83,6 +92,10 @@ class CourseMonthView extends StatelessWidget {
     }
     if (activeDataViews.contains('pomodoros')) {
       pomMap.forEach((date, list) => addDensity(date, 2 * list.length));
+    }
+    if (activeDataViews.contains('deviceCalendar')) {
+      deviceCalendarMap
+          .forEach((date, list) => addDensity(date, 2 * list.length));
     }
 
     final List<TodoItem> ganttTodos = activeDataViews.contains('todos')
@@ -180,6 +193,17 @@ class CourseMonthView extends StatelessWidget {
             'start': i,
             'end': i,
             'title': _pomodoroTitle(p),
+          });
+        }
+      }
+
+      if (activeDataViews.contains('deviceCalendar')) {
+        for (final event in (deviceCalendarMap[dStr] ?? [])) {
+          weekBars.add({
+            'deviceCalendar': event,
+            'start': i,
+            'end': i,
+            'title': _deviceCalendarTitle(event),
           });
         }
       }
@@ -329,10 +353,22 @@ class CourseMonthView extends StatelessWidget {
                               final timeLog = bar['timeLog'] as TimeLogItem?;
                               final pomodoro =
                                   bar['pomodoro'] as PomodoroRecord?;
+                              final deviceCalendarEvent =
+                                  bar['deviceCalendar'] as DeviceCalendarEvent?;
                               final int start = bar['start'];
                               final int end = bar['end'];
+                              final String dateKey = DateFormat('yyyy-MM-dd')
+                                  .format(weekDays[start]);
+                              final sourceKey = deviceCalendarEvent == null
+                                  ? null
+                                  : deviceCalendarCardKeyBuilder?.call(
+                                      deviceCalendarEvent, dateKey);
 
-                              final Color barColor = _barColor(bar, isDark);
+                              final Color barColor = _barColor(
+                                bar,
+                                isDark,
+                                Theme.of(context).colorScheme.tertiary,
+                              );
                               final Color textColor =
                                   _barTextColor(bar, isDark);
 
@@ -343,7 +379,10 @@ class CourseMonthView extends StatelessWidget {
                                 child: GestureDetector(
                                   behavior: HitTestBehavior.opaque,
                                   onTap: () {
-                                    if (course != null) {
+                                    if (deviceCalendarEvent != null) {
+                                      onDeviceCalendarTap?.call(
+                                          deviceCalendarEvent, sourceKey);
+                                    } else if (course != null) {
                                       onDayTapped(weekDays[start]);
                                     } else if (todo != null) {
                                       onGanttTodoTap?.call(todo);
@@ -353,6 +392,7 @@ class CourseMonthView extends StatelessWidget {
                                     }
                                   },
                                   child: Container(
+                                    key: sourceKey,
                                     decoration: BoxDecoration(
                                       color: barColor,
                                       borderRadius: BorderRadius.circular(4),
@@ -360,20 +400,47 @@ class CourseMonthView extends StatelessWidget {
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 4),
                                     alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      bar['title'] ?? '',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: textColor,
-                                        fontSize:
-                                            (barHeight * 0.6).clamp(8.0, 11.0),
-                                        fontWeight: FontWeight.w500,
-                                        decoration: (todo?.isDone ?? false)
-                                            ? TextDecoration.lineThrough
-                                            : null,
-                                      ),
-                                    ),
+                                    child: deviceCalendarEvent == null
+                                        ? Text(
+                                            bar['title'] ?? '',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: textColor,
+                                              fontSize: (barHeight * 0.6)
+                                                  .clamp(8.0, 11.0),
+                                              fontWeight: FontWeight.w500,
+                                              decoration: (todo?.isDone ??
+                                                      false)
+                                                  ? TextDecoration.lineThrough
+                                                  : null,
+                                            ),
+                                          )
+                                        : Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.phone_android_rounded,
+                                                size: 9,
+                                                color: textColor,
+                                              ),
+                                              const SizedBox(width: 2),
+                                              Flexible(
+                                                child: Text(
+                                                  bar['title'] ?? '',
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    color: textColor,
+                                                    fontSize: (barHeight * 0.6)
+                                                        .clamp(8.0, 11.0),
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                   ),
                                 ),
                               );
@@ -415,15 +482,18 @@ class CourseMonthView extends StatelessWidget {
     final todo = bar['todo'] as TodoItem?;
     if (todo != null) return todo.isDone ? 4 : 0;
     if (bar['course'] != null) return 1;
+    if (bar['deviceCalendar'] != null) return 2;
     if (bar['timeLog'] != null) return 2;
     if (bar['pomodoro'] != null) return 3;
     return 5;
   }
 
-  Color _barColor(Map<String, dynamic> bar, bool isDark) {
+  Color _barColor(Map<String, dynamic> bar, bool isDark,
+      [Color? deviceCalendarFallback]) {
     final todo = bar['todo'] as TodoItem?;
     final log = bar['timeLog'] as TimeLogItem?;
     final pomodoro = bar['pomodoro'] as PomodoroRecord?;
+    final deviceCalendarEvent = bar['deviceCalendar'] as DeviceCalendarEvent?;
 
     if (bar['course'] != null) {
       return Colors.blue.withValues(alpha: 0.85);
@@ -443,6 +513,12 @@ class CourseMonthView extends StatelessWidget {
     if (pomodoro != null) {
       final tagColor = _firstTagColor(pomodoro.tagUuids);
       return (tagColor ?? Colors.redAccent).withValues(alpha: 0.68);
+    }
+    if (deviceCalendarEvent != null) {
+      final color = deviceCalendarEvent.colorValue == null
+          ? (deviceCalendarFallback ?? Colors.teal)
+          : Color(deviceCalendarEvent.colorValue!);
+      return color.withValues(alpha: 0.82);
     }
     return isDark ? Colors.white24 : Colors.black12;
   }
@@ -464,6 +540,12 @@ class CourseMonthView extends StatelessWidget {
   String _pomodoroTitle(PomodoroRecord record) {
     final tag = _firstTag(record.tagUuids);
     return tag?.name ?? '番茄钟';
+  }
+
+  String _deviceCalendarTitle(DeviceCalendarEvent event) {
+    final timeLabel =
+        event.allDay ? '全天' : DateFormat('HH:mm').format(event.start);
+    return '$timeLabel · ${event.title}';
   }
 
   PomodoroTag? _firstTag(List<String> tagUuids) {

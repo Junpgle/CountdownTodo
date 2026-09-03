@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../services/pomodoro_sync_service.dart';
 import '../../../services/strict_focus_sensor_service.dart';
+import '../../../services/power_save_mode_service.dart';
+import '../../../utils/android_energy_policy.dart';
 
 class ImmersiveTimer extends StatefulWidget {
   final PomodoroPhase phase;
@@ -54,15 +56,90 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
     _celebrationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
-    )..repeat();
+    );
     _breathingController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2500),
-    )..repeat(reverse: true);
+    );
+    PowerSaveModeService.enabledListenable
+        .addListener(_syncPowerSaveAnimations);
+    if (_shouldCelebrate(widget)) _startCelebration();
+    if (_shouldBreathe(widget)) _startBreathing();
+  }
+
+  @override
+  void didUpdateWidget(covariant ImmersiveTimer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    final wasCelebrating = _shouldCelebrate(oldWidget);
+    final shouldCelebrate = _shouldCelebrate(widget);
+    if (shouldCelebrate && !wasCelebrating) {
+      _startCelebration();
+    } else if (!shouldCelebrate && wasCelebrating) {
+      _celebrationController
+        ..stop()
+        ..reset();
+    }
+
+    final wasBreathing = _shouldBreathe(oldWidget);
+    final shouldBreathe = _shouldBreathe(widget);
+    if (shouldBreathe && !wasBreathing) {
+      _startBreathing();
+    } else if (!shouldBreathe && wasBreathing) {
+      _breathingController
+        ..stop()
+        ..reset();
+    }
+  }
+
+  bool _shouldCelebrate(ImmersiveTimer value) =>
+      value.phase == PomodoroPhase.finished &&
+      AndroidEnergyPolicy.shouldRunDecorativeMotion;
+
+  bool _shouldBreathe(ImmersiveTimer value) =>
+      value.phase == PomodoroPhase.focusing &&
+      !value.isPaused &&
+      !value.isStrictWaitingForFlip &&
+      AndroidEnergyPolicy.shouldRunDecorativeMotion;
+
+  void _syncPowerSaveAnimations() {
+    if (_shouldCelebrate(widget)) {
+      _startCelebration();
+    } else {
+      _celebrationController
+        ..stop()
+        ..reset();
+    }
+    if (_shouldBreathe(widget)) {
+      _startBreathing();
+    } else {
+      _breathingController
+        ..stop()
+        ..reset();
+    }
+  }
+
+  void _startCelebration() {
+    _celebrationController
+      ..reset()
+      ..repeat(
+        count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 3),
+      );
+  }
+
+  void _startBreathing() {
+    _breathingController
+      ..reset()
+      ..repeat(
+        reverse: true,
+        count: AndroidEnergyPolicy.decorativeRepeatCount(),
+      );
   }
 
   @override
   void dispose() {
+    PowerSaveModeService.enabledListenable
+        .removeListener(_syncPowerSaveAnimations);
     _celebrationController.dispose();
     _breathingController.dispose();
     super.dispose();

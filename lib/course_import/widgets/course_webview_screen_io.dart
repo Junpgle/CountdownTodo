@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 // Import for Android features.
@@ -104,7 +105,11 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
       ..loadRequest(Uri.parse(widget.initialUrl));
 
     if (controller.platform is wv_android.AndroidWebViewController) {
-      wv_android.AndroidWebViewController.enableDebugging(true);
+      // WebView debugging is useful during development but exposes inspection
+      // hooks in release builds, including on devices with remote debugging.
+      if (kDebugMode) {
+        wv_android.AndroidWebViewController.enableDebugging(true);
+      }
       (controller.platform as wv_android.AndroidWebViewController)
           .setMediaPlaybackRequiresUserGesture(false);
     }

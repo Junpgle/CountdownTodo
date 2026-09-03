@@ -62,6 +62,8 @@ class FinanceSyncRequest {
           excludeSystem: true,
         ),
         'finance_transactions_changes': _changes('transactions'),
+        'finance_loans_changes': _changes('loans'),
+        'finance_loan_installments_changes': _changes('loan_installments'),
         'finance_budgets_changes': _changes('budgets'),
         'finance_recurring_rules_changes': _changes('recurring_rules'),
         'finance_entry_templates_changes': _changes('templates'),
@@ -155,6 +157,9 @@ abstract final class FinanceSyncService {
       'categories': response['server_finance_categories'] ?? const [],
       'payment_methods': response['server_finance_payment_methods'] ?? const [],
       'transactions': response['server_finance_transactions'] ?? const [],
+      'loans': response['server_finance_loans'] ?? const [],
+      'loan_installments':
+          response['server_finance_loan_installments'] ?? const [],
       'budgets': response['server_finance_budgets'] ?? const [],
       'recurring_rules': response['server_finance_recurring_rules'] ?? const [],
       'templates': response['server_finance_entry_templates'] ?? const [],
@@ -244,6 +249,12 @@ abstract final class FinanceSyncService {
       'transactions': List<Map<String, dynamic>>.from(
         payload['finance_transactions_changes'],
       ),
+      'loans': List<Map<String, dynamic>>.from(
+        payload['finance_loans_changes'],
+      ),
+      'loan_installments': List<Map<String, dynamic>>.from(
+        payload['finance_loan_installments_changes'],
+      ),
       'budgets':
           List<Map<String, dynamic>>.from(payload['finance_budgets_changes']),
       'recurring_rules': List<Map<String, dynamic>>.from(
@@ -288,6 +299,8 @@ abstract final class FinanceSyncService {
       'categories',
       'payment_methods',
       'transactions',
+      'loans',
+      'loan_installments',
       'budgets',
       'recurring_rules',
       'templates',
@@ -310,6 +323,8 @@ abstract final class FinanceSyncService {
       'categories',
       'payment_methods',
       'transactions',
+      'loans',
+      'loan_installments',
       'budgets',
       'recurring_rules',
       'templates',

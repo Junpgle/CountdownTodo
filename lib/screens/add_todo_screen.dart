@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../models/chat_message.dart';
 import '../storage_service.dart';
 import '../services/api_service.dart';
 import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
+import '../services/ai_recognition_chat_bridge.dart';
 import '../services/database_helper.dart';
 import '../screens/home_settings_screen.dart';
 import '../services/todo_classification_service.dart';
@@ -193,7 +195,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     _dotsController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
-    )..repeat();
+    );
     _titleCtrl.addListener(_onTitleChanged);
     _remarkCtrl.addListener(_onTitleChanged);
     _loadCategoryDefaults().then((_) {
@@ -523,21 +525,37 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   }
 
   Future<void> _doSmartParse() async {
-    if (_aiInputCtrl.text.trim().isEmpty) {
+    final input = _aiInputCtrl.text.trim();
+    if (input.isEmpty) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text("请输入事项内容")));
       return;
     }
     setState(() => _isParsing = true);
+    _startParsingAnimation();
     await Future.delayed(const Duration(milliseconds: 150));
 
-    final results = TodoParserService.parseMulti(_aiInputCtrl.text);
+    AiRecognitionHandle? recognitionHandle;
+    try {
+      recognitionHandle = await AiRecognitionChatBridge.startText(
+        input,
+        recognizer: '规则文本解析',
+      );
+    } catch (_) {}
+    final results = TodoParserService.parseMulti(input);
+    if (recognitionHandle != null) {
+      await AiRecognitionChatBridge.complete(
+        recognitionHandle,
+        todoResults: results.map((result) => result.toMap()).toList(),
+      );
+    }
     setState(() {
       _parsedResults = results;
       _currentParseIndex = 0;
       _isParsing = false;
-      _currentOriginalText = _aiInputCtrl.text;
+      _currentOriginalText = input;
     });
+    _stopParsingAnimation();
 
     if (_parsedResults.isNotEmpty) {
       if (widget.onLLMResultsParsed != null && _parsedResults.length > 1) {
@@ -561,7 +579,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   }
 
   Future<void> _doLLMParse() async {
-    if (_aiInputCtrl.text.trim().isEmpty) {
+    final input = _aiInputCtrl.text.trim();
+    if (input.isEmpty) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text("请输入事项内容")));
       return;
@@ -593,20 +612,37 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     }
 
     setState(() => _isParsing = true);
+    _startParsingAnimation();
+    AiRecognitionHandle? recognitionHandle;
+    ChatUsageSummary? recognitionUsage;
+    try {
+      recognitionHandle = await AiRecognitionChatBridge.startText(input);
+    } catch (_) {}
 
     try {
-      final results = await LLMService.parseTodoWithLLM(_aiInputCtrl.text);
+      final results = await LLMService.parseTodoWithLLM(
+        input,
+        onUsage: (usage) => recognitionUsage = usage,
+      );
 
       if (widget.onLLMResultsParsed != null && results.length > 1) {
+        if (recognitionHandle != null) {
+          await AiRecognitionChatBridge.complete(
+            recognitionHandle,
+            todoResults: results,
+            usageSummary: recognitionUsage,
+          );
+        }
         setState(() {
           _isParsing = false;
-          _currentOriginalText = _aiInputCtrl.text;
+          _currentOriginalText = input;
         });
+        _stopParsingAnimation();
         final currentTeamName = _selectedTeamUuid != null
             ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name
             : null;
-        widget.onLLMResultsParsed!(results, null, _aiInputCtrl.text,
-            _selectedTeamUuid, currentTeamName);
+        widget.onLLMResultsParsed!(
+            results, null, input, _selectedTeamUuid, currentTeamName);
         return;
       }
 
@@ -619,7 +655,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             : null;
         final isAllDay = result['isAllDay'] ?? false;
         return ParsedTodoResult(
-          title: result['title'] ?? _aiInputCtrl.text,
+          title: result['title'] ?? input,
           remark: result['remark'],
           location: result['location']?.toString(),
           isAllDay: isAllDay,
@@ -639,7 +675,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           ),
           reminderMinutes: result['reminderMinutes'],
           itemKind: result['itemKind']?.toString(),
-          originalText: _aiInputCtrl.text,
+          originalText: input,
         );
       }).toList();
 
@@ -647,8 +683,17 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         _parsedResults = parsedResultsList;
         _currentParseIndex = 0;
         _isParsing = false;
-        _currentOriginalText = _aiInputCtrl.text;
+        _currentOriginalText = input;
       });
+      _stopParsingAnimation();
+
+      if (recognitionHandle != null) {
+        await AiRecognitionChatBridge.complete(
+          recognitionHandle,
+          todoResults: results,
+          usageSummary: recognitionUsage,
+        );
+      }
 
       if (_parsedResults.isNotEmpty) {
         _applyParsedResult(_parsedResults[0]);
@@ -660,7 +705,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         }
       }
     } catch (e) {
+      if (recognitionHandle != null) {
+        await AiRecognitionChatBridge.fail(recognitionHandle, e);
+      }
       setState(() => _isParsing = false);
+      _stopParsingAnimation();
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text("大模型解析失败: $e")));
@@ -2629,5 +2678,16 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         );
       }),
     );
+  }
+
+  void _startParsingAnimation() {
+    if (_dotsController.isAnimating) return;
+    _dotsController.repeat();
+  }
+
+  void _stopParsingAnimation() {
+    _dotsController
+      ..stop()
+      ..reset();
   }
 }

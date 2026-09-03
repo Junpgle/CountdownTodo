@@ -48,6 +48,13 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
       ),
       _capabilityItem(
         context,
+        icon: Icons.track_changes_rounded,
+        title: '习惯目标',
+        detail: '创建数量、时间点、时长或完成一次型习惯；未说明类型时，AI 会先询问习惯还是待办。',
+        color: colorScheme.tertiary,
+      ),
+      _capabilityItem(
+        context,
         icon: Icons.event_available_rounded,
         title: '日程管理',
         detail: '创建、修改、取消固定日程，并与待办截止点和规划块保持清晰边界。',
@@ -78,12 +85,15 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
       _sectionTitle(context, '📅 深度规划与同步'),
       _planningHighlight(context),
       const SizedBox(height: 16),
+      _sectionTitle(context, '🧭 习惯与待办怎么选'),
+      _habitTodoExamples(context),
+      const SizedBox(height: 16),
       _sectionTitle(context, '🚀 快速上手'),
       _howToItem(
         context,
         step: '01',
         title: '输入任务目标',
-        detail: '例：“规划一下今天下午，避开3点的课，把剩下的待办排满。”',
+        detail: '例：“创建每天喝水的习惯，目标 1600 ml”；也可以说“创建每天喝水的待办”。',
       ),
       _howToItem(
         context,
@@ -592,6 +602,102 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
     );
   }
 
+  Widget _habitTodoExamples(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return OptionalLiquidGlassCard(
+      padding: const EdgeInsets.all(16),
+      borderRadius: 20,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Column(
+        children: [
+          _habitTodoExampleRow(
+            context,
+            icon: Icons.track_changes_rounded,
+            label: '创建习惯',
+            example: '“创建每天喝水的习惯，目标 1600 ml”',
+            description: '使用习惯中心追踪周期目标，可进行数量、时间点或时长打卡。',
+            color: colorScheme.tertiary,
+          ),
+          _divider(context),
+          _habitTodoExampleRow(
+            context,
+            icon: Icons.checklist_rounded,
+            label: '创建待办',
+            example: '“创建一个每天喝水的待办”',
+            description: '使用重复待办，每一期都是可以独立完成的待办事项。',
+            color: colorScheme.primary,
+          ),
+          _divider(context),
+          _habitTodoExampleRow(
+            context,
+            icon: Icons.help_outline_rounded,
+            label: '不确定时',
+            example: '“创建每天喝水”',
+            description: 'AI 会先询问你要创建成习惯，还是循环待办，不会擅自创建。',
+            color: colorScheme.secondary,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _habitTodoExampleRow(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required String example,
+    required String description,
+    required Color color,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: color),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                example,
+                style: TextStyle(
+                  color: colorScheme.onSurface,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                description,
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _planningRow(
       BuildContext context, IconData icon, String title, String desc) {
     return Row(
@@ -663,7 +769,7 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
         _tipItem(context, '深度思考',
             '开启“深度思考”模式，AI 会展示推理过程，适合处理复杂的日程重排任务（需使用支持推理的模型）。'),
         _tipItem(
-            context, '提示词自定义', '在顶部菜单中进入“提示词设置”，你可以定制 AI 的语气或强制其遵循特定的工作流建议。'),
+            context, '助手行为设置', '在顶部菜单中进入“AI 助手设置”，可以调整智能上下文、注入预览、深度思考和对话提示词。'),
         _tipItem(context, '课程组件入口', '在课程表组件中长按或点击菜单，可直接发起针对该课程时间段的 AI 规划。'),
       ],
     );

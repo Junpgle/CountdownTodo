@@ -8,8 +8,10 @@ import 'package:countdown_todo/services/api_service.dart';
 import 'package:countdown_todo/screens/historical_countdowns_screen.dart';
 import 'package:countdown_todo/screens/app_board_screen.dart';
 import '../services/pomodoro_sync_service.dart';
+import '../services/power_save_mode_service.dart';
 import '../widgets/home_sections.dart';
 import '../widgets/floating_glass_control.dart';
+import '../utils/android_energy_policy.dart';
 import '../utils/page_transitions.dart';
 import 'platform_backdrop_filter.dart';
 import 'optional_liquid_glass_surface.dart';
@@ -233,7 +235,23 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
   late final ScrollController _tabsScrollController = ScrollController();
 
   @override
+  void initState() {
+    super.initState();
+    PowerSaveModeService.enabledListenable.addListener(_onPowerSaveModeChanged);
+  }
+
+  void _onPowerSaveModeChanged() {
+    for (final controller in _pulseControllers.values) {
+      controller.dispose();
+    }
+    _pulseControllers.clear();
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    PowerSaveModeService.enabledListenable
+        .removeListener(_onPowerSaveModeChanged);
     _listScrollController.dispose();
     _tabsScrollController.dispose();
     for (final controller in _pulseControllers.values) {
@@ -456,11 +474,15 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
 
               if (isUrgent &&
                   !isHoliday &&
+                  AndroidEnergyPolicy.shouldRunDecorativeMotion &&
                   !_pulseControllers.containsKey(item.id)) {
                 final controller = AnimationController(
                   duration: const Duration(milliseconds: 800),
                   vsync: this,
-                )..repeat(reverse: true);
+                )..repeat(
+                    reverse: true,
+                    count: AndroidEnergyPolicy.decorativeRepeatCount(),
+                  );
                 _pulseControllers[item.id] = controller;
               } else if ((!isUrgent || isHoliday) &&
                   _pulseControllers.containsKey(item.id)) {

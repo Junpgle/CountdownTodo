@@ -385,7 +385,13 @@ mixin _StorageSync on _StorageServiceBase {
     bool syncFixedSchedules = true,
     bool syncHabits = true,
     bool syncFinance = true,
+    bool financeSyncExplicitlyAuthorized = false,
   }) async {
+    if (syncFinance &&
+        !financeSyncExplicitlyAuthorized &&
+        !await AppSettingsStorage.isFinanceCloudSyncEnabled(username)) {
+      syncFinance = false;
+    }
     final syncsCoreData = syncTodos ||
         syncCountdowns ||
         syncTimeLogs ||
@@ -976,7 +982,15 @@ mixin _StorageSync on _StorageServiceBase {
             .toList(growable: false);
       }
 
-      Future<Map<String, dynamic>> sendSyncRequest() {
+      Future<Map<String, dynamic>> sendSyncRequest() async {
+        // Re-check immediately before every network attempt. This closes the
+        // window between preparing the finance snapshot and the user turning
+        // cloud sync off; explicit one-time manual sync remains authorized.
+        if (syncFinance &&
+            !financeSyncExplicitlyAuthorized &&
+            !await AppSettingsStorage.isFinanceCloudSyncEnabled(username)) {
+          syncFinance = false;
+        }
         return ApiService.postDeltaSync(
           userId: userId,
           lastSyncTime: lastSyncTime,
@@ -1004,6 +1018,12 @@ mixin _StorageSync on _StorageServiceBase {
               : const [],
           financeTransactionChanges: syncFinance
               ? financeChangesFor('finance_transactions_changes')
+              : const [],
+          financeLoanChanges: syncFinance
+              ? financeChangesFor('finance_loans_changes')
+              : const [],
+          financeLoanInstallmentChanges: syncFinance
+              ? financeChangesFor('finance_loan_installments_changes')
               : const [],
           financeBudgetChanges: syncFinance
               ? financeChangesFor('finance_budgets_changes')
@@ -1049,9 +1069,7 @@ mixin _StorageSync on _StorageServiceBase {
         if (!forceFullSync && !pendingForThisResponse) {
           return false;
         }
-        final remotePayloadEmpty = (syncResponse['server_todos'] as List?)
-                    ?.isEmpty ==
-                true &&
+        final remotePayloadEmpty = (syncResponse['server_todos'] as List?)?.isEmpty == true &&
             (syncResponse['server_todo_groups'] as List?)?.isEmpty == true &&
             (syncResponse['server_countdowns'] as List?)?.isEmpty == true &&
             (syncResponse['server_time_logs'] as List?)?.isEmpty == true &&
@@ -1071,11 +1089,18 @@ mixin _StorageSync on _StorageServiceBase {
                 ((syncResponse['server_finance_categories'] as List?)
                             ?.isEmpty ==
                         true &&
-                    (syncResponse[
-                                'server_finance_payment_methods'] as List?)
+                    (syncResponse['server_finance_payment_methods'] as List?)
                             ?.isEmpty ==
                         true &&
-                    (syncResponse['server_finance_transactions'] as List?)
+                    (syncResponse[
+                                'server_finance_transactions'] as List?)
+                            ?.isEmpty ==
+                        true &&
+                    (syncResponse[
+                                'server_finance_loans'] as List?)
+                            ?.isEmpty ==
+                        true &&
+                    (syncResponse['server_finance_loan_installments'] as List?)
                             ?.isEmpty ==
                         true &&
                     (syncResponse['server_finance_budgets'] as List?)
@@ -1122,6 +1147,16 @@ mixin _StorageSync on _StorageServiceBase {
         if (isDebounceIgnored(response) && hasPendingUploadForResponse) {
           throw Exception('同步被服务端防抖延迟，已保留本地待同步记录');
         }
+      }
+
+      // /api/sync 是待办、习惯和记账共用的请求。用户在请求期间关闭
+      // 记账同步时，只忽略本轮记账 ACK/快照，不取消整个请求，以免误伤
+      // 其他数据域。未确认的记账修改保持 pending，不会前移记账游标。
+      if (syncFinance &&
+          !financeSyncExplicitlyAuthorized &&
+          !await AppSettingsStorage.isFinanceCloudSyncEnabled(username)) {
+        syncFinance = false;
+        debugPrint('🔒 [记账同步] 请求期间授权已撤销，忽略本轮记账响应');
       }
 
       final fixedSchedulesSupported =

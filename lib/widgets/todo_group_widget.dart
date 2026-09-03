@@ -306,7 +306,6 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     // Main card row; the whole folder shares one glass surface above.
     return GestureDetector(
       onTap: widget.onToggle,
-      onLongPress: () => _showGroupMenu(context),
       child: Stack(
         children: [
           // Hover feedback lives inside the glass surface so it stays
@@ -446,12 +445,19 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                   _buildDeadlineTag(context, nearestDeadline),
                   const SizedBox(width: 8),
                 ],
-                Icon(
-                  isExpanded
-                      ? Icons.keyboard_arrow_up_rounded
-                      : Icons.keyboard_arrow_down_rounded,
-                  color: Colors.grey.withValues(alpha: 0.4),
-                  size: 20,
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onLongPress: () => _showGroupMenu(context),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      isExpanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      color: Colors.grey.withValues(alpha: 0.4),
+                      size: 20,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -675,32 +681,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
         );
       },
       onDismissed: (_) => widget.onTodoDelete(todo),
-      child: LongPressDraggable<String>(
-        data: todo.id,
-        onDragEnd: (details) {
-          if (!details.wasAccepted) {
-            widget.onTodoRemoved?.call(todo.id);
-          }
-        },
-        feedback: Material(
-          color: Colors.transparent,
-          child: Container(
-            width: MediaQuery.of(context).size.width * 0.8,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: widget.isLight ? Colors.white : Colors.grey[900],
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black26, blurRadius: 10, spreadRadius: 1)
-              ],
-            ),
-            child: Text(todo.title,
-                style: TextStyle(
-                    color: widget.isLight ? Colors.black : Colors.white)),
-          ),
-        ),
-        child: InkWell(
+      child: InkWell(
           onTap: () {
             if (_suppressTodoItemTap) {
               _suppressTodoItemTap = false;
@@ -797,7 +778,9 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                             ),
                           ),
                         ),
-                        const SizedBox(width: 14),
+                        const SizedBox(width: 6),
+                        _buildTodoDragHandle(context, todo),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1010,6 +993,48 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                 ],
               ),
             ),
+          ),
+      ),
+    );
+  }
+
+  Widget _buildTodoDragHandle(BuildContext context, TodoItem todo) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return LongPressDraggable<String>(
+      data: todo.id,
+      onDragEnd: (details) {
+        if (!details.wasAccepted) {
+          widget.onTodoRemoved?.call(todo.id);
+        }
+      },
+      feedback: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.8,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: widget.isLight ? Colors.white : Colors.grey[900],
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [
+              BoxShadow(color: Colors.black26, blurRadius: 10, spreadRadius: 1),
+            ],
+          ),
+          child: Text(
+            todo.title,
+            style: TextStyle(
+              color: widget.isLight ? Colors.black : Colors.white,
+            ),
+          ),
+        ),
+      ),
+      child: Semantics(
+        label: '长按拖动 ${todo.title}',
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+          child: Icon(
+            Icons.drag_indicator_rounded,
+            size: 16,
+            color: colorScheme.onSurfaceVariant,
           ),
         ),
       ),

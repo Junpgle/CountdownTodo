@@ -24,6 +24,7 @@ class FinanceRecurringDue {
 abstract final class FinanceAutomationService {
   static const int recurringNotificationBaseId = 52001;
   static const int recurringNotificationRange = 7999;
+  static const int maxRecurringCatchUpPeriods = 12;
 
   /// 计算规则在指定年月的发生时间。
   ///
@@ -71,6 +72,69 @@ abstract final class FinanceAutomationService {
       dueAt: due,
       periodKey: periodKeyFor(rule, due),
     );
+  }
+
+  /// Returns unmaterialized due periods through [now], oldest first.
+  ///
+  /// A newly-created or legacy rule without a generation marker only
+  /// materializes the current period. Existing rules catch up at most the most
+  /// recent 12 periods so an old start date cannot flood the ledger on launch.
+  static List<FinanceRecurringDue> missedDuesFor(
+    FinanceRecurringRule rule, {
+    DateTime? now,
+  }) {
+    final current = now ?? DateTime.now();
+    final start = dateFromKey(rule.startDate);
+    final result = <FinanceRecurringDue>[];
+
+    if (rule.lastGeneratedPeriod == null) {
+      final due = currentDueFor(rule, now: current);
+      return due == null ? const [] : [due];
+    }
+
+    if (rule.frequency == FinanceRecurringFrequency.yearly) {
+      final lastYear = int.tryParse(rule.lastGeneratedPeriod!);
+      final firstYear = lastYear == null ? start.year : lastYear + 1;
+      for (var year = firstYear; year <= current.year; year++) {
+        final due = dueDateFor(rule, year, rule.monthOfYear);
+        if (due != null && !due.isAfter(current)) {
+          result.add(FinanceRecurringDue(
+            rule: rule,
+            dueAt: due,
+            periodKey: periodKeyFor(rule, due),
+          ));
+        }
+      }
+      return _latestCatchUpPeriods(result);
+    }
+
+    var cursor = DateTime(start.year, start.month);
+    final lastPeriod = rule.lastGeneratedPeriod;
+    if (lastPeriod != null &&
+        RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(lastPeriod)) {
+      final parts = lastPeriod.split('-');
+      cursor = DateTime(int.parse(parts[0]), int.parse(parts[1]) + 1);
+    }
+    final currentMonth = DateTime(current.year, current.month);
+    while (!cursor.isAfter(currentMonth)) {
+      final due = dueDateFor(rule, cursor.year, cursor.month);
+      if (due != null && !due.isAfter(current)) {
+        result.add(FinanceRecurringDue(
+          rule: rule,
+          dueAt: due,
+          periodKey: periodKeyFor(rule, due),
+        ));
+      }
+      cursor = DateTime(cursor.year, cursor.month + 1);
+    }
+    return _latestCatchUpPeriods(result);
+  }
+
+  static List<FinanceRecurringDue> _latestCatchUpPeriods(
+    List<FinanceRecurringDue> dues,
+  ) {
+    if (dues.length <= maxRecurringCatchUpPeriods) return dues;
+    return dues.sublist(dues.length - maxRecurringCatchUpPeriods);
   }
 
   /// 计算未来窗口中的周期账单提醒，不访问数据库，便于测试和复用。
@@ -128,14 +192,14 @@ abstract final class FinanceAutomationService {
     var generated = 0;
     for (final rule in rules) {
       if (!rule.autoGenerate) continue;
-      final due = currentDueFor(rule, now: current);
-      if (due == null || rule.lastGeneratedPeriod == due.periodKey) continue;
-      if (await FinanceStorage.materializeRecurringRule(
-        rule,
-        dueAt: due.dueAt,
-        periodKey: due.periodKey,
-      )) {
-        generated++;
+      for (final due in missedDuesFor(rule, now: current)) {
+        if (await FinanceStorage.materializeRecurringRule(
+          rule,
+          dueAt: due.dueAt,
+          periodKey: due.periodKey,
+        )) {
+          generated++;
+        }
       }
     }
     // 即使本次没有新生成账单，也要检查已有历史账单对应的本月预算，

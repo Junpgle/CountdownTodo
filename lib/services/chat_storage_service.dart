@@ -54,6 +54,9 @@ class ChatStorageService {
   static const String _chatApiUrlKey = 'chat_api_url';
   static const String _chatProviderKey = 'chat_provider';
   static const String _deepThinkingKey = 'chat_deep_thinking';
+  static const String _smartContextKey = 'chat_smart_context';
+  static const String _showContextPreviewKey = 'chat_show_context_preview';
+  static const String _injectMoreContextKey = 'chat_inject_more_context';
 
   // 🚀 私有助手：获取隔离的存储 Key
   static Future<String> _getScopedKey(String baseKey) async {
@@ -62,7 +65,7 @@ class ChatStorageService {
   }
 
   static const String _defaultPrompt =
-      '''你是一个智能效率助手，帮助用户分别管理待办、固定日程、规划块、专注记录、番茄钟、倒计时、番茄标签和记账。
+      '''你是一个智能效率助手，帮助用户分别管理待办、习惯目标、固定日程、规划块、专注记录、番茄钟、倒计时、番茄标签和记账。
 
 【当前时间】
 {now}
@@ -72,23 +75,26 @@ class ChatStorageService {
 
 【你的能力】
 1. 创建、修改、完成、删除、延期、分类、拆分、合并待办
-2. 创建、修改、取消、删除固定日程，并区分时间待定、结束待定和明确时间段
-3. 分析优先级，建议执行顺序（考虑时间紧迫性、重要程度、依赖关系）
-4. 制定每日/每周计划，把已有待办安排为可调整的规划块
-5. 新增、修改、删除专注记录
-6. 开始或停止番茄钟
-7. 新增、修改、完成、删除倒计时
-8. 新增、改名、改色、删除番茄标签
-9. 新增记账草案；识别支出、收入、退款的金额、分类、商家、日期、付款方式和备注
-10. 查询本月或指定范围的账单、收支汇总、分类排行、预算使用情况
-11. 根据记账上下文提出已有账单的修改或删除草案，但必须等待用户确认
-12. 当用户提及课程、日程、专注记录、团队协作等话题时，系统会自动提供相关上下文
+2. 创建习惯目标：区分数量、时间点、时长和完成一次型，并设置周期、目标和提醒
+3. 创建、修改、取消、删除固定日程，并区分时间待定、结束待定和明确时间段
+4. 分析优先级，建议执行顺序（考虑时间紧迫性、重要程度、依赖关系）
+5. 制定每日/每周计划，把已有待办安排为可调整的规划块
+6. 新增、修改、删除专注记录
+7. 开始或停止番茄钟
+8. 新增、修改、完成、删除倒计时
+9. 新增、改名、改色、删除番茄标签
+10. 新增记账草案；识别支出、收入、退款的金额、分类、商家、日期、付款方式和备注
+11. 查询本月或指定范围的账单、收支汇总、分类排行、预算使用情况
+12. 根据记账上下文提出已有账单的修改或删除草案，但必须等待用户确认
+13. 当用户提及课程、日程、专注记录、团队协作等话题时，系统会自动提供相关上下文
 
 【回复要求】
 - 使用Markdown格式，简洁明了
 - 给出具体可执行的建议
 - 涉及时间安排时说明理由
 - 待办表示要完成的结果，规划块表示用户可调整的执行时段，考试/课程/会议等外部时间约束属于固定日程
+- 习惯是独立的周期追踪目标；用户明确要创建习惯时必须使用create_habit，不得用循环待办或plan_todos代替
+- 如果用户只描述周期性事项但没有明确要创建成习惯还是待办，先询问用户选择，不得擅自生成create_habit、create_todo或plan_todos
 - 不得为了容纳时间段把固定日程创建成待办，也不得把可调整的自我执行时段创建成固定日程
 - 没有日期时不要默认今天全天；重复待办也不要自动称为习惯
 - 循环待办和循环日程都由多个可独立寻址的真实期次组成；修改默认只针对本期，只有用户明确要求时才修改本期及以后；完成只属于待办单期，取消日程使用独立状态
@@ -264,6 +270,18 @@ class ChatStorageService {
     }
   }
 
+  static Future<bool> updateMessage(
+    ChatMessage message, {
+    required String sessionId,
+  }) async {
+    final history = await loadHistory(sessionId);
+    final index = history.indexWhere((item) => item.id == message.id);
+    if (index == -1) return false;
+    history[index] = message;
+    await saveHistory(history, sessionId);
+    return true;
+  }
+
   static Future<void> clearHistory() async {
     final prefs = await SharedPreferences.getInstance();
     final sid = await getActiveSessionId();
@@ -414,6 +432,42 @@ class ChatStorageService {
   static Future<void> setDeepThinkingEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_deepThinkingKey);
+    await prefs.setBool(scopedKey, enabled);
+  }
+
+  static Future<bool> isSmartContextEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_smartContextKey);
+    return prefs.getBool(scopedKey) ?? true;
+  }
+
+  static Future<void> setSmartContextEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_smartContextKey);
+    await prefs.setBool(scopedKey, enabled);
+  }
+
+  static Future<bool> shouldShowContextPreview() async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_showContextPreviewKey);
+    return prefs.getBool(scopedKey) ?? false;
+  }
+
+  static Future<void> setShowContextPreview(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_showContextPreviewKey);
+    await prefs.setBool(scopedKey, enabled);
+  }
+
+  static Future<bool> shouldInjectMoreContext() async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_injectMoreContextKey);
+    return prefs.getBool(scopedKey) ?? false;
+  }
+
+  static Future<void> setInjectMoreContext(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_injectMoreContextKey);
     await prefs.setBool(scopedKey, enabled);
   }
 }

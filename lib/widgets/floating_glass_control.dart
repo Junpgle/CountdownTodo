@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:liquid_glass_widgets/theme/glass_theme_helpers.dart';
 
+import '../services/android_window_rendering_policy.dart';
 import '../services/liquid_glass_effect_service.dart';
 import '../utils/app_platform.dart';
 import 'optional_liquid_glass_surface.dart';
@@ -59,13 +60,53 @@ const double liquidGlassSwitchHeight = 26.0;
 /// the caller is intentionally using a plain icon control.
 ButtonStyle floatingGlassPlainIconButtonStyle() {
   return ButtonStyle(
-    backgroundBuilder: (context, states, child) =>
-        child ?? const SizedBox.shrink(),
+    backgroundBuilder: _floatingGlassIdentityButtonBackground,
     backgroundColor: const WidgetStatePropertyAll(Colors.transparent),
     side: const WidgetStatePropertyAll(BorderSide.none),
     elevation: const WidgetStatePropertyAll(0),
     shadowColor: const WidgetStatePropertyAll(Colors.transparent),
     surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+  );
+}
+
+Widget _floatingGlassIdentityButtonBackground(
+  BuildContext context,
+  Set<WidgetState> states,
+  Widget? child,
+) {
+  return child ?? const SizedBox.shrink();
+}
+
+ButtonStyle _floatingGlassChildButtonStyle(ButtonStyle? style) {
+  return (style ?? const ButtonStyle()).copyWith(
+    // FloatingGlassControl owns the only surface around its child. Preserve
+    // the child's shape, colors, padding, and interaction settings, but stop
+    // the app-wide liquid-glass button theme from adding another container.
+    backgroundBuilder: _floatingGlassIdentityButtonBackground,
+  );
+}
+
+ThemeData _floatingGlassChildTheme(BuildContext context) {
+  final theme = Theme.of(context);
+  return theme.copyWith(
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: _floatingGlassChildButtonStyle(theme.elevatedButtonTheme.style),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: _floatingGlassChildButtonStyle(theme.filledButtonTheme.style),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: _floatingGlassChildButtonStyle(theme.outlinedButtonTheme.style),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: _floatingGlassChildButtonStyle(theme.textButtonTheme.style),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: _floatingGlassChildButtonStyle(theme.iconButtonTheme.style),
+    ),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: _floatingGlassChildButtonStyle(theme.segmentedButtonTheme.style),
+    ),
   );
 }
 
@@ -595,13 +636,25 @@ class FloatingGlassTopBarContentFade extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ShaderMask(
-      blendMode: BlendMode.dstIn,
-      shaderCallback: (bounds) => floatingGlassTopBarContentFadeShader(
-        bounds,
-        fadeHeight: topBarHeight + tailExtent,
-      ),
+    return ValueListenableBuilder<bool>(
+      valueListenable: AndroidWindowRenderingPolicy.disableShaderContentFade,
       child: child,
+      builder: (context, disableShader, child) {
+        // Android 17 freeform windows can drop the entire TextureView subtree
+        // when a destination-in mask is involved. The top bar remains a
+        // foreground layer, so keeping the scroll content unmasked is the
+        // safest fallback and prevents the page from becoming blank.
+        if (disableShader) return child!;
+
+        return ShaderMask(
+          blendMode: BlendMode.dstIn,
+          shaderCallback: (bounds) => floatingGlassTopBarContentFadeShader(
+            bounds,
+            fadeHeight: topBarHeight + tailExtent,
+          ),
+          child: child,
+        );
+      },
     );
   }
 }
@@ -629,7 +682,8 @@ Widget floatingGlassSettingsBody(
 }
 
 /// Applies the same alpha fade to a group of slivers while leaving a pinned
-/// [FloatingGlassSliverAppBar] outside the mask.
+/// [FloatingGlassSliverAppBar] outside the mask. Android 17 freeform windows
+/// switch the render object to an unmasked path through the shared policy.
 class FloatingGlassSliverContentFadeGroup extends StatelessWidget {
   const FloatingGlassSliverContentFadeGroup({
     super.key,
@@ -697,7 +751,28 @@ class _RenderFloatingGlassSliverContentFade extends RenderProxySliver {
   }
 
   @override
-  bool get alwaysNeedsCompositing => child != null;
+  bool get alwaysNeedsCompositing =>
+      child != null &&
+      !AndroidWindowRenderingPolicy.disableShaderContentFade.value;
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    AndroidWindowRenderingPolicy.disableShaderContentFade
+        .addListener(_handleRenderingPolicyChanged);
+  }
+
+  @override
+  void detach() {
+    AndroidWindowRenderingPolicy.disableShaderContentFade
+        .removeListener(_handleRenderingPolicyChanged);
+    super.detach();
+  }
+
+  void _handleRenderingPolicyChanged() {
+    markNeedsCompositingBitsUpdate();
+    markNeedsPaint();
+  }
 
   @override
   ShaderMaskLayer? get layer => super.layer as ShaderMaskLayer?;
@@ -707,6 +782,11 @@ class _RenderFloatingGlassSliverContentFade extends RenderProxySliver {
     final child = this.child;
     final geometry = child?.geometry;
     if (child == null || geometry == null || !geometry.visible) return;
+
+    if (AndroidWindowRenderingPolicy.disableShaderContentFade.value) {
+      context.paintChild(child, offset);
+      return;
+    }
 
     final viewportWidth = constraints.crossAxisExtent;
     final viewportHeight = constraints.viewportMainAxisExtent;
@@ -795,6 +875,10 @@ class FloatingGlassControl extends StatelessWidget {
           colorScheme.surface,
         ).withValues(alpha: dark ? 0.24 : 0.32);
     final resolvedHalo = haloColor ?? colorScheme.primary;
+    final childWithoutNestedGlass = Theme(
+      data: _floatingGlassChildTheme(context),
+      child: child,
+    );
 
     final fallbackWidget = fallback ??
         _FloatingGlassControlFallback(
@@ -804,7 +888,7 @@ class FloatingGlassControl extends StatelessWidget {
           haloColor: resolvedHalo,
           isDark: dark,
           allowChildOverflow: allowChildOverflow,
-          child: child,
+          child: childWithoutNestedGlass,
         );
 
     if (!useLiquidGlass) return fallbackWidget;
@@ -816,7 +900,7 @@ class FloatingGlassControl extends StatelessWidget {
         tint: resolvedTint,
         isDark: dark,
         fallback: fallbackWidget,
-        child: child,
+        child: childWithoutNestedGlass,
       );
     }
 
@@ -832,7 +916,7 @@ class FloatingGlassControl extends StatelessWidget {
       isDark: dark,
       allowChildOverflow: allowChildOverflow,
       fallback: fallbackWidget,
-      child: child,
+      child: childWithoutNestedGlass,
     );
   }
 }
@@ -955,7 +1039,7 @@ class FloatingGlassScrollAware extends StatelessWidget {
 ///
 /// The body receives the measured header height so it can add equivalent
 /// initial scroll padding. That keeps the first frame unchanged while letting
-/// later content travel underneath the header and its shared alpha fade.
+/// later content travel underneath the header and its shared top fade.
 class FloatingGlassPinnedHeaderLayout extends StatefulWidget {
   const FloatingGlassPinnedHeaderLayout({
     super.key,
@@ -1550,6 +1634,7 @@ class FloatingGlassAppBar extends StatelessWidget
     this.clipBehavior,
     this.actionsPadding,
     this.animateColor = false,
+    this.useFloatingControls = true,
     this.floatingControlTint,
     this.floatingControlIsDark,
     this.floatingControlScrollDistance = _floatingGlassAppBarScrollDistance,
@@ -1588,6 +1673,11 @@ class FloatingGlassAppBar extends StatelessWidget
   final Clip? clipBehavior;
   final EdgeInsetsGeometry? actionsPadding;
   final bool animateColor;
+
+  /// Whether leading/actions become independent glass lenses as the bar
+  /// collapses. Disable this when a screen already owns one continuous top
+  /// surface; the controls then remain plain inside that surface.
+  final bool useFloatingControls;
 
   /// Optional appearance override for the independently floating controls.
   /// This is useful when the native AppBar remains transparent over a custom
@@ -1628,7 +1718,7 @@ class FloatingGlassAppBar extends StatelessWidget
         );
     final resolvedLeading = _resolveFloatingAppBarLeading(context);
     final resolvedActions = _resolveFloatingAppBarActions(context);
-    final decoratedLeading = resolvedLeading == null
+    final decoratedLeading = !useFloatingControls || resolvedLeading == null
         ? null
         : FloatingGlassAppBarAction(
             tint: glassTint,
@@ -1637,69 +1727,89 @@ class FloatingGlassAppBar extends StatelessWidget
             isDark: glassIsDark,
             child: resolvedLeading,
           );
-    final decoratedActions = resolvedActions
-        ?.map(
-          (action) => _isFloatingGlassAppBarLayoutOnly(action) ||
-                  action is FloatingGlassAppBarAction
-              ? action
-              : FloatingGlassAppBarAction(
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  tint: glassTint,
-                  haloColor: colorScheme.primary,
-                  useTopBarGlass: true,
-                  isDark: glassIsDark,
-                  child: action,
-                ),
-        )
-        .toList(growable: false);
+    final decoratedActions = !useFloatingControls
+        ? resolvedActions
+        : resolvedActions
+            ?.map(
+              (action) => _isFloatingGlassAppBarLayoutOnly(action) ||
+                      action is FloatingGlassAppBarAction
+                  ? action
+                  : FloatingGlassAppBarAction(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      tint: glassTint,
+                      haloColor: colorScheme.primary,
+                      useTopBarGlass: true,
+                      isDark: glassIsDark,
+                      child: action,
+                    ),
+            )
+            .toList(growable: false);
+
+    Widget buildAppBar(ValueNotifier<double> collapseProgress) {
+      final appBar = AppBar(
+        leading:
+            decoratedLeading ?? (useFloatingControls ? null : resolvedLeading),
+        automaticallyImplyLeading: false,
+        title: title,
+        actions: decoratedActions,
+        automaticallyImplyActions: false,
+        flexibleSpace: _FloatingGlassCollapseReporter(
+          collapseProgress: collapseProgress,
+          child: flexibleSpace ?? const FloatingGlassTopBarBackground(),
+        ),
+        bottom: bottom,
+        elevation: resolvedElevation,
+        scrolledUnderElevation: resolvedScrolledUnderElevation,
+        notificationPredicate: notificationPredicate,
+        shadowColor: resolvedShadowColor,
+        surfaceTintColor: resolvedSurfaceTintColor,
+        shape: shape,
+        backgroundColor: resolvedBackgroundColor,
+        foregroundColor: resolvedForegroundColor,
+        iconTheme: iconTheme,
+        actionsIconTheme: actionsIconTheme,
+        primary: primary,
+        centerTitle: centerTitle,
+        excludeHeaderSemantics: excludeHeaderSemantics,
+        titleSpacing: titleSpacing,
+        toolbarOpacity: toolbarOpacity,
+        bottomOpacity: bottomOpacity,
+        toolbarHeight: toolbarHeight,
+        leadingWidth: leadingWidth ??
+            (useFloatingControls && decoratedLeading != null
+                ? _floatingAppBarLeadingWidth
+                : null),
+        toolbarTextStyle: toolbarTextStyle,
+        titleTextStyle: titleTextStyle,
+        systemOverlayStyle: resolvedSystemOverlayStyle,
+        forceMaterialTransparency: resolvedForceMaterialTransparency,
+        useDefaultSemanticsOrder: useDefaultSemanticsOrder,
+        clipBehavior: clipBehavior,
+        actionsPadding: actionsPadding ??
+            (!useFloatingControls ||
+                    decoratedActions == null ||
+                    decoratedActions.isEmpty
+                ? null
+                : _floatingAppBarActionsPadding),
+        animateColor: animateColor,
+      );
+
+      return useFloatingControls
+          ? appBar
+          : Theme(
+              // A continuous top surface owns the visual treatment. Neutralize
+              // the app-wide button glass theme for its plain child controls.
+              data: _floatingGlassChildTheme(context),
+              child: appBar,
+            );
+    }
 
     return _FloatingGlassAppBarHost(
       notificationPredicate: notificationPredicate,
       scrollDistance: floatingControlScrollDistance,
       builder: (context, collapseProgress) => _FloatingGlassAppBarScope(
         collapseProgress: collapseProgress,
-        child: AppBar(
-          leading: decoratedLeading,
-          automaticallyImplyLeading: false,
-          title: title,
-          actions: decoratedActions,
-          automaticallyImplyActions: false,
-          flexibleSpace: _FloatingGlassCollapseReporter(
-            collapseProgress: collapseProgress,
-            child: flexibleSpace ?? const FloatingGlassTopBarBackground(),
-          ),
-          bottom: bottom,
-          elevation: resolvedElevation,
-          scrolledUnderElevation: resolvedScrolledUnderElevation,
-          notificationPredicate: notificationPredicate,
-          shadowColor: resolvedShadowColor,
-          surfaceTintColor: resolvedSurfaceTintColor,
-          shape: shape,
-          backgroundColor: resolvedBackgroundColor,
-          foregroundColor: resolvedForegroundColor,
-          iconTheme: iconTheme,
-          actionsIconTheme: actionsIconTheme,
-          primary: primary,
-          centerTitle: centerTitle,
-          excludeHeaderSemantics: excludeHeaderSemantics,
-          titleSpacing: titleSpacing,
-          toolbarOpacity: toolbarOpacity,
-          bottomOpacity: bottomOpacity,
-          toolbarHeight: toolbarHeight,
-          leadingWidth: leadingWidth ??
-              (decoratedLeading == null ? null : _floatingAppBarLeadingWidth),
-          toolbarTextStyle: toolbarTextStyle,
-          titleTextStyle: titleTextStyle,
-          systemOverlayStyle: resolvedSystemOverlayStyle,
-          forceMaterialTransparency: resolvedForceMaterialTransparency,
-          useDefaultSemanticsOrder: useDefaultSemanticsOrder,
-          clipBehavior: clipBehavior,
-          actionsPadding: actionsPadding ??
-              (decoratedActions == null || decoratedActions.isEmpty
-                  ? null
-                  : _floatingAppBarActionsPadding),
-          animateColor: animateColor,
-        ),
+        child: buildAppBar(collapseProgress),
       ),
     );
   }

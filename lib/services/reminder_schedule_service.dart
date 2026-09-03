@@ -279,7 +279,10 @@ class ReminderScheduleService {
       await StorageService.savePlanBlocks(username, remindedBlocks);
     }
 
-    await NotificationService.scheduleReminders(reminders);
+    await NotificationService.scheduleReminders(
+      reminders,
+      forceReschedule: force,
+    );
   }
 
   static Future<void> scheduleFromStorage(

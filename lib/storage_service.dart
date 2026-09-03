@@ -638,6 +638,7 @@ class StorageService {
     bool syncFixedSchedules = true,
     bool syncHabits = true,
     bool syncFinance = true,
+    bool financeSyncExplicitlyAuthorized = false,
   }) =>
       _storage.syncData(username,
           syncTodos: syncTodos,
@@ -651,7 +652,8 @@ class StorageService {
           syncPlanBlocks: syncPlanBlocks,
           syncFixedSchedules: syncFixedSchedules,
           syncHabits: syncHabits,
-          syncFinance: syncFinance);
+          syncFinance: syncFinance,
+          financeSyncExplicitlyAuthorized: financeSyncExplicitlyAuthorized);
 
   static bool recomputeLocalTodoScheduleConflictsForTest(
     List<TodoItem> todos,
@@ -755,6 +757,10 @@ class StorageService {
     List<Map<String, dynamic>> financeResults = const [],
     String status = 'success',
     String? compressedPath,
+    String? sourceKey,
+    String? processingSessionId,
+    String? recognitionChatSessionId,
+    String? recognitionChatMessageId,
     int currentAttempt = 1,
     int maxAttempts = 1,
     String? errorMsg,
@@ -765,6 +771,10 @@ class StorageService {
           financeResults: financeResults,
           status: status,
           compressedPath: compressedPath,
+          sourceKey: sourceKey,
+          processingSessionId: processingSessionId,
+          recognitionChatSessionId: recognitionChatSessionId,
+          recognitionChatMessageId: recognitionChatMessageId,
           currentAttempt: currentAttempt,
           maxAttempts: maxAttempts,
           errorMsg: errorMsg);
@@ -776,6 +786,9 @@ class StorageService {
     String? errorMsg,
     List<Map<String, dynamic>>? results,
     List<Map<String, dynamic>>? financeResults,
+    String? processingSessionId,
+    String? recognitionChatSessionId,
+    String? recognitionChatMessageId,
   }) =>
       _storage.updatePendingTodoConfirmStatus(
           status: status,
@@ -783,7 +796,10 @@ class StorageService {
           maxAttempts: maxAttempts,
           errorMsg: errorMsg,
           results: results,
-          financeResults: financeResults);
+          financeResults: financeResults,
+          processingSessionId: processingSessionId,
+          recognitionChatSessionId: recognitionChatSessionId,
+          recognitionChatMessageId: recognitionChatMessageId);
 
   static Future<Map<String, dynamic>?> getPendingTodoConfirm() =>
       _storage.getPendingTodoConfirm();

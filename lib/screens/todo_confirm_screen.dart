@@ -2,12 +2,15 @@ import '../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../models/chat_message.dart';
 import '../storage_service.dart';
 import '../services/llm_service.dart';
 import '../services/notification_service.dart';
 import '../services/item_semantics_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
 import '../services/reminder_schedule_service.dart';
+import '../services/recognized_todo_adapter.dart';
+import '../services/ai_recognition_chat_bridge.dart';
 import '../utils/local_image_provider.dart';
 import '../utils/persistent_image_storage.dart';
 
@@ -54,19 +57,30 @@ class ParsedTodoResult {
   });
 
   Map<String, dynamic> toMap() {
+    final isDateOnly =
+        isAllDay || timeSemantics == ParsedTimeSemantics.dateOnly;
+    final dueForWrite =
+        timeSemantics == ParsedTimeSemantics.deadline && endTime == null
+            ? startTime
+            : endTime;
     final normalizedTime = TodoItem.normalizeTimeForWrite(
       selectedDate: startTime,
-      dueDate: endTime,
-      isDateOnly: isAllDay,
+      dueDate: dueForWrite,
+      isDateOnly: isDateOnly,
     );
     return {
       'title': title,
       'remark': remark,
       'location': location,
-      'isAllDay': isAllDay,
+      'isAllDay': isDateOnly,
       'startTime': normalizedTime.start?.toIso8601String(),
       'endTime': normalizedTime.due?.toIso8601String(),
-      'timeMode': timeSemantics.name,
+      'dueDate': normalizedTime.due?.toIso8601String(),
+      'timeMode': isDateOnly
+          ? TodoTimeMode.dateOnly.name
+          : timeSemantics == ParsedTimeSemantics.range
+              ? TodoTimeMode.deadline.name
+              : timeSemantics.name,
       'recurrence': recurrence.name,
       'customIntervalDays': customIntervalDays,
       'originalText': originalText,
@@ -139,46 +153,92 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   }
 
   List<ParsedTodoResult> _parseResults(List<Map<String, dynamic>> results) {
-    return results.map((result) {
-      final startTime = result['startTime'] != null
-          ? DateTime.tryParse(result['startTime'])
-          : null;
-      final endTime = result['endTime'] != null
-          ? DateTime.tryParse(result['endTime'])
-          : null;
-      final isAllDay = result['isAllDay'] ?? false;
+    return results.map((rawResult) {
+      // Pending image results may have been produced by an older prompt or
+      // stored before the timeMode migration. Normalize them again here so a
+      // process restart cannot reintroduce the old start/end representation.
+      final result = widget.imagePath != null
+          ? RecognizedTodoAdapter.normalizeImageResult(rawResult)
+          : Map<String, dynamic>.from(rawResult);
+      final rawTimeMode = result['timeMode'] ?? result['time_mode'];
+      final declaredTimeMode = RecognizedTodoAdapter.parseTimeMode(rawTimeMode);
+      final startTime = RecognizedTodoAdapter.parseDateTime(
+        result['startTime'] ??
+            result['start_time'] ??
+            result['createdDate'] ??
+            result['created_date'],
+      );
+      final endTime = RecognizedTodoAdapter.parseDateTime(
+        result['endTime'] ??
+            result['end_time'] ??
+            result['dueDate'] ??
+            result['due_date'],
+      );
+      final isAllDay = RecognizedTodoAdapter.parseBool(
+            result['isAllDay'] ?? result['is_all_day'],
+          ) ||
+          declaredTimeMode == TodoTimeMode.dateOnly ||
+          (startTime != null &&
+              endTime != null &&
+              TodoItem.looksLikeLegacyDateOnlyRange(startTime, endTime));
       return ParsedTodoResult(
-        title: result['title'] ?? '',
-        remark: result['remark'],
+        title:
+            result['title']?.toString() ?? result['content']?.toString() ?? '',
+        remark:
+            (result['remark'] ?? result['notes'] ?? result['note'])?.toString(),
         location: result['location']?.toString(),
         isAllDay: isAllDay,
         startTime: startTime,
         endTime: endTime,
         timeSemantics: _parseTimeSemantics(
-          result['timeMode'],
+          rawTimeMode,
           isAllDay: isAllDay,
           startTime: startTime,
           endTime: endTime,
         ),
         recurrence: _parseRecurrenceType(result['recurrence']),
-        customIntervalDays: result['customIntervalDays'],
-        originalText: widget.originalText, // 📄 传入原始文本
-        reminderMinutes: result['reminderMinutes'],
-        groupId: result['groupId'],
-        collabType: result['collab_type'] ?? 0,
-        itemKind: result['itemKind']?.toString(),
-        teamUuid: widget.initialTeamUuid,
-        teamName: widget.initialTeamName,
-        recurrenceEndDate: DateTime.tryParse(
-          (result['recurrenceEndDate'] ?? result['recurrence_end_date'] ?? '')
-              .toString(),
+        customIntervalDays: _parseNullableInt(
+          result['customIntervalDays'] ?? result['custom_interval_days'],
+        ),
+        originalText: (result['originalText'] ??
+                result['original_text'] ??
+                widget.originalText)
+            ?.toString(),
+        reminderMinutes: _parseNullableInt(
+          result['reminderMinutes'] ?? result['reminder_minutes'],
+        ),
+        groupId: (result['groupId'] ?? result['group_id'])?.toString(),
+        collabType: _parseNullableInt(
+              result['collab_type'] ?? result['collabType'],
+            ) ??
+            0,
+        itemKind: (result['itemKind'] ?? result['item_kind'])?.toString(),
+        teamUuid: (result['team_uuid'] ??
+                result['teamUuid'] ??
+                widget.initialTeamUuid)
+            ?.toString(),
+        teamName: (result['team_name'] ??
+                result['teamName'] ??
+                widget.initialTeamName)
+            ?.toString(),
+        recurrenceEndDate: RecognizedTodoAdapter.parseDateTime(
+          result['recurrenceEndDate'] ?? result['recurrence_end_date'],
         ),
       );
     }).toList();
   }
 
-  RecurrenceType _parseRecurrenceType(String? type) {
-    switch (type) {
+  int? _parseNullableInt(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  RecurrenceType _parseRecurrenceType(dynamic type) {
+    final index = _parseNullableInt(type);
+    if (index != null && index >= 0 && index < RecurrenceType.values.length) {
+      return RecurrenceType.values[index];
+    }
+    switch (type?.toString()) {
       case 'daily':
         return RecurrenceType.daily;
       case 'weekly':
@@ -203,18 +263,25 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     required DateTime? endTime,
   }) {
     if (isAllDay) return ParsedTimeSemantics.dateOnly;
-    final name = raw?.toString();
-    return ParsedTimeSemantics.values.firstWhere(
-      (value) => value.name == name,
-      orElse: () => startTime != null && endTime != null
-          ? ParsedTimeSemantics.range
-          : ParsedTimeSemantics.unscheduled,
-    );
+    if (raw?.toString().trim().toLowerCase() == 'range') {
+      return ParsedTimeSemantics.range;
+    }
+    final mode = RecognizedTodoAdapter.parseTimeMode(raw);
+    if (mode == TodoTimeMode.dateOnly) return ParsedTimeSemantics.dateOnly;
+    if (mode == TodoTimeMode.deadline) return ParsedTimeSemantics.deadline;
+    if (mode == TodoTimeMode.unscheduled) {
+      return ParsedTimeSemantics.unscheduled;
+    }
+    return startTime != null && endTime != null
+        ? ParsedTimeSemantics.range
+        : ParsedTimeSemantics.unscheduled;
   }
 
   Future<void> _retryRecognition() async {
     final imagePath = widget.imagePath;
     if (imagePath == null) return;
+
+    AiRecognitionHandle? recognitionHandle;
 
     setState(() {
       _isRetrying = true;
@@ -233,9 +300,21 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         return;
       }
 
+      final pending = await StorageService.getPendingTodoConfirm();
+      recognitionHandle = AiRecognitionChatBridge.handleFromPending(pending);
+      if (recognitionHandle == null) {
+        try {
+          recognitionHandle =
+              await AiRecognitionChatBridge.startImage(imagePath);
+        } catch (_) {}
+      } else {
+        await AiRecognitionChatBridge.markProcessing(recognitionHandle);
+      }
+
       bool success = false;
       List<Map<String, dynamic>>? results;
       String? lastError;
+      final usageSummaries = <ChatUsageSummary>[];
 
       for (int attempt = 1; attempt <= maxRetries + 1; attempt++) {
         try {
@@ -249,8 +328,10 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
             status: '正在分析图片...',
           );
 
-          results = await LLMService.parseTodoFromImage(imagePath)
-              .timeout(const Duration(seconds: 90));
+          results = await LLMService.parseTodoFromImage(
+            imagePath,
+            onUsage: usageSummaries.add,
+          ).timeout(const Duration(seconds: 90));
 
           success = true;
           break;
@@ -264,9 +345,19 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         }
       }
 
-      if (success && results != null && results.isNotEmpty) {
+      final recognizedResults = results;
+      if (success &&
+          recognizedResults != null &&
+          recognizedResults.isNotEmpty) {
+        if (recognitionHandle != null) {
+          await AiRecognitionChatBridge.complete(
+            recognitionHandle,
+            todoResults: recognizedResults,
+            usageSummary: ChatUsageSummary.combine(usageSummaries),
+          );
+        }
         setState(() {
-          _allTodos = _parseResults(results!);
+          _allTodos = _parseResults(recognizedResults);
           _currentIndex = 0;
           _confirmedTodos.clear();
           _isRetrying = false;
@@ -274,9 +365,15 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         });
 
         await NotificationService.showTodoRecognizeSuccess(
-          todoCount: results.length,
+          todoCount: recognizedResults.length,
         );
       } else {
+        if (recognitionHandle != null) {
+          await AiRecognitionChatBridge.fail(
+            recognitionHandle,
+            lastError ?? '未识别到可添加的事项',
+          );
+        }
         setState(() {
           _isRetrying = false;
           _retryStatus = '重试失败: ${lastError ?? "未知错误"}';
@@ -287,6 +384,9 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         );
       }
     } catch (e) {
+      if (recognitionHandle != null) {
+        await AiRecognitionChatBridge.fail(recognitionHandle, e);
+      }
       setState(() {
         _isRetrying = false;
         _retryStatus = '重试失败: $e';
@@ -629,6 +729,13 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
               ),
               FilledButton(
                 onPressed: () {
+                  final editedTimeSemantics = isAllDay
+                      ? ParsedTimeSemantics.dateOnly
+                      : todo.timeSemantics == ParsedTimeSemantics.dateOnly
+                          ? dueDate == null
+                              ? ParsedTimeSemantics.unscheduled
+                              : ParsedTimeSemantics.deadline
+                          : todo.timeSemantics;
                   setState(() {
                     _allTodos[_currentIndex] = ParsedTodoResult(
                       title: titleCtrl.text,
@@ -637,9 +744,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       isAllDay: isAllDay,
                       startTime: createdAt,
                       endTime: dueDate,
-                      timeSemantics: isAllDay
-                          ? ParsedTimeSemantics.dateOnly
-                          : todo.timeSemantics,
+                      timeSemantics: editedTimeSemantics,
                       recurrence: recurrence,
                       customIntervalDays: customDays,
                       recurrenceEndDate: recurrenceEndDate,

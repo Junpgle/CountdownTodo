@@ -397,6 +397,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
               _buildCheckableMenuItem('timeLogs', '时间日志'),
               _buildCheckableMenuItem('plans', '今日规划'),
               _buildCheckableMenuItem('pomodoros', '番茄钟'),
+              _buildCheckableMenuItem('deviceCalendar', '手机日历（只读）'),
               _buildFilterMenuDivider(),
               _buildFilterSectionLabel('日历选项'),
               _buildCheckableMenuItem('hideCrossDay', '隐藏跨天待办'),
@@ -418,7 +419,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
             builder: (context, controller, child) {
               final colorScheme = Theme.of(context).colorScheme;
               final selectedCount = _selectedFilterCount;
-              final hasFilterChanges = selectedCount != 5 ||
+              final hasFilterChanges = selectedCount != 6 ||
                   _activeDataViews.contains('hideCrossDay') ||
                   !_collapseFreeTime;
               return IconButton(
@@ -575,12 +576,28 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                                       crossDayTodoMap: _monthCrossDayTodoMap,
                                       logMap: _monthLogMap,
                                       pomMap: _monthPomMap,
+                                      deviceCalendarMap:
+                                          _monthDeviceCalendarMap,
                                       pomodoroTags: _pomodoroTags,
                                       activeDataViews: _activeDataViews,
                                       allTodos: _allTodos,
                                       viewMode: _viewMode,
                                       currentWeekMonday:
                                           _getMondayOfCurrentWeek(),
+                                      deviceCalendarCardKeyBuilder:
+                                          (event, dateKey) =>
+                                              _getDeviceCalendarCardKey(
+                                        event.id,
+                                        dateKey,
+                                        surface: 'month',
+                                      ),
+                                      onDeviceCalendarTap: (event, sourceKey) {
+                                        _showDeviceCalendarEventDetail(
+                                          context,
+                                          event,
+                                          sourceKey: sourceKey,
+                                        );
+                                      },
                                       onMonthChanged: (m) =>
                                           setState(() => _selectedMonth = m),
                                       onDayTapped: (d) {

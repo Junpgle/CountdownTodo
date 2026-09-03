@@ -22,6 +22,7 @@ enum AppPermissionKind {
   batteryOptimization,
   calendar,
   liveUpdates,
+  localNetwork,
   bandDeviceManagement,
 }
 
@@ -35,6 +36,7 @@ extension AppPermissionKindDetails on AppPermissionKind {
         AppPermissionKind.batteryOptimization => '忽略电池优化',
         AppPermissionKind.calendar => '日历读写',
         AppPermissionKind.liveUpdates => '实时通知',
+        AppPermissionKind.localNetwork => '局域网访问',
         AppPermissionKind.bandDeviceManagement => '小米手环设备管理',
       };
 
@@ -47,6 +49,7 @@ extension AppPermissionKindDetails on AppPermissionKind {
         AppPermissionKind.batteryOptimization => '用于减少锁屏后专注计时和实时同步被系统中断。',
         AppPermissionKind.calendar => '用于将课程、待办和计划写入 Android 系统日历。',
         AppPermissionKind.liveUpdates => '用于在支持的 Android 设备上展示实时活动和状态更新。',
+        AppPermissionKind.localNetwork => '用于发现同一局域网中的其他设备并进行局域网同步。',
         AppPermissionKind.bandDeviceManagement =>
           '用于向已连接的小米手环同步待办、课程、倒数日和专注状态。',
       };
@@ -73,7 +76,8 @@ extension AppPermissionKindDetails on AppPermissionKind {
         AppPermissionKind.storage ||
         AppPermissionKind.requestInstall ||
         AppPermissionKind.exactAlarm ||
-        AppPermissionKind.calendar =>
+        AppPermissionKind.calendar ||
+        AppPermissionKind.localNetwork =>
           false,
       };
 }
@@ -185,6 +189,20 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
         : false;
 
     if ((previousStatus.isGranted || previousStatus.isLimited) && hasAgreed) {
+      return PermissionRequestResult(
+        permission: permission,
+        previousStatus: previousStatus,
+        status: previousStatus,
+        openedSettings: false,
+        cancelledByUser: false,
+      );
+    }
+
+    // Android 16 and below grant LAN access through INTERNET, and Android 17
+    // can also have it pre-granted through the nearby-devices permission
+    // group. Neither case needs a second app-specific rationale prompt.
+    if (permission == AppPermissionKind.localNetwork &&
+        previousStatus.isGranted) {
       return PermissionRequestResult(
         permission: permission,
         previousStatus: previousStatus,
@@ -337,6 +355,19 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
           } on PlatformException {
             return PermissionStatus.granted;
           }
+        case AppPermissionKind.localNetwork:
+          if (!AppPlatform.isAndroid) return PermissionStatus.granted;
+          try {
+            final granted = await _platformChannel.invokeMethod<bool>(
+                  'checkLocalNetworkPermission',
+                ) ??
+                false;
+            return granted ? PermissionStatus.granted : PermissionStatus.denied;
+          } on PlatformException {
+            return PermissionStatus.denied;
+          } on MissingPluginException {
+            return PermissionStatus.denied;
+          }
         case AppPermissionKind.bandDeviceManagement:
           final connection = await BandSyncService.getConnectionStatus();
           return connection['hasPermission'] == true
@@ -369,6 +400,19 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
           return await BandSyncService.requestPermission()
               ? PermissionStatus.granted
               : PermissionStatus.denied;
+        case AppPermissionKind.localNetwork:
+          if (!AppPlatform.isAndroid) return PermissionStatus.granted;
+          try {
+            final granted = await _platformChannel.invokeMethod<bool>(
+                  'requestLocalNetworkPermission',
+                ) ??
+                false;
+            return granted ? PermissionStatus.granted : PermissionStatus.denied;
+          } on PlatformException {
+            return PermissionStatus.denied;
+          } on MissingPluginException {
+            return PermissionStatus.denied;
+          }
         case AppPermissionKind.usageStats ||
               AppPermissionKind.exactAlarm ||
               AppPermissionKind.liveUpdates:

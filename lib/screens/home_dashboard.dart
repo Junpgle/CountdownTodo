@@ -41,9 +41,13 @@ import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
 import '../services/island_slot_provider.dart';
 import '../services/item_semantics_service.dart';
+import '../services/storage/app_settings_storage.dart';
 import '../services/conflict_visibility_service.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/ai_todo_chat_launcher.dart';
+import '../services/ai_recognition_chat_bridge.dart';
+import '../services/chat_storage_service.dart';
+import '../services/recognized_todo_adapter.dart';
 import '../utils/app_platform.dart';
 import '../utils/json_value_parser.dart';
 import '../utils/local_image_provider.dart';
@@ -54,6 +58,7 @@ import 'screen_time_detail_screen.dart';
 import 'math_menu_screen.dart';
 import 'home_settings_screen.dart';
 import 'feature_guide_screen.dart';
+import 'settings/device_calendar_read_page.dart';
 import 'todo_confirm_screen.dart';
 import 'add_todo_screen.dart';
 import 'fixed_schedule_editor_screen.dart';
@@ -82,6 +87,7 @@ import '../features/habits/services/habit_reminder_service.dart';
 import '../features/habits/widgets/habit_today_section.dart';
 import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
 import '../features/thirty_day_challenge/models/thirty_day_challenge.dart';
+import '../features/thirty_day_challenge/screens/challenge_center_screen.dart';
 import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
 import '../features/thirty_day_challenge/screens/new_challenge_screen.dart';
 import '../features/thirty_day_challenge/services/clipboard_share_detector.dart';
@@ -99,6 +105,7 @@ import '../widgets/home_bottom_navigation_content.dart';
 import '../widgets/home_quick_action_button.dart';
 import '../widgets/app_status_toast.dart';
 import '../services/feature_tip_service.dart';
+import '../services/device_calendar_read_service.dart';
 import '../services/home_layout_service.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
@@ -190,7 +197,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     'habits': true,
     'finance': true,
   };
-  Timer? _courseTimer;
+  Timer? _dashboardMinuteTimer;
   final Set<String> _coursesWithScheduledAlarms = {};
   final Set<String> _todosWithScheduledAlarms = {};
   String? _activeCourseNotificationKey;
@@ -306,7 +313,6 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   Timer? _collaborativeSyncDebouncer; // 🚀 协同同步防抖器
   Timer? _syncWatchdogTimer;
   int _syncAttemptGeneration = 0;
-  Timer? _bannerRefreshTimer; // 🚀 新增：Banner 倒计时刷新定时器
   Timer? _todoNotificationDebouncer;
   Timer? _teamPendingDebouncer;
   Timer? _announcementDebouncer;

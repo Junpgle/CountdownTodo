@@ -131,13 +131,94 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         });
   }
 
+  void _showAllDayDeviceCalendarEvents(
+    BuildContext context,
+    List<DeviceCalendarEvent> events,
+    String dateStr, {
+    GlobalKey? sourceKey,
+    Color? sourceColor,
+  }) {
+    showAppModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$dateStr 手机日历全天日程',
+                  style: Theme.of(ctx).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              ...events.map(
+                (event) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.phone_android_rounded,
+                      color: event.colorValue == null
+                          ? Theme.of(ctx).colorScheme.tertiary
+                          : Color(event.colorValue!)),
+                  title: Text(event.title),
+                  subtitle: Text(event.location?.isNotEmpty == true
+                      ? event.location!
+                      : '全天 · 手机日历（只读）'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showDeviceCalendarEventDetail(
+                      context,
+                      event,
+                      sourceKey: sourceKey,
+                      sourceColor: sourceColor,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showDeviceCalendarEventDetail(
+    BuildContext context,
+    DeviceCalendarEvent event, {
+    GlobalKey? sourceKey,
+    Color? sourceColor,
+  }) {
+    final color = sourceColor ??
+        (event.colorValue == null
+            ? Theme.of(context).colorScheme.tertiary
+            : Color(event.colorValue!));
+    if (sourceKey != null) {
+      PageTransitions.pushFromRect(
+        context: context,
+        page: DeviceCalendarEventDetailScreen(event: event),
+        sourceKey: sourceKey,
+        sourceColor: color,
+        sourceBorderRadius: BorderRadius.circular(4),
+        placeholderIcon: Icons.phone_android_rounded,
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      PageTransitions.slideHorizontal(
+        DeviceCalendarEventDetailScreen(event: event),
+      ),
+    );
+  }
+
   Widget _buildAllDayHeaderRow(DateTime? monday) {
-    if (monday == null || !_activeDataViews.contains('todos')) {
+    if (monday == null) {
       return const SizedBox.shrink();
     }
 
-    bool hasAnyAllDay =
-        _allDayTodosPerDay.values.any((list) => list.isNotEmpty);
+    final showTodos = _activeDataViews.contains('todos');
+    final showDeviceCalendar = _activeDataViews.contains('deviceCalendar');
+    bool hasAnyAllDay = (showTodos &&
+            _allDayTodosPerDay.values.any((list) => list.isNotEmpty)) ||
+        (showDeviceCalendar &&
+            _allDayDeviceCalendarEventsPerDay.values
+                .any((list) => list.isNotEmpty));
     if (!hasAnyAllDay) return const SizedBox.shrink();
 
     return Container(
@@ -147,41 +228,94 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: List.generate(7, (index) {
           int weekday = index + 1;
-          List<TodoItem> dayTodos = _allDayTodosPerDay[weekday] ?? [];
+          List<TodoItem> dayTodos =
+              showTodos ? (_allDayTodosPerDay[weekday] ?? []) : [];
+          List<DeviceCalendarEvent> deviceEvents = showDeviceCalendar
+              ? (_allDayDeviceCalendarEventsPerDay[weekday] ?? [])
+              : [];
 
-          if (dayTodos.isEmpty) {
+          if (dayTodos.isEmpty && deviceEvents.isEmpty) {
             return const Expanded(child: SizedBox(height: 22));
           }
 
-          String text = dayTodos.length == 1
-              ? dayTodos.first.title
-              : "${dayTodos.length}项全天待办";
+          String text;
+          if (deviceEvents.isNotEmpty) {
+            text = deviceEvents.length == 1
+                ? deviceEvents.first.title
+                : '${deviceEvents.length}项手机日历';
+          } else {
+            text = dayTodos.length == 1
+                ? dayTodos.first.title
+                : "${dayTodos.length}项全天待办";
+          }
           bool allDone = dayTodos.every((t) => t.isDone);
           final colorScheme = Theme.of(context).colorScheme;
-          final todoColor =
-              allDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning;
-          final onTodoColor =
-              allDone ? colorScheme.onTertiary : colorScheme.onSecondary;
+          final todoColor = deviceEvents.isNotEmpty
+              ? (deviceEvents.first.colorValue == null
+                  ? colorScheme.tertiary
+                  : Color(deviceEvents.first.colorValue!))
+              : (allDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning);
+          final onTodoColor = deviceEvents.isNotEmpty
+              ? _colorForAllDayDeviceEvent(context, deviceEvents.first)
+              : (allDone ? colorScheme.onTertiary : colorScheme.onSecondary);
+
+          final currentDay = monday.add(Duration(days: index));
+          final dayKey = DateFormat('yyyy-MM-dd').format(currentDay);
+          final allDaySourceKey = deviceEvents.isEmpty
+              ? null
+              : _getDeviceCalendarCardKey(
+                  deviceEvents.first.id,
+                  dayKey,
+                  surface: 'week-all-day',
+                );
 
           return Expanded(
             child: GestureDetector(
               onTap: () {
-                DateTime currentDay = monday.add(Duration(days: index));
                 String dateStr = DateFormat('MM-dd').format(currentDay);
-                _showAllDayTodos(context, dayTodos, dateStr);
+                if (deviceEvents.isNotEmpty) {
+                  if (deviceEvents.length == 1) {
+                    _showDeviceCalendarEventDetail(
+                      context,
+                      deviceEvents.first,
+                      sourceKey: allDaySourceKey,
+                      sourceColor: todoColor.withValues(alpha: 0.92),
+                    );
+                  } else {
+                    _showAllDayDeviceCalendarEvents(
+                      context,
+                      deviceEvents,
+                      dateStr,
+                      sourceKey: allDaySourceKey,
+                      sourceColor: todoColor.withValues(alpha: 0.92),
+                    );
+                  }
+                } else {
+                  _showAllDayTodos(context, dayTodos, dateStr);
+                }
               },
               child: Container(
+                key: allDaySourceKey,
                 margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
                 padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
                 decoration: BoxDecoration(
-                  color: todoColor.withValues(alpha: allDone ? 0.5 : 0.85),
+                  color: todoColor.withValues(
+                    alpha:
+                        deviceEvents.isNotEmpty ? 0.92 : (allDone ? 0.5 : 0.85),
+                  ),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (dayTodos.any((t) => t.teamUuid != null))
+                    if (deviceEvents.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 2),
+                        child: Icon(Icons.phone_android_rounded,
+                            size: 10, color: onTodoColor),
+                      )
+                    else if (dayTodos.any((t) => t.teamUuid != null))
                       Padding(
                         padding: const EdgeInsets.only(right: 2),
                         child: Icon(Icons.group, size: 10, color: onTodoColor),
@@ -208,6 +342,16 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         }),
       ),
     );
+  }
+
+  Color _colorForAllDayDeviceEvent(
+      BuildContext context, DeviceCalendarEvent event) {
+    final background = event.colorValue == null
+        ? Theme.of(context).colorScheme.tertiary
+        : Color(event.colorValue!);
+    return ThemeData.estimateBrightnessForColor(background) == Brightness.dark
+        ? Colors.white
+        : Colors.black87;
   }
 
   bool _timeRangesOverlap(
@@ -1326,6 +1470,114 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                     ),
                   );
                 }));
+          }
+        }
+      }
+    }
+
+    if (_activeDataViews.contains('deviceCalendar')) {
+      final monday = _getMondayOfCurrentWeek();
+      if (monday != null) {
+        for (int weekday = 1; weekday <= 7; weekday++) {
+          final dayStart = DateTime(
+            monday.year,
+            monday.month,
+            monday.day + weekday - 1,
+          );
+          final dayEnd = dayStart.add(const Duration(days: 1));
+          for (final event in _timedDeviceCalendarEventsPerDay[weekday] ??
+              const <DeviceCalendarEvent>[]) {
+            final sliceStart =
+                event.start.isAfter(dayStart) ? event.start : dayStart;
+            final sliceEnd = event.end.isBefore(dayEnd) ? event.end : dayEnd;
+            if (!sliceEnd.isAfter(sliceStart)) continue;
+            final startMinutes = sliceStart.hour * 60 + sliceStart.minute;
+            final endMinutes = sliceEnd == dayEnd
+                ? 24 * 60
+                : sliceEnd.hour * 60 + sliceEnd.minute;
+            if (endMinutes <= startHour * 60 || startMinutes >= endHour * 60) {
+              continue;
+            }
+            final visibleStart =
+                startMinutes.clamp(startHour * 60, endHour * 60).toInt();
+            final visibleEnd =
+                endMinutes.clamp(startHour * 60, endHour * 60).toInt();
+            final top =
+                _timeToY(visibleStart ~/ 60, visibleStart % 60, minuteHeight);
+            var height =
+                _timeToY(visibleEnd ~/ 60, visibleEnd % 60, minuteHeight) - top;
+            if (height < 18.0) height = 18.0;
+            final color = event.colorValue == null
+                ? Theme.of(context).colorScheme.tertiary.withValues(alpha: 0.78)
+                : Color(event.colorValue!).withValues(alpha: 0.78);
+            final calendarCardKey = _getDeviceCalendarCardKey(
+              event.id,
+              DateFormat('yyyy-MM-dd').format(dayStart),
+              surface: 'week-timed',
+            );
+
+            eventsPerDay[weekday]!.add(_TimelineEvent(
+              top: top,
+              bottom: top + height,
+              builder: (left, width) {
+                final titleSize =
+                    (height * 0.28 * (width / (cellWidth - 2)).clamp(0.4, 1.0))
+                        .clamp(9.0, 10.5);
+                return Positioned(
+                  top: top,
+                  left: left,
+                  width: width,
+                  height: height,
+                  child: GestureDetector(
+                    onTap: () => _showDeviceCalendarEventDetail(
+                      context,
+                      event,
+                      sourceKey: calendarCardKey,
+                      sourceColor: color,
+                    ),
+                    child: Container(
+                      key: calendarCardKey,
+                      alignment: Alignment.center,
+                      clipBehavior: Clip.hardEdge,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 2, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.45),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: height < 28
+                          ? const Icon(Icons.phone_android_rounded,
+                              size: 9, color: Colors.white)
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                if (height >= 40)
+                                  const Icon(Icons.phone_android_rounded,
+                                      size: 9, color: Colors.white),
+                                if (height >= 40) const SizedBox(height: 2),
+                                Text(
+                                  event.title,
+                                  maxLines: height >= 52 ? 2 : 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: titleSize,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.0,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                );
+              },
+            ));
           }
         }
       }

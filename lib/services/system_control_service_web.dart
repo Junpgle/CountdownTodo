@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 enum PlaybackStatus { playing, paused, stopped, unknown }
 
 class MediaInfo {
@@ -18,6 +20,20 @@ class MediaInfo {
   bool get isEmpty => title.isEmpty && artist.isEmpty;
 
   @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is MediaInfo &&
+            title == other.title &&
+            artist == other.artist &&
+            album == other.album &&
+            albumArtist == other.albumArtist &&
+            status == other.status;
+  }
+
+  @override
+  int get hashCode => Object.hash(title, artist, album, albumArtist, status);
+
+  @override
   String toString() => 'MediaInfo(title: "$title", artist: "$artist", '
       'album: "$album", albumArtist: "$albumArtist", status: $status)';
 }
@@ -28,6 +44,8 @@ class SystemControlService {
   static double _cachedVolume = 0.5;
   static double _cachedBrightness = 0.7;
   static const MediaInfo _mediaInfo = MediaInfo();
+  static final ValueNotifier<MediaInfo> _mediaInfoNotifier =
+      ValueNotifier<MediaInfo>(_mediaInfo);
 
   static double getVolumeSync() => _cachedVolume;
 
@@ -60,6 +78,9 @@ class SystemControlService {
   static void disposeGamma() {}
 
   static MediaInfo getMediaInfo() => _mediaInfo;
+
+  static ValueListenable<MediaInfo> get mediaInfoListenable =>
+      _mediaInfoNotifier;
 
   static void startMediaPolling({int intervalMs = 2000}) {}
 

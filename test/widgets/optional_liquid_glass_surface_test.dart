@@ -2,8 +2,10 @@ import 'package:countdown_todo/services/liquid_glass_effect_service.dart';
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/screens/animation_settings_page.dart';
 import 'package:countdown_todo/theme/app_liquid_glass_theme.dart';
+import 'package:countdown_todo/widgets/app_detail_widgets.dart';
 import 'package:countdown_todo/widgets/app_settings_widgets.dart';
 import 'package:countdown_todo/widgets/course_section_widget.dart';
+import 'package:countdown_todo/widgets/floating_glass_control.dart';
 import 'package:countdown_todo/widgets/home_sections.dart';
 import 'package:countdown_todo/widgets/optional_liquid_glass_surface.dart';
 import 'package:countdown_todo/widgets/todo_group_widget.dart';
@@ -16,8 +18,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    await LiquidGlassEffectService.setEnabled(false);
+    await LiquidGlassEffectService.setPowerSaveMode(false);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
   });
 
   tearDown(GlassPerformanceMonitor.stop);
@@ -70,6 +75,76 @@ void main() {
     expect(find.text('均衡 320ms', skipOffstage: false), findsOneWidget);
     expect(find.text('快速 220ms', skipOffstage: false), findsOneWidget);
     expect(find.byType(Switch), findsWidgets);
+  });
+
+  testWidgets(
+      'power saver shows effective core effects without losing preferences',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'enable_animations': true,
+      'enable_lazy_load': true,
+      'enable_screen_radius': true,
+      'enable_predictive_back': true,
+      'enable_motion_blur': true,
+      'enable_layer_blur': true,
+    });
+    await LiquidGlassEffectService.setPowerSaveMode(true);
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.enhanced);
+    addTearDown(() async {
+      await LiquidGlassEffectService.setEnabled(false);
+      await LiquidGlassEffectService.setPowerSaveMode(false);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+    });
+    tester.view.physicalSize = const Size(1200, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: AnimationSettingsPage(powerSaveModeOverride: true),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    LiquidGlassSwitch effectSwitch(String key) {
+      return tester.widget<LiquidGlassSwitch>(
+        find.byKey(ValueKey<String>(key)),
+      );
+    }
+
+    for (final key in const [
+      'animation-settings-page-animation-switch',
+      'animation-settings-screen-radius-switch',
+      'animation-settings-predictive-back-switch',
+      'animation-settings-motion-blur-switch',
+      'animation-settings-layer-blur-switch',
+      'animation-settings-liquid-glass-switch',
+    ]) {
+      final widget = effectSwitch(key);
+      expect(widget.value, isFalse, reason: key);
+      expect(widget.onChanged, isNull, reason: key);
+    }
+
+    final lazyLoad = effectSwitch('animation-settings-lazy-load-switch');
+    expect(lazyLoad.value, isTrue);
+    expect(lazyLoad.onChanged, isNotNull);
+    expect(
+      find.byKey(
+        const ValueKey<String>(
+          'animation-settings-power-save-effective-note',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('省电模式下已暂停；退出后恢复增强模式'), findsOneWidget);
+
+    expect(LiquidGlassEffectService.preferredConfiguration.enabled, isTrue);
+    expect(LiquidGlassEffectService.preferredConfiguration.mode,
+        LiquidGlassEffectMode.enhanced);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('enable_liquid_glass'), isTrue);
   });
 
   testWidgets('does not add safe-area gaps inside animation grids',
@@ -662,6 +737,33 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(find.text('高等数学'), findsOneWidget);
+  });
+
+  testWidgets('detail header avoids the black first-frame glass layer',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AppDetailHeader(
+            icon: Icons.class_rounded,
+            title: '高等数学',
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(
+      find.byKey(
+        const ValueKey<String>('optional-liquid-glass-static-panel'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(GlassContainer), findsNothing);
     expect(find.text('高等数学'), findsOneWidget);
   });
 

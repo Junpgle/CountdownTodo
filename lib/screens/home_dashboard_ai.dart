@@ -2,6 +2,26 @@ part of 'home_dashboard.dart';
 // ignore_for_file: annotate_overrides
 
 mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
+  Future<void> _openPendingRecognitionChat() async {
+    final sessionId =
+        _pendingTodoConfirm?['recognitionChatSessionId']?.toString().trim();
+    if (sessionId != null && sessionId.isNotEmpty) {
+      await ChatStorageService.setActiveSessionId(sessionId);
+      if (!mounted) return;
+      await _openAiAssistantFromAppBar();
+      return;
+    }
+
+    final status = _pendingTodoConfirm?['status']?.toString();
+    if (status == 'success') {
+      await _openPendingTodoConfirm();
+    } else if (status == 'failed') {
+      await _retryPendingTodoRecognition();
+    } else {
+      await _openAiAssistantFromAppBar();
+    }
+  }
+
   Future<void> _openAiAssistantFromAppBar() async {
     final todoState = _todoSectionKey.currentState;
     if (todoState != null) {

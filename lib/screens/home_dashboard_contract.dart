@@ -6,6 +6,8 @@ part of 'home_dashboard.dart';
 mixin _HomeDashboardContract {
   Future<void> _openAiAssistantFromAppBar();
 
+  Future<void> _openPendingRecognitionChat();
+
   Future<void> _handleAiTodoGroupsChanged(List<TodoGroup> groups);
 
   Future<void> _handleAiTodosBatchAction(
@@ -77,6 +79,10 @@ mixin _HomeDashboardContract {
   Future<FixedScheduleItem?> _findIslandFixedSchedule(String id);
 
   Future<void> _handleShortcut(String shortcutType);
+
+  Future<void> _openHomeTodo({GlobalKey? sourceKey});
+
+  Future<void> _openHomePomodoro({GlobalKey? sourceKey});
 
   Future<void> _handleOpenPlanBlock(dynamic arguments);
 
@@ -170,6 +176,8 @@ mixin _HomeDashboardContract {
   });
 
   Future<void> _checkCoachMarks();
+
+  Future<void> _checkDeviceCalendarReadCoachMark();
 
   Future<void> _checkFocusTabCoachMarks();
 

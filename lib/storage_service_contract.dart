@@ -457,6 +457,7 @@ abstract class _StorageServiceBase {
     bool syncFixedSchedules = true,
     bool syncHabits = true,
     bool syncFinance = true,
+    bool financeSyncExplicitlyAuthorized = false,
   });
   bool recomputeLocalTodoScheduleConflictsForTest(
     List<TodoItem> todos,
@@ -565,6 +566,10 @@ abstract class _StorageServiceBase {
     List<Map<String, dynamic>> financeResults = const [],
     String status = 'success',
     String? compressedPath,
+    String? sourceKey,
+    String? processingSessionId,
+    String? recognitionChatSessionId,
+    String? recognitionChatMessageId,
     int currentAttempt = 1,
     int maxAttempts = 1,
     String? errorMsg,
@@ -576,6 +581,9 @@ abstract class _StorageServiceBase {
     String? errorMsg,
     List<Map<String, dynamic>>? results,
     List<Map<String, dynamic>>? financeResults,
+    String? processingSessionId,
+    String? recognitionChatSessionId,
+    String? recognitionChatMessageId,
   });
   Future<Map<String, dynamic>?> getPendingTodoConfirm();
   Future<void> clearPendingTodoConfirm();

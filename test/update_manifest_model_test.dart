@@ -46,4 +46,49 @@ void main() {
     expect(delta.patchSize, 1234);
     expect(delta.isUsable, isTrue);
   });
+
+  group('manifest refresh energy policy', () {
+    const nowMs = 10 * Duration.millisecondsPerHour;
+
+    test('refreshes when no successful cache exists', () {
+      expect(
+        UpdateService.isManifestRefreshDue(nowMs: nowMs),
+        isTrue,
+      );
+    });
+
+    test('reuses a successful cache for six hours', () {
+      expect(
+        UpdateService.isManifestRefreshDue(
+          nowMs: nowMs,
+          lastSuccessfulRefreshMs: nowMs - 5 * Duration.millisecondsPerHour,
+        ),
+        isFalse,
+      );
+      expect(
+        UpdateService.isManifestRefreshDue(
+          nowMs: nowMs,
+          lastSuccessfulRefreshMs: nowMs - 6 * Duration.millisecondsPerHour,
+        ),
+        isTrue,
+      );
+    });
+
+    test('backs off failed or in-flight refresh attempts for 30 minutes', () {
+      expect(
+        UpdateService.isManifestRefreshDue(
+          nowMs: nowMs,
+          lastAttemptMs: nowMs - 29 * Duration.millisecondsPerMinute,
+        ),
+        isFalse,
+      );
+      expect(
+        UpdateService.isManifestRefreshDue(
+          nowMs: nowMs,
+          lastAttemptMs: nowMs - 30 * Duration.millisecondsPerMinute,
+        ),
+        isTrue,
+      );
+    });
+  });
 }

@@ -274,6 +274,11 @@ class StrictFocusSessionCoordinator with WidgetsBindingObserver {
         totalCycles: resumed.totalCycles,
         tagNames: resumed.tagNames,
         alertKey: 'pomo_start_${resumed.sessionStartMs}',
+        timerMode: resumed.mode == TimerMode.countUp ? 'countUp' : 'countdown',
+        timerAnchorMs: resumed.mode == TimerMode.countUp
+            ? resumed.sessionStartMs + resumed.accumulatedMs
+            : resumed.targetEndMs,
+        isPaused: false,
       ));
       PomodoroSyncService.instance.sendStartSignal(
         sessionUuid: resumed.sessionUuid,

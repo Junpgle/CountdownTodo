@@ -3,6 +3,17 @@ part of 'home_dashboard.dart';
 
 enum _HomeAddAction { todo, countdown, finance }
 
+/// The phone homepage body is painted underneath its pinned header. Its final
+/// spacer must therefore reserve both the floating bottom bar and the header;
+/// otherwise a short page has no positive scroll extent and a slow upward
+/// drag only produces an overscroll bounce.
+@visibleForTesting
+double homeDashboardPhoneScrollTailExtent({
+  required double headerExtent,
+  required double bottomInset,
+}) =>
+    headerExtent.clamp(0.0, 2000.0).toDouble() + 100.0 + bottomInset;
+
 mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
   Widget build(BuildContext context) {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -736,10 +747,18 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                       isLight);
                                                 }
                                                 return SizedBox(
-                                                  // 浮动底栏原有 100dp 余量之外，再补上
-                                                  // 系统手势区，使最后一张卡片能完整滚出遮挡。
+                                                  // The header is an overlay rather
+                                                  // than a ListView inset. Reserve it
+                                                  // at the trailing edge too, so a
+                                                  // short home page can actually move
+                                                  // past the fixed header instead of
+                                                  // springing back at offset zero.
                                                   height:
-                                                      100 + bottomSystemInset,
+                                                      homeDashboardPhoneScrollTailExtent(
+                                                    headerExtent: headerExtent,
+                                                    bottomInset:
+                                                        bottomSystemInset,
+                                                  ),
                                                 );
                                               },
                                             ),
@@ -1092,7 +1111,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             if (!context.mounted) return;
             await Navigator.of(context, rootNavigator: true).push(
               PageTransitions.slideHorizontal(
-                const ThirtyDayChallengeScreen(),
+                const ChallengeCenterScreen(),
               ),
             );
             if (mounted) _loadThirtyDayChallengeStatus();
@@ -1217,14 +1236,19 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     return 'jpg';
   }
 
-  Future<void> _openHomePomodoro({required GlobalKey sourceKey}) async {
-    await PageTransitions.pushFromRect(
-      context: context,
-      page: PomodoroScreen(username: widget.username),
-      sourceKey: sourceKey,
-      placeholderIcon: Icons.timer_outlined,
-      sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
-    );
+  Future<void> _openHomePomodoro({GlobalKey? sourceKey}) async {
+    final page = PomodoroScreen(username: widget.username);
+    if (sourceKey == null) {
+      await Navigator.of(context).push(PageTransitions.slideHorizontal(page));
+    } else {
+      await PageTransitions.pushFromRect(
+        context: context,
+        page: page,
+        sourceKey: sourceKey,
+        placeholderIcon: Icons.timer_outlined,
+        sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
+      );
+    }
     if (mounted) {
       _pomodoroRevision.value++;
       _timelineRevision.value++;
@@ -1239,79 +1263,83 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     );
   }
 
-  Future<void> _openHomeTodo({required GlobalKey sourceKey}) async {
-    await PageTransitions.pushFromRect(
-      context: context,
-      page: AddTodoScreen(
-        todoGroups: _todoGroups,
-        initialTeamUuid: _currentSelectedTeamUuid,
-        initialTeamName: _currentSelectedTeamName,
-        onFixedScheduleAdded: (item) async {
-          await StorageService.saveFixedSchedules(
-            widget.username,
-            [item],
+  Future<void> _openHomeTodo({GlobalKey? sourceKey}) async {
+    final page = AddTodoScreen(
+      todoGroups: _todoGroups,
+      initialTeamUuid: _currentSelectedTeamUuid,
+      initialTeamName: _currentSelectedTeamName,
+      onFixedScheduleAdded: (item) async {
+        await StorageService.saveFixedSchedules(
+          widget.username,
+          [item],
+        );
+        if (mounted) {
+          _scheduleRevision.value++;
+          _timelineRevision.value++;
+          await _loadAllData(
+            deferred: true,
+            domains: const {DataRefreshDomain.fixedSchedules},
           );
-          if (mounted) {
-            _scheduleRevision.value++;
-            _timelineRevision.value++;
-            await _loadAllData(
-              deferred: true,
-              domains: const {DataRefreshDomain.fixedSchedules},
-            );
-          }
-        },
-        onTodoAdded: (todo) async {
-          final allTodos = await StorageService.getTodos(widget.username);
-          allTodos.add(todo);
-          await StorageService.saveTodos(widget.username, allTodos);
-          if (todo.teamUuid != null) {
-            PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid!);
-          }
-          await _saveTodosToSharedFile(allTodos);
-          FloatWindowService.triggerReminderCheck();
-          FloatWindowService.invalidateSlotCache();
-          _syncTodoNotification();
-          _rescheduleAlarms();
-          await WidgetService.updateTodoWidget(allTodos);
-          if (mounted) {
-            await _loadAllData(
-              deferred: true,
-              domains: const {DataRefreshDomain.todos},
-            );
-          }
-        },
-        onTodosBatchAdded: (todos) async {
-          final allTodos = await StorageService.getTodos(widget.username);
-          allTodos.addAll(todos);
-          await StorageService.saveTodos(widget.username, allTodos);
-          final updatedTeamUuid = todos
-              .firstWhere((t) => t.teamUuid != null, orElse: () => todos.first)
-              .teamUuid;
-          if (updatedTeamUuid != null) {
-            PomodoroSyncService.instance.sendTeamUpdateSignal(updatedTeamUuid);
-          }
-          await _saveTodosToSharedFile(allTodos);
-          FloatWindowService.triggerReminderCheck();
-          FloatWindowService.invalidateSlotCache();
-          _syncTodoNotification();
-          _rescheduleAlarms();
-          await WidgetService.updateTodoWidget(allTodos);
-          if (mounted) {
-            await _loadAllData(
-              deferred: true,
-              domains: const {DataRefreshDomain.todos},
-            );
-          }
-        },
-        onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
-          Navigator.pop(context);
-          _navigateToTodoConfirm(
-              results, imagePath, originalText, tUuid, tName);
-        },
-      ),
-      sourceKey: sourceKey,
-      sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
+        }
+      },
+      onTodoAdded: (todo) async {
+        final allTodos = await StorageService.getTodos(widget.username);
+        allTodos.add(todo);
+        await StorageService.saveTodos(widget.username, allTodos);
+        if (todo.teamUuid != null) {
+          PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid!);
+        }
+        await _saveTodosToSharedFile(allTodos);
+        FloatWindowService.triggerReminderCheck();
+        FloatWindowService.invalidateSlotCache();
+        _syncTodoNotification();
+        _rescheduleAlarms();
+        await WidgetService.updateTodoWidget(allTodos);
+        if (mounted) {
+          await _loadAllData(
+            deferred: true,
+            domains: const {DataRefreshDomain.todos},
+          );
+        }
+      },
+      onTodosBatchAdded: (todos) async {
+        final allTodos = await StorageService.getTodos(widget.username);
+        allTodos.addAll(todos);
+        await StorageService.saveTodos(widget.username, allTodos);
+        final updatedTeamUuid = todos
+            .firstWhere((t) => t.teamUuid != null, orElse: () => todos.first)
+            .teamUuid;
+        if (updatedTeamUuid != null) {
+          PomodoroSyncService.instance.sendTeamUpdateSignal(updatedTeamUuid);
+        }
+        await _saveTodosToSharedFile(allTodos);
+        FloatWindowService.triggerReminderCheck();
+        FloatWindowService.invalidateSlotCache();
+        _syncTodoNotification();
+        _rescheduleAlarms();
+        await WidgetService.updateTodoWidget(allTodos);
+        if (mounted) {
+          await _loadAllData(
+            deferred: true,
+            domains: const {DataRefreshDomain.todos},
+          );
+        }
+      },
+      onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
+        Navigator.pop(context);
+        _navigateToTodoConfirm(results, imagePath, originalText, tUuid, tName);
+      },
     );
+    if (sourceKey == null) {
+      await Navigator.of(context).push(PageTransitions.slideHorizontal(page));
+    } else {
+      await PageTransitions.pushFromRect(
+        context: context,
+        page: page,
+        sourceKey: sourceKey,
+        sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
+      );
+    }
   }
 
   Future<void> _openHomeAddCountdown() {

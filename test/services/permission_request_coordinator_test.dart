@@ -26,8 +26,39 @@ void main() {
     expect(
         AppPermissionKind.liveUpdates.requiresMinorModeAuthorization, isTrue);
     expect(
+        AppPermissionKind.localNetwork.requiresMinorModeAuthorization, isFalse);
+    expect(
         AppPermissionKind.bandDeviceManagement.requiresMinorModeAuthorization,
         isTrue);
+  });
+
+  testWidgets('does not show a second rationale for available LAN access',
+      (tester) async {
+    late BuildContext context;
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(builder: (builderContext) {
+        context = builderContext;
+        return const Scaffold(body: SizedBox.expand());
+      }),
+    ));
+
+    var requested = false;
+    final coordinator = PermissionRequestCoordinator(
+      context: context,
+      statusReader: (_) async => PermissionStatus.granted,
+      requester: (_) async {
+        requested = true;
+        return PermissionStatus.denied;
+      },
+    );
+
+    final result = await coordinator.request(AppPermissionKind.localNetwork);
+
+    expect(result.granted, isTrue);
+    expect(result.cancelledByUser, isFalse);
+    expect(requested, isFalse);
+    expect(find.text('需要“局域网访问”权限'), findsNothing);
+    coordinator.dispose();
   });
 
   testWidgets('returns the requested status, invokes callback and hides banner',

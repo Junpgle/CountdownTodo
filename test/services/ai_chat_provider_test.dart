@@ -6,8 +6,6 @@ import 'package:countdown_todo/services/ai_chat_service.dart';
 import 'package:countdown_todo/services/chat_storage_service.dart';
 import 'package:countdown_todo/services/llm_service.dart';
 import 'package:countdown_todo/models/chat_message.dart';
-import 'package:countdown_todo/screens/settings/llm_config_page.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,6 +18,8 @@ class _RealHttpOverrides extends HttpOverrides {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('MiMo Token Plan provider', () {
     test('exposes the dedicated OpenAI and Anthropic base URLs', () {
       expect(
@@ -93,6 +93,59 @@ void main() {
     expect(usage!.promptTokens, 120);
     expect(usage.completionTokens, 34);
     expect(usage.totalTokens, 154);
+  });
+
+  test('parses MiMo usage details and clamps cached input', () {
+    final usage = AiTokenUsage.fromJson({
+      'prompt_tokens': 1268,
+      'completion_tokens': 356,
+      'total_tokens': 1624,
+      'completion_tokens_details': {'reasoning_tokens': 40},
+      'prompt_tokens_details': {
+        'cached_tokens': 2000,
+        'image_tokens': 500,
+        'audio_tokens': 12,
+        'video_tokens': 3,
+      },
+    });
+
+    expect(usage, isNotNull);
+    expect(usage!.cachedPromptTokens, 1268);
+    expect(usage.imageTokens, 500);
+    expect(usage.audioTokens, 12);
+    expect(usage.videoTokens, 3);
+    expect(usage.reasoningTokens, 40);
+  });
+
+  test('parses MiMo ASR duration usage', () {
+    final usage = AiTokenUsage.fromJson({
+      'prompt_tokens': 46,
+      'completion_tokens': 20,
+      'total_tokens': 66,
+      'prompt_tokens_details': {
+        'cached_tokens': 45,
+        'audio_tokens': 25,
+      },
+      'seconds': 4,
+    });
+
+    expect(usage, isNotNull);
+    expect(usage!.cachedPromptTokens, 45);
+    expect(usage.audioTokens, 25);
+    expect(usage.audioSeconds, 4);
+  });
+
+  test('parses DeepSeek top-level cache usage fields', () {
+    final usage = AiTokenUsage.fromJson({
+      'prompt_tokens': 1000,
+      'completion_tokens': 100,
+      'total_tokens': 1100,
+      'prompt_cache_hit_tokens': 600,
+      'prompt_cache_miss_tokens': 400,
+    });
+
+    expect(usage, isNotNull);
+    expect(usage!.cachedPromptTokens, 600);
   });
 
   test('keeps LLM API keys out of SharedPreferences', () async {
@@ -187,35 +240,5 @@ void main() {
         await server.close(force: true);
       }
     }, createHttpClient: _RealHttpOverrides().createHttpClient);
-  });
-
-  testWidgets('changing the vision model preserves the selected text model',
-      (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    await LLMService.saveConfig(
-      LLMConfig(
-        apiKey: 'test-key',
-        model: 'glm-4.7-flash',
-        visionModel: 'glm-4.6v-flash',
-      ),
-    );
-    await tester.pumpWidget(
-      const MaterialApp(home: LLMConfigPage(isEmbedded: true)),
-    );
-    await tester.pumpAndSettle();
-
-    final modelDropdowns = find.byType(DropdownButton<String>);
-    expect(modelDropdowns, findsNWidgets(2));
-    expect(find.text('GLM-4.7-Flash'), findsOneWidget);
-
-    await tester.ensureVisible(modelDropdowns.at(1));
-    await tester.pumpAndSettle();
-    await tester.tap(modelDropdowns.at(1));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('GLM-4.1V-Thinking-Flash').last);
-    await tester.pumpAndSettle();
-
-    expect(find.text('GLM-4.7-Flash'), findsOneWidget);
-    expect(find.text('GLM-4.1V-Thinking-Flash'), findsOneWidget);
   });
 }

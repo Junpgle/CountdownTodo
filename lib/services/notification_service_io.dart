@@ -500,8 +500,10 @@ class NotificationService {
         'timeStr': timeStr,
         'todoType': todoType,
         'notificationId': notifId,
-        'imagePath': isSpecialTodo ? null : todo.imagePath,
-        'originalText': isSpecialTodo ? null : todo.originalText,
+        // Special todos can also originate from image analysis. Keep the
+        // source data so Android can expose the corresponding actions.
+        'imagePath': todo.imagePath,
+        'originalText': todo.originalText,
       });
 //       debugPrint(
 //           "✅ 通知发送成功: type=${isSpecialTodo ? 'special_todo' : 'upcoming_todo'}, title=${todo.title}, notifId=$notifId");
@@ -518,6 +520,9 @@ class NotificationService {
     int totalCycles = 4,
     List<String> tagNames = const [],
     String alertKey = '',
+    String timerMode = 'countdown',
+    int? timerAnchorMs,
+    bool isPaused = false,
   }) async {
     if (!await AppSettingsStorage.isPomodoroNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
@@ -539,6 +544,9 @@ class NotificationService {
         'totalCycles': totalCycles,
         'tagNames': tagNames,
         'alertKey': alertKey,
+        'timerMode': timerMode,
+        'timerAnchorMs': timerAnchorMs ?? 0,
+        'isPaused': isPaused,
       });
     } catch (_) {
       // Native notification calls are best-effort.
@@ -612,7 +620,7 @@ class NotificationService {
   }
 
   static Future<void> scheduleReminders(List<Map<String, dynamic>> reminders,
-      {bool clearFirst = true}) async {
+      {bool clearFirst = true, bool forceReschedule = false}) async {
     if (!await AppSettingsStorage.isReminderNotificationEnabled() &&
         !(clearFirst && reminders.isEmpty)) {
       return;
@@ -715,6 +723,7 @@ class NotificationService {
       await _channel.invokeMethod('scheduleReminders', {
         'remindersJson': jsonEncode(payload),
         'clearFirst': clearFirst,
+        'forceReschedule': forceReschedule,
       });
     } catch (_) {
       // Native notification calls are best-effort.
@@ -835,8 +844,11 @@ class NotificationService {
   static Future<void> showTodoRecognizeSuccess({
     required int todoCount,
   }) async {
-    if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    // 先撤掉 ongoing 进度通知，再发送可点击的普通结果通知；否则系统/小岛
+    // 会继续把上一条“识别中”当作活动任务保留在顶部。
+    await cancelTodoRecognizeNotification();
+    if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     await ensureInitialized();
 
     final title = '✅ 图片识别完成';
@@ -868,8 +880,9 @@ class NotificationService {
   static Future<void> showTodoRecognizeFailed({
     required String errorMsg,
   }) async {
-    if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    await cancelTodoRecognizeNotification();
+    if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     await ensureInitialized();
 
     final title = '❌ 图片识别失败';

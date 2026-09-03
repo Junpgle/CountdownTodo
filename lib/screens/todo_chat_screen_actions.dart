@@ -96,6 +96,49 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     return '$day $startText-${DateFormat('HH:mm').format(end)}';
   }
 
+  String _formatHabitActionSummary(AiTodoAction action) {
+    final period = switch (action.habitPeriodType?.toLowerCase()) {
+      'weekly' => '每周',
+      'weekdays' => '工作日',
+      'monthly' => '每月',
+      'custom' || 'customdays' => '每${action.customIntervalDays ?? 1}天',
+      _ => '每天',
+    };
+    final sourceType = action.habitSourceType?.toLowerCase();
+    String target;
+    switch (sourceType) {
+      case 'quantitycheckin':
+      case 'quantity':
+        final value = action.targetValue;
+        final valueText = value == null
+            ? '数量目标'
+            : value == value.roundToDouble()
+                ? value.round().toString()
+                : value.toStringAsFixed(1);
+        target = action.unit?.trim().isNotEmpty == true
+            ? '$valueText ${action.unit!.trim()}'
+            : valueText;
+      case 'durationcheckin':
+      case 'pomodorotag':
+        target = action.durationMinutes == null
+            ? '时长目标'
+            : '${action.durationMinutes} 分钟';
+      case 'timecheckin':
+        final minute = action.targetTimeMinute;
+        final time = minute == null
+            ? '时间点目标'
+            : '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
+        target = action.habitTimeComparison?.toLowerCase() == 'after'
+            ? '$time 后'
+            : '$time 前';
+      case 'recurringtodo':
+        target = '完成 1 次';
+      default:
+        target = '习惯目标';
+    }
+    return '$period · $target';
+  }
+
   String _getTodoCurrentFolderName(String? todoId) {
     if (todoId == null) return '未知';
     final matches = widget.todos.where((t) => t['id'] == todoId);
@@ -681,6 +724,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final hasTagActions = activeActions.any((t) => t.isPomodoroTagAction);
     final hasScheduleActions =
         activeActions.any((t) => t.isFixedScheduleAction);
+    final hasHabitActions = activeActions.any((t) => t.isHabitAction);
 
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
@@ -716,19 +760,21 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      hasPomodoroActions
-                          ? '建议操作番茄钟'
-                          : hasScheduleActions
-                              ? '建议管理日程'
-                              : hasTimeLogActions
-                                  ? '建议整理专注记录'
-                                  : hasCountdownActions
-                                      ? '建议整理倒计时'
-                                      : hasTagActions
-                                          ? '建议整理番茄标签'
-                                          : hasExistingMutations
-                                              ? '建议整理待办'
-                                              : '建议添加待办',
+                      hasHabitActions
+                          ? '建议创建习惯'
+                          : hasPomodoroActions
+                              ? '建议操作番茄钟'
+                              : hasScheduleActions
+                                  ? '建议管理日程'
+                                  : hasTimeLogActions
+                                      ? '建议整理专注记录'
+                                      : hasCountdownActions
+                                          ? '建议整理倒计时'
+                                          : hasTagActions
+                                              ? '建议整理番茄标签'
+                                              : hasExistingMutations
+                                                  ? '建议整理待办'
+                                                  : '建议添加待办',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
@@ -747,9 +793,11 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                 final dueDate = todo.dueDate;
                 final isAllDay = todo.isAllDay;
                 final recurrence = todo.recurrence;
-                final timeStr = todo.isFixedScheduleAction
-                    ? _formatScheduleActionTime(todo)
-                    : _formatTodoTimeRange(startTime, dueDate, isAllDay);
+                final timeStr = todo.isHabitAction
+                    ? _formatHabitActionSummary(todo)
+                    : todo.isFixedScheduleAction
+                        ? _formatScheduleActionTime(todo)
+                        : _formatTodoTimeRange(startTime, dueDate, isAllDay);
 
                 return Container(
                   margin:
@@ -790,9 +838,11 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                                     Expanded(
                                       child: Text(
                                         todo.title ??
-                                            (todo.isFixedScheduleAction
-                                                ? '未命名日程'
-                                                : '未命名待办'),
+                                            (todo.isHabitAction
+                                                ? '未命名习惯'
+                                                : todo.isFixedScheduleAction
+                                                    ? '未命名日程'
+                                                    : '未命名待办'),
                                         style: const TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w600,
@@ -838,7 +888,9 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                         child: Row(
                           children: [
                             Icon(
-                              Icons.access_time,
+                              todo.isHabitAction
+                                  ? Icons.repeat_rounded
+                                  : Icons.access_time,
                               size: 13,
                               color: Theme.of(context)
                                   .colorScheme
@@ -856,7 +908,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
                                     .withValues(alpha: 0.5),
                               ),
                             ),
-                            if (recurrence != 'none') ...[
+                            if (!todo.isHabitAction &&
+                                recurrence != 'none') ...[
                               const SizedBox(width: 12),
                               Icon(
                                 Icons.repeat,
@@ -1127,6 +1180,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       case AiTodoActionType.createTodo:
         color = Colors.green;
         label = '新增';
+        break;
+      case AiTodoActionType.createHabit:
+        color = Colors.deepPurple;
+        label = '习惯';
         break;
       case AiTodoActionType.completeTodo:
         color = Theme.of(context).colorScheme.primary;
@@ -1657,6 +1714,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
   }
 
   String _titleLabel(AiTodoAction action) {
+    if (action.isHabitAction) return '习惯名称';
     if (action.isFixedScheduleAction) return '日程标题';
     if (action.isTodoGroupAction) return '分类名称';
     if (action.isPomodoroTagAction) return '标签名称';
@@ -1751,6 +1809,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         return '修改番茄标签';
       case AiTodoActionType.deletePomodoroTag:
         return '删除番茄标签';
+      case AiTodoActionType.createHabit:
+        return '新增习惯目标';
       case AiTodoActionType.createTodo:
       case AiTodoActionType.unknown:
         return '';
@@ -2012,6 +2072,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       case AiTodoActionType.updatePlanBlock:
       case AiTodoActionType.reschedulePlanBlocks:
       case AiTodoActionType.startPlanBlockPomodoro:
+      case AiTodoActionType.createHabit:
       case AiTodoActionType.unknown:
       case AiTodoActionType.createTimeLog:
       case AiTodoActionType.updateTimeLog:
@@ -2053,6 +2114,10 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     );
 
     if (result.hasChanges) {
+      final createdHabits = await AiTodoActionExecutor.saveHabitActions(
+        username: widget.username,
+        actions: result.newHabitActions,
+      );
       if (widget.onTodosBatchAction != null) {
         widget.onTodosBatchAction!(result.newTodos, result.updatedTodos);
       } else {
@@ -2169,7 +2234,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(
-                '已执行所选操作 (新待办: ${result.newTodos.length}, 整理待办: ${result.updatedTodos.length}, 日程: ${result.newFixedSchedules.length + result.updatedFixedSchedules.length}, 规划: ${result.newPlanBlocks.length + result.updatedPlanBlocks.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: ${result.pomodoroActions.length})')),
+                '已执行所选操作 (新待办: ${result.newTodos.length}, 新习惯: ${createdHabits.length}, 整理待办: ${result.updatedTodos.length}, 日程: ${result.newFixedSchedules.length + result.updatedFixedSchedules.length}, 规划: ${result.newPlanBlocks.length + result.updatedPlanBlocks.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: ${result.pomodoroActions.length})')),
       );
     }
   }
@@ -2297,6 +2362,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       case AiTodoActionType.createPomodoroTag:
       case AiTodoActionType.updatePomodoroTag:
       case AiTodoActionType.deletePomodoroTag:
+      case AiTodoActionType.createHabit:
       case AiTodoActionType.unknown:
         break;
     }

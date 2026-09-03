@@ -31,36 +31,61 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
 
     // 如果有预填充的大模型数据，解析并设置
     if (llmResults != null && llmResults.isNotEmpty) {
-      parsedResults = llmResults.map((result) {
-        final startTime = result['startTime'] != null
-            ? DateTime.tryParse(result['startTime'])
-            : null;
-        final endTime = result['endTime'] != null
-            ? DateTime.tryParse(result['endTime'])
-            : null;
-        final isAllDay = result['isAllDay'] ?? false;
+      parsedResults = llmResults.map((rawResult) {
+        final result = imagePath != null
+            ? RecognizedTodoAdapter.normalizeImageResult(rawResult)
+            : Map<String, dynamic>.from(rawResult);
+        final startTime = RecognizedTodoAdapter.parseDateTime(
+          result['startTime'] ??
+              result['start_time'] ??
+              result['createdDate'] ??
+              result['created_date'],
+        );
+        final endTime = RecognizedTodoAdapter.parseDateTime(
+          result['endTime'] ??
+              result['end_time'] ??
+              result['dueDate'] ??
+              result['due_date'],
+        );
+        final declaredTimeMode = RecognizedTodoAdapter.parseTimeMode(
+          result['timeMode'] ?? result['time_mode'],
+        );
+        final isAllDay = RecognizedTodoAdapter.parseBool(
+              result['isAllDay'] ?? result['is_all_day'],
+            ) ||
+            declaredTimeMode == TodoTimeMode.dateOnly ||
+            (startTime != null &&
+                endTime != null &&
+                TodoItem.looksLikeLegacyDateOnlyRange(startTime, endTime));
         return ParsedTodoResult(
-          title: result['title'] ?? '',
-          remark: result['remark'],
+          title: result['title']?.toString() ??
+              result['content']?.toString() ??
+              '',
+          remark: (result['remark'] ?? result['notes'] ?? result['note'])
+              ?.toString(),
           location: result['location']?.toString(),
           isAllDay: isAllDay,
           startTime: startTime,
           endTime: endTime,
           timeSemantics: _parseTimeSemantics(
-            result['timeMode'],
+            result['timeMode'] ?? result['time_mode'],
             isAllDay: isAllDay,
             startTime: startTime,
             endTime: endTime,
           ),
           recurrence: _parseRecurrenceType(result['recurrence']),
-          customIntervalDays: result['customIntervalDays'],
-          recurrenceEndDate: DateTime.tryParse(
-            (result['recurrenceEndDate'] ?? result['recurrence_end_date'] ?? '')
-                .toString(),
+          customIntervalDays:
+              result['customIntervalDays'] ?? result['custom_interval_days'],
+          recurrenceEndDate: RecognizedTodoAdapter.parseDateTime(
+            result['recurrenceEndDate'] ?? result['recurrence_end_date'],
           ),
-          reminderMinutes: result['reminderMinutes'],
-          itemKind: result['itemKind']?.toString(),
-          originalText: originalText,
+          reminderMinutes:
+              result['reminderMinutes'] ?? result['reminder_minutes'],
+          itemKind: (result['itemKind'] ?? result['item_kind'])?.toString(),
+          originalText: (result['originalText'] ??
+                  result['original_text'] ??
+                  originalText)
+              ?.toString(),
         );
       }).toList();
 
@@ -599,11 +624,33 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                     const Duration(milliseconds: 150),
                                   );
 
+                                  final recognitionInput =
+                                      aiInputCtrl.text.trim();
+                                  AiRecognitionHandle? recognitionHandle;
+                                  ChatUsageSummary? recognitionUsage;
+                                  try {
+                                    recognitionHandle =
+                                        await AiRecognitionChatBridge.startText(
+                                      recognitionInput,
+                                    );
+                                  } catch (_) {}
+
                                   try {
                                     final results =
                                         await LLMService.parseTodoWithLLM(
-                                      aiInputCtrl.text,
+                                      recognitionInput,
+                                      onUsage: (usage) =>
+                                          recognitionUsage = usage,
                                     );
+                                    if (recognitionHandle != null) {
+                                      try {
+                                        await AiRecognitionChatBridge.complete(
+                                          recognitionHandle,
+                                          todoResults: results,
+                                          usageSummary: recognitionUsage,
+                                        );
+                                      } catch (_) {}
+                                    }
                                     if (!context.mounted || !ctx.mounted) {
                                       return;
                                     }
@@ -613,7 +660,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                     ) {
                                       return ParsedTodoResult(
                                         title:
-                                            result['title'] ?? aiInputCtrl.text,
+                                            result['title'] ?? recognitionInput,
                                         remark: result['remark'],
                                         location:
                                             result['location']?.toString(),
@@ -655,7 +702,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                             result['reminderMinutes'],
                                         itemKind:
                                             result['itemKind']?.toString(),
-                                        originalText: aiInputCtrl.text,
+                                        originalText: recognitionInput,
                                       );
                                     }).toList();
 
@@ -732,6 +779,14 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                       }
                                     }
                                   } catch (e) {
+                                    if (recognitionHandle != null) {
+                                      try {
+                                        await AiRecognitionChatBridge.fail(
+                                          recognitionHandle,
+                                          e,
+                                        );
+                                      } catch (_) {}
+                                    }
                                     if (!context.mounted) return;
                                     setDialogState(() {
                                       isParsing = false;
@@ -808,11 +863,33 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                     isParsing = true;
                                   });
 
+                                  final recognitionInput =
+                                      aiInputCtrl.text.trim();
+                                  AiRecognitionHandle? recognitionHandle;
+                                  ChatUsageSummary? recognitionUsage;
+                                  try {
+                                    recognitionHandle =
+                                        await AiRecognitionChatBridge.startText(
+                                      recognitionInput,
+                                    );
+                                  } catch (_) {}
+
                                   try {
                                     final results =
                                         await LLMService.parseTodoWithLLM(
-                                      aiInputCtrl.text,
+                                      recognitionInput,
+                                      onUsage: (usage) =>
+                                          recognitionUsage = usage,
                                     );
+                                    if (recognitionHandle != null) {
+                                      try {
+                                        await AiRecognitionChatBridge.complete(
+                                          recognitionHandle,
+                                          todoResults: results,
+                                          usageSummary: recognitionUsage,
+                                        );
+                                      } catch (_) {}
+                                    }
                                     if (!context.mounted || !ctx.mounted) {
                                       return;
                                     }
@@ -822,7 +899,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                     ) {
                                       return ParsedTodoResult(
                                         title:
-                                            result['title'] ?? aiInputCtrl.text,
+                                            result['title'] ?? recognitionInput,
                                         remark: result['remark'],
                                         location:
                                             result['location']?.toString(),
@@ -865,7 +942,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                         itemKind:
                                             result['itemKind']?.toString(),
                                         originalText:
-                                            aiInputCtrl.text, // 📄 保存原始输入文字
+                                            recognitionInput, // 📄 保存原始输入文字
                                       );
                                     }).toList();
 
@@ -901,7 +978,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                         widget.onLLMResultsParsed!(
                                             results,
                                             imagePath,
-                                            aiInputCtrl.text,
+                                            recognitionInput,
                                             _selectedSubTeamUuid,
                                             currentTeamName);
                                         return;
@@ -972,6 +1049,14 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                       }
                                     }
                                   } catch (e) {
+                                    if (recognitionHandle != null) {
+                                      try {
+                                        await AiRecognitionChatBridge.fail(
+                                          recognitionHandle,
+                                          e,
+                                        );
+                                      } catch (_) {}
+                                    }
                                     if (!context.mounted) return;
                                     setDialogState(() {
                                       isParsing = false;
@@ -1233,7 +1318,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                       customIntervalDays: customDays,
                       recurrenceEndDate: recurrenceEndDate,
                       dueDate: normalizedTime.due,
-                      createdDate: normalizedTime.start?.millisecondsSinceEpoch,
+                      createdDate:
+                          normalizedTime.start?.toUtc().millisecondsSinceEpoch,
                       remark: remarkCtrl.text.trim().isEmpty
                           ? null
                           : remarkCtrl.text.trim(),

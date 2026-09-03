@@ -7,6 +7,7 @@ import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
 import 'secure_storage_service.dart';
 import '../features/finance/services/ai_usage_cost_service.dart';
+import '../models/chat_message.dart';
 
 class LLMConfig {
   final String provider;
@@ -269,6 +270,7 @@ class CustomVisionModel {
   final String modelId;
   final String apiUrl;
   final String apiKey;
+  final Set<String> modalities;
 
   CustomVisionModel({
     required this.id,
@@ -276,6 +278,7 @@ class CustomVisionModel {
     required this.modelId,
     required this.apiUrl,
     required this.apiKey,
+    this.modalities = const {'image'},
   });
 
   Map<String, dynamic> toJson() => {
@@ -284,6 +287,7 @@ class CustomVisionModel {
         'model_id': modelId,
         'api_url': apiUrl,
         'api_key': apiKey,
+        'modalities': modalities.toList()..sort(),
       };
 
   factory CustomVisionModel.fromJson(Map<String, dynamic> json) {
@@ -293,6 +297,21 @@ class CustomVisionModel {
       modelId: json['model_id'] ?? '',
       apiUrl: json['api_url'] ?? '',
       apiKey: json['api_key'] ?? '',
+      modalities: json['modalities'] is List
+          ? {
+              'image',
+              ...(json['modalities'] as List)
+                  .map((item) => item.toString())
+                  .where(
+                    (item) => const {
+                      'image',
+                      'audio',
+                      'video',
+                      'file',
+                    }.contains(item),
+                  ),
+            }
+          : const {'image'},
     );
   }
 }
@@ -427,6 +446,30 @@ class LLMService {
       return (url: url, key: key);
     }
     return (url: '', key: '');
+  }
+
+  static Future<Set<String>> getMultimodalCapabilities(
+    String model, {
+    String? provider,
+  }) async {
+    final normalizedModel = model.trim().toLowerCase();
+    final normalizedProvider = provider?.trim().toLowerCase() ?? '';
+    if (normalizedProvider == 'custom') {
+      final customModels = await getCustomVisionModels();
+      final custom = customModels
+          .where((item) => item.id == model || item.modelId == model)
+          .firstOrNull;
+      if (custom != null && custom.modalities.isNotEmpty) {
+        return Set<String>.from(custom.modalities);
+      }
+    }
+    if (normalizedModel == 'mimo-v2.5') {
+      return const {'image', 'audio', 'video'};
+    }
+    if (normalizedModel == 'mimo-v2-omni') {
+      return const {'image', 'video'};
+    }
+    return const {'image'};
   }
 
   static Future<LLMConfig?> getConfig() async {
@@ -672,6 +715,7 @@ class LLMService {
         modelId: model.modelId,
         apiUrl: model.apiUrl,
         apiKey: apiKey,
+        modalities: model.modalities,
       ));
     }
     if (needsSanitizing) {
@@ -775,6 +819,12 @@ class LLMService {
         promptTokens: usage?.promptTokens ?? 0,
         completionTokens: usage?.completionTokens ?? 0,
         totalTokens: usage?.totalTokens ?? 0,
+        cachedPromptTokens: usage?.cachedPromptTokens ?? 0,
+        imageTokens: usage?.imageTokens ?? 0,
+        audioTokens: usage?.audioTokens ?? 0,
+        videoTokens: usage?.videoTokens ?? 0,
+        reasoningTokens: usage?.reasoningTokens ?? 0,
+        audioSeconds: usage?.audioSeconds ?? 0,
         usageAvailable: usage != null,
       );
     } catch (_) {
@@ -802,7 +852,9 @@ class LLMService {
   }
 
   static Future<List<Map<String, dynamic>>> parseTodoWithLLM(
-      String input) async {
+    String input, {
+    void Function(ChatUsageSummary usage)? onUsage,
+  }) async {
     await _ensureAiInteractionAllowed();
     final config = await getConfig();
     if (config == null || !config.isConfigured) {
@@ -857,15 +909,24 @@ class LLMService {
     try {
       final usageProvider =
           AiChatService.effectiveProvider(config.provider, config.apiUrl);
-      await AiUsageCostService.recordUsage(
+      final record = await AiUsageCostService.recordUsage(
         provider: usageProvider.isEmpty ? 'custom' : usageProvider,
         model: config.model,
         operation: 'todo_text',
         promptTokens: usage?.promptTokens ?? 0,
         completionTokens: usage?.completionTokens ?? 0,
         totalTokens: usage?.totalTokens ?? 0,
+        cachedPromptTokens: usage?.cachedPromptTokens ?? 0,
+        imageTokens: usage?.imageTokens ?? 0,
+        audioTokens: usage?.audioTokens ?? 0,
+        videoTokens: usage?.videoTokens ?? 0,
+        reasoningTokens: usage?.reasoningTokens ?? 0,
+        audioSeconds: usage?.audioSeconds ?? 0,
         usageAvailable: usage != null,
       );
+      if (record != null) {
+        onUsage?.call(AiChatService.usageSummaryFromRecord(record));
+      }
     } catch (_) {
       // Cost tracking must not invalidate a successful text recognition.
     }
@@ -893,10 +954,13 @@ class LLMService {
   }
 
   static Future<List<Map<String, dynamic>>> parseTodoFromImage(
-      String imagePath) {
+    String imagePath, {
+    void Function(ChatUsageSummary usage)? onUsage,
+  }) {
     return _parseImageWithPrompt(
       imagePath,
       operation: 'vision_todo',
+      onUsage: onUsage,
       promptBuilder: (config, nowStr) =>
           '${config.visionPrompt.replaceAll('{now}', nowStr)}\n\n'
           '${LLMConfig.itemSemanticGuardrailPrompt}',
@@ -907,10 +971,13 @@ class LLMService {
   /// intentionally separate from [parseTodoFromImage]: a vision model should
   /// be allowed to return both a pickup todo and a bill from the same image.
   static Future<List<Map<String, dynamic>>> parseFinanceFromImage(
-      String imagePath) {
+    String imagePath, {
+    void Function(ChatUsageSummary usage)? onUsage,
+  }) {
     return _parseImageWithPrompt(
       imagePath,
       operation: 'vision_finance',
+      onUsage: onUsage,
       promptBuilder: (_, nowStr) =>
           LLMConfig.defaultFinanceVisionPrompt.replaceAll('{now}', nowStr),
     );
@@ -920,6 +987,7 @@ class LLMService {
     String imagePath, {
     required String operation,
     required String Function(LLMConfig config, String nowStr) promptBuilder,
+    void Function(ChatUsageSummary usage)? onUsage,
   }) async {
     await _ensureAiInteractionAllowed();
     final config = await getConfig();
@@ -997,16 +1065,25 @@ class LLMService {
         visionProvider ?? config.provider,
         visionUrl,
       );
-      await AiUsageCostService.recordUsage(
+      final record = await AiUsageCostService.recordUsage(
         provider: usageProvider.isEmpty ? 'custom' : usageProvider,
         model: config.visionModel,
         operation: operation,
         promptTokens: usage?.promptTokens ?? 0,
         completionTokens: usage?.completionTokens ?? 0,
         totalTokens: usage?.totalTokens ?? 0,
+        cachedPromptTokens: usage?.cachedPromptTokens ?? 0,
+        imageTokens: usage?.imageTokens ?? 0,
+        audioTokens: usage?.audioTokens ?? 0,
+        videoTokens: usage?.videoTokens ?? 0,
+        reasoningTokens: usage?.reasoningTokens ?? 0,
+        audioSeconds: usage?.audioSeconds ?? 0,
         imageCount: 1,
         usageAvailable: usage != null,
       );
+      if (record != null) {
+        onUsage?.call(AiChatService.usageSummaryFromRecord(record));
+      }
     } catch (_) {
       // Cost tracking must not invalidate a successful image recognition.
     }

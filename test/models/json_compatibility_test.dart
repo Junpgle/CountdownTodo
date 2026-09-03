@@ -46,6 +46,26 @@ void main() {
     expect(schedule.ownerUserId, 9);
   });
 
+  test('timeline supports finance events and keeps their edit metadata', () {
+    final event = TimelineEvent.fromMap({
+      'id': 'finance_transaction-1',
+      'type': TimelineEventType.financeTransaction.index,
+      'timestamp': DateTime(2026, 8, 31, 12).millisecondsSinceEpoch,
+      'title': '记账 · 支出',
+      'subtitle': '午餐 · -¥28.00',
+      'extraData': {
+        'transaction_uuid': 'transaction-1',
+        'finance_type': 'expense',
+        'amount_minor': 2800,
+      },
+    });
+
+    expect(event.type, TimelineEventType.financeTransaction);
+    expect(event.extraData?['transaction_uuid'], 'transaction-1');
+    expect(event.extraData?['finance_type'], 'expense');
+    expect(event.extraData?['amount_minor'], 2800);
+  });
+
   test('pomodoro state clamps malformed enum values and parses strings', () {
     final state = PomodoroRunState.fromJson({
       'phase': '999',

@@ -12,6 +12,7 @@ import '../models/widget_snapshot.dart';
 import '../storage_service.dart';
 import '../utils/todo_widget_visibility.dart';
 import '../utils/widget_recurrence_series.dart';
+import '../utils/android_energy_policy.dart';
 import '../features/habits/repositories/habit_repository.dart';
 import '../features/habits/services/habit_progress_calculator.dart';
 import '../features/habits/services/habit_rule_resolver.dart';
@@ -20,6 +21,7 @@ import '../features/finance/models/finance_models.dart';
 import '../features/finance/services/finance_repository.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
+import 'power_save_mode_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> widgetBackgroundCallback(Uri? uri) async {
@@ -80,7 +82,12 @@ class WidgetService {
   static bool _initialized = false;
   static final bool _widgetUpdateDisabled = false;
   static const int maxWidgetItems = 8;
+  static Duration get _periodicRefreshInterval =>
+      AndroidEnergyPolicy.foregroundWidgetRefreshInterval;
   static Timer? _periodicTimer;
+  static bool _appInForeground = true;
+  static bool _periodicRefreshConfigured = false;
+  static bool _powerSaveListenerRegistered = false;
 
   static const MethodChannel _macOSWidgetChannel =
       MethodChannel('com.countdowntodo/widget');
@@ -88,6 +95,26 @@ class WidgetService {
   static Future<void> dispose() async {
     _periodicTimer?.cancel();
     _periodicTimer = null;
+    _widgetRefreshDebouncer?.cancel();
+    _widgetRefreshDebouncer = null;
+    _periodicRefreshConfigured = false;
+    _initialized = false;
+    if (_powerSaveListenerRegistered) {
+      PowerSaveModeService.enabledListenable
+          .removeListener(_onPowerSaveModeChanged);
+      _powerSaveListenerRegistered = false;
+    }
+  }
+
+  static void setAppForeground(bool isForeground) {
+    if (_appInForeground == isForeground) return;
+    _appInForeground = isForeground;
+    if (!isForeground) {
+      _periodicTimer?.cancel();
+      _periodicTimer = null;
+    } else {
+      _startPeriodicRefresh();
+    }
   }
 
   /// 数据变更（习惯打卡、待办增删等）后的即时小组件刷新。
@@ -103,10 +130,22 @@ class WidgetService {
   static Future<void> _updateCurrentUserWidgets({
     List<TodoItem>? todos,
   }) async {
+    if (!await _hasInstalledWidgets()) return;
     final username = await StorageService.getCurrentUsername();
     if (username == null || username.isEmpty) return;
     final items = todos ?? await StorageService.getTodos(username);
     await updateAllWidgetData(username, items);
+  }
+
+  static Future<bool> _hasInstalledWidgets() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return true;
+    try {
+      return (await HomeWidget.getInstalledWidgets()).isNotEmpty;
+    } catch (_) {
+      // Older vendor launchers may not expose installed-widget metadata. Keep
+      // the existing refresh behavior when detection is unavailable.
+      return true;
+    }
   }
 
   static Future<void> _refreshWidgetsAfterDataChange() async {
@@ -140,15 +179,16 @@ class WidgetService {
       unawaited(_refreshWidgetsAfterDataChange());
     };
 
-    // 启动 15 分钟一次的周期刷新（确保在应用运行期间定期更新 widget，减少能耗）
-    _periodicTimer?.cancel();
-    _periodicTimer = Timer.periodic(const Duration(minutes: 15), (timer) async {
-      try {
-        await _updateCurrentUserWidgets();
-      } catch (e) {
-//         print('Widget periodic refresh error: $e');
-      }
-    });
+    // Data changes refresh widgets immediately. Keep a low-frequency fallback
+    // only while the app is visible; Android's provider handles daily updates
+    // when the process is not running.
+    _periodicRefreshConfigured = true;
+    if (Platform.isAndroid && !_powerSaveListenerRegistered) {
+      PowerSaveModeService.enabledListenable
+          .addListener(_onPowerSaveModeChanged);
+      _powerSaveListenerRegistered = true;
+    }
+    _startPeriodicRefresh();
 
     // 立即触发一次更新
     try {
@@ -156,6 +196,25 @@ class WidgetService {
     } catch (e) {
 //       print('Widget initial update error: $e');
     }
+  }
+
+  static void _startPeriodicRefresh() {
+    _periodicTimer?.cancel();
+    _periodicTimer = null;
+    if (!_periodicRefreshConfigured ||
+        !_appInForeground ||
+        !AndroidEnergyPolicy.shouldRunForegroundWidgetRefresh) {
+      return;
+    }
+    _periodicTimer = Timer.periodic(_periodicRefreshInterval, (_) async {
+      try {
+        await _updateCurrentUserWidgets();
+      } catch (_) {}
+    });
+  }
+
+  static void _onPowerSaveModeChanged() {
+    _startPeriodicRefresh();
   }
 
   static String _getDueDateLabel(DateTime? dueDate) {

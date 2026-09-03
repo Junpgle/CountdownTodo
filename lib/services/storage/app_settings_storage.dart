@@ -23,6 +23,7 @@ class AppSettingsStorage {
   static const String _notifyReminderEnabled = "notify_reminder_enabled";
   static const String _notifyFinanceBudgetEnabled =
       "notify_finance_budget_enabled";
+  static const String _financeCloudSyncEnabled = "finance_cloud_sync_enabled";
   static const String _courseReminderMinutes = "course_reminder_minutes";
 
   static const String _privacyAgreed = "privacy_policy_agreed";
@@ -46,6 +47,7 @@ class AppSettingsStorage {
   static const String _todoFolderDisplayMode = "todo_folder_display_mode";
   static const String _lastCourseImportUrl = "last_course_import_url";
   static const String _categoryReminderMinutes = "category_reminder_minutes";
+  static const String _bandServiceEnabled = "band_service_enabled";
 
   static Future<SharedPreferences> get _prefs =>
       SharedPreferences.getInstance();
@@ -168,6 +170,25 @@ class AppSettingsStorage {
   static Future<void> setFinanceBudgetAlertEnabled(bool enabled) async {
     final prefs = await _prefs;
     await prefs.setBool(_notifyFinanceBudgetEnabled, enabled);
+  }
+
+  static String _financeCloudSyncKey(String username) =>
+      '${_financeCloudSyncEnabled}_${username.trim()}';
+
+  /// Personal finance stays local unless this account explicitly opts in.
+  static Future<bool> isFinanceCloudSyncEnabled(String username) async {
+    if (username.trim().isEmpty) return false;
+    final prefs = await _prefs;
+    return prefs.getBool(_financeCloudSyncKey(username)) ?? false;
+  }
+
+  static Future<void> setFinanceCloudSyncEnabled(
+    String username,
+    bool enabled,
+  ) async {
+    if (username.trim().isEmpty) return;
+    final prefs = await _prefs;
+    await prefs.setBool(_financeCloudSyncKey(username), enabled);
   }
 
   static Future<int> getCourseReminderMinutes() async {
@@ -412,5 +433,16 @@ class AppSettingsStorage {
     final prefs = await _prefs;
     await prefs.setString(
         "${_categoryReminderMinutes}_$username", jsonEncode(data));
+  }
+
+  /// 手环后台连接服务默认关闭，避免应用启动后无条件绑定小米穿戴服务。
+  static Future<bool> isBandServiceEnabled() async {
+    final prefs = await _prefs;
+    return prefs.getBool(_bandServiceEnabled) ?? false;
+  }
+
+  static Future<void> setBandServiceEnabled(bool enabled) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_bandServiceEnabled, enabled);
   }
 }

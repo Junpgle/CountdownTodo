@@ -32,6 +32,8 @@ import '../widgets/app_settings_widgets.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 import 'animation_settings_page.dart';
+import '../services/device_calendar_read_service.dart';
+import 'settings/device_calendar_read_page.dart';
 
 /// 控制功能页的入口展示范围。
 enum FeatureGuideMode {
@@ -249,7 +251,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   PermissionStatus? _notificationStatus;
   bool _hasUsageStats = false;
   bool _hasExactAlarm = false;
-  bool _ignoringBatteryOptimizations = false;
   bool _showDatabaseUpdatePage = false;
   DateTime? _minorBirthDate;
   bool _minorBirthDateSaving = false;
@@ -267,6 +268,10 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
   /// 本次引导是否包含外观设置页（用于完成时写入已展示标记）。
   bool _themeSetupPageIncluded = false;
+
+  /// 手机日历读取开关只在自动版本引导中主动提供一次。
+  bool _deviceCalendarReadGuideOffered = false;
+  bool _deviceCalendarReadSetupPageIncluded = false;
 
   // 云端数据
   bool _checkingCloudData = false;
@@ -311,6 +316,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       _checkPermissions(),
       _loadGlobalSettings(),
       _loadLiquidGlassState(),
+      _loadDeviceCalendarReadGuideState(),
       _loadMinorModeGuideState(),
     ];
     if (AppPlatform.isWindows) tasks.add(_loadTaiConfig());
@@ -320,6 +326,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   Future<void> _loadLiquidGlassState() async {
     final offered = await LiquidGlassEffectService.isGuideOfferDone();
     if (mounted) setState(() => _guideOffered = offered);
+  }
+
+  Future<void> _loadDeviceCalendarReadGuideState() async {
+    final offered = await DeviceCalendarReadService.isGuideOfferDone();
+    if (mounted) setState(() => _deviceCalendarReadGuideOffered = offered);
   }
 
   Future<void> _setupPages() async {
@@ -359,6 +370,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     // "已展示"标记，之后不再重复展示（用户可能不想要，不能反复打扰）。
     _themeSetupPageIncluded =
         shouldShowGuide && pages.contains(_buildGlobalThemeSetupPage);
+    _deviceCalendarReadSetupPageIncluded =
+        shouldShowGuide && pages.contains(_buildDeviceCalendarReadSetupPage);
 
     if (mounted) {
       setState(() {
@@ -418,9 +431,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       return [
         _buildAndroidFeaturePage1,
         _buildAndroidFeaturePage2,
-        _buildAndroidFeaturePage3,
         _buildAndroidWidgetGuidePage,
         _buildMinorModeGuidePage,
+        if (!_deviceCalendarReadGuideOffered) _buildDeviceCalendarReadSetupPage,
         _buildGlobalCourseSetupPage,
         _buildGlobalThemeSetupPage,
       ];
@@ -428,6 +441,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
     if (!AppPlatform.isAndroid) {
       return [
+        if (DeviceCalendarReadService.isSupported &&
+            !_deviceCalendarReadGuideOffered)
+          _buildDeviceCalendarReadSetupPage,
         if (!_semesterEnabled) _buildGlobalCourseSetupPage,
         if (!_guideOffered) _buildGlobalThemeSetupPage,
       ];
@@ -437,8 +453,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       if (!_hasUsageStats) _buildAndroidFeaturePage1,
       if (_notificationStatus?.isGranted != true || !_hasExactAlarm)
         _buildAndroidFeaturePage2,
-      if (!_ignoringBatteryOptimizations) _buildAndroidFeaturePage3,
       if (!_minorModeGuideConfigured) _buildMinorModeGuidePage,
+      if (!_deviceCalendarReadGuideOffered) _buildDeviceCalendarReadSetupPage,
       if (!_semesterEnabled) _buildGlobalCourseSetupPage,
       if (!_guideOffered) _buildGlobalThemeSetupPage,
     ];
@@ -775,7 +791,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
     bool hasUsage = false;
     bool hasExact = false;
-    bool ignoringBattery = false;
 
     if (AppPlatform.isAndroid) {
       try {
@@ -787,13 +802,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         hasExact =
             await platform.invokeMethod('checkExactAlarmPermission') ?? true;
       } catch (_) {}
-      try {
-        ignoringBattery = await Permission.ignoreBatteryOptimizations.isGranted;
-      } catch (_) {}
     } else {
       hasUsage = true;
       hasExact = true;
-      ignoringBattery = true;
     }
 
     if (mounted) {
@@ -801,7 +812,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         _notificationStatus = notifStatus;
         _hasUsageStats = hasUsage;
         _hasExactAlarm = hasExact;
-        _ignoringBatteryOptimizations = ignoringBattery;
       });
     }
   }
@@ -863,6 +873,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       // 本次引导包含液态玻璃选项且用户走完了流程 → 记为已展示。
       if (_themeSetupPageIncluded) {
         await LiquidGlassEffectService.markGuideOffered();
+      }
+      if (_deviceCalendarReadSetupPageIncluded) {
+        await DeviceCalendarReadService.markGuideOffered();
       }
     }
     if (!mounted) return;
@@ -1431,7 +1444,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           _buildCapabilityTile(
             icon: Icons.notifications_off_outlined,
             title: '系统级通知与后台保活受限',
-            subtitle: '网页端不提供 Android 精确闹钟、电池优化、锁屏常驻通知等系统级引导。',
+            subtitle: '网页端不提供 Android 精确闹钟、系统通知与使用情况访问等系统级引导。',
             color: scheme.error,
             isLimited: true,
           ),
@@ -1642,34 +1655,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
               AppPermissionKind.exactAlarm,
             );
           },
-        ),
-      ],
-    ));
-  }
-
-  Widget _buildAndroidFeaturePage3() {
-    return _buildPageContainer(
-        content: Column(
-      children: [
-        const SizedBox(height: 16),
-        _buildStepHeader(
-          icon: Icons.battery_charging_full_outlined,
-          iconColor: Colors.orange,
-          title: '番茄钟与后台长驻',
-          subtitle: '为了体验完美的番茄钟跨端同步（WebSocket）与避免锁屏后被系统盲目杀后台，我们需要调整电池优化。',
-        ),
-        _buildMediaAsset('assets/guide_media/android_return_desktop.webm'),
-        const SizedBox(height: 24),
-        _buildPermissionTile(
-          title: '忽略电池优化',
-          subtitle: '提升进程优先级，避免长时间锁屏专注时被误杀',
-          isGranted: _ignoringBatteryOptimizations,
-          onRequest: () async {
-            await _permissionCoordinator.request(
-              AppPermissionKind.batteryOptimization,
-            );
-          },
-          optional: true,
         ),
       ],
     ));
@@ -2403,6 +2388,33 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     ));
   }
 
+  Widget _buildDeviceCalendarReadSetupPage() {
+    return _buildPageContainer(
+      content: Column(
+        children: [
+          const SizedBox(height: 16),
+          _buildStepHeader(
+            icon: Icons.calendar_view_week_outlined,
+            iconColor: Colors.teal,
+            title: '可选：读取手机日历',
+            subtitle: '把手机中的日程只读展示到首页、周视图和半月/月视图。默认关闭；不会写回系统日历、生成待办、上传或参与同步。',
+          ),
+          const SizedBox(height: 24),
+          const GuideDeviceCalendarReadToggle(),
+          const SizedBox(height: 12),
+          Text(
+            '不想现在开启也没关系，之后可在 设置 → 互联服务 → 读取手机日历 随时调整。',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.45,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── 辅助 UI 工具 ────────────────────────────────────────
 
   // ── 页面: Uni-Sync 4.0 迁移引导 (独立定义) ──────────────────
@@ -2600,45 +2612,68 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     required VoidCallback onPressed,
     required IconData icon,
     required String label,
+    required bool useGlass,
     double? width,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final foregroundColor = colorScheme.onSurface;
-    final borderRadius = BorderRadius.circular(28);
+    final borderRadius = BorderRadius.circular(22);
+    final isDark = colorScheme.brightness == Brightness.dark;
 
-    return FloatingGlassControl(
-      height: 56,
-      borderRadius: 28,
-      haloColor: colorScheme.primary,
-      isDark: colorScheme.brightness == Brightness.dark,
-      child: Semantics(
-        button: true,
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            onTap: onPressed,
-            borderRadius: borderRadius,
-            child: SizedBox(
-              width: width,
-              height: 56,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, size: 24, color: foregroundColor),
-                  const SizedBox(width: 8),
-                  Text(
-                    label,
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: foregroundColor,
-                          fontWeight: FontWeight.w600,
-                        ),
-                  ),
-                ],
-              ),
+    final action = Semantics(
+      button: true,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: borderRadius,
+          child: SizedBox(
+            width: width,
+            height: 44,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 20, color: foregroundColor),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: foregroundColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
             ),
           ),
         ),
       ),
+    );
+
+    if (!useGlass) {
+      return Material(
+        color: colorScheme.surfaceContainerHighest.withValues(
+          alpha: isDark ? 0.92 : 0.68,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: borderRadius,
+          side: BorderSide(
+            color: colorScheme.outlineVariant.withValues(
+              alpha: isDark ? 0.7 : 0.8,
+            ),
+            width: 0.8,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: action,
+      );
+    }
+
+    return FloatingGlassControl(
+      height: 44,
+      borderRadius: 22,
+      haloColor: colorScheme.primary,
+      isDark: colorScheme.brightness == Brightness.dark,
+      child: action,
     );
   }
 
@@ -2647,44 +2682,53 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     final isSinglePage = _pagesBuilder.length == 1;
     final isFirstPage = _currentPage == 0;
     final isLastPage = _currentPage == _pagesBuilder.length - 1;
+    // Each action is a standalone lens. There is intentionally no parent
+    // glass shell; dark mode uses a clean material surface to avoid muddy
+    // refraction around the action area.
+    final useActionGlass =
+        Theme.of(context).colorScheme.brightness != Brightness.dark;
     final primaryAction = _buildLiquidGlassAction(
       onPressed: isLastPage ? _done : _nextPage,
       icon: isLastPage ? Icons.check_rounded : Icons.arrow_forward_rounded,
       label: isLastPage ? '完成体验' : '继续探索',
+      useGlass: useActionGlass,
       width: isSinglePage ? 212 : null,
     );
     final previousAction = _buildLiquidGlassAction(
       onPressed: _previousPage,
       icon: Icons.arrow_back_rounded,
       label: '上一页',
+      useGlass: useActionGlass,
     );
     final bottomActions = isFirstPage
         ? Center(child: primaryAction)
         : Row(
             children: [
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: previousAction,
-                ),
-              ),
-              Expanded(flex: 2, child: primaryAction),
+              Expanded(child: previousAction),
+              const SizedBox(width: 8),
+              Expanded(child: primaryAction),
             ],
           );
-    final bottomBar = FloatingBottomBar(
-      height: 136,
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildPageIndicator(),
-              if (!isSinglePage) const SizedBox(height: 16),
-              bottomActions,
-            ],
-          ),
+    final guideBottomBarHorizontalPadding =
+        floatingBottomBarShouldFloat(context)
+            ? floatingBottomBarMarginFor(context).left
+            : 16.0;
+    final bottomBar = SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          guideBottomBarHorizontalPadding,
+          8,
+          guideBottomBarHorizontalPadding,
+          12,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildPageIndicator(),
+            if (!isSinglePage) const SizedBox(height: 6),
+            bottomActions,
+          ],
         ),
       ),
     );

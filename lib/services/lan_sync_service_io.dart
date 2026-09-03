@@ -134,8 +134,11 @@ class LanSyncService {
   static const int _discoveryPort = 54321;
   static const int _defaultHttpPort = 54322;
   static const String _multicastGroup = '239.255.0.1';
-  static const Duration _discoveryInterval = Duration(seconds: 5);
-  static const int _deviceTimeoutMs = 15000;
+  // Discovery sends once immediately. A 15-second keepalive is sufficient
+  // while this user-driven page is open and avoids frequent multicast radio
+  // wakeups; the refresh action still broadcasts on demand.
+  static const Duration _discoveryInterval = Duration(seconds: 15);
+  static const int _deviceTimeoutMs = 45000;
 
   static final LanSyncService instance = LanSyncService._();
   factory LanSyncService() => instance;
@@ -143,9 +146,11 @@ class LanSyncService {
 
   HttpServer? _server;
   RawDatagramSocket? _udpSocket;
+  StreamSubscription<RawSocketEvent>? _udpSubscription;
   Timer? _discoveryTimer;
-  Timer? _udpListenTimer;
+  Timer? _fallbackScanTimer;
   int? _serverPort;
+  bool _scanInProgress = false;
 
   final _devicesCtrl = StreamController<List<LanDevice>>.broadcast();
   final _statusCtrl = StreamController<String>.broadcast();
@@ -199,13 +204,24 @@ class LanSyncService {
   void triggerDiscovery() {
     if (_isRunning) {
       _broadcastDiscovery();
-      _startTimedScan();
+      _startTimedScan(force: true);
       _emitStatus('正在重新扫描...');
     }
   }
 
-  void _startTimedScan() {
-    _scanAllInterfaces();
+  void _startTimedScan({bool force = false}) {
+    _fallbackScanTimer?.cancel();
+    if (force) {
+      unawaited(_scanAllInterfaces());
+    } else {
+      // Multicast discovery is cheap and normally answers immediately. Only
+      // fan out across the /24 subnet when multicast did not find any peer.
+      _fallbackScanTimer = Timer(const Duration(seconds: 2), () {
+        if (_isRunning && _devices.isEmpty) {
+          unawaited(_scanAllInterfaces());
+        }
+      });
+    }
     Future.delayed(const Duration(seconds: 10), () {
       if (_isRunning) {
         _emitStatus('已启动（AES加密），发现 ${_devices.length} 台设备');
@@ -214,6 +230,8 @@ class LanSyncService {
   }
 
   Future<void> _scanAllInterfaces() async {
+    if (_scanInProgress || !_isRunning) return;
+    _scanInProgress = true;
     try {
       final interfaces = await NetworkInterface.list(
           type: InternetAddressType.IPv4, includeLoopback: false);
@@ -229,40 +247,51 @@ class LanSyncService {
       }
     } catch (e) {
       // debugPrint('[LanSync] Interface scan failed: $e');
+    } finally {
+      _scanInProgress = false;
     }
   }
 
   Future<void> _scanSubnet(String localIp) async {
+    final client = HttpClient();
     try {
       final parts = localIp.split('.');
       if (parts.length != 4) return;
 
       final subnet = '${parts[0]}.${parts[1]}.${parts[2]}';
-      final client = HttpClient();
       client.badCertificateCallback = (cert, host, port) => true;
 
-      final futures = <Future>[];
-      for (int i = 1; i < 255; i++) {
-        final ip = '$subnet.$i';
-        if (ip == localIp) continue;
-
-        futures.add(_tryConnect(client, ip));
+      // Bound concurrent probes so a manual fallback scan cannot create 253
+      // simultaneous radio/socket operations.
+      const batchSize = 32;
+      for (int firstHost = 1; firstHost < 255; firstHost += batchSize) {
+        if (!_isRunning) break;
+        final lastHost = (firstHost + batchSize).clamp(1, 255);
+        final futures = <Future<void>>[];
+        for (int host = firstHost; host < lastHost; host++) {
+          final ip = '$subnet.$host';
+          if (ip == localIp) continue;
+          futures.add(_tryConnect(client, ip));
+        }
+        await Future.wait(futures);
       }
 
-      await Future.wait(futures).timeout(const Duration(seconds: 10));
-      client.close();
       _emitDevices();
     } catch (e) {
       // debugPrint('[LanSync] Subnet scan failed: $e');
+    } finally {
+      client.close(force: true);
     }
   }
 
   Future<void> _tryConnect(HttpClient client, String ip) async {
+    if (!_isRunning) return;
     try {
       final request = await client
           .getUrl(Uri.parse('http://$ip:54322/discover'))
           .timeout(const Duration(milliseconds: 300));
-      final response = await request.close();
+      final response =
+          await request.close().timeout(const Duration(milliseconds: 500));
       final body = await response.transform(utf8.decoder).join();
       final data = jsonDecode(body) as Map<String, dynamic>;
 
@@ -352,9 +381,15 @@ class LanSyncService {
   Future<void> stop() async {
     _isRunning = false;
     _discoveryTimer?.cancel();
-    _udpListenTimer?.cancel();
+    _discoveryTimer = null;
+    _fallbackScanTimer?.cancel();
+    _fallbackScanTimer = null;
+    await _udpSubscription?.cancel();
+    _udpSubscription = null;
     _udpSocket?.close();
+    _udpSocket = null;
     await _server?.close(force: true);
+    _server = null;
     _devices.clear();
     _emitDevices();
     _emitStatus('已停止');
@@ -814,12 +849,19 @@ class LanSyncService {
           await RawDatagramSocket.bind(InternetAddress.anyIPv4, _discoveryPort);
       _udpSocket!.joinMulticast(InternetAddress(_multicastGroup));
 
-      _udpListenTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
-        Datagram? d;
-        while ((d = _udpSocket!.receive()) != null) {
-          _processDiscoveryDatagram(d);
-        }
-      });
+      // RawDatagramSocket already exposes read readiness as a stream. Listening
+      // to that event avoids waking the Dart isolate five times per second when
+      // the LAN is idle.
+      _udpSubscription = _udpSocket!.listen(
+        (event) {
+          if (event != RawSocketEvent.read) return;
+          Datagram? datagram;
+          while ((datagram = _udpSocket?.receive()) != null) {
+            _processDiscoveryDatagram(datagram);
+          }
+        },
+        onError: (_) {},
+      );
     } catch (e) {
       // debugPrint('[LanSync] UDP discovery failed: $e');
     }

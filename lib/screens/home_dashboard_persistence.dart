@@ -122,6 +122,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     bool syncFixedSchedules = true,
     bool syncHabits = true,
     bool syncFinance = true,
+    bool financeSyncExplicitlyAuthorized = false,
   }) async {
     if (_isSyncing || !mounted) return;
 
@@ -178,6 +179,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
           syncFixedSchedules: syncFixedSchedules,
           syncHabits: syncHabits,
           syncFinance: syncFinance,
+          financeSyncExplicitlyAuthorized: financeSyncExplicitlyAuthorized,
           context: context,
         );
         if (syncResult['success'] != true) {
@@ -453,7 +455,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     );
   }
 
-  void _showSyncOptionsDialog() {
+  Future<void> _showSyncOptionsDialog() async {
     bool syncTodos = true;
     bool syncCountdowns = true;
     bool syncScreenTime = true;
@@ -462,7 +464,9 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     bool syncPlanBlocks = true;
     bool syncFixedSchedules = true;
     bool syncHabits = true;
-    bool syncFinance = true;
+    bool syncFinance =
+        await AppSettingsStorage.isFinanceCloudSyncEnabled(widget.username);
+    if (!mounted) return;
 
     showDialog(
       context: context,
@@ -563,6 +567,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
                         syncFixedSchedules: syncFixedSchedules,
                         syncHabits: syncHabits,
                         syncFinance: syncFinance,
+                        financeSyncExplicitlyAuthorized: syncFinance,
                       );
                     }
                   : null,

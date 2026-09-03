@@ -26,6 +26,26 @@ abstract final class FinanceRepository {
     return FinanceStorage.getTransaction(uuid);
   }
 
+  static Future<List<FinanceTransaction>> getRefundsForTransaction(
+    String transactionUuid, {
+    bool includeDeleted = false,
+  }) {
+    return FinanceStorage.getRefundsForTransaction(
+      transactionUuid,
+      includeDeleted: includeDeleted,
+    );
+  }
+
+  static Future<int> getRemainingRefundableMinor(
+    String transactionUuid, {
+    String? excludingRefundUuid,
+  }) {
+    return FinanceStorage.getRemainingRefundableMinor(
+      transactionUuid,
+      excludingRefundUuid: excludingRefundUuid,
+    );
+  }
+
   static Future<FinanceSummary> getSummary({
     required DateTime from,
     required DateTime to,
@@ -60,6 +80,92 @@ abstract final class FinanceRepository {
     } catch (_) {
       // 预算通知失败不能回滚已经保存成功的账单。
     }
+  }
+
+  static Future<List<FinanceTransaction>> saveInstallmentPlan({
+    required FinanceTransaction transaction,
+    required int totalAmountMinor,
+    required int installmentCount,
+    required DateTime startDate,
+    List<FinanceTransaction> existingInstallments = const [],
+  }) async {
+    final saved = await FinanceStorage.saveInstallmentPlan(
+      transaction: transaction,
+      totalAmountMinor: totalAmountMinor,
+      installmentCount: installmentCount,
+      startDate: startDate,
+      existingInstallments: existingInstallments,
+    );
+    for (final item in saved) {
+      try {
+        await FinanceAutomationService.checkBudgetAlerts(
+          now: dateFromKey(item.transactionDate),
+        );
+      } catch (_) {
+        // 预算通知失败不能回滚已经保存成功的分期账单。
+      }
+    }
+    return saved;
+  }
+
+  static Future<List<FinanceTransaction>> getInstallmentGroup(
+    String groupUuid, {
+    bool includeDeleted = false,
+  }) {
+    return FinanceStorage.getInstallmentGroup(
+      groupUuid,
+      includeDeleted: includeDeleted,
+    );
+  }
+
+  static Future<void> deleteInstallmentGroup(String groupUuid) {
+    return FinanceStorage.deleteInstallmentGroup(groupUuid);
+  }
+
+  static Future<void> restoreInstallmentGroup(String groupUuid) {
+    return FinanceStorage.restoreInstallmentGroup(groupUuid);
+  }
+
+  static Future<List<FinanceLoan>> getLoans({
+    bool includeDeleted = false,
+  }) {
+    return FinanceStorage.getLoans(includeDeleted: includeDeleted);
+  }
+
+  static Future<FinanceLoan?> getLoan(
+    String uuid, {
+    bool includeDeleted = false,
+  }) {
+    return FinanceStorage.getLoan(uuid, includeDeleted: includeDeleted);
+  }
+
+  static Future<List<FinanceLoanInstallment>> getLoanInstallments(
+    String loanUuid, {
+    bool includeDeleted = false,
+  }) {
+    return FinanceStorage.getLoanInstallments(
+      loanUuid,
+      includeDeleted: includeDeleted,
+    );
+  }
+
+  static Future<void> saveLoan(FinanceLoan loan) {
+    return FinanceStorage.saveLoan(loan);
+  }
+
+  static Future<void> setLoanInstallmentPaid(
+    String installmentUuid,
+    bool paid,
+  ) {
+    return FinanceStorage.setLoanInstallmentPaid(installmentUuid, paid);
+  }
+
+  static Future<void> deleteLoan(String uuid) {
+    return FinanceStorage.deleteLoan(uuid);
+  }
+
+  static Future<void> restoreLoan(String uuid) {
+    return FinanceStorage.restoreLoan(uuid);
   }
 
   static Future<void> deleteTransaction(String uuid) {
@@ -187,6 +293,8 @@ abstract final class FinanceRepository {
         '商家',
         '备注',
         '来源',
+        '分期',
+        '分期总额',
       ],
       ...transactions.map((transaction) {
         final category = categories[transaction.categoryUuid];
@@ -198,11 +306,20 @@ abstract final class FinanceRepository {
           transaction.transactionDate,
           transaction.type.label,
           (amount / 100).toStringAsFixed(2),
-          category == null ? '未分类' : '${category.icon} ${category.name}',
-          payment == null ? '未指定' : '${payment.icon} ${payment.name}',
-          transaction.merchant ?? '',
-          transaction.note ?? '',
+          sanitizeFinanceCsvText(
+            category == null ? '未分类' : '${category.icon} ${category.name}',
+          ),
+          sanitizeFinanceCsvText(
+            payment == null ? '未指定' : '${payment.icon} ${payment.name}',
+          ),
+          sanitizeFinanceCsvText(transaction.merchant ?? ''),
+          sanitizeFinanceCsvText(transaction.note ?? ''),
           transaction.source.label,
+          transaction.installmentLabel ?? '',
+          transaction.isInstallment && transaction.installmentTotalMinor != null
+              ? formatFinanceAmount(transaction.installmentTotalMinor!,
+                  withSymbol: false)
+              : '',
         ];
       }),
     ];
@@ -223,6 +340,15 @@ abstract final class FinanceRepository {
     }
     return '"${value.replaceAll('"', '""')}"';
   }
+}
+
+/// Prevent spreadsheet programs from interpreting user-controlled cells as
+/// formulas when a CSV export is opened.
+String sanitizeFinanceCsvText(String value) {
+  final leading = value.trimLeft();
+  if (leading.isEmpty) return value;
+  const formulaPrefixes = {'=', '+', '-', '@'};
+  return formulaPrefixes.contains(leading[0]) ? "'$value" : value;
 }
 
 /// 将用户输入的人民币金额转换为分，拒绝负数和超过两位小数的值。

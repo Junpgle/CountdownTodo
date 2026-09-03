@@ -68,6 +68,9 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
       surfaceTintColor: Colors.transparent,
       shadowColor: Colors.transparent,
       forceMaterialTransparency: true,
+      // The chat page already has one continuous top surface. Keeping its
+      // actions plain avoids placing a second circular glass lens inside it.
+      useFloatingControls: false,
       systemOverlayStyle: floatingGlassTopBarSystemOverlayStyle(context),
       flexibleSpace: const FloatingGlassTopBarBackground(),
       centerTitle: true,
@@ -146,7 +149,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
           key: _settingsKey,
           icon: const Icon(Icons.tune_rounded, size: 22),
           onPressed: _showPromptSettings,
-          tooltip: '提示词设置',
+          tooltip: 'AI 助手设置',
         ),
         const SizedBox(width: 4),
       ],
@@ -595,7 +598,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
               _StaggeredFadeSlide(
                 delay: const Duration(milliseconds: 170),
                 child: Text(
-                  '可以直接问日程、课程、待办、规划块和专注记录，也可以让它生成可执行操作。',
+                  '可以直接问习惯、日程、课程、待办、规划块和专注记录，也可以让它生成可执行操作。',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 14,
@@ -1027,7 +1030,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
             children: [
               Icon(Icons.settings_outlined, size: 16),
               SizedBox(width: 8),
-              Text('打开LLM配置...'),
+              Text('打开模型与 API 配置...'),
             ],
           ),
         ),
@@ -1364,6 +1367,9 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
       '整理一下我的时间日志',
       '帮我制定一个复习计划',
       '有哪些建议能让我更自律？',
+      '创建每天喝水的习惯',
+      '创建每天喝水的待办',
+      '创建每天喝水',
     ]);
 
     return suggestions.toSet().toList();

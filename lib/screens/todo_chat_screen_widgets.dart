@@ -108,11 +108,28 @@ class _IridescentActionPanelState extends State<_IridescentActionPanel>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 5200),
-    )..repeat();
+    );
+    PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
+    _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    if (AndroidEnergyPolicy.shouldRunDecorativeMotion) {
+      if (!_controller.isAnimating) {
+        _controller.repeat(
+          count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 2),
+        );
+      }
+    } else {
+      _controller
+        ..stop()
+        ..reset();
+    }
   }
 
   @override
   void dispose() {
+    PowerSaveModeService.enabledListenable.removeListener(_syncAnimation);
     _controller.dispose();
     super.dispose();
   }
@@ -374,11 +391,29 @@ class _PulseAvatarState extends State<_PulseAvatar>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
+    );
+    PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
+    _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    if (AndroidEnergyPolicy.shouldRunDecorativeMotion) {
+      if (!_controller.isAnimating) {
+        _controller.repeat(
+          reverse: true,
+          count: AndroidEnergyPolicy.decorativeRepeatCount(),
+        );
+      }
+    } else {
+      _controller
+        ..stop()
+        ..reset();
+    }
   }
 
   @override
   void dispose() {
+    PowerSaveModeService.enabledListenable.removeListener(_syncAnimation);
     _controller.dispose();
     super.dispose();
   }
@@ -409,11 +444,24 @@ class _ThinkingLoaderState extends State<_ThinkingLoader>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
-    )..repeat();
+    );
+    PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
+    _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    if (AndroidEnergyPolicy.shouldRunDecorativeMotion) {
+      if (!_controller.isAnimating) _controller.repeat();
+    } else {
+      _controller
+        ..stop()
+        ..reset();
+    }
   }
 
   @override
   void dispose() {
+    PowerSaveModeService.enabledListenable.removeListener(_syncAnimation);
     _controller.dispose();
     super.dispose();
   }
@@ -492,49 +540,118 @@ class _DanmakuSuggestions extends StatefulWidget {
   State<_DanmakuSuggestions> createState() => _DanmakuSuggestionsState();
 }
 
-class _DanmakuSuggestionsState extends State<_DanmakuSuggestions> {
+class _DanmakuSuggestionsState extends State<_DanmakuSuggestions>
+    with WidgetsBindingObserver {
   late ScrollController _scrollCtrl1;
   late ScrollController _scrollCtrl2;
   late ScrollController _scrollCtrl3;
   Timer? _timer;
+  bool _appInForeground = true;
+  bool _tickerModeEnabled = false;
+
+  bool get _shouldScroll =>
+      mounted &&
+      _appInForeground &&
+      _tickerModeEnabled &&
+      AndroidEnergyPolicy.shouldRunDecorativeMotion &&
+      widget.suggestions.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    PowerSaveModeService.enabledListenable
+        .addListener(_syncScrollingWithVisibility);
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    _appInForeground =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     _scrollCtrl1 = ScrollController();
     _scrollCtrl2 = ScrollController();
     _scrollCtrl3 = ScrollController();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startScrolling();
+      _syncScrollingWithVisibility();
     });
   }
 
-  void _startScrolling() {
-    _timer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
-      if (!mounted) return;
-      _autoScroll(_scrollCtrl1, 0.35);
-      _autoScroll(_scrollCtrl2, 0.55);
-      _autoScroll(_scrollCtrl3, 0.45);
-    });
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final tickerModeEnabled = TickerMode.valuesOf(context).enabled;
+    if (_tickerModeEnabled == tickerModeEnabled) return;
+    _tickerModeEnabled = tickerModeEnabled;
+    _syncScrollingWithVisibility();
   }
 
-  void _autoScroll(ScrollController ctrl, double speed) {
+  @override
+  void didUpdateWidget(covariant _DanmakuSuggestions oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.suggestions.isEmpty != widget.suggestions.isEmpty) {
+      _syncScrollingWithVisibility();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appInForeground = state == AppLifecycleState.resumed;
+    _syncScrollingWithVisibility();
+  }
+
+  void _syncScrollingWithVisibility() {
+    if (_shouldScroll) {
+      _scheduleScrollTick(Duration.zero);
+    } else {
+      _timer?.cancel();
+      _timer = null;
+    }
+  }
+
+  void _scheduleScrollTick(Duration delay) {
+    if (!_shouldScroll || _timer != null) return;
+    _timer = Timer(delay, _handleScrollTick);
+  }
+
+  void _handleScrollTick() {
+    _timer = null;
+    if (!_shouldScroll) return;
+
+    final scrollInterval = AndroidEnergyPolicy.decorativeScrollInterval(
+      const Duration(milliseconds: 50),
+    );
+    // Distances scale with the interval so Android halves timer wakeups while
+    // preserving the original pixels-per-second speed.
+    final intervalScale = scrollInterval.inMicroseconds /
+        const Duration(milliseconds: 30).inMicroseconds;
+    final moved1 = _autoScroll(_scrollCtrl1, 0.35 * intervalScale);
+    final moved2 = _autoScroll(_scrollCtrl2, 0.55 * intervalScale);
+    final moved3 = _autoScroll(_scrollCtrl3, 0.45 * intervalScale);
+    final moved = moved1 || moved2 || moved3;
+    _scheduleScrollTick(
+      moved ? scrollInterval : const Duration(seconds: 1),
+    );
+  }
+
+  bool _autoScroll(ScrollController ctrl, double distance) {
     if (ctrl.hasClients) {
       final max = ctrl.position.maxScrollExtent;
       if (max > 0) {
-        final next = ctrl.offset + speed;
+        final next = ctrl.offset + distance;
         if (next >= max) {
           ctrl.jumpTo(0);
         } else {
           ctrl.jumpTo(next);
         }
+        return true;
       }
     }
+    return false;
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    PowerSaveModeService.enabledListenable
+        .removeListener(_syncScrollingWithVisibility);
     _timer?.cancel();
     _scrollCtrl1.dispose();
     _scrollCtrl2.dispose();

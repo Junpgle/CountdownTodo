@@ -201,7 +201,7 @@ class PreferenceSection extends StatelessWidget {
           child: ListTile(
             leading:
                 Icon(Icons.psychology_outlined, color: colorScheme.primary),
-            title: const Text('大模型API配置'),
+            title: const Text('模型与 API 配置'),
             subtitle: FutureBuilder<LLMConfig?>(
               future: LLMService.getConfig(),
               builder: (context, snapshot) {
@@ -211,7 +211,7 @@ class PreferenceSection extends StatelessWidget {
                 final config = snapshot.data;
                 if (config == null || !config.isConfigured) {
                   return Text(
-                    '未配置，用于AI智能解析待办',
+                    '未配置，用于 AI 对话与智能识别',
                     style:
                         TextStyle(fontSize: 12, color: colorScheme.cdtWarning),
                   );
@@ -321,24 +321,24 @@ class PreferenceSection extends StatelessWidget {
             ),
           ),
           const AppSettingsDivider(),
-        _buildTile(
-          context: context,
-          targetId: 'float_window_style',
-          child: _buildToggleCard(
+          _buildTile(
             context: context,
-            title: '灵动岛',
-            subtitle: '开启灵动岛式浮动窗口',
-            icon: Icons.layers_outlined,
-            value: floatWindowStyle != 2,
-            onChanged: (val) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (onFloatWindowStyleChanged != null) {
-                  onFloatWindowStyleChanged!((val ?? false) ? 1 : 2);
-                }
-              });
-            },
+            targetId: 'float_window_style',
+            child: _buildToggleCard(
+              context: context,
+              title: '灵动岛',
+              subtitle: '开启灵动岛式浮动窗口',
+              icon: Icons.layers_outlined,
+              value: floatWindowStyle != 2,
+              onChanged: (val) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (onFloatWindowStyleChanged != null) {
+                    onFloatWindowStyleChanged!((val ?? false) ? 1 : 2);
+                  }
+                });
+              },
+            ),
           ),
-        ),
           const AppSettingsDivider(),
           _buildTile(
             context: context,

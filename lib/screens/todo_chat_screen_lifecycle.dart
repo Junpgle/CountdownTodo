@@ -6,6 +6,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   void initState() {
     super.initState();
     _inputCtrl.addListener(_handleInputChanged);
+    AiRecognitionChatBridge.changes.addListener(_handleRecognitionChatChanged);
     _initSessions();
     _loadPromptSettings();
     _loadChatConfig();
@@ -49,12 +50,13 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         CoachMarkStep(
           targetKey: _settingsKey,
           title: '助手设置',
-          description: '如果你想调整大模型的系统提示词或自定义 API 设置，点这里进行个性化配置。',
+          description: '这里调整智能上下文、注入预览、深度思考和助手提示词；模型与 API 配置是独立页面。',
         ),
         CoachMarkStep(
           targetKey: _inputKey,
           title: '智能输入区',
-          description: '你可以用自然语言输入需求（比如“明天上午9点有个组会”），AI 助手会自动判断它应是日程、待办还是规划块。',
+          description:
+              '你可以用自然语言输入需求（比如“明天上午9点有个组会”），AI 助手会自动判断它应是习惯、日程、待办还是规划块；周期性事项类型不明确时会先询问。',
         ),
       ],
       onFinish: () {
@@ -97,9 +99,16 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   @override
   void dispose() {
     _inputCtrl.removeListener(_handleInputChanged);
+    AiRecognitionChatBridge.changes
+        .removeListener(_handleRecognitionChatChanged);
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  void _handleRecognitionChatChanged() {
+    if (_isLoading || !mounted || _activeSessionId == null) return;
+    _loadHistory();
   }
 
   void _handleInputChanged() {
@@ -165,18 +174,13 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     }
 
     addIf(
-      prompt.contains('create_todo') ||
-          prompt.contains('update_todo') ||
-          prompt.contains('complete_todo') ||
-          prompt.contains('delete_todo') ||
-          prompt.contains('reschedule_todo') ||
-          prompt.contains('bulk_reschedule') ||
-          prompt.contains('categorize_todo') ||
-          prompt.contains('split_todo') ||
-          prompt.contains('merge_todos') ||
-          prompt.contains('plan_todos'),
+      prompt.contains('- create_todo:') ||
+          prompt.contains('- update_todo') ||
+          prompt.contains('- split_todo') ||
+          prompt.contains('- merge_todos'),
       '待办相关',
     );
+    addIf(prompt.contains('create_habit'), '习惯相关');
     addIf(
       prompt.contains('create_plan_block') ||
           prompt.contains('update_plan_block') ||
@@ -268,12 +272,12 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     return _estimateRequestTokens(messages);
   }
 
-  int _estimateRequestTokens(List<Map<String, String>> messages) {
+  int _estimateRequestTokens(List<Map<String, dynamic>> messages) {
     var total = 2;
     for (final msg in messages) {
       total += 4;
-      total += _estimateTextTokens(msg['role'] ?? '');
-      total += _estimateTextTokens(msg['content'] ?? '');
+      total += _estimateTextTokens(msg['role']?.toString() ?? '');
+      total += _estimateTextTokens(msg['content']?.toString() ?? '');
     }
     return total;
   }
@@ -419,11 +423,20 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   Future<void> _loadPromptSettings() async {
     final prompt = await ChatStorageService.getCustomPrompt();
     final enabled = await ChatStorageService.isPromptEnabled();
+    final smartContext = await ChatStorageService.isSmartContextEnabled();
+    final showContextPreview =
+        await ChatStorageService.shouldShowContextPreview();
+    final injectMoreContext =
+        await ChatStorageService.shouldInjectMoreContext();
     if (mounted) {
       setState(() {
         _customPrompt = prompt;
         _promptEnabled = enabled;
+        _smartContext = smartContext;
+        _showInjectedContextPreview = showContextPreview;
+        _injectMoreContext = injectMoreContext;
       });
+      _handleInputChanged();
     }
   }
 
@@ -483,12 +496,12 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
 
   static const int _maxContextMessages = 15;
 
-  List<Map<String, String>> _buildApiMessages({
+  List<Map<String, dynamic>> _buildApiMessages({
     String? pendingUserText,
     bool trackSmartContext = true,
     String financeContext = '',
   }) {
-    final List<Map<String, String>> apiMessages = [
+    final List<Map<String, dynamic>> apiMessages = [
       {'role': 'system', 'content': _buildSystemPrompt()},
     ];
     final protocolSourceText = pendingUserText?.trim().isNotEmpty == true
@@ -514,6 +527,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         apiMessages.add({
           'role': msg.role == ChatRole.user ? 'user' : 'assistant',
           'content': msg.toLLMMessage(),
+          '_messageId': msg.id,
         });
       }
     } else {
@@ -524,6 +538,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       apiMessages.add({
         'role': 'user',
         'content': firstUserMsg.content,
+        '_messageId': firstUserMsg.id,
       });
 
       final summaryMsg = _buildContextSummary();
@@ -543,6 +558,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         apiMessages.add({
           'role': msg.role == ChatRole.user ? 'user' : 'assistant',
           'content': msg.toLLMMessage(),
+          '_messageId': msg.id,
         });
       }
     }
@@ -560,6 +576,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       if (lastUserIndex != -1) {
         final currentUserContent = apiMessages[lastUserIndex]['content'] ?? '';
         apiMessages[lastUserIndex] = {
+          ...apiMessages[lastUserIndex],
           'role': 'user',
           'content': '${financeContext.trim()}\n\n$currentUserContent',
         };
@@ -586,7 +603,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   /// 根据最后一条用户消息的关键词，按需注入课程/时间日志/冲突/团队上下文。
-  String _injectContext(List<Map<String, String>> apiMessages) {
+  String _injectContext(List<Map<String, dynamic>> apiMessages) {
     if (!_smartContext) return '';
     // 找到最后一条 user 消息
     int lastUserIdx = -1;
@@ -598,7 +615,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     }
     if (lastUserIdx == -1) return '';
 
-    final userText = apiMessages[lastUserIdx]['content'] ?? '';
+    final userText = apiMessages[lastUserIdx]['content']?.toString() ?? '';
     final contextQueryText = _buildContextQueryText(userText);
     final injection = AiTodoContextBuilder.buildContextInjection(
       userMessage: contextQueryText,
@@ -617,6 +634,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     );
     if (injection != null) {
       apiMessages[lastUserIdx] = {
+        ...apiMessages[lastUserIdx],
         'role': 'user',
         'content': '$injection\n\n$userText',
       };

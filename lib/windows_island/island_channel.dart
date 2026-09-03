@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'dart:convert';
 import 'island_config.dart';
+import 'island_ipc_file_watcher.dart';
 import 'island_ipc_paths.dart';
 
 class IslandChannel {
@@ -27,11 +28,11 @@ class IslandChannel {
 
   static Stream<Map<String, dynamic>> get actionStream =>
       _actionController.stream;
-  static Timer? _actionFileTimer;
+  static IslandIpcFileWatcher? _actionFileWatcher;
 
   static void dispose() {
-    _actionFileTimer?.cancel();
-    _actionFileTimer = null;
+    _actionFileWatcher?.dispose();
+    _actionFileWatcher = null;
     if (!_actionController.isClosed) _actionController.close();
     _readyCompleters.clear();
     _anonReadyQueue.clear();
@@ -42,51 +43,18 @@ class IslandChannel {
     if (_handlerSet) return;
     _handlerSet = true;
 
-    // File IPC Polling: Check every 200ms if sub-window has written an action file.
-    // This bypasses Flutter's engine/isolate isolation for custom method calls.
-    _actionFileTimer =
-        Timer.periodic(const Duration(milliseconds: 500), (_) async {
-      try {
-        final file = await getIslandIpcFile(IslandConfig.actionFileName);
-        if (await file.exists()) {
-          final content = await file.readAsString();
-          // Delete immediately to prevent double-processing
-          try {
-            await file.delete();
-          } catch (_) {}
-
-          final map = Map<String, dynamic>.from(jsonDecode(content));
-          final action = map['action']?.toString();
-          debugPrint('[IslandChannel] file IPC received: $action');
-
-          if (action == 'ready') {
-            final winId = map['windowId']?.toString();
-            if (winId != null) {
-              if (_readyCompleters.containsKey(winId)) {
-                final list = _readyCompleters.remove(winId);
-                for (var c in list!) {
-                  if (!c.isCompleted) c.complete();
-                }
-                debugPrint(
-                    '[IslandChannel] completed ${list.length} ready waiters for windowId=$winId');
-              } else {
-                _readySet.add(winId);
-                debugPrint(
-                    '[IslandChannel] recorded sticky ready for windowId=$winId');
-              }
-            } else if (_anonReadyQueue.isNotEmpty) {
-              _anonReadyQueue.removeAt(0).complete();
-              debugPrint('[IslandChannel] completed anonymous ready waiter');
-            }
-          } else if (action != null) {
-            debugPrint('[IslandChannel] forwarding to actionStream: $map');
-            _actionController.add(map);
-          }
-        }
-      } catch (e) {
-        debugPrint('[IslandChannel] file IPC error: $e');
-      }
-    });
+    // File IPC remains the cross-engine fallback, but normal delivery is
+    // event-driven so an idle island no longer wakes the main isolate twice a
+    // second. If directory watching fails, the previous 500ms cadence is
+    // restored automatically.
+    _actionFileWatcher = IslandIpcFileWatcher(
+      resolveFile: () => getIslandIpcFile(IslandConfig.actionFileName),
+      onFileChanged: _processActionFile,
+      fallbackInterval: IslandConfig.ipcWatchFallbackInterval,
+      degradedPollInterval: const Duration(milliseconds: 500),
+      eventDebounce: IslandConfig.ipcWatchDebounce,
+    );
+    unawaited(_actionFileWatcher!.start());
 
     // Original controller-based handler for window-level actions (dragging, resizing)
     // This handler is specific to the current window's controller.
@@ -126,6 +94,50 @@ class IslandChannel {
             '[IslandChannel] failed to attach WindowController handler: $e');
       }
     });
+  }
+
+  static Future<void> _processActionFile() async {
+    try {
+      final file = await getIslandIpcFile(IslandConfig.actionFileName);
+      if (!await file.exists()) return;
+
+      final content = await file.readAsString();
+      final map = Map<String, dynamic>.from(jsonDecode(content));
+      // Delete only after a complete JSON payload is available. Directory
+      // watchers may report a modify event while the writer is still flushing.
+      try {
+        await file.delete();
+      } catch (_) {}
+
+      final action = map['action']?.toString();
+      debugPrint('[IslandChannel] file IPC received: $action');
+
+      if (action == 'ready') {
+        final winId = map['windowId']?.toString();
+        if (winId != null) {
+          if (_readyCompleters.containsKey(winId)) {
+            final list = _readyCompleters.remove(winId);
+            for (final completer in list!) {
+              if (!completer.isCompleted) completer.complete();
+            }
+            debugPrint(
+                '[IslandChannel] completed ${list.length} ready waiters for windowId=$winId');
+          } else {
+            _readySet.add(winId);
+            debugPrint(
+                '[IslandChannel] recorded sticky ready for windowId=$winId');
+          }
+        } else if (_anonReadyQueue.isNotEmpty) {
+          _anonReadyQueue.removeAt(0).complete();
+          debugPrint('[IslandChannel] completed anonymous ready waiter');
+        }
+      } else if (action != null) {
+        debugPrint('[IslandChannel] forwarding to actionStream: $map');
+        _actionController.add(map);
+      }
+    } catch (e) {
+      debugPrint('[IslandChannel] file IPC error: $e');
+    }
   }
 
   /// Wait for a child window to signal ready.

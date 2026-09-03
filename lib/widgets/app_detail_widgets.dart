@@ -110,6 +110,11 @@ class AppDetailHeader extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       borderRadius: 24,
+      // Detail pages are often entered through a container-transform route.
+      // Keep the standard tier on the stable material path so its first frame
+      // cannot become a black rounded surface while the route is composited.
+      // Enhanced mode still uses the grouped live-frosted treatment.
+      mode: OptionalLiquidGlassPanelMode.adaptiveRepeated,
       fallback: fallback,
       child: content,
     );

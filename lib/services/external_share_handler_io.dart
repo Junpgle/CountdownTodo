@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
@@ -8,18 +9,26 @@ import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'course_service.dart';
+import 'external_share_payload_classifier.dart';
 import '../storage_service.dart';
 import '../models.dart';
+import '../models/chat_message.dart';
 import '../features/finance/models/finance_models.dart';
 import '../features/finance/services/finance_text_parser.dart';
 import 'llm_service.dart';
 import 'notification_service.dart';
+import 'recognized_todo_adapter.dart';
+import 'todo_recognition_state.dart';
+import 'ai_recognition_chat_bridge.dart';
 
 class ExternalShareHandler {
   static StreamSubscription? _intentDataStreamSubscription;
   static bool _isProcessing = false;
   static final List<String> _processedFileKeys = [];
-  static const int _maxProcessedKeys = 10;
+  static final Set<String> _processingFileKeys = <String>{};
+  static const int _maxProcessedKeys = 50;
+  static final String _recognitionSessionId =
+      'recognition_${DateTime.now().microsecondsSinceEpoch}';
 
   /// 初始化监听，放在主页的 initState 中调用
   /// [onCourseImported] 课表导入成功回调
@@ -78,8 +87,9 @@ class ExternalShareHandler {
     await Future.delayed(const Duration(milliseconds: 500));
 
     final media = files.first;
-    final isSharedText = media.type == SharedMediaType.text ||
-        media.mimeType?.toLowerCase().startsWith('text/') == true;
+    final firstPath = media.path.trim();
+    final isSharedText =
+        await ExternalSharePayloadClassifier.isInlineText(media);
     if (isSharedText) {
       try {
         final text = _sharedTextPayload(media);
@@ -103,7 +113,6 @@ class ExternalShareHandler {
       return;
     }
 
-    final firstPath = media.path;
     final isValidFile = firstPath.isNotEmpty &&
         (firstPath.contains('.') ||
             media.type == SharedMediaType.image ||
@@ -163,6 +172,8 @@ class ExternalShareHandler {
       },
     );
 
+    String? claimedFileKey;
+    AiRecognitionHandle? recognitionHandle;
     try {
       await Future.delayed(const Duration(milliseconds: 400));
 
@@ -170,15 +181,23 @@ class ExternalShareHandler {
       File file = File(filePath);
       String ext = filePath.split('.').last.toLowerCase();
 
-      // 生成文件唯一标识并检查是否已处理（仅对getInitialMedia去重，防止重复处理）
+      // 生成文件唯一标识。getInitialMedia 和 getMediaStream 可能同时返回
+      // 同一份分享内容，因此两条入口必须使用同一套去重规则。
       final fileKey = await _generateFileKey(filePath);
-      if (fromInitial && await _isFileProcessed(fileKey)) {
-        // debugPrint("文件已处理过，跳过: $filePath");
+      if (await _isShareAlreadyHandled(fileKey, filePath)) {
+        // debugPrint("文件已处理或正在处理，跳过: $filePath");
         closeDialogSafely();
         ReceiveSharingIntent.instance.reset();
         _isProcessing = false;
         return;
       }
+      if (!_processingFileKeys.add(fileKey)) {
+        closeDialogSafely();
+        ReceiveSharingIntent.instance.reset();
+        _isProcessing = false;
+        return;
+      }
+      claimedFileKey = fileKey;
 
       // 检测是否为图片
       final imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
@@ -216,11 +235,22 @@ class ExternalShareHandler {
         statusNotifier.value =
             "图片已压缩 (${(compressedSize / 1024).toStringAsFixed(0)}KB)\n正在调用大模型分析...";
 
+        try {
+          recognitionHandle =
+              await AiRecognitionChatBridge.startImage(filePath);
+        } catch (_) {
+          // 聊天镜像失败不能影响原有的图片识别流程。
+        }
+
         // 保存处理中状态（包含压缩图片路径，用于重试）
         await StorageService.savePendingTodoConfirm(
           imagePath: filePath,
           status: 'processing',
           compressedPath: compressedPath,
+          sourceKey: fileKey,
+          processingSessionId: _recognitionSessionId,
+          recognitionChatSessionId: recognitionHandle?.sessionId,
+          recognitionChatMessageId: recognitionHandle?.messageId,
           currentAttempt: 1,
           maxAttempts: 1,
         );
@@ -253,7 +283,19 @@ class ExternalShareHandler {
                 financeDrafts.map((draft) => draft.toJson()).toList(),
             status: 'success',
             compressedPath: compressedPath,
+            sourceKey: fileKey,
+            recognitionChatSessionId: recognitionHandle?.sessionId,
+            recognitionChatMessageId: recognitionHandle?.messageId,
           );
+
+          if (recognitionHandle != null) {
+            await AiRecognitionChatBridge.complete(
+              recognitionHandle,
+              todoResults: results,
+              financeDrafts: financeDrafts,
+              usageSummary: recognition.usageSummary,
+            );
+          }
 
           // 显示成功通知
           await NotificationService.showTodoRecognizeSuccess(
@@ -297,6 +339,7 @@ class ExternalShareHandler {
               maxRetries: maxRetries,
               onTodoRecognized: onTodoRecognized,
               onFinanceRecognized: onFinanceRecognized,
+              recognitionHandle: recognitionHandle,
             );
           } else {
             // 没有重试次数，直接显示错误
@@ -314,7 +357,14 @@ class ExternalShareHandler {
               status: 'failed',
               compressedPath: compressedPath,
               errorMsg: errorMsg,
+              sourceKey: fileKey,
+              recognitionChatSessionId: recognitionHandle?.sessionId,
+              recognitionChatMessageId: recognitionHandle?.messageId,
             );
+
+            if (recognitionHandle != null) {
+              await AiRecognitionChatBridge.fail(recognitionHandle, errorMsg);
+            }
 
             // 显示失败通知
             await NotificationService.showTodoRecognizeFailed(
@@ -542,6 +592,9 @@ class ExternalShareHandler {
       closeDialogSafely();
     } finally {
       ReceiveSharingIntent.instance.reset();
+      if (claimedFileKey != null) {
+        _processingFileKeys.remove(claimedFileKey);
+      }
       _isProcessing = false;
       statusNotifier.dispose();
     }
@@ -560,20 +613,28 @@ class ExternalShareHandler {
     String imagePath,
   ) async {
     final errors = <Object>[];
+    final usageSummaries = <ChatUsageSummary>[];
     final results = await Future.wait<List<Map<String, dynamic>>>([
       _runVisionPass(
-        () => LLMService.parseTodoFromImage(imagePath),
+        () => LLMService.parseTodoFromImage(
+          imagePath,
+          onUsage: usageSummaries.add,
+        ),
         errors,
       ),
       _runVisionPass(
-        () => LLMService.parseFinanceFromImage(imagePath),
+        () => LLMService.parseFinanceFromImage(
+          imagePath,
+          onUsage: usageSummaries.add,
+        ),
         errors,
       ),
     ]);
 
-    final todoResults = results.first
-        .where((result) => !FinanceTextParser.isFinanceResult(result))
-        .toList();
+    final todoResults = RecognizedTodoAdapter.normalizeImageResults(
+      results.first
+          .where((result) => !FinanceTextParser.isFinanceResult(result)),
+    );
     final financeDrafts = FinanceTextParser.fromRecognitionResults(
       [...results.first, ...results.last],
       source: FinanceEntrySource.import,
@@ -584,6 +645,7 @@ class ExternalShareHandler {
     return _ImageRecognitionResult(
       todoResults: todoResults,
       financeDrafts: financeDrafts,
+      usageSummary: ChatUsageSummary.combine(usageSummaries),
     );
   }
 
@@ -631,15 +693,86 @@ class ExternalShareHandler {
     }
   }
 
-  /// 生成文件唯一标识（路径 + 修改时间 + 大小）
+  /// 生成文件内容指纹。
+  ///
+  /// 分享插件在不同生命周期可能为同一张图片返回不同的临时路径，
+  /// 因此不能再用路径/修改时间作为唯一标识；内容哈希才能跨重启和
+  /// getInitialMedia/getMediaStream 两条回调稳定去重。
   static Future<String> _generateFileKey(String filePath) async {
     try {
       final file = File(filePath);
-      if (!await file.exists()) return filePath;
+      if (!await file.exists()) return 'path:$filePath';
+      final digest = sha256.convert(await file.readAsBytes());
+      return 'sha256:${digest.toString()}';
+    } catch (e) {
+      return 'path:$filePath';
+    }
+  }
+
+  /// 检查当前分享是否已经被本次运行、历史运行或待确认记录接收。
+  ///
+  /// 待确认记录是跨进程的最后一道保护：如果 App 在识别过程中被杀，
+  /// 下次启动时即使内存缓存消失，也不会因重复回调再次发起请求；只有任务
+  /// 已被判定中断时，才允许新的分享或确认卡片上的“重试”主动接管。
+  static Future<bool> _isShareAlreadyHandled(
+    String fileKey,
+    String filePath,
+  ) async {
+    if (_processingFileKeys.contains(fileKey)) return true;
+
+    try {
+      final pending = await StorageService.getPendingTodoConfirm();
+      if (pending != null) {
+        final pendingStatus =
+            pending['status']?.toString().trim().toLowerCase();
+        final pendingSessionId =
+            pending['processingSessionId']?.toString().trim();
+
+        bool blocksRecognition() {
+          return TodoRecognitionState.blocksDuplicate(
+            status: pendingStatus,
+            processingSessionId: pendingSessionId,
+            currentSessionId: _recognitionSessionId,
+          );
+        }
+
+        final pendingSourceKey = pending['sourceKey']?.toString().trim();
+        if (pendingSourceKey != null && pendingSourceKey.isNotEmpty) {
+          if (pendingSourceKey == fileKey) return blocksRecognition();
+          // 兼容升级前的路径+修改时间标识。
+          final legacyKey = await _legacyFileKey(filePath);
+          if (legacyKey != null && pendingSourceKey == legacyKey) {
+            return blocksRecognition();
+          }
+        } else if (pending['imagePath']?.toString() == filePath) {
+          // 兼容旧版没有 sourceKey 的待确认记录。这个兜底只比较原始路径，
+          // 新版记录优先使用内容指纹，避免同路径被复用时误判。
+          return blocksRecognition();
+        }
+      }
+    } catch (_) {
+      // 存储读取失败时继续使用已处理文件缓存作为兜底。
+    }
+
+    // 待确认记录优先于 processed_file_keys：如果 App 在写入成功结果前
+    // 被杀，旧 processing 记录允许新会话接管，不能被提前写入的缓存挡住。
+    return await _isFileProcessed(fileKey) ||
+        await _isLegacyFileProcessed(filePath);
+  }
+
+  static Future<bool> _isLegacyFileProcessed(String filePath) async {
+    final legacyKey = await _legacyFileKey(filePath);
+    return legacyKey != null && await _isFileProcessed(legacyKey);
+  }
+
+  static Future<String?> _legacyFileKey(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) return null;
       final stat = await file.stat();
       return '${filePath}_${stat.modified.millisecondsSinceEpoch}_${stat.size}';
-    } catch (e) {
-      return filePath;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -661,6 +794,7 @@ class ExternalShareHandler {
   /// 标记文件为已处理（持久化存储）
   static Future<void> _markFileProcessed(String fileKey) async {
     // 更新内存缓存
+    _processedFileKeys.remove(fileKey);
     _processedFileKeys.add(fileKey);
     while (_processedFileKeys.length > _maxProcessedKeys) {
       _processedFileKeys.removeAt(0);
@@ -670,7 +804,9 @@ class ExternalShareHandler {
     try {
       final prefs = await SharedPreferences.getInstance();
       List<String> processedKeys =
-          prefs.getStringList('processed_file_keys') ?? [];
+          (prefs.getStringList('processed_file_keys') ?? [])
+              .where((key) => key != fileKey)
+              .toList();
       processedKeys.add(fileKey);
       // 限制列表大小
       while (processedKeys.length > _maxProcessedKeys) {
@@ -684,6 +820,55 @@ class ExternalShareHandler {
 
   static void dispose() {
     _intentDataStreamSubscription?.cancel();
+  }
+
+  /// 将上一次进程被系统回收后遗留的 processing/retrying 状态收口为失败。
+  ///
+  /// 识别任务本身没有跨进程执行能力，旧记录如果继续保持 processing，首页
+  /// 就会永久显示转圈。当前进程的任务会带有当前 session，且会在最近一次
+  /// 状态更新后继续保留；跨进程记录则允许用户从失败卡片主动重试。
+  static Future<bool> recoverInterruptedTodoRecognition() async {
+    if (_isProcessing || _processingFileKeys.isNotEmpty) return false;
+
+    final pending = await StorageService.getPendingTodoConfirm();
+    if (pending == null) return false;
+    // 读取持久化状态期间可能刚好收到新的分享事件，重新确认没有活跃任务，
+    // 避免把刚启动的识别误判成上一次中断。
+    if (_isProcessing || _processingFileKeys.isNotEmpty) return false;
+
+    final status = pending['status']?.toString().trim().toLowerCase();
+    if (status != 'processing' && status != 'retrying') return false;
+
+    final sessionId = pending['processingSessionId']?.toString().trim();
+    final timestamp = _readInt(pending['timestamp']);
+    final isInterrupted = TodoRecognitionState.isInterrupted(
+      status: status,
+      processingSessionId: sessionId,
+      currentSessionId: _recognitionSessionId,
+      timestampMs: timestamp,
+      nowMs: DateTime.now().millisecondsSinceEpoch,
+    );
+    if (!isInterrupted) return false;
+
+    await StorageService.updatePendingTodoConfirmStatus(
+      status: 'failed',
+      errorMsg: '上次图片识别已中断，请点击重试',
+    );
+    final recognitionHandle =
+        AiRecognitionChatBridge.handleFromPending(pending);
+    if (recognitionHandle != null) {
+      await AiRecognitionChatBridge.fail(
+        recognitionHandle,
+        '上次图片识别已中断，请点击重试',
+      );
+    }
+    await NotificationService.cancelTodoRecognizeNotification();
+    return true;
+  }
+
+  static int? _readInt(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
   }
 
   /// 启动后台重试任务
@@ -700,6 +885,7 @@ class ExternalShareHandler {
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
     FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
         onFinanceRecognized,
+    AiRecognitionHandle? recognitionHandle,
   }) async {
     // debugPrint("启动后台重试: filePath=$filePath, maxRetries=$maxRetries");
 
@@ -713,6 +899,10 @@ class ExternalShareHandler {
     bool success = false;
     _ImageRecognitionResult? recognition;
     String? lastError;
+
+    if (recognitionHandle != null) {
+      await AiRecognitionChatBridge.markProcessing(recognitionHandle);
+    }
 
     // 尝试原始图片和压缩后的图片
     final pathsToTry = [compressedPath];
@@ -736,6 +926,9 @@ class ExternalShareHandler {
           status: 'retrying',
           currentAttempt: attempt + 1,
           maxAttempts: maxRetries + 1,
+          processingSessionId: _recognitionSessionId,
+          recognitionChatSessionId: recognitionHandle?.sessionId,
+          recognitionChatMessageId: recognitionHandle?.messageId,
         );
 
         // 尝试不同的图片路径
@@ -789,7 +982,19 @@ class ExternalShareHandler {
         financeResults: financeDrafts.map((draft) => draft.toJson()).toList(),
         status: 'success',
         compressedPath: compressedPath,
+        sourceKey: fileKey,
+        recognitionChatSessionId: recognitionHandle?.sessionId,
+        recognitionChatMessageId: recognitionHandle?.messageId,
       );
+
+      if (recognitionHandle != null) {
+        await AiRecognitionChatBridge.complete(
+          recognitionHandle,
+          todoResults: results,
+          financeDrafts: financeDrafts,
+          usageSummary: recognition.usageSummary,
+        );
+      }
 
       // 发送成功通知
       await NotificationService.showTodoRecognizeSuccess(
@@ -811,6 +1016,12 @@ class ExternalShareHandler {
         status: 'failed',
         errorMsg: lastError ?? '未知错误',
       );
+      if (recognitionHandle != null) {
+        await AiRecognitionChatBridge.fail(
+          recognitionHandle,
+          lastError ?? '未知错误',
+        );
+      }
 
       // 发送失败通知
       await NotificationService.showTodoRecognizeFailed(
@@ -865,6 +1076,18 @@ class ExternalShareHandler {
 
     // 优先使用压缩后的图片路径
     final retryPath = compressedPath ?? imagePath;
+    // 无论待确认记录来自哪个版本，重试时都重新计算当前原图指纹，
+    // 让旧版路径标识也迁移到新版的跨重启去重协议。
+    final sourceKey = await _generateFileKey(imagePath);
+    var recognitionHandle =
+        AiRecognitionChatBridge.handleFromPending(pendingData);
+    if (recognitionHandle == null) {
+      try {
+        recognitionHandle = await AiRecognitionChatBridge.startImage(imagePath);
+      } catch (_) {
+        // 聊天镜像失败不能影响原有的图片识别流程。
+      }
+    }
 
     // 检查图片文件是否存在
     final file = File(retryPath);
@@ -874,6 +1097,12 @@ class ExternalShareHandler {
         status: 'failed',
         errorMsg: '图片文件不存在，请重新分享',
       );
+      if (recognitionHandle != null) {
+        await AiRecognitionChatBridge.fail(
+          recognitionHandle,
+          '图片文件不存在，请重新分享',
+        );
+      }
       if (onTodoRecognized != null) {
         onTodoRecognized([], imagePath);
       }
@@ -885,7 +1114,13 @@ class ExternalShareHandler {
       status: 'retrying',
       currentAttempt: 1,
       maxAttempts: 1,
+      processingSessionId: _recognitionSessionId,
+      recognitionChatSessionId: recognitionHandle?.sessionId,
+      recognitionChatMessageId: recognitionHandle?.messageId,
     );
+    if (recognitionHandle != null) {
+      await AiRecognitionChatBridge.markProcessing(recognitionHandle);
+    }
 
     // 显示进度通知
     await NotificationService.showTodoRecognizeProgress(
@@ -904,8 +1139,7 @@ class ExternalShareHandler {
 
       if (totalCount > 0) {
         // 标记文件为已处理
-        final fileKey = await _generateFileKey(imagePath);
-        await _markFileProcessed(fileKey);
+        await _markFileProcessed(sourceKey);
 
         // 保存成功状态
         await StorageService.savePendingTodoConfirm(
@@ -914,7 +1148,19 @@ class ExternalShareHandler {
           financeResults: financeDrafts.map((draft) => draft.toJson()).toList(),
           status: 'success',
           compressedPath: compressedPath,
+          sourceKey: sourceKey,
+          recognitionChatSessionId: recognitionHandle?.sessionId,
+          recognitionChatMessageId: recognitionHandle?.messageId,
         );
+
+        if (recognitionHandle != null) {
+          await AiRecognitionChatBridge.complete(
+            recognitionHandle,
+            todoResults: results,
+            financeDrafts: financeDrafts,
+            usageSummary: recognition.usageSummary,
+          );
+        }
 
         // 显示成功通知
         await NotificationService.showTodoRecognizeSuccess(
@@ -936,6 +1182,12 @@ class ExternalShareHandler {
           status: 'failed',
           errorMsg: '未识别到可添加的事项',
         );
+        if (recognitionHandle != null) {
+          await AiRecognitionChatBridge.fail(
+            recognitionHandle,
+            '未识别到可添加的事项',
+          );
+        }
 
         await NotificationService.showTodoRecognizeFailed(
           errorMsg: '未识别到可添加的事项',
@@ -952,6 +1204,9 @@ class ExternalShareHandler {
         status: 'failed',
         errorMsg: errorMsg,
       );
+      if (recognitionHandle != null) {
+        await AiRecognitionChatBridge.fail(recognitionHandle, errorMsg);
+      }
 
       // 显示失败通知
       await NotificationService.showTodoRecognizeFailed(
@@ -966,9 +1221,11 @@ class ExternalShareHandler {
 class _ImageRecognitionResult {
   final List<Map<String, dynamic>> todoResults;
   final List<FinanceEntryDraft> financeDrafts;
+  final ChatUsageSummary? usageSummary;
 
   const _ImageRecognitionResult({
     required this.todoResults,
     required this.financeDrafts,
+    this.usageSummary,
   });
 }

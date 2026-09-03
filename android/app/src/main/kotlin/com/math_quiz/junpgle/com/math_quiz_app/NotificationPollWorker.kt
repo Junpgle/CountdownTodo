@@ -34,10 +34,21 @@ class NotificationPollWorker(
         const val KEY_LAST_EVENT_ID = "last_notification_event_id"
         const val KEY_UNREAD_CACHE = "unread_notification_cache"
         const val KEY_SHOWN_EVENT_IDS = "shown_notification_event_ids"
+        const val KEY_LAST_IMMEDIATE_POLL_ENQUEUED_AT =
+            "last_immediate_notification_poll_enqueued_at"
+        const val KEY_SKIP_WHEN_APP_VISIBLE = "skip_when_app_visible"
     }
 
     override suspend fun doWork(): Result {
         return try {
+            if (
+                inputData.getBoolean(KEY_SKIP_WHEN_APP_VISIBLE, false) &&
+                AndroidAppVisibility.isVisible
+            ) {
+                Log.d(TAG, "Skip periodic poll: app is visible")
+                return Result.success()
+            }
+
             val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
             val userId = prefs.getLong(KEY_USER_ID, -1L)

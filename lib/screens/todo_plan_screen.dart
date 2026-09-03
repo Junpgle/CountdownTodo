@@ -12,6 +12,7 @@ import 'course_screens.dart';
 import 'pomodoro_screen.dart';
 import 'plan_block_stats_screen.dart';
 import '../services/time_estimation_service.dart';
+import '../services/ai_todo_chat_launcher.dart';
 import '../utils/page_transitions.dart';
 import '../utils/todo_recurrence_picker.dart';
 import 'todo_chat_screen.dart';
@@ -1474,7 +1475,9 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
       PageTransitions.material(
         builder: (_) => TodoChatScreen(
           username: widget.username,
-          todos: widget.todos.map((todo) => todo.toJson()).toList(),
+          // TodoItem.toJson() is the persistence format. The chat context
+          // needs the normalized AI fields, including title, id, and timeMode.
+          todos: AiTodoChatLauncher.toChatTodoMaps(widget.todos),
           todoGroups: widget.todoGroups,
         ),
       ),

@@ -91,6 +91,21 @@ void main() {
     expect(find.text('某天内完成'), findsNothing);
   });
 
+  testWidgets('空闲输入页不会持续调度加载动画帧', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AddTodoScreen(
+          todoGroups: [TodoGroup(name: '收集箱')],
+          onTodoAdded: (_) {},
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(tester.binding.hasScheduledFrame, isFalse);
+  });
+
   testWidgets('AI确认页按固定日程保存地点且不捏造结束时间', (tester) async {
     FixedScheduleItem? savedSchedule;
     await tester.pumpWidget(

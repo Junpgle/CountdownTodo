@@ -2,6 +2,7 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="shortcut_icon">#FF2C2C2C</color>
     
     <!-- 桌面小部件美化色板 (白天模式) -->
     <color name="widget_bg">#FCFCFC</color>

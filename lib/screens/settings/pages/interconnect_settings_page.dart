@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/page_transitions.dart';
 import '../../band_sync_screen.dart';
+import '../../../services/band_sync_service.dart';
+import '../../../services/device_calendar_read_service.dart';
 import '../lan_sync_screen.dart';
 import '../calendar_sync_page.dart';
+import '../device_calendar_read_page.dart';
 import '../batch_tag_page.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'data_export_page.dart';
@@ -33,6 +36,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
     'mcp': GlobalKey(),
     'band_sync': GlobalKey(),
     'calendar_sync': GlobalKey(),
+    'calendar_read': GlobalKey(),
     'batch_tag': GlobalKey(),
     'recurrence_merge': GlobalKey(),
     'data_export': GlobalKey(),
@@ -40,15 +44,67 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
   };
 
   String? _highlightTarget;
+  bool _bandServiceBusy = false;
 
   @override
   void initState() {
     super.initState();
+    if (AppPlatform.isAndroid) {
+      BandSyncService.loadServiceEnabled();
+    }
     if (widget.initialTarget != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToTarget(widget.initialTarget!);
       });
     }
+  }
+
+  Future<void> _setBandServiceEnabled(bool enabled) async {
+    if (_bandServiceBusy) return;
+    setState(() => _bandServiceBusy = true);
+    try {
+      final started = await BandSyncService.setServiceEnabled(enabled);
+      if (!mounted) return;
+
+      if (enabled && !started) {
+        await BandSyncService.setServiceEnabled(false);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('手环服务启动失败，请检查小米穿戴 App 是否可用')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _bandServiceBusy = false);
+    }
+  }
+
+  Widget _buildBandServiceToggle() {
+    return ValueListenableBuilder<bool>(
+      valueListenable: BandSyncService.serviceEnabledNotifier,
+      builder: (context, enabled, _) {
+        final colorScheme = Theme.of(context).colorScheme;
+        return Card(
+          margin: const EdgeInsets.only(bottom: 16),
+          child: LiquidGlassSwitchListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            secondary: Icon(
+              enabled ? Icons.watch : Icons.watch_off_outlined,
+              color:
+                  enabled ? colorScheme.primary : colorScheme.onSurfaceVariant,
+            ),
+            title: const Text('手环后台服务'),
+            subtitle: Text(
+              enabled
+                  ? '已开启：应用可在后台连接小米手环并接收同步消息'
+                  : '已关闭：不连接小米穿戴服务，需要时手动开启以节省电量',
+            ),
+            value: enabled,
+            onChanged: _bandServiceBusy ? null : _setBandServiceEnabled,
+          ),
+        );
+      },
+    );
   }
 
   void _scrollToTarget(String target) {
@@ -184,26 +240,43 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
             );
           },
         ),
-        _buildFeatureCard(
-          id: 'band_sync',
-          icon: Icons.watch_outlined,
-          title: '小米手环',
-          subtitle: '借助快应用将待办同步至手环',
-          onTap: () {
-            Navigator.push(
-              context,
-              PageTransitions.slideHorizontal(
-                BandSyncScreen(isEmbedded: widget.isEmbedded),
-                settings: const RouteSettings(name: '智能手环同步'),
-              ),
-            );
-          },
-        ),
+        if (AppPlatform.isAndroid)
+          _buildFeatureCard(
+            id: 'band_sync',
+            icon: Icons.watch_outlined,
+            title: '小米手环',
+            subtitle: '借助快应用将待办同步至手环',
+            onTap: () {
+              Navigator.push(
+                context,
+                PageTransitions.slideHorizontal(
+                  BandSyncScreen(isEmbedded: widget.isEmbedded),
+                  settings: const RouteSettings(name: '智能手环同步'),
+                ),
+              );
+            },
+          ),
+        if (DeviceCalendarReadService.isSupported)
+          _buildFeatureCard(
+            id: 'calendar_read',
+            icon: Icons.phone_android_outlined,
+            title: '读取手机日历',
+            subtitle: '只读展示到首页、周视图和半月/月视图，永不写入或同步',
+            onTap: () {
+              Navigator.push(
+                context,
+                PageTransitions.slideHorizontal(
+                  const DeviceCalendarReadPage(),
+                  settings: const RouteSettings(name: '读取手机日历'),
+                ),
+              );
+            },
+          ),
         _buildFeatureCard(
           id: 'calendar_sync',
           icon: Icons.calendar_month,
-          title: '系统日历',
-          subtitle: '将软件内课表双向同步至系统',
+          title: '写入手机系统日历',
+          subtitle: '将 App 内课程、待办和规划写入系统日历',
           onTap: () {
             Navigator.push(
               context,
@@ -346,6 +419,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                   ),
                 ),
               ],
+              if (AppPlatform.isAndroid) _buildBandServiceToggle(),
               GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),

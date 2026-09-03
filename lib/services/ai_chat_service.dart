@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../features/finance/services/ai_usage_cost_service.dart';
+import '../models/chat_message.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
 
@@ -11,11 +12,23 @@ class AiTokenUsage {
   final int promptTokens;
   final int completionTokens;
   final int totalTokens;
+  final int cachedPromptTokens;
+  final int imageTokens;
+  final int audioTokens;
+  final int videoTokens;
+  final int reasoningTokens;
+  final int audioSeconds;
 
   const AiTokenUsage({
     this.promptTokens = 0,
     this.completionTokens = 0,
     this.totalTokens = 0,
+    this.cachedPromptTokens = 0,
+    this.imageTokens = 0,
+    this.audioTokens = 0,
+    this.videoTokens = 0,
+    this.reasoningTokens = 0,
+    this.audioSeconds = 0,
   });
 
   static AiTokenUsage? fromJson(Object? raw) {
@@ -26,7 +39,29 @@ class AiTokenUsage {
     final completionTokens =
         _readInt(json['completion_tokens'] ?? json['output_tokens']);
     final totalTokens = _readInt(json['total_tokens']);
-    if (promptTokens == 0 && completionTokens == 0 && totalTokens == 0) {
+    final promptDetails = _asMap(
+      json['prompt_tokens_details'] ?? json['input_tokens_details'],
+    );
+    final completionDetails = _asMap(
+      json['completion_tokens_details'] ?? json['output_tokens_details'],
+    );
+    final cachedPromptTokens = _readInt(
+      promptDetails?['cached_tokens'] ?? json['prompt_cache_hit_tokens'],
+    );
+    final imageTokens = _readInt(promptDetails?['image_tokens']);
+    final audioTokens = _readInt(promptDetails?['audio_tokens']);
+    final videoTokens = _readInt(promptDetails?['video_tokens']);
+    final reasoningTokens = _readInt(completionDetails?['reasoning_tokens']);
+    final audioSeconds = _readInt(json['seconds'] ?? json['audio_seconds']);
+    if (promptTokens == 0 &&
+        completionTokens == 0 &&
+        totalTokens == 0 &&
+        cachedPromptTokens == 0 &&
+        imageTokens == 0 &&
+        audioTokens == 0 &&
+        videoTokens == 0 &&
+        reasoningTokens == 0 &&
+        audioSeconds == 0) {
       return null;
     }
     return AiTokenUsage(
@@ -34,12 +69,26 @@ class AiTokenUsage {
       completionTokens: completionTokens,
       totalTokens:
           totalTokens == 0 ? promptTokens + completionTokens : totalTokens,
+      cachedPromptTokens:
+          cachedPromptTokens > promptTokens ? promptTokens : cachedPromptTokens,
+      imageTokens: imageTokens,
+      audioTokens: audioTokens,
+      videoTokens: videoTokens,
+      reasoningTokens: reasoningTokens,
+      audioSeconds: audioSeconds,
     );
   }
 
+  static Map<String, dynamic>? _asMap(Object? value) {
+    if (value is! Map) return null;
+    return Map<String, dynamic>.from(value);
+  }
+
   static int _readInt(Object? value) {
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
+    final parsed = value is num
+        ? value.toInt()
+        : int.tryParse(value?.toString() ?? '') ?? 0;
+    return parsed < 0 ? 0 : parsed;
   }
 }
 
@@ -48,11 +97,13 @@ class AiChatStreamChunk {
     this.content = '',
     this.reasoningContent = '',
     this.usage,
+    this.usageSummary,
   });
 
   final String content;
   final String reasoningContent;
   final AiTokenUsage? usage;
+  final ChatUsageSummary? usageSummary;
 }
 
 class AiChatService {
@@ -116,16 +167,35 @@ class AiChatService {
     return '${key.substring(0, 8)}...${key.substring(key.length - 4)}';
   }
 
-  static List<Map<String, String>> normalizeMessagesForNim(
-    List<Map<String, String>> messages,
+  static ChatUsageSummary usageSummaryFromRecord(AiUsageRecord record) {
+    return ChatUsageSummary(
+      provider: record.provider,
+      model: record.model,
+      promptTokens: record.promptTokens,
+      completionTokens: record.completionTokens,
+      totalTokens: record.totalTokens,
+      cachedPromptTokens: record.cachedPromptTokens,
+      imageTokens: record.imageTokens,
+      audioTokens: record.audioTokens,
+      videoTokens: record.videoTokens,
+      reasoningTokens: record.reasoningTokens,
+      audioSeconds: record.audioSeconds,
+      imageCount: record.imageCount,
+      costMicros: record.costMicros,
+      unpricedCalls: record.isPriced ? 0 : 1,
+    );
+  }
+
+  static List<Map<String, dynamic>> normalizeMessagesForNim(
+    List<Map<String, dynamic>> messages,
   ) {
     final systemParts = <String>[];
-    final others = <Map<String, String>>[];
+    final others = <Map<String, dynamic>>[];
 
     for (final msg in messages) {
       if (msg['role'] == 'system') {
-        final content = msg['content'];
-        if (content != null && content.trim().isNotEmpty) {
+        final content = _contentAsText(msg['content']);
+        if (content.trim().isNotEmpty) {
           systemParts.add(content.trim());
         }
       } else {
@@ -134,7 +204,7 @@ class AiChatService {
     }
 
     // 确保角色严格交替 user/assistant/user/assistant
-    final alternated = <Map<String, String>>[];
+    final alternated = <Map<String, dynamic>>[];
     String? lastRole;
     for (final msg in others) {
       final role = msg['role'] ?? 'user';
@@ -142,7 +212,7 @@ class AiChatService {
         final last = alternated.removeLast();
         alternated.add({
           'role': role,
-          'content': '${last['content']}\n\n${msg['content'] ?? ''}',
+          'content': _mergeContent(last['content'], msg['content']),
         });
       } else {
         alternated.add({...msg});
@@ -161,11 +231,44 @@ class AiChatService {
     ];
   }
 
+  static String _contentAsText(Object? content) {
+    if (content is String) return content;
+    if (content is List) {
+      return content
+          .whereType<Map>()
+          .map((part) => part['text']?.toString() ?? '')
+          .where((text) => text.isNotEmpty)
+          .join('\n');
+    }
+    return content?.toString() ?? '';
+  }
+
+  static Object _mergeContent(Object? first, Object? second) {
+    if (first is String && second is String) {
+      return '$first\n\n$second';
+    }
+    final firstParts = first is List
+        ? List<dynamic>.from(first)
+        : [
+            {'type': 'text', 'text': _contentAsText(first)},
+          ];
+    final secondParts = second is List
+        ? List<dynamic>.from(second)
+        : [
+            {'type': 'text', 'text': _contentAsText(second)},
+          ];
+    return [
+      ...firstParts,
+      {'type': 'text', 'text': '\n\n'},
+      ...secondParts,
+    ];
+  }
+
   static Stream<AiChatStreamChunk> streamChat({
     required String apiUrl,
     required String apiKey,
     required String model,
-    required List<Map<String, String>> messages,
+    required List<Map<String, dynamic>> messages,
     required bool deepThinking,
     String provider = 'zhipu',
     double temperature = 0.7,
@@ -173,6 +276,7 @@ class AiChatService {
     Duration timeout = const Duration(seconds: 60),
     Completer<void>? cancelToken,
     String usageOperation = 'chat',
+    int imageCount = 0,
   }) async* {
     await _ensureAiInteractionAllowed();
     final client = http.Client();
@@ -278,19 +382,26 @@ class AiChatService {
             }
 
             final usage = AiTokenUsage.fromJson(json['usage']);
-            if (usage != null) {
-              await _recordUsage(
+            ChatUsageSummary? usageSummary;
+            if (usage != null && !usageRecorded) {
+              usageSummary = await _recordUsage(
                 provider: effective,
                 model: model,
                 operation: usageOperation,
                 usage: usage,
+                imageCount: imageCount,
               );
               usageRecorded = true;
             }
 
             final choices = json['choices'] as List?;
             if (choices == null || choices.isEmpty) {
-              if (usage != null) yield AiChatStreamChunk(usage: usage);
+              if (usage != null) {
+                yield AiChatStreamChunk(
+                  usage: usage,
+                  usageSummary: usageSummary,
+                );
+              }
               continue;
             }
 
@@ -317,6 +428,7 @@ class AiChatService {
                 reasoningContent: reasoningContent,
                 content: content,
                 usage: usage,
+                usageSummary: usageSummary,
               );
             }
 
@@ -337,6 +449,7 @@ class AiChatService {
           provider: effective,
           model: model,
           operation: usageOperation,
+          imageCount: imageCount,
         );
       }
     } finally {
@@ -348,7 +461,7 @@ class AiChatService {
     required String apiUrl,
     required String apiKey,
     required String model,
-    required List<Map<String, String>> messages,
+    required List<Map<String, dynamic>> messages,
     String provider = 'zhipu',
     double temperature = 0.5,
     int maxTokens = 30,
@@ -404,24 +517,35 @@ class AiChatService {
     return (message?['content'] as String?) ?? '';
   }
 
-  static Future<void> _recordUsage({
+  static Future<ChatUsageSummary?> _recordUsage({
     required String provider,
     required String model,
     required String operation,
     AiTokenUsage? usage,
+    int imageCount = 0,
   }) async {
     try {
-      await AiUsageCostService.recordUsage(
+      final record = await AiUsageCostService.recordUsage(
         provider: provider.isEmpty ? 'custom' : provider,
         model: model,
         operation: operation,
         promptTokens: usage?.promptTokens ?? 0,
         completionTokens: usage?.completionTokens ?? 0,
         totalTokens: usage?.totalTokens ?? 0,
+        cachedPromptTokens: usage?.cachedPromptTokens ?? 0,
+        imageTokens: usage?.imageTokens ?? 0,
+        audioTokens: usage?.audioTokens ?? 0,
+        videoTokens: usage?.videoTokens ?? 0,
+        reasoningTokens: usage?.reasoningTokens ?? 0,
+        audioSeconds: usage?.audioSeconds ?? 0,
+        imageCount: imageCount,
         usageAvailable: usage != null,
       );
+      if (record == null) return null;
+      return usageSummaryFromRecord(record);
     } catch (_) {
       // Observability must never turn a successful AI reply into an error.
+      return null;
     }
   }
 

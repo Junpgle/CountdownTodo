@@ -4,6 +4,7 @@ import '../models/ai_todo_action.dart';
 
 class AiActionParser {
   static const String _actionTypes = 'create_todo|update_todo|complete_todo|'
+      'create_habit|create_habit_goal|habit_create|'
       'delete_todo|reschedule_todo|bulk_reschedule|bulk_reschedule_todo|'
       'create_schedule|update_schedule|cancel_schedule|delete_schedule|'
       'create_fixed_schedule|update_fixed_schedule|cancel_fixed_schedule|'
@@ -39,11 +40,24 @@ class AiActionParser {
       try {
         final data = jsonDecode(_repairJson(jsonStr.trim()));
         if (data is Map<String, dynamic>) {
-          actions.addAll(_processActionMap(
-            data,
-            existingTodoTitles,
-            existingScheduleTitles,
-          ));
+          final envelopeActions = data['actions'];
+          if (envelopeActions is List &&
+              (data['version'] == 2 ||
+                  data['protocol']?.toString() == 'cdt.actions')) {
+            for (final item in envelopeActions.whereType<Map>()) {
+              actions.addAll(_processActionMap(
+                Map<String, dynamic>.from(item),
+                existingTodoTitles,
+                existingScheduleTitles,
+              ));
+            }
+          } else {
+            actions.addAll(_processActionMap(
+              data,
+              existingTodoTitles,
+              existingScheduleTitles,
+            ));
+          }
         } else if (data is List) {
           for (final item in data) {
             if (item is Map<String, dynamic>) {
@@ -149,12 +163,45 @@ class AiActionParser {
     final actionData = _withInferredAction(data);
     switch (actionData['action']) {
       case 'create_todo':
-      case 'plan_todos':
         return _listFromOrSelf(actionData, actionData['todos']).map((todo) {
           return AiTodoAction.fromJson({
             ...todo,
             'action': actionData['action'],
           });
+        }).toList();
+      case 'create_habit':
+      case 'create_habit_goal':
+      case 'habit_create':
+        return _listFromOrSelf(
+          actionData,
+          actionData['habits'] ??
+              actionData['goals'] ??
+              actionData['items'] ??
+              actionData['habit'],
+        ).map((habit) {
+          return AiTodoAction.fromJson({
+            ...habit,
+            'title': habit['title'] ?? habit['name'],
+            'action': actionData['action'],
+          });
+        }).toList();
+      case 'plan_todos':
+        // Older prompts used plan_todos for both new todos and scheduling an
+        // existing todo. Preserve the former, but translate the latter into
+        // the current plan-block model so it cannot create a duplicate todo.
+        return _listFromOrSelf(actionData, actionData['todos']).map((todo) {
+          final existingTodoId =
+              _existingTodoIdForPlan(todo, existingTodoTitles);
+          final normalized = <String, dynamic>{
+            ...todo,
+            'title': todo['title'] ?? todo['titleSnapshot'],
+            'action':
+                existingTodoId == null ? 'plan_todos' : 'create_plan_block',
+          };
+          if (existingTodoId != null) {
+            normalized['todoId'] = existingTodoId;
+          }
+          return AiTodoAction.fromJson(normalized);
         }).toList();
       case 'create_schedule':
       case 'create_fixed_schedule':
@@ -427,8 +474,13 @@ class AiActionParser {
               t.containsKey('todoUuid')));
       return {
         ...data,
-        'action': hasExistingRef ? 'create_plan_block' : 'plan_todos',
+        'action': hasExistingRef ? 'create_plan_block' : 'create_todo',
       };
+    }
+    if (data['habits'] is List ||
+        data['goals'] is List ||
+        data['habit'] is Map) {
+      return {...data, 'action': 'create_habit'};
     }
     if (data['blocks'] is List || data['plans'] is List) {
       return {...data, 'action': 'create_plan_block'};
@@ -453,10 +505,45 @@ class AiActionParser {
     return data;
   }
 
+  static String? _existingTodoIdForPlan(
+    Map<String, dynamic> todo,
+    Map<String, String> existingTodoTitles,
+  ) {
+    final explicitId = todo['todoId'] ?? todo['todo_id'] ?? todo['todoUuid'];
+    if (explicitId != null && explicitId.toString().trim().isNotEmpty) {
+      return explicitId.toString().trim();
+    }
+
+    // Some old responses used the generic `id` field for a todo reference.
+    final legacyId = todo['id']?.toString().trim();
+    if (legacyId != null &&
+        legacyId.isNotEmpty &&
+        existingTodoTitles.containsKey(legacyId)) {
+      return legacyId;
+    }
+
+    final title = (todo['title'] ?? todo['titleSnapshot'])?.toString().trim();
+    if (title == null || title.isEmpty) return null;
+    final normalizedTitle = _normalizeTitle(title);
+    final matches = existingTodoTitles.entries
+        .where((entry) => _normalizeTitle(entry.value) == normalizedTitle)
+        .toList();
+    // Only infer by title when it is unambiguous. An ambiguous title is safer
+    // as a new todo than attaching a plan block to the wrong occurrence.
+    return matches.length == 1 ? matches.single.key : null;
+  }
+
+  static String _normalizeTitle(String value) {
+    return value.trim().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
   static List<Map<String, dynamic>> _listFromOrSelf(
     Map<String, dynamic> self,
     dynamic value,
   ) {
+    if (value is Map) {
+      return [Map<String, dynamic>.from(value)];
+    }
     final list = _listFrom(value);
     if (list.isNotEmpty) return list;
     return [self];
@@ -512,7 +599,7 @@ class AiActionParser {
       final hasKnownAction =
           RegExp('"action"\\s*:\\s*"(?:$_actionTypes)"').hasMatch(candidate);
       final hasLegacyContainer = RegExp(
-              '"(?:todos|schedules|fixedSchedules|blocks|plans|countdowns|logs|groups|categories|folders|tags)"\\s*:')
+              '"(?:todos|habits|goals|schedules|fixedSchedules|blocks|plans|countdowns|logs|groups|categories|folders|tags)"\\s*:')
           .hasMatch(candidate);
       if (!hasKnownAction && !hasLegacyContainer) {
         continue;

@@ -8,7 +8,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
+    );
     _pulseAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
@@ -20,16 +20,44 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       parent: _courseExpandCtrl,
       curve: Curves.easeOutCubic,
     );
+    PowerSaveModeService.enabledListenable.addListener(_syncPowerSavePulse);
+    _syncPowerSavePulse();
     _pageController = PageController(initialPage: 0);
+    DeviceCalendarReadService.revision.addListener(_reloadDeviceCalendar);
     _loadData();
   }
 
   @override
   void dispose() {
+    PowerSaveModeService.enabledListenable.removeListener(_syncPowerSavePulse);
     _pulseController.dispose();
     _courseExpandCtrl.dispose();
     _pageController.dispose();
+    DeviceCalendarReadService.revision.removeListener(_reloadDeviceCalendar);
     super.dispose();
+  }
+
+  void _reloadDeviceCalendar() {
+    _loadDeviceCalendarEventsForCurrentView().then((_) {
+      if (!mounted) return;
+      _checkCollapsedSlots();
+      setState(() {});
+    });
+  }
+
+  void _syncPowerSavePulse() {
+    if (_viewMode == 0 && AndroidEnergyPolicy.shouldRunDecorativeMotion) {
+      if (!_pulseController.isAnimating) {
+        _pulseController.repeat(
+          reverse: true,
+          count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 5),
+        );
+      }
+    } else {
+      _pulseController
+        ..stop()
+        ..reset();
+    }
   }
 
   Future<void> _loadData() async {
@@ -139,6 +167,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     }
     _updateWeekTodos();
     _updateWeekTimeLogsPomodorosAndPlans();
+    await _loadDeviceCalendarEventsForCurrentView();
     _checkCollapsedSlots();
 
     if (mounted) {
@@ -146,9 +175,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _courseExpandCtrl.forward();
-          if (_viewMode == 0 && !_pulseController.isAnimating) {
-            _pulseController.repeat(reverse: true);
-          }
+          _syncPowerSavePulse();
         }
         _checkCoachMarks();
       });
@@ -198,6 +225,162 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
         .where((c) =>
             c.semesterId == targetSemesterId && c.weekIndex == relativeWeek)
         .toList();
+  }
+
+  Future<void> _loadDeviceCalendarEventsForCurrentWeek() async {
+    final requestedMode = _viewMode;
+    final requestedWeek = _currentWeek;
+    final requestedMonth = _selectedMonth;
+    final range = _getDeviceCalendarReadRange();
+
+    bool stillShowingRequestedPeriod() {
+      return mounted &&
+          _viewMode == requestedMode &&
+          _currentWeek == requestedWeek &&
+          _selectedMonth.year == requestedMonth.year &&
+          _selectedMonth.month == requestedMonth.month;
+    }
+
+    if (!DeviceCalendarReadService.isSupported ||
+        !await DeviceCalendarReadService.isEnabled()) {
+      if (!stillShowingRequestedPeriod()) return;
+      _deviceCalendarEvents = [];
+      _updateWeekDeviceCalendarEvents();
+      _updateMonthDeviceCalendarEvents();
+      return;
+    }
+
+    try {
+      final events = await DeviceCalendarReadService.readEvents(
+        start: range.start,
+        end: range.end,
+      );
+      if (!stillShowingRequestedPeriod()) return;
+      _deviceCalendarEvents = events;
+    } catch (_) {
+      // A provider can disappear or reject access while the page is open.
+      // Keep the app's own calendar usable and simply hide external entries.
+      if (!stillShowingRequestedPeriod()) return;
+      _deviceCalendarEvents = [];
+    }
+    _updateWeekDeviceCalendarEvents();
+    _updateMonthDeviceCalendarEvents();
+  }
+
+  Future<void> _loadDeviceCalendarEventsForCurrentView() async {
+    await _loadDeviceCalendarEventsForCurrentWeek();
+  }
+
+  ({DateTime start, DateTime end}) _getDeviceCalendarReadRange() {
+    if (_viewMode == 2) {
+      return (
+        start: DeviceCalendarReadService.monthGridStart(_selectedMonth),
+        end: DeviceCalendarReadService.monthGridEnd(_selectedMonth),
+      );
+    }
+
+    final monday = _getMondayOfCurrentWeek();
+    if (monday == null) {
+      final today = DateTime.now();
+      return (
+        start: DateTime(today.year, today.month, today.day),
+        end: DateTime(today.year, today.month, today.day + 14),
+      );
+    }
+
+    final weekStart = DateTime(monday.year, monday.month, monday.day);
+    if (_viewMode == 1) {
+      return (
+        start: weekStart,
+        end: weekStart.add(const Duration(days: 14)),
+      );
+    }
+
+    // The initial homepage query and the week view use the same month-grid
+    // window. This lets all three views share one in-memory provider read.
+    final now = DateTime.now();
+    final currentWeekStart = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+    final anchor = DateUtils.isSameDay(weekStart, currentWeekStart)
+        ? _selectedMonth
+        : weekStart.add(const Duration(days: 3));
+    return (
+      start: DeviceCalendarReadService.monthGridStart(anchor),
+      end: DeviceCalendarReadService.monthGridEnd(anchor),
+    );
+  }
+
+  void _updateWeekDeviceCalendarEvents() {
+    _allDayDeviceCalendarEventsPerDay = {
+      1: [],
+      2: [],
+      3: [],
+      4: [],
+      5: [],
+      6: [],
+      7: [],
+    };
+    _timedDeviceCalendarEventsPerDay = {
+      1: [],
+      2: [],
+      3: [],
+      4: [],
+      5: [],
+      6: [],
+      7: [],
+    };
+    final monday = _semesterMonday;
+    if (monday == null) return;
+    final weekStart = DateTime(
+      monday.year,
+      monday.month,
+      monday.day + (_currentWeek - 1) * 7,
+    );
+    for (var dayIndex = 1; dayIndex <= 7; dayIndex++) {
+      final dayStart = weekStart.add(Duration(days: dayIndex - 1));
+      final dayEnd = dayStart.add(const Duration(days: 1));
+      for (final event in _deviceCalendarEvents) {
+        if (!event.overlaps(dayStart, dayEnd)) continue;
+        if (event.allDay) {
+          _allDayDeviceCalendarEventsPerDay[dayIndex]!.add(event);
+        } else {
+          _timedDeviceCalendarEventsPerDay[dayIndex]!.add(event);
+        }
+      }
+    }
+    for (var dayIndex = 1; dayIndex <= 7; dayIndex++) {
+      _allDayDeviceCalendarEventsPerDay[dayIndex]!
+          .sort((a, b) => a.title.compareTo(b.title));
+      _timedDeviceCalendarEventsPerDay[dayIndex]!
+          .sort((a, b) => a.start.compareTo(b.start));
+    }
+  }
+
+  void _updateMonthDeviceCalendarEvents() {
+    final grouped = <String, List<DeviceCalendarEvent>>{};
+    final df = DateFormat('yyyy-MM-dd');
+
+    for (final event in _deviceCalendarEvents) {
+      final firstDay =
+          DateTime(event.start.year, event.start.month, event.start.day);
+      final lastDay = DateTime(event.end.year, event.end.month, event.end.day);
+      final spanDays = lastDay.difference(firstDay).inDays;
+      if (spanDays < 0 || spanDays > _maxExpandedSpanDays) continue;
+
+      for (var offset = 0; offset <= spanDays; offset++) {
+        final day = firstDay.add(Duration(days: offset));
+        if (!event.overlaps(day, day.add(const Duration(days: 1)))) continue;
+        grouped.putIfAbsent(df.format(day), () => []).add(event);
+      }
+    }
+
+    for (final events in grouped.values) {
+      events.sort((a, b) {
+        final startOrder = a.start.compareTo(b.start);
+        return startOrder != 0 ? startOrder : a.title.compareTo(b.title);
+      });
+    }
+    _monthDeviceCalendarMap = grouped;
   }
 
   void _checkCoachMarks() async {
@@ -273,6 +456,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     _monthLogMap = {};
     _monthPomMap = {};
     _monthPlanMap = {};
+    _monthDeviceCalendarMap = {};
 
     final df = DateFormat('yyyy-MM-dd');
 
@@ -365,6 +549,8 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
         },
       );
     }
+
+    _updateMonthDeviceCalendarEvents();
   }
 
   void _forEachExpandedDay({

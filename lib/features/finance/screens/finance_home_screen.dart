@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../models/finance_models.dart';
 import '../services/finance_automation_service.dart';
 import '../services/finance_repository.dart';
+import '../services/ai_usage_cost_service.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/home_bottom_navigation_content.dart';
@@ -16,6 +17,7 @@ import 'finance_automation_screen.dart';
 import 'ai_usage_cost_screen.dart';
 import 'finance_budget_screen.dart';
 import 'finance_entry_screen.dart';
+import 'finance_loan_screen.dart';
 import 'finance_settings_screen.dart';
 import 'finance_text_recognition_screen.dart';
 import 'finance_trash_screen.dart';
@@ -82,6 +84,11 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       } catch (_) {
         // 自动化异常不应阻断已有账单的查看和手动记账。
       }
+      try {
+        await AiUsageCostService.reconcileCurrentMonth();
+      } catch (_) {
+        // AI 费用补偿失败不应阻断已有账单的查看和手动记账。
+      }
       final from = DateTime(_month.year, _month.month);
       final to = DateTime(_month.year, _month.month + 1);
       final values = await Future.wait<dynamic>([
@@ -130,9 +137,29 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     if (result != null && mounted) await _load();
   }
 
+  Future<void> _openRefund(FinanceTransaction original) async {
+    final remaining =
+        await FinanceRepository.getRemainingRefundableMinor(original.uuid);
+    if (!mounted) return;
+    if (remaining <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('该账单已全部退款')),
+      );
+      return;
+    }
+    final result = await Navigator.of(context).push<FinanceTransaction>(
+      PageTransitions.material(
+        builder: (_) => FinanceEntryScreen(originalTransaction: original),
+      ),
+    );
+    if (result != null && mounted) await _load();
+  }
+
   Future<void> _openSettings() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const FinanceSettingsScreen()),
+      MaterialPageRoute(
+        builder: (_) => FinanceSettingsScreen(username: widget.username),
+      ),
     );
     if (mounted) await _load();
   }
@@ -155,6 +182,13 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     if (mounted) await _load();
   }
 
+  Future<void> _openLoans() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const FinanceLoanScreen()),
+    );
+    if (mounted) await _load();
+  }
+
   Future<void> _openAutomation() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const FinanceAutomationScreen()),
@@ -163,28 +197,61 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   Future<void> _deleteTransaction(FinanceTransaction transaction) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除账单？'),
-        content: const Text('删除后不会计入统计，确认继续吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await FinanceRepository.deleteTransaction(transaction.uuid);
+    final deleteMode = transaction.isInstallment
+        ? await showDialog<String>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('删除分期账单？'),
+              content: Text(
+                '这是第 ${transaction.installmentIndex}/${transaction.installmentCount} 期，'
+                '删除后不会计入统计。',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, 'single'),
+                  child: const Text('只删本期'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, 'group'),
+                  child: const Text('删除整组'),
+                ),
+              ],
+            ),
+          )
+        : await showDialog<String>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('删除账单？'),
+              content: const Text('删除后不会计入统计，确认继续吗？'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, 'single'),
+                  child: const Text('删除'),
+                ),
+              ],
+            ),
+          );
+    if (deleteMode == null) return;
+    if (deleteMode == 'group' && transaction.installmentGroupUuid != null) {
+      await FinanceRepository.deleteInstallmentGroup(
+        transaction.installmentGroupUuid!,
+      );
+    } else {
+      await FinanceRepository.deleteTransaction(transaction.uuid);
+    }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('账单已删除')),
+        SnackBar(
+          content: Text(deleteMode == 'group' ? '整组分期账单已删除' : '账单已删除'),
+        ),
       );
       await _load();
     }
@@ -248,6 +315,12 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
             onPressed: _openBudgets,
             icon: const Icon(Icons.track_changes_outlined),
           ),
+          IconButton(
+            style: floatingGlassPlainIconButtonStyle(),
+            tooltip: '贷款',
+            onPressed: _openLoans,
+            icon: const Icon(Icons.account_balance_outlined),
+          ),
           PopupMenuButton<String>(
             style: floatingGlassPlainIconButtonStyle(),
             tooltip: '更多操作',
@@ -255,6 +328,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
               if (value == 'settings') _openSettings();
               if (value == 'text') _openTextRecognition();
               if (value == 'automation') _openAutomation();
+              if (value == 'loans') _openLoans();
               if (value == 'ai_cost') {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const AiUsageCostScreen()),
@@ -292,6 +366,14 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.autorenew_outlined),
                   title: Text('自动化与快捷模板'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'loans',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.account_balance_outlined),
+                  title: Text('贷款'),
                 ),
               ),
               PopupMenuItem(
@@ -357,6 +439,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                             onEdit: (transaction) =>
                                 _openEntry(transaction: transaction),
                             onDelete: _deleteTransaction,
+                            onRefund: _openRefund,
                           ),
                         ],
                       ),

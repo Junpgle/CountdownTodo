@@ -7,22 +7,26 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     _jumpToWeek(_currentWeek + delta);
   }
 
-  void _jumpToWeek(int newWeek) {
+  Future<void> _jumpToWeek(int newWeek) async {
     if (!mounted) return;
     setState(() {
       _currentWeek = newWeek;
-      _isLoading = true;
+      // Keep the old grid in the AnimatedSwitcher instead of replacing it
+      // with a skeleton while the optional device-calendar query resolves.
+      _deviceCalendarEvents = [];
+      _updateWeekDeviceCalendarEvents();
+      _updateMonthDeviceCalendarEvents();
     });
 
     // 🚀 核心优化：根据周次自动判断学期，然后过滤课程
     _updateWeekCourses();
     _updateWeekTodos();
     _updateWeekTimeLogsPomodorosAndPlans();
+    await _loadDeviceCalendarEventsForCurrentView();
+    if (!mounted || _currentWeek != newWeek) return;
     _checkCollapsedSlots();
-
-    if (mounted) {
-      setState(() => _isLoading = false);
-    }
+    _courseExpandCtrl.forward(from: 0);
+    if (mounted) setState(() {});
   }
 
   void _toggleViewMode(int mode) {
@@ -31,17 +35,24 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       _viewMode = mode;
       if (mode == 0) {
         _updateWeekTodos();
-        if (!_pulseController.isAnimating) {
-          _pulseController.repeat(reverse: true);
+        if (AndroidEnergyPolicy.shouldRunDecorativeMotion &&
+            !_pulseController.isAnimating) {
+          _pulseController.repeat(
+            reverse: true,
+            count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 5),
+          );
         }
       } else {
         if (_pulseController.isAnimating) {
           _pulseController.stop();
         }
-        if (mode == 2 && !_monthDataPrepared) {
+        if (mode > 0 && !_monthDataPrepared) {
           _groupDataForMonthView();
         }
       }
+    });
+    _loadDeviceCalendarEventsForCurrentView().then((_) {
+      if (mounted) setState(() {});
     });
   }
 
@@ -50,6 +61,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       _isNextSlide = delta > 0;
       _selectedMonth =
           DateTime(_selectedMonth.year, _selectedMonth.month + delta, 1);
+    });
+    _loadDeviceCalendarEventsForCurrentView().then((_) {
+      if (mounted) setState(() {});
     });
   }
 
@@ -267,6 +281,10 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       items.addAll(_monthPomMap[dStr] ?? []);
     }
 
+    if (_activeDataViews.contains('deviceCalendar')) {
+      items.addAll(_monthDeviceCalendarMap[dStr] ?? []);
+    }
+
     items.sort((a, b) {
       int getStartTime(dynamic item) {
         if (item is CourseItem) {
@@ -295,6 +313,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
                   .toLocal();
           return dt.hour * 100 + dt.minute;
         }
+        if (item is DeviceCalendarEvent) {
+          return item.start.hour * 100 + item.start.minute;
+        }
         return 9999;
       }
 
@@ -310,6 +331,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         if (item is TimeLogItem) return 2;
         if (item is TodoPlanBlock) return 3;
         if (item is PomodoroRecord) return 4;
+        if (item is DeviceCalendarEvent) return 5;
         return 5;
       }
 
@@ -383,7 +405,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
                     itemCount: items.length,
                     itemBuilder: (context, index) =>
-                        _buildDetailSidebarItem(context, items[index]),
+                        _buildDetailSidebarItem(context, items[index], dStr),
                   ),
           ),
         ],
@@ -391,7 +413,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     );
   }
 
-  Widget _buildDetailSidebarItem(BuildContext context, dynamic item) {
+  Widget _buildDetailSidebarItem(BuildContext context, dynamic item,
+      [String? sourceDate]) {
     if (item is CourseItem) {
       final color = _getCourseColor(item.courseName);
       return ListTile(
@@ -523,6 +546,40 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         subtitle: Text('时长: ${item.effectiveDuration ~/ 60} 分钟',
             style: const TextStyle(fontSize: 12)),
       );
+    } else if (item is DeviceCalendarEvent) {
+      final colorScheme = Theme.of(context).colorScheme;
+      final color = item.colorValue == null
+          ? colorScheme.tertiary
+          : Color(item.colorValue!);
+      final dateKey = sourceDate ?? DateFormat('yyyy-MM-dd').format(item.start);
+      final sourceKey = _getDeviceCalendarCardKey(
+        item.id,
+        dateKey,
+        surface: 'sidebar',
+      );
+      return ListTile(
+        key: sourceKey,
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.phone_android_rounded, color: color, size: 20),
+        ),
+        title: Text(item.title, style: const TextStyle(fontSize: 15)),
+        subtitle: Text(
+          item.allDay
+              ? '全天 · 手机日历（只读）'
+              : '${DateFormat('HH:mm').format(item.start)} - ${DateFormat('HH:mm').format(item.end)} · 手机日历（只读）',
+          style: const TextStyle(fontSize: 12),
+        ),
+        onTap: () => _showDeviceCalendarEventDetail(
+          context,
+          item,
+          sourceKey: sourceKey,
+        ),
+      );
     }
     return const SizedBox.shrink();
   }
@@ -533,8 +590,14 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         _activeDataViews.clear();
         _updateWeekTodos();
       } else if (value == 'selectAll') {
-        _activeDataViews
-            .addAll({'courses', 'todos', 'plans', 'timeLogs', 'pomodoros'});
+        _activeDataViews.addAll({
+          'courses',
+          'todos',
+          'plans',
+          'timeLogs',
+          'pomodoros',
+          'deviceCalendar'
+        });
         _updateWeekTodos();
       } else if (value == 'disableFreeTimeCollapse') {
         _collapseFreeTime = !_collapseFreeTime;
@@ -562,7 +625,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         'todos',
         'timeLogs',
         'plans',
-        'pomodoros'
+        'pomodoros',
+        'deviceCalendar',
       }.where(_activeDataViews.contains).length;
 
   IconData _filterIconForKey(String key) {
@@ -577,6 +641,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         return Icons.event_note_rounded;
       case 'pomodoros':
         return Icons.timer_outlined;
+      case 'deviceCalendar':
+        return Icons.phone_android_rounded;
       case 'hideCrossDay':
         return Icons.layers_clear_outlined;
       case 'disableFreeTimeCollapse':
@@ -597,6 +663,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       case 'timeLogs':
       case 'plans':
       case 'pomodoros':
+      case 'deviceCalendar':
         return colorScheme.tertiary;
       default:
         return colorScheme.primary;
@@ -607,9 +674,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     final colorScheme = Theme.of(context).colorScheme;
     final selectedCount = _selectedFilterCount;
     final width = _filterMenuWidth(context);
-    final statusLabel = selectedCount == 5
+    final statusLabel = selectedCount == 6
         ? '全部'
-        : (selectedCount == 0 ? '未选择' : '$selectedCount/5');
+        : (selectedCount == 0 ? '未选择' : '$selectedCount/6');
 
     return SizedBox(
       width: width,
@@ -646,7 +713,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '$selectedCount/5 项内容显示',
+                    '$selectedCount/6 项内容显示',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -942,6 +1009,19 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         final int endMs = record.endTime ??
             (record.startTime + record.effectiveDuration * 1000);
         updateBoundsFromEpochRange(record.startTime, endMs);
+      }
+    }
+
+    // 6. 手机日历只读事件也必须参与空闲时间判断，避免把真实日程压进
+    // 被折叠的区间。事件仍只在内存中使用，不会进入同步数据。
+    if (_activeDataViews.contains('deviceCalendar')) {
+      for (final event in _deviceCalendarEvents) {
+        if (!event.allDay) {
+          updateBoundsFromEpochRange(
+            event.start.millisecondsSinceEpoch,
+            event.end.millisecondsSinceEpoch,
+          );
+        }
       }
     }
 

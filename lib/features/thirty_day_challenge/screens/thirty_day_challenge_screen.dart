@@ -15,12 +15,10 @@ import '../../../services/browser_file_service.dart';
 import '../../../utils/app_platform.dart';
 import '../../../../widgets/optional_liquid_glass_surface.dart';
 import '../../../widgets/floating_glass_control.dart';
-import '../models/cloud_challenge.dart';
 import '../models/thirty_day_challenge.dart';
 import '../repositories/thirty_day_challenge_repository.dart';
 import '../services/challenge_share_codec.dart';
 import '../services/clipboard_share_detector.dart';
-import 'cloud_challenge_picker_screen.dart';
 import 'new_challenge_screen.dart';
 
 String _safeFileName(String value) {
@@ -37,7 +35,14 @@ String _safeHashTag(String value) {
 }
 
 class ThirtyDayChallengeScreen extends StatefulWidget {
-  const ThirtyDayChallengeScreen({super.key});
+  const ThirtyDayChallengeScreen({
+    super.key,
+    this.showBuiltInIntroduction = false,
+  });
+
+  /// Opens the original built-in challenge introduction without loading or
+  /// displaying another challenge that may currently be in progress.
+  final bool showBuiltInIntroduction;
 
   @override
   State<ThirtyDayChallengeScreen> createState() =>
@@ -83,9 +88,15 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   }
 
   Future<void> _load() async {
-    final state = await ThirtyDayChallengeRepository.load();
-    final introSeen = await ThirtyDayChallengeRepository.hasSeenIntro();
-    final isPaused = await ThirtyDayChallengeRepository.isPaused();
+    final state = widget.showBuiltInIntroduction
+        ? ThirtyDayChallengeState.initial()
+        : await ThirtyDayChallengeRepository.load();
+    final introSeen = widget.showBuiltInIntroduction
+        ? false
+        : await ThirtyDayChallengeRepository.hasSeenIntro();
+    final isPaused = widget.showBuiltInIntroduction
+        ? false
+        : await ThirtyDayChallengeRepository.isPaused();
     if (!mounted) return;
     setState(() {
       _state = state;
@@ -106,38 +117,18 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     await _startNewChallenge(draft);
   }
 
-  Future<void> _openCloudChallengeCatalog() async {
-    if (_isShuffling || _isExportingReport) return;
-
-    final result = await Navigator.of(context).push<CloudChallengePickerResult>(
-      MaterialPageRoute(builder: (_) => const CloudChallengePickerScreen()),
-    );
-    if (result == null || !mounted) return;
-
-    if (result.action == CloudChallengePickerAction.start) {
-      final selected = result.challenge;
-      if (selected == null) return;
-      await _startNewChallenge(selected.toDraft());
-      return;
-    }
-
-    final draft = await Navigator.of(context).push<ChallengeDraft>(
-      MaterialPageRoute(
-        builder: (_) => NewChallengeScreen(
-          initialDraft: result.challenge?.toDraft(),
-        ),
-      ),
-    );
-    if (draft == null || !mounted) return;
-
-    await _startNewChallenge(draft);
-  }
-
   Future<void> _startNewChallenge(ChallengeDraft draft) async {
     if (!mounted) return;
 
-    if (!_showWelcome) {
-      final currentState = _state;
+    final hasExistingChallenge = widget.showBuiltInIntroduction
+        ? await ThirtyDayChallengeRepository.hasStarted()
+        : false;
+    if (!mounted) return;
+    if (!_showWelcome || hasExistingChallenge) {
+      final currentState = hasExistingChallenge
+          ? await ThirtyDayChallengeRepository.load()
+          : _state;
+      if (!mounted) return;
       final shouldReplace = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -219,6 +210,57 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     if (shouldStart != true || !mounted) return;
 
     try {
+      if (widget.showBuiltInIntroduction) {
+        final hasExistingChallenge =
+            await ThirtyDayChallengeRepository.hasStarted();
+        if (!mounted) return;
+        if (hasExistingChallenge) {
+          final currentState = await ThirtyDayChallengeRepository.load();
+          if (!mounted) return;
+          final shouldReplace = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              icon: const Icon(Icons.auto_awesome_rounded),
+              title: const Text('开始经典挑战？'),
+              content: Text(
+                '当前正在进行「${currentState.challengeTitle}」。开始经典挑战后，当前挑战的完成状态、感受和图片将被替换，无法恢复。',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('继续当前挑战'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('开始经典挑战'),
+                ),
+              ],
+            ),
+          );
+          if (shouldReplace != true || !mounted) return;
+        }
+
+        final builtInState = ThirtyDayChallengeState.initial();
+        final state = await ThirtyDayChallengeRepository.startNewChallenge(
+          title: builtInState.challengeTitle,
+          taskTitles: builtInState.tasks.map((task) => task.title),
+        );
+        if (!mounted) return;
+        setState(() {
+          _state = state;
+          _showWelcome = false;
+          _showOverview = false;
+          _isPaused = false;
+          _currentIndex = 0;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _pageController.hasClients) {
+            _pageController.jumpToPage(0);
+          }
+        });
+        return;
+      }
+
       await ThirtyDayChallengeRepository.markIntroSeen();
       if (!mounted) return;
       setState(() {
@@ -667,13 +709,14 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       // focused, so resizing the whole page only makes the saved feeling jump
       // around and become difficult to read.
       resizeToAvoidBottomInset: false,
-      extendBodyBehindAppBar: _showWelcome,
+      extendBodyBehindAppBar: true,
       appBar: _showWelcome
           ? FloatingGlassAppBar(
               automaticallyImplyLeading: false,
               leading: IconButton(
                 tooltip: '返回',
                 onPressed: () => Navigator.of(context).maybePop(),
+                style: floatingGlassPlainIconButtonStyle(),
                 icon: const Icon(Icons.arrow_back_rounded),
               ),
               backgroundColor: Colors.transparent,
@@ -713,6 +756,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                 IconButton(
                   tooltip: '新建挑战',
                   onPressed: _openNewChallenge,
+                  style: floatingGlassPlainIconButtonStyle(),
                   icon: const Icon(Icons.add_rounded),
                 ),
               ],
@@ -726,7 +770,17 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                   begin: const Offset(0, 0.035),
                   end: Offset.zero,
                 ).animate(_entranceAnimation),
-                child: _showWelcome ? _buildWelcomeBody() : _buildBody(state),
+                child: _showWelcome
+                    ? _buildWelcomeBody()
+                    : FloatingGlassTopBarContentFade(
+                        topBarHeight: kToolbarHeight,
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            top: floatingGlassTopBarHeight(context),
+                          ),
+                          child: _buildBody(state),
+                        ),
+                      ),
               ),
             ),
     );
@@ -1185,13 +1239,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                               ),
                             ),
                             const SizedBox(height: 20),
-                            _buildOtherChallengesCard(scheme),
-                            const SizedBox(height: 8),
-                            TextButton.icon(
-                              onPressed: _deferChallenge,
-                              icon: const Icon(Icons.schedule_outlined),
-                              label: const Text('暂不参与'),
-                            ),
+                            _buildDeferButton(scheme),
                             const SizedBox(height: 8),
                             Text(
                               '记录感受和照片，让这段改变真正留下来。',
@@ -1217,67 +1265,30 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     );
   }
 
-  Widget _buildOtherChallengesCard(
+  Widget _buildDeferButton(
     ColorScheme scheme, {
     bool compact = false,
   }) {
     final buttonHeight = compact ? 50.0 : 64.0;
-    return OptionalLiquidGlassCard(
-      borderRadius: 24,
-      highContrast: true,
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-      fallbackDecoration: BoxDecoration(
-        color: scheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: scheme.outlineVariant.withValues(alpha: 0.5),
-        ),
+    final buttonRadius = compact ? 18.0 : 24.0;
+    return OutlinedButton.icon(
+      onPressed: _deferChallenge,
+      icon: Icon(
+        Icons.schedule_outlined,
+        size: compact ? 18 : null,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.explore_rounded, color: scheme.primary),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '其他挑战',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: scheme.primary,
-                        fontWeight: FontWeight.w900,
-                      ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '先从云端挑战库挑一份，也可以完全从零创建自己的挑战。',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                  height: 1.45,
-                ),
-          ),
-          const SizedBox(height: 14),
-          FilledButton.tonalIcon(
-            onPressed: _openCloudChallengeCatalog,
-            icon: const Icon(Icons.cloud_download_rounded),
-            label: const Text('浏览云端挑战'),
-            style: FilledButton.styleFrom(
-              minimumSize: Size.fromHeight(buttonHeight),
-            ),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _openNewChallenge,
-            icon: const Icon(Icons.edit_note_rounded),
-            label: const Text('创建自定义挑战'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: Size.fromHeight(buttonHeight),
-            ),
-          ),
-        ],
+      label: const Text('暂不参与'),
+      style: OutlinedButton.styleFrom(
+        minimumSize: Size.fromHeight(buttonHeight),
+        foregroundColor: scheme.onSurfaceVariant,
+        side: BorderSide(color: scheme.outlineVariant),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(buttonRadius),
+        ),
+        textStyle: TextStyle(
+          fontSize: compact ? 15 : 18,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
@@ -1556,18 +1567,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                           ),
                         ),
                         const SizedBox(height: 12),
-                        _buildOtherChallengesCard(scheme, compact: true),
-                        const SizedBox(height: 4),
-                        TextButton.icon(
-                          onPressed: _deferChallenge,
-                          icon: const Icon(Icons.schedule_outlined, size: 18),
-                          label: const Text('暂不参与'),
-                          style: TextButton.styleFrom(
-                            minimumSize: const Size.fromHeight(40),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            textStyle: const TextStyle(fontSize: 13),
-                          ),
-                        ),
+                        _buildDeferButton(scheme, compact: true),
+                        const SizedBox(height: 8),
                         Text(
                           '记录感受和照片，让这段改变真正留下来。',
                           textAlign: TextAlign.center,

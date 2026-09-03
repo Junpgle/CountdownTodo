@@ -85,4 +85,41 @@ void main() {
     expect(FinanceEntrySource.automation.label, '自动');
     expect(FinanceRecurringFrequency.yearly.label, '每年');
   });
+
+  test('恢复运行时按顺序补齐遗漏周期', () {
+    final rule = monthlyRule(day: 15, startDate: '2026-01-01')
+      ..lastGeneratedPeriod = '2026-05';
+    final dues = FinanceAutomationService.missedDuesFor(
+      rule,
+      now: DateTime(2026, 8, 20),
+    );
+
+    expect(
+      dues.map((item) => item.periodKey),
+      ['2026-06', '2026-07', '2026-08'],
+    );
+  });
+
+  test('无生成标记的历史规则只生成当前周期', () {
+    final rule = monthlyRule(day: 15, startDate: '2000-01-01');
+    final dues = FinanceAutomationService.missedDuesFor(
+      rule,
+      now: DateTime(2026, 8, 20),
+    );
+
+    expect(dues.map((item) => item.periodKey), ['2026-08']);
+  });
+
+  test('长期未运行的规则最多补齐最近十二个周期', () {
+    final rule = monthlyRule(day: 15, startDate: '2000-01-01')
+      ..lastGeneratedPeriod = '2000-01';
+    final dues = FinanceAutomationService.missedDuesFor(
+      rule,
+      now: DateTime(2026, 8, 20),
+    );
+
+    expect(dues, hasLength(12));
+    expect(dues.first.periodKey, '2025-09');
+    expect(dues.last.periodKey, '2026-08');
+  });
 }

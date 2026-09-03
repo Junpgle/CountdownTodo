@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'storage/app_settings_storage.dart';
 
 class BandSyncService {
   static const MethodChannel _channel =
@@ -19,12 +20,19 @@ class BandSyncService {
   };
 
   static bool _isInitialized = false;
+  static bool _nativeServiceStarted = false;
+  static bool _channelHandlerBound = false;
+  static Future<void> _lifecycleTail = Future<void>.value();
+  static Future<void> _settingsTail = Future<void>.value();
+  static int _serviceRequestGeneration = 0;
   static bool _isConnected = false;
   static String _nodeId = '';
   static String _deviceName = '';
   static String _bandVersion = '';
   static final ValueNotifier<String> bandVersionNotifier =
       ValueNotifier<String>('');
+  static final ValueNotifier<bool> serviceEnabledNotifier =
+      ValueNotifier<bool>(false);
   static DateTime? _lastSyncTime;
   static final List<String> _logs = [];
   static final List<Map<String, dynamic>> _receivedMessages = [];
@@ -36,6 +44,12 @@ class BandSyncService {
       _pomodoroActionCtrl.stream;
 
   static void dispose() {
+    _serviceRequestGeneration++;
+    _isInitialized = false;
+    serviceEnabledNotifier.value = false;
+    _cancelPermissionRequest();
+    unawaited(_shutdownNativeService());
+    _resetConnectionState(notify: false);
     if (!_pomodoroActionCtrl.isClosed) _pomodoroActionCtrl.close();
     _logs.clear();
     _receivedMessages.clear();
@@ -72,10 +86,129 @@ class BandSyncService {
     _onPermissionGranted = onPermissionGranted;
     _onPermissionChecked = onPermissionChecked;
 
-    _channel.setMethodCallHandler(_handleMethodCall);
+    _bindChannelHandler();
 
+    final requestGeneration = _serviceRequestGeneration;
+    await _settingsTail;
+    final storedEnabled = await isServiceEnabled();
+    final enabled = requestGeneration == _serviceRequestGeneration
+        ? storedEnabled
+        : serviceEnabledNotifier.value;
+    if (requestGeneration == _serviceRequestGeneration) {
+      serviceEnabledNotifier.value = enabled;
+    }
+
+    // 只初始化 Dart bridge，不在关闭状态下触碰小米穿戴 SDK。
+    _isInitialized = true;
+    if (!enabled) {
+      _addLog('手环服务已关闭，跳过 SDK 初始化');
+      return true;
+    }
+
+    return _startNativeService();
+  }
+
+  static void _bindChannelHandler() {
+    if (_channelHandlerBound) return;
+    _channel.setMethodCallHandler(_handleMethodCall);
+    _channelHandlerBound = true;
+  }
+
+  /// 读取并同步开关状态。设置页在全局初始化完成前打开时也能使用。
+  static Future<bool> loadServiceEnabled() async {
+    final requestGeneration = _serviceRequestGeneration;
+    await _settingsTail;
+    final enabled = await isServiceEnabled();
+    if (requestGeneration == _serviceRequestGeneration) {
+      serviceEnabledNotifier.value = enabled;
+      return enabled;
+    }
+    return serviceEnabledNotifier.value;
+  }
+
+  static Future<bool> isServiceEnabled() {
+    return AppSettingsStorage.isBandServiceEnabled();
+  }
+
+  /// 手动开启手环后台服务。
+  static Future<bool> setServiceEnabled(bool enabled) async {
+    final requestGeneration = ++_serviceRequestGeneration;
+    serviceEnabledNotifier.value = enabled;
+    if (!enabled) _cancelPermissionRequest();
+
+    await _persistServiceEnabled(enabled);
+    if (requestGeneration != _serviceRequestGeneration) {
+      // A newer toggle superseded this request. Its preference write is still
+      // kept in order, but it must not start or stop the native service.
+      return true;
+    }
+
+    if (enabled) {
+      _bindChannelHandler();
+      _isInitialized = true;
+      return _startNativeService();
+    }
+
+    _cancelPermissionRequest();
+    await _shutdownNativeService();
+    _resetConnectionState();
+    _addLog('手环服务已关闭');
+    return true;
+  }
+
+  static Future<bool> _startNativeService() {
+    return _runLifecycle<bool>(() async {
+      if (_nativeServiceStarted) return true;
+      return _doStartNativeService();
+    });
+  }
+
+  /// Serialize start/stop calls so a quick toggle cannot let an older
+  /// shutdown overwrite a newer start (or vice versa).
+  static Future<T> _runLifecycle<T>(Future<T> Function() operation) async {
+    final previous = _lifecycleTail;
+    final current = Completer<void>();
+    _lifecycleTail = current.future;
+    await previous;
     try {
-      await _channel.invokeMethod('init');
+      return await operation();
+    } finally {
+      current.complete();
+    }
+  }
+
+  static Future<void> _persistServiceEnabled(bool enabled) {
+    final previous = _settingsTail;
+    final current = Completer<void>();
+    _settingsTail = current.future;
+    return () async {
+      await previous;
+      try {
+        await AppSettingsStorage.setBandServiceEnabled(enabled);
+      } finally {
+        current.complete();
+      }
+    }();
+  }
+
+  static Future<bool> _doStartNativeService() async {
+    try {
+      if (!serviceEnabledNotifier.value) return false;
+      final initialized = await _channel.invokeMethod('init');
+      if (initialized == false) {
+        _addLog('SDK 初始化失败');
+        return false;
+      }
+      // The switch may have been turned off while the native init call was in
+      // flight. Tear down that late start immediately instead of leaving a
+      // service binding behind.
+      if (!serviceEnabledNotifier.value) {
+        try {
+          await _channel.invokeMethod('shutdown');
+        } catch (_) {}
+        return false;
+      }
+      _nativeServiceStarted = true;
       _isInitialized = true;
       _addLog('SDK 初始化成功');
       return true;
@@ -85,9 +218,39 @@ class BandSyncService {
     }
   }
 
+  static Future<void> _shutdownNativeService() {
+    return _runLifecycle<void>(() async {
+      if (!_nativeServiceStarted) return;
+
+      try {
+        await _channel.invokeMethod('shutdown');
+      } catch (e) {
+        _addLog('停止手环服务失败: $e');
+      } finally {
+        _nativeServiceStarted = false;
+      }
+    });
+  }
+
+  static void _resetConnectionState({bool notify = true}) {
+    final wasConnected = _isConnected;
+    _isConnected = false;
+    _nodeId = '';
+    _deviceName = '';
+    if (notify && wasConnected) _onDeviceDisconnected?.call();
+  }
+
+  static void _cancelPermissionRequest() {
+    final completer = _permissionRequestCompleter;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(false);
+    }
+  }
+
   static Future<dynamic> _handleMethodCall(MethodCall call) async {
     switch (call.method) {
       case 'onDeviceConnected':
+        if (!serviceEnabledNotifier.value) break;
         final args = Map<String, dynamic>.from(call.arguments as Map);
         _isConnected = true;
         _nodeId = args['nodeId'] ?? '';
@@ -97,6 +260,7 @@ class BandSyncService {
         break;
 
       case 'onDeviceDisconnected':
+        if (!serviceEnabledNotifier.value) break;
         _isConnected = false;
         _nodeId = '';
         _deviceName = '';
@@ -105,6 +269,7 @@ class BandSyncService {
         break;
 
       case 'onMessageReceived':
+        if (!serviceEnabledNotifier.value) break;
         final args = Map<String, dynamic>.from(call.arguments as Map);
         final data = args['data'] as String?;
         if (data != null) {
@@ -153,6 +318,7 @@ class BandSyncService {
         break;
 
       case 'onError':
+        if (!serviceEnabledNotifier.value) break;
         final args = Map<String, dynamic>.from(call.arguments as Map);
         final code = args['code'] ?? 0;
         final message = args['message'] ?? '未知错误';
@@ -166,8 +332,7 @@ class BandSyncService {
 
       case 'onServiceDisconnected':
         _addLog('小米穿戴服务断开');
-        _isConnected = false;
-        _nodeId = '';
+        _resetConnectionState();
         break;
 
       case 'onAppInstallResult':
@@ -181,6 +346,7 @@ class BandSyncService {
         break;
 
       case 'onPermissionGranted':
+        if (!serviceEnabledNotifier.value) break;
         final args = Map<String, dynamic>.from(call.arguments as Map);
         final permissions = List<String>.from(args['permissions'] as List);
         _addLog('权限已授予: ${permissions.join(", ")}');
@@ -192,6 +358,7 @@ class BandSyncService {
         break;
 
       case 'onPermissionChecked':
+        if (!serviceEnabledNotifier.value) break;
         final args = Map<String, dynamic>.from(call.arguments as Map);
         final granted = args['granted'] as bool? ?? false;
         _addLog('权限检查结果: granted=$granted');
@@ -202,7 +369,9 @@ class BandSyncService {
 
   // 内部处理同步请求
   static Future<void> _handleSyncRequest(String type) async {
-    if (!_isConnected) {
+    if (!serviceEnabledNotifier.value ||
+        !_nativeServiceStarted ||
+        !_isConnected) {
       _addLog('同步请求被忽略: 设备未连接');
       return;
     }
@@ -247,7 +416,9 @@ class BandSyncService {
 
   /// 获取已连接设备
   static Future<void> getConnectedDevice() async {
-    if (!_isInitialized) {
+    if (!_isInitialized ||
+        !_nativeServiceStarted ||
+        !serviceEnabledNotifier.value) {
       _addLog('服务未初始化');
       return;
     }
@@ -261,6 +432,10 @@ class BandSyncService {
   /// 发送数据到手环（带批次信息）
   static Future<bool> sendData(String type, dynamic data,
       {int batchNum = 1, int totalBatches = 1}) async {
+    if (!_nativeServiceStarted || !serviceEnabledNotifier.value) {
+      _addLog('手环服务未开启');
+      return false;
+    }
     if (!_isConnected) {
       _addLog('设备未连接');
       return false;
@@ -428,6 +603,10 @@ class BandSyncService {
 
   /// 注册消息监听器
   static Future<void> registerListener() async {
+    if (!_nativeServiceStarted || !serviceEnabledNotifier.value) {
+      _addLog('手环服务未开启，跳过注册监听');
+      return;
+    }
     try {
       await _channel.invokeMethod('registerListener');
       _addLog('消息监听已注册');
@@ -438,6 +617,7 @@ class BandSyncService {
 
   /// 取消消息监听器
   static Future<void> unregisterListener() async {
+    if (!_nativeServiceStarted) return;
     try {
       await _channel.invokeMethod('unregisterListener');
       _addLog('消息监听已取消');
@@ -448,6 +628,7 @@ class BandSyncService {
 
   /// 检查手环应用是否安装
   static Future<void> checkAppInstalled() async {
+    if (!_nativeServiceStarted || !serviceEnabledNotifier.value) return;
     try {
       await _channel.invokeMethod('isAppInstalled');
     } catch (e) {
@@ -457,6 +638,7 @@ class BandSyncService {
 
   /// 启动手环应用
   static Future<void> launchApp() async {
+    if (!_nativeServiceStarted || !serviceEnabledNotifier.value) return;
     try {
       await _channel.invokeMethod('launchApp');
     } catch (e) {
@@ -476,6 +658,10 @@ class BandSyncService {
 
   /// 申请设备管理权限
   static Future<bool> requestPermission() async {
+    if (!_nativeServiceStarted || !serviceEnabledNotifier.value) {
+      _addLog('手环服务未开启，无法申请权限');
+      return false;
+    }
     final pending = _permissionRequestCompleter;
     if (pending != null && !pending.isCompleted) return pending.future;
 

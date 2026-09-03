@@ -368,6 +368,9 @@ class UpdateService {
 
   static Future<AppManifest?>? _manifestRefreshFuture;
   static Future<void>? _updateCheckFuture;
+  static int? _lastManifestRefreshAttemptMs;
+  static const Duration _manifestRefreshInterval = Duration(hours: 6);
+  static const Duration _manifestRetryInterval = Duration(minutes: 30);
 
   static bool _isDialogShowing = false;
   static bool _isAnnouncementDialogShowing = false;
@@ -909,6 +912,7 @@ class UpdateService {
       return _manifestRefreshFuture!;
     }
 
+    _lastManifestRefreshAttemptMs = DateTime.now().millisecondsSinceEpoch;
     final future = _fetchManifestFromNetwork();
     _manifestRefreshFuture = future;
 
@@ -928,7 +932,9 @@ class UpdateService {
       await refreshManifestCache();
       return;
     }
-    unawaited(refreshManifestCache());
+    if (await _shouldRefreshManifestCache()) {
+      unawaited(refreshManifestCache());
+    }
   }
 
   /// Manifest 读取策略：默认优先返回本地缓存，同时后台刷新网络。
@@ -938,7 +944,7 @@ class UpdateService {
     if (preferCache) {
       final cached = await _readManifestCache();
       if (cached != null) {
-        if (refreshInBackground) {
+        if (refreshInBackground && await _shouldRefreshManifestCache()) {
           unawaited(refreshManifestCache());
         }
         return cached;
@@ -952,6 +958,35 @@ class UpdateService {
     if (cached != null) return cached;
 
     return _readBundledManifest();
+  }
+
+  static Future<bool> _shouldRefreshManifestCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    return isManifestRefreshDue(
+      nowMs: DateTime.now().millisecondsSinceEpoch,
+      lastSuccessfulRefreshMs: prefs.getInt(_manifestCacheTimeKey),
+      lastAttemptMs: _lastManifestRefreshAttemptMs,
+    );
+  }
+
+  @visibleForTesting
+  static bool isManifestRefreshDue({
+    required int nowMs,
+    int? lastSuccessfulRefreshMs,
+    int? lastAttemptMs,
+    Duration refreshInterval = _manifestRefreshInterval,
+    Duration retryInterval = _manifestRetryInterval,
+  }) {
+    if (lastAttemptMs != null) {
+      final attemptAge = nowMs - lastAttemptMs;
+      if (attemptAge >= 0 && attemptAge < retryInterval.inMilliseconds) {
+        return false;
+      }
+    }
+    if (lastSuccessfulRefreshMs == null) return true;
+
+    final cacheAge = nowMs - lastSuccessfulRefreshMs;
+    return cacheAge < 0 || cacheAge >= refreshInterval.inMilliseconds;
   }
 
   static Future<String?> isPackageAlreadyDownloaded(String versionName) async {

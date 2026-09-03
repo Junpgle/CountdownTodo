@@ -686,7 +686,53 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         await Future.delayed(const Duration(milliseconds: 500));
         await _checkFocusTabCoachMarks();
       }
+      if (finished && mounted) {
+        await _checkDeviceCalendarReadCoachMark();
+      }
     }
+  }
+
+  /// Keep this separate from the broad home tutorial: new users see it once,
+  /// while people who have already completed the old tutorial are not forced
+  /// through every old step after an update.
+  Future<void> _checkDeviceCalendarReadCoachMark() async {
+    if (_showCoachMarks || !mounted || !DeviceCalendarReadService.isSupported) {
+      return;
+    }
+    const tipId = 'coach_device_calendar_read';
+    if (await FeatureTipService.hasTipBeenShown(tipId)) return;
+    if (await DeviceCalendarReadService.isEnabled()) {
+      await FeatureTipService.markTipShown(tipId);
+      return;
+    }
+    if (!mounted) return;
+
+    _showCoachMarks = true;
+    await CoachMarkOverlay.show(
+      context: context,
+      steps: [
+        CoachMarkStep(
+          targetKey: _courseCenterKey,
+          title: '手机日历（可选）',
+          description: '可将手机日程只读显示在首页、周视图和半月/月视图。它默认关闭，绝不会写入、上传或参与同步。',
+          buttonLabel: '去设置',
+          finishOnButtonTap: true,
+          onButtonTap: () {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              Navigator.of(context, rootNavigator: true).push(
+                PageTransitions.slideHorizontal(
+                  const DeviceCalendarReadPage(),
+                  settings: const RouteSettings(name: '读取手机日历'),
+                ),
+              );
+            });
+          },
+        ),
+      ],
+      onFinish: () => _dismissCoachMarks(tipId: tipId),
+      onSkip: () => _dismissCoachMarks(tipId: tipId),
+    );
   }
 
   // 🚀 新增：检查并显示专注 Tab 的引导

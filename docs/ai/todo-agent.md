@@ -12,6 +12,10 @@ review for destructive or broad actions.
 
 - Todos: create, update, complete, delete, reschedule, bulk operations,
   categorization, planning, split and merge.
+- Habits: create a habit goal with a period, target, source type and reminder
+  policy through `create_habit`.
+- Ambiguous recurring requests: ask whether the user wants a habit or a
+  recurring todo before emitting any creation action.
 - Fixed schedules: create, update, cancel and delete, including
   occurrence-only and current-and-future recurrence scopes.
 - Plan blocks: create, update, delete, reschedule, skip and start.

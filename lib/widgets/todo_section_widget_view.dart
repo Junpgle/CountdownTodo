@@ -8,6 +8,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     required bool isPast,
     required bool isFuture,
     Key? key,
+    Widget? dragHandle,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final bool isLight = widget.isLight;
@@ -103,44 +104,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       );
     }
 
-    return LongPressDraggable<String>(
-        data: todo.id,
-        feedback: Material(
-          color: Colors.transparent,
-          child: Container(
-            width: MediaQuery.of(context).size.width * 0.8,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black26, blurRadius: 12, spreadRadius: 1)
-              ],
-            ),
-            child: Text(todo.title,
-                style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontSize: 14)),
-          ),
-        ),
-        childWhenDragging: Opacity(
-          opacity: 0.3,
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 6),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            decoration: BoxDecoration(
-              color: cardBg,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Text(todo.title,
-                style: TextStyle(
-                    color: titleColor.withValues(alpha: 0.95), fontSize: 14.5)),
-          ),
-        ),
-        child: KeyedSubtree(
-          key: Key('todo_item_${todo.id}'),
-          child: Dismissible(
+    return KeyedSubtree(
+      key: Key('todo_item_${todo.id}'),
+      child: Dismissible(
             key: key ?? _getTodoDismissKey('dismiss', todo.id),
             direction: DismissDirection.endToStart,
             background: Container(
@@ -500,7 +466,13 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                   },
                                                 ),
                                               ),
-                                              const SizedBox(width: 10),
+                                              const SizedBox(width: 4),
+                                              dragHandle ??
+                                                  _buildTodoDragHandle(
+                                                    todo,
+                                                    colorScheme.onSurfaceVariant,
+                                                  ),
+                                              const SizedBox(width: 6),
                                               Expanded(
                                                 child: Column(
                                                   crossAxisAlignment:
@@ -873,7 +845,47 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
               ),
             ),
           ),
-        ));
+    );
+  }
+
+  /// A card-wide long press wins the gesture arena before a slow vertical
+  /// scroll. Keep task moving available on a dedicated handle instead.
+  Widget _buildTodoDragHandle(TodoItem todo, Color color) {
+    return LongPressDraggable<String>(
+      data: todo.id,
+      feedback: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.8,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: const [
+              BoxShadow(color: Colors.black26, blurRadius: 12, spreadRadius: 1),
+            ],
+          ),
+          child: Text(
+            todo.title,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ),
+      child: _buildTodoDragHandleIcon(todo, color),
+    );
+  }
+
+  Widget _buildTodoDragHandleIcon(TodoItem todo, Color color) {
+    return Semantics(
+        label: '长按拖动 ${todo.title}',
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+          child: Icon(Icons.drag_indicator_rounded, size: 16, color: color),
+        ),
+      );
   }
 
   Widget _buildAnimatedSection(
@@ -1224,15 +1236,22 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                             final int index = entry.key;
                             final item = entry.value;
                             if (item.todo != null) {
-                              return ReorderableDelayedDragStartListener(
-                                  key:
-                                      _getTodoDismissKey('drag', item.todo!.id),
+                              return _buildTodoItemCard(
+                                item.todo!,
+                                isPast: false,
+                                isFuture: false,
+                                key: _getTodoDismissKey(
+                                    'dismiss', item.todo!.id),
+                                dragHandle: ReorderableDelayedDragStartListener(
                                   index: index,
-                                  child: _buildTodoItemCard(item.todo!,
-                                      isPast: false,
-                                      isFuture: false,
-                                      key: _getTodoDismissKey(
-                                          'dismiss', item.todo!.id)));
+                                  child: _buildTodoDragHandleIcon(
+                                    item.todo!,
+                                    Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                                ),
+                              );
                             }
                             return Container(
                                 key: ValueKey('group_${item.group!.id}'),

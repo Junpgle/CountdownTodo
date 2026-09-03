@@ -5,6 +5,8 @@ class WidgetService {
 
   static Future<void> init() async {}
 
+  static void setAppForeground(bool isForeground) {}
+
   static Future<void> updateAllWidgetData(
     String username,
     List<TodoItem> todos,

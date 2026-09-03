@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'add_todo_screen.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/floating_glass_control.dart';
+import '../widgets/management_page.dart';
 import '../utils/app_dialogs.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
@@ -33,6 +34,13 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
   String _folderDisplayMode = 'inline';
   late List<TodoGroup> _groups;
   late List<TodoItem> _todos;
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -44,6 +52,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
 
   Future<void> _loadSettings() async {
     final mode = await StorageService.getTodoFolderDisplayMode();
+    if (!mounted) return;
     setState(() {
       _folderDisplayMode = mode;
     });
@@ -52,6 +61,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
   Future<void> _setFolderDisplayMode(String mode) async {
     await StorageService.setTodoFolderDisplayMode(mode);
     await StorageService.setTodoFoldersInline(mode != 'separate');
+    if (!mounted) return;
     setState(() {
       _folderDisplayMode = mode;
     });
@@ -78,7 +88,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
       case 'inline':
         return '文件夹与独立待办在主时间线一起排序展示';
       case 'separate':
-        return '等同于原来的“文件夹与待办在一起混合排序”关闭状态';
+        return '文件夹与独立待办分区展示，方便集中查看';
       case 'urgentFirst':
         return '文件夹卡片只展开 1 条最紧急未完成待办';
       case 'hidden':
@@ -88,54 +98,23 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
     }
   }
 
-  void _showCreateOrEditDialog([TodoGroup? existing]) {
-    final TextEditingController ctrl =
-        TextEditingController(text: existing?.name ?? "");
-    showDialog(
+  Future<void> _showCreateOrEditDialog([TodoGroup? existing]) async {
+    final name = await showDialog<String>(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text(existing == null ? '新建文件夹' : '修改文件夹名称'),
-          content: TextField(
-            controller: ctrl,
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: '输入文件夹名称',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final txt = ctrl.text.trim();
-                if (txt.isNotEmpty) {
-                  Navigator.pop(ctx);
-                  if (existing == null) {
-                    final newGroup = TodoGroup(name: txt);
-                    setState(() {
-                      _groups.insert(0, newGroup);
-                    });
-                    StorageService.saveTodoGroups(widget.username, _groups);
-                    widget.onGroupsChanged(_groups);
-                  } else {
-                    setState(() {
-                      existing.name = txt;
-                      existing.markAsChanged();
-                    });
-                    StorageService.saveTodoGroups(widget.username, _groups);
-                    widget.onGroupsChanged(_groups);
-                  }
-                }
-              },
-              child: const Text('保存'),
-            ),
-          ],
-        );
-      },
+      builder: (_) => _FolderNameDialog(initialName: existing?.name),
     );
+    if (name == null || !mounted) return;
+    setState(() {
+      if (existing == null) {
+        _groups.insert(0, TodoGroup(name: name));
+      } else {
+        existing.name = name;
+        existing.markAsChanged();
+      }
+      _searchController.clear();
+    });
+    StorageService.saveTodoGroups(widget.username, _groups);
+    widget.onGroupsChanged(_groups);
   }
 
   void _deleteGroup(TodoGroup g) {
@@ -170,7 +149,8 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
               widget.onGroupsChanged(_groups);
               widget.onTodosChanged(_todos);
             },
-            child: const Text('确认删除', style: TextStyle(color: Colors.red)),
+            child: Text('解散文件夹',
+                style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
           )
         ],
       ),
@@ -370,201 +350,208 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final active = _groups.where((g) => !g.isDeleted).toList();
+    final query = _searchController.text.trim().toLowerCase();
+    final visible =
+        active.where((g) => g.name.toLowerCase().contains(query)).toList();
     return Scaffold(
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('文件夹管理'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => _showCreateOrEditDialog(),
-          ),
-        ],
       ),
-      body: ListView(
-        children: [
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-            child: Container(
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.1)
-                    : Colors.black.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: const [
-                  ListTile(
-                    dense: true,
-                    title: Text('文件夹展示模式',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Container(
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.06)
-                    : Colors.black.withValues(alpha: 0.03),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: RadioGroup<String>(
+      body: ManagementPage(children: [
+        const ManagementIntro(
+            icon: Icons.folder_copy_outlined,
+            title: '给待办一个位置',
+            description: '按项目或生活场景整理待办，展开文件夹即可管理其中的任务。'),
+        Card(
+          elevation: 0,
+          margin: EdgeInsets.zero,
+          color: scheme.surfaceContainerLow,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          child: ExpansionTile(
+            shape: const Border(),
+            leading: Icon(Icons.view_quilt_outlined, color: scheme.primary),
+            title: const Text('首页展示方式'),
+            subtitle: Text(_folderModeLabel(_folderDisplayMode)),
+            childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+            children: [
+              RadioGroup<String>(
                 groupValue: _folderDisplayMode,
                 onChanged: (value) {
-                  if (value != null) {
-                    _setFolderDisplayMode(value);
-                  }
+                  if (value != null) _setFolderDisplayMode(value);
                 },
                 child: Column(
-                  children: ['inline', 'separate', 'urgentFirst', 'hidden']
-                      .map((mode) {
-                    return RadioListTile<String>(
-                      value: mode,
-                      title: Text(_folderModeLabel(mode),
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                      subtitle: Text(_folderModeSubtitle(mode)),
-                    );
-                  }).toList(),
-                ),
+                    children: ['inline', 'separate', 'urgentFirst', 'hidden']
+                        .map((mode) => RadioListTile<String>(
+                              value: mode,
+                              title: Text(_folderModeLabel(mode)),
+                              subtitle: Text(_folderModeSubtitle(mode)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                            ))
+                        .toList()),
               ),
-            ),
+            ],
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 18.0, vertical: 8.0),
-            child: Text('所有文件夹',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                    color: Colors.grey)),
-          ),
-          if (_groups.where((g) => !g.isDeleted).isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(32.0),
-              child: Center(child: Text("暂无文件夹")),
-            ),
-          ..._groups.where((g) => !g.isDeleted).map((g) {
-            final gTodos =
-                _todos.where((t) => t.groupId == g.id && !t.isDeleted).toList();
-            return Theme(
-              data:
-                  Theme.of(context).copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                leading: const Icon(Icons.folder, color: Colors.amber),
-                title: Text(g.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(
-                    "${gTodos.length} 条待办 · 创建于 ${DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(g.createdAt))}"),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                        icon: const Icon(Icons.edit, size: 20),
-                        onPressed: () => _showCreateOrEditDialog(g)),
-                    IconButton(
-                        icon: const Icon(Icons.delete,
-                            size: 20, color: Colors.redAccent),
-                        onPressed: () => _deleteGroup(g)),
-                  ],
-                ),
-                children: [
-                  ...gTodos.map((t) => ListTile(
-                        dense: true,
-                        contentPadding:
-                            const EdgeInsets.only(left: 48, right: 16),
-                        leading: Icon(
-                            t.isDone
-                                ? Icons.check_circle
-                                : Icons.circle_outlined,
-                            size: 18,
-                            color: t.isDone ? Colors.green : Colors.grey),
-                        title: Text(t.title,
-                            style: TextStyle(
-                              color: t.isDone ? Colors.grey : null,
-                              decoration:
-                                  t.isDone ? TextDecoration.lineThrough : null,
-                            )),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.remove_circle_outline,
-                              size: 18, color: Colors.orange),
-                          onPressed: () => _removeTodoFromFolder(t),
-                          tooltip: '移出文件夹',
-                        ),
-                      )),
-                  Padding(
-                    padding:
-                        const EdgeInsets.only(left: 48, bottom: 12, top: 4),
-                    child: Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
-                      children: [
-                        // 🚀 已优化：直接打开完整的添加页面
-                        InkWell(
-                          onTap: () => _showCreateTodoInFolderScreen(g),
-                          borderRadius: BorderRadius.circular(8),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 6),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.add,
-                                    size: 16,
-                                    color:
-                                        Theme.of(context).colorScheme.primary),
-                                const SizedBox(width: 4),
-                                Text('创建新待办',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color:
-                                          Theme.of(context).colorScheme.primary,
-                                      fontWeight: FontWeight.w600,
-                                    )),
-                              ],
-                            ),
-                          ),
-                        ),
-                        // 原有：移动独立待办
-                        InkWell(
-                          onTap: () => _showAddTodoToFolderDialog(g),
-                          borderRadius: BorderRadius.circular(8),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 6),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.drive_file_move_outlined,
-                                    size: 16,
-                                    color:
-                                        Theme.of(context).colorScheme.primary),
-                                const SizedBox(width: 4),
-                                Text('添加独立待办至此',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color:
-                                          Theme.of(context).colorScheme.primary,
-                                      fontWeight: FontWeight.w600,
-                                    )),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
+        ),
+        const SizedBox(height: 24),
+        Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 16,
+            runSpacing: 8,
+            children: [
+              Text('我的文件夹 · ${active.length}',
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+              FilledButton.icon(
+                  onPressed: () => _showCreateOrEditDialog(),
+                  icon: const Icon(Icons.create_new_folder_outlined),
+                  label: const Text('新建文件夹')),
+            ]),
+        const SizedBox(height: 16),
+        ManagementSearchField(
+            controller: _searchController,
+            hintText: '搜索文件夹名称',
+            onChanged: (_) => setState(() {})),
+        const SizedBox(height: 16),
+        if (visible.isEmpty)
+          ManagementEmptyState(
+              icon: Icons.folder_open_rounded,
+              title: query.isEmpty ? '暂无文件夹' : '没有找到匹配的文件夹',
+              description:
+                  query.isEmpty ? '新建一个文件夹，把相关待办放在一起。' : '试试其他名称，或清空搜索。'),
+        ...visible.map((g) => _buildFolder(g, scheme)),
+      ]),
+    );
+  }
+
+  Widget _buildFolder(TodoGroup g, ColorScheme scheme) {
+    final todos =
+        _todos.where((t) => t.groupId == g.id && !t.isDeleted).toList();
+    final pending = todos.where((t) => !t.isDone).length;
+    return ManagementCard(
+      padding: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        key: PageStorageKey('folder-${g.id}'),
+        shape: const Border(),
+        leading: Icon(Icons.folder_outlined, color: scheme.primary),
+        title:
+            Text(g.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: Text('$pending 条待完成 · ${todos.length - pending} 条已完成'),
+        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        children: [
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          ManagementActionBar(
+              alignment: WrapAlignment.start,
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                TextButton.icon(
+                    onPressed: () => _showCreateOrEditDialog(g),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('重命名')),
+                TextButton.icon(
+                    onPressed: () => _deleteGroup(g),
+                    icon: const Icon(Icons.folder_delete_outlined, size: 18),
+                    style: TextButton.styleFrom(foregroundColor: scheme.error),
+                    label: const Text('解散文件夹')),
+              ]),
+          if (todos.isEmpty)
+            Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text('文件夹还是空的，添加第一条待办吧。',
+                    style: TextStyle(color: scheme.onSurfaceVariant))),
+          ...todos.map((t) => ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                leading: Icon(
+                    t.isDone
+                        ? Icons.check_circle_outline
+                        : Icons.circle_outlined,
+                    size: 20,
+                    color: t.isDone ? scheme.primary : scheme.onSurfaceVariant),
+                title: Text(t.title,
+                    style: TextStyle(
+                        color: t.isDone ? scheme.onSurfaceVariant : null,
+                        decoration:
+                            t.isDone ? TextDecoration.lineThrough : null)),
+                trailing: IconButton(
+                    tooltip: '移出文件夹',
+                    onPressed: () => _removeTodoFromFolder(t),
+                    icon: const Icon(Icons.drive_file_move_outlined, size: 20)),
+              )),
+          const SizedBox(height: 8),
+          ManagementActionBar(alignment: WrapAlignment.start, children: [
+            FilledButton.tonalIcon(
+                onPressed: () => _showCreateTodoInFolderScreen(g),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('新建待办')),
+            OutlinedButton.icon(
+                onPressed: () => _showAddTodoToFolderDialog(g),
+                icon: const Icon(Icons.drive_file_move_outlined),
+                label: const Text('移入独立待办')),
+          ]),
         ],
       ),
     );
   }
+}
+
+class _FolderNameDialog extends StatefulWidget {
+  const _FolderNameDialog({this.initialName});
+  final String? initialName;
+
+  @override
+  State<_FolderNameDialog> createState() => _FolderNameDialogState();
+}
+
+class _FolderNameDialogState extends State<_FolderNameDialog> {
+  late final _controller =
+      TextEditingController(text: widget.initialName ?? '');
+  bool _invalid = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _controller.text.trim();
+    setState(() => _invalid = name.isEmpty);
+    if (!_invalid) Navigator.of(context).pop(name);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        icon: const Icon(Icons.folder_outlined),
+        title: Text(widget.initialName == null ? '新建文件夹' : '修改文件夹名称'),
+        content: TextField(
+          controller: _controller,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _submit(),
+          onChanged: (_) {
+            if (_invalid) setState(() => _invalid = false);
+          },
+          decoration: InputDecoration(
+              labelText: '文件夹名称',
+              hintText: '例如：工作项目、生活计划',
+              errorText: _invalid ? '请输入文件夹名称' : null,
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消')),
+          FilledButton(onPressed: _submit, child: const Text('保存')),
+        ],
+      );
 }

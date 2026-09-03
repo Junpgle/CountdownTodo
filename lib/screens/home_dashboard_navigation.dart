@@ -106,8 +106,10 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     if (todosData.isEmpty) return;
 
     RecurrenceType parseRecurrence(dynamic value) {
-      if (value is int && value >= 0 && value < RecurrenceType.values.length) {
-        return RecurrenceType.values[value];
+      final index =
+          value is num ? value.toInt() : int.tryParse(value?.toString() ?? '');
+      if (index != null && index >= 0 && index < RecurrenceType.values.length) {
+        return RecurrenceType.values[index];
       }
       final name = value?.toString();
       return RecurrenceType.values.firstWhere(
@@ -121,31 +123,33 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     }
 
     final newTodos = todosData.map((data) {
-      DateTime? dueDate;
-      DateTime? selectedDate;
-      final isDateOnly = data['isAllDay'] == true ||
-          data['is_all_day'] == true ||
-          data['is_all_day'] == 1;
-
-      if (data['endTime'] != null) {
-        dueDate = DateTime.tryParse(data['endTime']);
-      }
-
-      if (data['startTime'] != null) {
-        final startTime = DateTime.tryParse(data['startTime']);
-        if (startTime != null) {
-          selectedDate = startTime;
-          if (isDateOnly && dueDate == null) {
-            dueDate = DateTime(
-              startTime.year,
-              startTime.month,
-              startTime.day,
-              23,
-              59,
-            );
-          }
-        }
-      }
+      final selectedDate = RecognizedTodoAdapter.parseDateTime(
+        data['startTime'] ??
+            data['start_time'] ??
+            data['createdDate'] ??
+            data['created_date'],
+      );
+      final parsedDueDate = RecognizedTodoAdapter.parseDateTime(
+        data['endTime'] ??
+            data['end_time'] ??
+            data['dueDate'] ??
+            data['due_date'],
+      );
+      final timeMode = RecognizedTodoAdapter.parseTimeMode(
+        data['timeMode'] ?? data['time_mode'],
+      );
+      final isDateOnly = RecognizedTodoAdapter.parseBool(
+            data['isAllDay'] ?? data['is_all_day'],
+          ) ||
+          timeMode == TodoTimeMode.dateOnly ||
+          (selectedDate != null &&
+              parsedDueDate != null &&
+              TodoItem.looksLikeLegacyDateOnlyRange(
+                selectedDate,
+                parsedDueDate,
+              ));
+      final dueDate = parsedDueDate ??
+          (timeMode == TodoTimeMode.deadline ? selectedDate : null);
 
       final normalizedTime = TodoItem.normalizeTimeForWrite(
         selectedDate: selectedDate,
@@ -154,29 +158,27 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
       );
 
       return TodoItem(
-        title: data['title'] ?? '',
-        remark: data['remark'],
+        title: data['title']?.toString() ?? data['content']?.toString() ?? '',
+        remark: (data['remark'] ?? data['notes'] ?? data['note'])?.toString(),
         dueDate: normalizedTime.due,
-        createdDate: normalizedTime.start?.millisecondsSinceEpoch,
+        createdDate: normalizedTime.start?.toUtc().millisecondsSinceEpoch,
         createdAt: DateTime.now().millisecondsSinceEpoch,
         recurrence: parseRecurrence(data['recurrence']),
         customIntervalDays: parseInt(
             data['customIntervalDays'] ?? data['custom_interval_days']),
-        recurrenceEndDate:
-            (data['recurrence_end_date'] ?? data['recurrenceEndDate']) != null
-                ? DateTime.tryParse(
-                    (data['recurrence_end_date'] ?? data['recurrenceEndDate'])
-                        .toString(),
-                  )
-                : null,
+        recurrenceEndDate: RecognizedTodoAdapter.parseDateTime(
+          data['recurrence_end_date'] ?? data['recurrenceEndDate'],
+        ),
         // 📸 关联图片路径（兼容确认页与存储层两种字段名）
-        imagePath: (data['imagePath'] ?? data['image_path']) as String?,
+        imagePath: (data['imagePath'] ?? data['image_path'])?.toString(),
         // 📄 原始分析文本
         originalText:
-            (data['originalText'] ?? data['original_text']) as String?,
-        teamUuid: data['team_uuid'] ?? teamUuid, // 🚀 关联团队
-        teamName: data['team_name'] ?? teamName, // 🚀 团队名称
-        groupId: data['groupId']?.toString(),
+            (data['originalText'] ?? data['original_text'])?.toString(),
+        teamUuid: (data['team_uuid'] ?? data['teamUuid'] ?? teamUuid)
+            ?.toString(), // 🚀 关联团队
+        teamName: (data['team_name'] ?? data['teamName'] ?? teamName)
+            ?.toString(), // 🚀 团队名称
+        groupId: (data['groupId'] ?? data['group_id'])?.toString(),
         reminderMinutes:
             parseInt(data['reminderMinutes'] ?? data['reminder_minutes']),
         collabType: parseInt(data['collab_type'] ?? data['collabType']) ?? 0,
@@ -224,6 +226,9 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
 
   /// 检查是否有待确认的事项数据（从通知点击进入）
   Future<void> _checkPendingTodoConfirm() async {
+    // App 进程重启后没有任务实例可以继续处理旧的 processing 状态，
+    // 先把这类中断任务收口为失败，避免首页永久显示加载圈。
+    await ExternalShareHandler.recoverInterruptedTodoRecognition();
     var pendingData = await ExternalShareHandler.getPendingTodoConfirm();
     if (!mounted) return;
 
@@ -550,15 +555,53 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
         await _loadHomeTextConfig();
         _loadAllData(deferred: true);
         break;
+      case 'finance_entry':
+        await Navigator.of(context).push(
+          PageTransitions.slideHorizontal(
+            FinanceHomeScreen(
+              username: widget.username,
+              openQuickEntry: true,
+            ),
+          ),
+        );
+        if (mounted) await _loadAllData(deferred: true);
+        break;
+      case 'todo_add':
+        await _openHomeTodo();
+        break;
+      case 'journal':
+        await Navigator.of(context).push(
+          PageTransitions.slideHorizontal(
+            JournalHomeScreen(username: widget.username),
+          ),
+        );
+        break;
+      case 'challenge':
+        await Navigator.of(context, rootNavigator: true).push(
+          PageTransitions.slideHorizontal(const ChallengeCenterScreen()),
+        );
+        if (mounted) _loadThirtyDayChallengeStatus();
+        break;
+      case 'pomodoro':
+        await _openHomePomodoro();
+        break;
+      case 'habits':
+        await Navigator.of(context).push(
+          PageTransitions.slideHorizontal(
+            HabitCenterScreen(username: widget.username),
+          ),
+        );
+        if (mounted) _habitsRevision.value++;
+        break;
       case 'schedule':
-        PageTransitions.pushFromRect(
-          context: context,
-          page: WeeklyCourseScreen(username: widget.username),
-          sourceKey: _courseButtonKey,
+        await Navigator.of(context).push(
+          PageTransitions.slideHorizontal(
+            WeeklyCourseScreen(username: widget.username),
+          ),
         );
         break;
       case 'band':
-        Navigator.of(context).push(
+        await Navigator.of(context).push(
           PageTransitions.slideHorizontal(const BandSyncScreen()),
         );
         break;

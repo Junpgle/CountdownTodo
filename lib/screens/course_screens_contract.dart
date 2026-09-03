@@ -12,6 +12,9 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   // 拆分：全天/跨天待办 和 日内局部待办
   Map<int, List<TodoItem>> _allDayTodosPerDay = {};
   Map<int, List<TodoItem>> _intraDayTodosPerDay = {};
+  List<DeviceCalendarEvent> _deviceCalendarEvents = [];
+  Map<int, List<DeviceCalendarEvent>> _allDayDeviceCalendarEventsPerDay = {};
+  Map<int, List<DeviceCalendarEvent>> _timedDeviceCalendarEventsPerDay = {};
 
   bool _isLoading = true;
   DateTime? _semesterMonday;
@@ -31,7 +34,8 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
     'todos',
     'plans',
     'timeLogs',
-    'pomodoros'
+    'pomodoros',
+    'deviceCalendar',
   };
   bool _collapseFreeTime = true;
 
@@ -54,6 +58,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   final Map<String, GlobalKey> _todoCardKeys = {};
   final Map<String, GlobalKey> _timeLogCardKeys = {};
   final Map<String, GlobalKey> _pomodoroCardKeys = {};
+  final Map<String, GlobalKey> _deviceCalendarCardKeys = {};
 
   final GlobalKey _filterKey = GlobalKey();
   final GlobalKey _viewModeKey = GlobalKey();
@@ -88,6 +93,18 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
     return _pomodoroCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
+  GlobalKey _getDeviceCalendarCardKey(
+    String eventId,
+    String dateKey, {
+    String surface = 'week',
+  }) {
+    final periodKey = surface.startsWith('week')
+        ? 'w$_currentWeek'
+        : 'm${_selectedMonth.year}_${_selectedMonth.month}_mode$_viewMode';
+    final keyStr = '${surface}_${periodKey}_${eventId}_$dateKey';
+    return _deviceCalendarCardKeys.putIfAbsent(keyStr, () => GlobalKey());
+  }
+
   // 时间轴参数配置
   final double timeColumnWidth = 45.0;
   final int startHour = 6;
@@ -108,11 +125,14 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   Map<String, List<TimeLogItem>> _monthLogMap = {};
   Map<String, List<PomodoroRecord>> _monthPomMap = {};
   Map<String, List<TodoPlanBlock>> _monthPlanMap = {};
+  Map<String, List<DeviceCalendarEvent>> _monthDeviceCalendarMap = {};
   bool _monthDataPrepared = false;
   final int _maxExpandedSpanDays = 366;
   void initState();
   void dispose();
   Future<void> _loadData();
+  Future<void> _loadDeviceCalendarEventsForCurrentWeek();
+  Future<void> _loadDeviceCalendarEventsForCurrentView();
   void _updateWeekCourses();
   void _checkCoachMarks();
   void _groupDataForMonthView();
@@ -125,6 +145,8 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   TodoItem _createRecurringOccurrence(TodoItem todo, DateTime targetDay);
   List<TodoItem> _expandRecurringTodo(TodoItem todo, DateTime weekStart);
   void _updateWeekTodos();
+  void _updateWeekDeviceCalendarEvents();
+  void _updateMonthDeviceCalendarEvents();
   void _updateWeekTimeLogsPomodorosAndPlans();
   void _changeWeek(int delta);
   void _jumpToWeek(int newWeek);
@@ -135,7 +157,8 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   void _showWeekJumpDialog();
   void _jumpToCurrentWeek();
   Widget _buildMonthDaySidebar(DateTime day);
-  Widget _buildDetailSidebarItem(BuildContext context, dynamic item);
+  Widget _buildDetailSidebarItem(BuildContext context, dynamic item,
+      [String? sourceDate]);
   void _handleFilterSelection(String value);
   double _filterMenuWidth(BuildContext context);
   int get _selectedFilterCount;
@@ -153,6 +176,12 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   Color _getCourseColor(String courseName);
   void _showAllDayTodos(
       BuildContext context, List<TodoItem> todos, String dateStr);
+  void _showDeviceCalendarEventDetail(
+    BuildContext context,
+    DeviceCalendarEvent event, {
+    GlobalKey? sourceKey,
+    Color? sourceColor,
+  });
   Widget _buildAllDayHeaderRow(DateTime? monday);
   bool _timeRangesOverlap(
       int startA, int endAExclusive, int startB, int endBExclusive);

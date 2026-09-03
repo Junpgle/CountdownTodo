@@ -30,6 +30,10 @@
 	<string>CountDownTodo 需要访问照片，以便将图片添加到你的本地日记中。</string>
 	<key>NSCameraUsageDescription</key>
 	<string>CountDownTodo 需要使用相机，以便将照片添加到你的本地日记中。</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>CountDownTodo 仅在本机读取日历日程，用于首页和周视图展示；不会写入或同步日历内容。</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>CountDownTodo 仅在本机读取日历日程，用于首页和周视图展示；不会写入或同步日历内容。</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

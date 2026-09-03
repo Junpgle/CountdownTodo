@@ -53,6 +53,20 @@ class MediaInfo {
   bool get isEmpty => title.isEmpty && artist.isEmpty;
 
   @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is MediaInfo &&
+            title == other.title &&
+            artist == other.artist &&
+            album == other.album &&
+            albumArtist == other.albumArtist &&
+            status == other.status;
+  }
+
+  @override
+  int get hashCode => Object.hash(title, artist, album, albumArtist, status);
+
+  @override
   String toString() => 'MediaInfo(title: "$title", artist: "$artist", '
       'album: "$album", albumArtist: "$albumArtist", status: $status)';
 }
@@ -260,6 +274,8 @@ class SystemControlService {
   // ════════════════════════════════════════════════════════════════════════
 
   static MediaInfo _mediaInfo = const MediaInfo();
+  static final ValueNotifier<MediaInfo> _mediaInfoNotifier =
+      ValueNotifier<MediaInfo>(_mediaInfo);
   static Timer? _mediaTimer;
   static bool _winrtInit = false;
 
@@ -319,6 +335,16 @@ class SystemControlService {
   }
 
   static MediaInfo getMediaInfo() => _mediaInfo;
+
+  static ValueListenable<MediaInfo> get mediaInfoListenable =>
+      _mediaInfoNotifier;
+
+  static void _setMediaInfo(MediaInfo value) {
+    _mediaInfo = value;
+    if (_mediaInfoNotifier.value != value) {
+      _mediaInfoNotifier.value = value;
+    }
+  }
 
   static void startMediaPolling({int intervalMs = 2000}) {
     debugPrint('[SCS] startMediaPolling interval=$intervalMs');
@@ -422,7 +448,7 @@ class SystemControlService {
       if (hr3 != S_OK) {
         calloc.free(sessionPtr);
         debugPrint('[SCS] no current session');
-        _mediaInfo = const MediaInfo(status: PlaybackStatus.unknown);
+        _setMediaInfo(const MediaInfo(status: PlaybackStatus.unknown));
         return;
       }
 
@@ -543,13 +569,13 @@ class SystemControlService {
         calloc.free(mediaPropsAsyncPtr);
       }
 
-      _mediaInfo = MediaInfo(
+      _setMediaInfo(MediaInfo(
         title: title,
         artist: artist.isNotEmpty ? artist : albumArtist,
         album: album,
         albumArtist: albumArtist,
         status: status,
-      );
+      ));
       debugPrint('[SCS] === _pollSMTC result: $_mediaInfo ===');
     } catch (e, st) {
       debugPrint('[SCS] _pollSMTC error: $e\n$st');
@@ -695,15 +721,15 @@ class SystemControlService {
       if (players.any((p) => title.contains(p))) {
         final parts = title.split(' - ');
         if (parts.length >= 2) {
-          _mediaInfo = MediaInfo(
+          _setMediaInfo(MediaInfo(
             title: parts.sublist(1).join(' - ').trim(),
             artist: parts[0].trim(),
             status: PlaybackStatus.playing,
-          );
+          ));
           return;
         }
       }
-      _mediaInfo = const MediaInfo(status: PlaybackStatus.unknown);
+      _setMediaInfo(const MediaInfo(status: PlaybackStatus.unknown));
     } catch (e) {
       debugPrint('[SCS] _fallbackMediaInfo error: $e');
     }

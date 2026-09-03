@@ -20,6 +20,7 @@ class ApiService {
 
   // 🛡️ 全局使用的、跳过 SSL 证书验证的 HTTP 客户端
   static http.Client? _clientInstance;
+  static http.Client? _deltaSyncClient;
   static http.Client get _client {
     _clientInstance ??= createApiHttpClient();
     return _clientInstance!;
@@ -109,6 +110,7 @@ class ApiService {
     Map<String, String>? headers,
     Duration? timeout,
     bool includeAuth = true,
+    http.Client? client,
   }) async {
     final normalizedPath = path.startsWith('/') ? path : '/$path';
     final uri = path.startsWith('http://') || path.startsWith('https://')
@@ -121,24 +123,25 @@ class ApiService {
             ? body
             : jsonEncode(body);
 
+    final requestClient = client ?? _client;
     late Future<http.Response> responseFuture;
     switch (method.toUpperCase()) {
       case 'GET':
-        responseFuture = _client.get(uri, headers: requestHeaders);
+        responseFuture = requestClient.get(uri, headers: requestHeaders);
       case 'POST':
-        responseFuture = _client.post(
+        responseFuture = requestClient.post(
           uri,
           headers: requestHeaders,
           body: encodedBody,
         );
       case 'PUT':
-        responseFuture = _client.put(
+        responseFuture = requestClient.put(
           uri,
           headers: requestHeaders,
           body: encodedBody,
         );
       case 'DELETE':
-        responseFuture = _client.delete(
+        responseFuture = requestClient.delete(
           uri,
           headers: requestHeaders,
           body: encodedBody,
@@ -148,6 +151,14 @@ class ApiService {
     }
 
     return timeout == null ? responseFuture : responseFuture.timeout(timeout);
+  }
+
+  /// Best-effort cancellation for the combined delta-sync request. Closing the
+  /// dedicated client prevents a finance opt-out from leaving a request in
+  /// flight; already-processed server data cannot be recalled.
+  static void cancelDeltaSyncRequest() {
+    _deltaSyncClient?.close();
+    _deltaSyncClient = null;
   }
 
   /// 🚀 链路健康检查：探测服务器是否在线
@@ -373,6 +384,8 @@ class ApiService {
     List<Map<String, dynamic>> financeCategoryChanges = const [],
     List<Map<String, dynamic>> financePaymentMethodChanges = const [],
     List<Map<String, dynamic>> financeTransactionChanges = const [],
+    List<Map<String, dynamic>> financeLoanChanges = const [],
+    List<Map<String, dynamic>> financeLoanInstallmentChanges = const [],
     List<Map<String, dynamic>> financeBudgetChanges = const [],
     List<Map<String, dynamic>> financeRecurringRuleChanges = const [],
     List<Map<String, dynamic>> financeTemplateChanges = const [],
@@ -403,6 +416,8 @@ class ApiService {
         'finance_categories_changes': financeCategoryChanges,
         'finance_payment_methods_changes': financePaymentMethodChanges,
         'finance_transactions_changes': financeTransactionChanges,
+        'finance_loans_changes': financeLoanChanges,
+        'finance_loan_installments_changes': financeLoanInstallmentChanges,
         'finance_budgets_changes': financeBudgetChanges,
         'finance_recurring_rules_changes': financeRecurringRuleChanges,
         'finance_entry_templates_changes': financeTemplateChanges,
@@ -423,7 +438,23 @@ class ApiService {
         body['screen_time'] = screenTime;
       }
 
-      final response = await _request('POST', '/api/sync', body: body);
+      final syncClient = createApiHttpClient();
+      _deltaSyncClient?.close();
+      _deltaSyncClient = syncClient;
+      late final http.Response response;
+      try {
+        response = await _request(
+          'POST',
+          '/api/sync',
+          body: body,
+          client: syncClient,
+        );
+      } finally {
+        if (identical(_deltaSyncClient, syncClient)) {
+          _deltaSyncClient = null;
+        }
+        syncClient.close();
+      }
 
       final data = jsonDecode(response.body);
 
@@ -454,6 +485,11 @@ class ApiService {
               data['server_finance_payment_methods'] ?? [],
           'server_finance_transactions':
               data['server_finance_transactions'] ?? [],
+          // Keep these nullable so a finance_v1 server that predates the
+          // loan tables cannot be mistaken for an empty loan snapshot.
+          'server_finance_loans': data['server_finance_loans'],
+          'server_finance_loan_installments':
+              data['server_finance_loan_installments'],
           'server_finance_budgets': data['server_finance_budgets'] ?? [],
           'server_finance_recurring_rules':
               data['server_finance_recurring_rules'] ?? [],

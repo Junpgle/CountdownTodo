@@ -60,6 +60,7 @@ final ValueNotifier<double> _predictiveBackGestureProgress =
 
 class _AnimSettings {
   static bool enabled = true;
+  static bool systemPowerSaveMode = false;
   static bool lazyLoad = true;
   static bool screenRadius = true;
   static bool layerBlur = false;
@@ -93,7 +94,10 @@ class _AnimSettings {
 
   static Future<SharedPreferences> _prefs() => SharedPreferences.getInstance();
 
+  static bool get animationsEnabled => enabled && !systemPowerSaveMode;
+
   static bool get usePredictiveBack =>
+      animationsEnabled &&
       !kIsWeb &&
       defaultTargetPlatform == TargetPlatform.android &&
       predictiveBack;
@@ -106,11 +110,12 @@ class _AnimSettings {
   static double get backgroundMask =>
       _defaultPageLayerBackgroundMask * depthFactor;
 
-  static double get backgroundBlur =>
-      layerBlur ? _defaultPageLayerMaxBlur * depthFactor : 0.0;
+  static double get backgroundBlur => layerBlur && !systemPowerSaveMode
+      ? _defaultPageLayerMaxBlur * depthFactor
+      : 0.0;
 
   static double motionBlurFor(double progress) {
-    if (!motionBlur) return 0.0;
+    if (!motionBlur || systemPowerSaveMode) return 0.0;
     final clamped = progress.clamp(0.0, 1.0);
     final peak = 1.0 - ((clamped - 0.5).abs() * 2.0).clamp(0.0, 1.0);
     return 7.0 * peak;
@@ -125,6 +130,15 @@ class _AnimSettings {
 class PageTransitions {
   static Future<void> init() => _AnimSettings.load();
 
+  /// Applies Android's transient system Battery Saver state without changing
+  /// the user's persisted animation preferences.
+  static void setPowerSaveMode(bool enabled) {
+    _AnimSettings.systemPowerSaveMode = enabled;
+    if (enabled) _predictiveBackGestureProgress.value = 0.0;
+  }
+
+  static bool get isPowerSaveMode => _AnimSettings.systemPowerSaveMode;
+
   /// 原始目标页面类型名（子串匹配）到遮罩图标的映射。
   ///
   /// 越具体的条目放越前面；未命中的页面回退到通用玻璃图标。
@@ -133,6 +147,7 @@ class PageTransitions {
     ('WeeklyCourseScreen', Icons.calendar_month_rounded),
     ('CourseScreensGrid', Icons.calendar_month_rounded),
     ('CourseDetailScreen', Icons.calendar_month_rounded),
+    ('DeviceCalendarEventDetailScreen', Icons.phone_android_rounded),
     ('CourseSettingsPage', Icons.calendar_month_rounded),
     ('FixedScheduleEditorScreen', Icons.calendar_month_rounded),
     // ── 待办 ──
@@ -168,6 +183,7 @@ class PageTransitions {
     // ── 成就 / 挑战 ──
     ('MedalWallPage', Icons.military_tech_rounded),
     ('MedalRecommendationCard', Icons.military_tech_rounded),
+    ('ChallengeCenterScreen', Icons.auto_awesome_rounded),
     ('ThirtyDayChallengeScreen', Icons.local_fire_department_rounded),
     // ── 数据 / 同步 ──
     ('ConflictInboxScreen', Icons.rule_rounded),
@@ -242,7 +258,7 @@ class PageTransitions {
     if (!context.mounted) {
       return null;
     }
-    if (!_AnimSettings.enabled) {
+    if (!_AnimSettings.animationsEnabled) {
       return Navigator.push(context, material(builder: (_) => page));
     }
 
@@ -333,12 +349,12 @@ class _ConfiguredMaterialPageRoute<T> extends MaterialPageRoute<T> {
   });
 
   @override
-  Duration get transitionDuration => _AnimSettings.enabled
+  Duration get transitionDuration => _AnimSettings.animationsEnabled
       ? Duration(milliseconds: _AnimSettings.duration)
       : Duration.zero;
 
   @override
-  Duration get reverseTransitionDuration => _AnimSettings.enabled
+  Duration get reverseTransitionDuration => _AnimSettings.animationsEnabled
       ? Duration(milliseconds: (_AnimSettings.duration * 0.75).round())
       : Duration.zero;
 }
@@ -361,7 +377,7 @@ class _PageLayerMaterialPageTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    if (!_AnimSettings.enabled) {
+    if (!_AnimSettings.animationsEnabled) {
       return child;
     }
     final transition = _PageLayerTransition(
@@ -853,10 +869,10 @@ class ContainerTransformRoute<T> extends PageRouteBuilder<T> {
     this.sourceBorderRadius = const BorderRadius.all(Radius.circular(16)),
   }) : super(
           pageBuilder: (context, animation, secondaryAnimation) => page,
-          transitionDuration: _AnimSettings.enabled
+          transitionDuration: _AnimSettings.animationsEnabled
               ? Duration(milliseconds: _AnimSettings.duration)
               : Duration.zero,
-          reverseTransitionDuration: _AnimSettings.enabled
+          reverseTransitionDuration: _AnimSettings.animationsEnabled
               ? Duration(milliseconds: (_AnimSettings.duration * 0.75).round())
               : Duration.zero,
         );
@@ -868,7 +884,7 @@ class ContainerTransformRoute<T> extends PageRouteBuilder<T> {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    if (!_AnimSettings.enabled) {
+    if (!_AnimSettings.animationsEnabled) {
       return child;
     }
     final transition = _ContainerTransformWidget(
@@ -1090,10 +1106,10 @@ class _SlideRoute<T> extends PageRouteBuilder<T> {
       : super(
           settings: settings,
           pageBuilder: (context, animation, secondaryAnimation) => page,
-          transitionDuration: _AnimSettings.enabled
+          transitionDuration: _AnimSettings.animationsEnabled
               ? Duration(milliseconds: _AnimSettings.duration)
               : Duration.zero,
-          reverseTransitionDuration: _AnimSettings.enabled
+          reverseTransitionDuration: _AnimSettings.animationsEnabled
               ? Duration(milliseconds: (_AnimSettings.duration * 0.75).round())
               : Duration.zero,
         );
@@ -1105,7 +1121,7 @@ class _SlideRoute<T> extends PageRouteBuilder<T> {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    if (!_AnimSettings.enabled) {
+    if (!_AnimSettings.animationsEnabled) {
       return child;
     }
     final transition = _SlideWidget(
@@ -1167,10 +1183,10 @@ class _FadeRoute<T> extends PageRouteBuilder<T> {
       : super(
           settings: settings,
           pageBuilder: (context, animation, secondaryAnimation) => page,
-          transitionDuration: _AnimSettings.enabled
+          transitionDuration: _AnimSettings.animationsEnabled
               ? Duration(milliseconds: _AnimSettings.duration)
               : Duration.zero,
-          reverseTransitionDuration: _AnimSettings.enabled
+          reverseTransitionDuration: _AnimSettings.animationsEnabled
               ? Duration(milliseconds: _AnimSettings.duration)
               : Duration.zero,
         );
@@ -1182,7 +1198,7 @@ class _FadeRoute<T> extends PageRouteBuilder<T> {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    if (!_AnimSettings.enabled) {
+    if (!_AnimSettings.animationsEnabled) {
       return child;
     }
     final transition = _PageLayerTransition(

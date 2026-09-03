@@ -11,10 +11,34 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 49;
+  static const int currentVersion = 52;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 52,
+      title: 'MiMo 精确计费',
+      changes: [
+        '保存缓存输入、图像/音频/视频和推理 Token 等 MiMo usage 明细。',
+        '按缓存输入、未缓存输入和输出价格计算 MiMo 按量费用，ASR 按音频时长计费。',
+      ],
+    ),
+    DatabaseSchemaChange(
+      version: 51,
+      title: '贷款管理',
+      changes: [
+        '新增贷款本金、年利率、期限和还款方式记录。',
+        '自动生成等额本息或等额本金还款计划，支持标记还款并记录利息支出。',
+      ],
+    ),
+    DatabaseSchemaChange(
+      version: 50,
+      title: '账单分期',
+      changes: [
+        '支持将一笔账单按月拆分到指定期数，金额按分精确分摊。',
+        '分期账单共享分期组标识，可在列表中查看期数并整组删除。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 49,
       title: 'AI 调用用量与费用',

@@ -135,6 +135,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'mcp',
       'band_sync',
       'calendar_sync',
+      'calendar_read',
       'batch_tag',
       'recurrence_merge',
       'data_export',
@@ -702,7 +703,7 @@ class _SettingsPageState extends State<SettingsPage> {
       case 'interconnect':
         return '数据与互联';
       case 'llm_config':
-        return 'AI 助手配置';
+        return '模型与 API 配置';
       case 'platform':
         return AppPlatform.isWindows
             ? 'Windows 专属'
@@ -1023,7 +1024,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   id: 'llm_config',
                   icon: Icons.psychology_outlined,
                   color: Colors.deepPurple,
-                  title: 'AI 助手配置',
+                  title: '模型与 API 配置',
                   widgetBuilder: () => const LLMConfigPage(isEmbedded: true),
                 ),
 
@@ -1288,8 +1289,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 ListTile(
                   leading: const Icon(Icons.psychology_outlined,
                       color: Colors.deepPurple),
-                  title: const Text('AI 助手配置'),
-                  subtitle: const Text('大模型 API 及智能解析配置'),
+                  title: const Text('模型与 API 配置'),
+                  subtitle: const Text('服务商、密钥、对话模型与多模态模型'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(context,
                       PageTransitions.slideHorizontal(const LLMConfigPage())),

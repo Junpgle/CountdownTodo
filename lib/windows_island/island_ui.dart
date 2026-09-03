@@ -81,9 +81,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   // ── 系统控制超时返回
   Timer? _systemControlAutoReturnTimer;
   Timer? _quickControlsAutoReturnTimer;
-  Timer? _mediaRefreshTimer;
   bool _mediaPollingStarted = false;
-  final ValueNotifier<int> _mediaTickNotifier = ValueNotifier(0);
 
   // 启动系统控制自动返回定时器（子控制 → 快速面板）
   void _startSystemControlAutoReturnTimer() {
@@ -214,12 +212,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _timeNotifier.dispose();
     _clockTimeNotifier.dispose();
     _pauseTimeNotifier.dispose();
-    _mediaTickNotifier.dispose();
     widget.payloadNotifier?.removeListener(_onNotifierPayload);
     _splitController.dispose();
     _sizeController.dispose();
     _pulseController.dispose(); // 清理脉冲动画控制器
-    _mediaRefreshTimer?.cancel();
+    _stopMediaPolling();
     SystemControlService.dispose();
     super.dispose();
   }
@@ -254,6 +251,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   void _animateToState(IslandState nextState) {
     if (!mounted) return;
+
+    if (nextState == IslandState.musicPlayer) {
+      _ensureMediaPollingStarted();
+    } else {
+      _stopMediaPolling();
+    }
 
     final Size toSize = _targetSizeFor(nextState);
     _animateSurfaceTo(toSize, _radiusFor(nextState));
@@ -318,11 +321,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     if (_mediaPollingStarted) return;
     _mediaPollingStarted = true;
     SystemControlService.startMediaPolling(intervalMs: 3000);
-    _mediaRefreshTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (mounted && _stack.current == IslandState.musicPlayer) {
-        _mediaTickNotifier.value++;
-      }
-    });
+  }
+
+  void _stopMediaPolling() {
+    if (!_mediaPollingStarted) return;
+    _mediaPollingStarted = false;
+    SystemControlService.stopMediaPolling();
   }
 
   // ── 状态计算 ─────────────────────────────────────────────────────────────
@@ -2916,12 +2920,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       child: Container(
         color: Colors.transparent,
         padding: const EdgeInsets.all(14),
-        child: ValueListenableBuilder<int>(
-          valueListenable: _mediaTickNotifier,
-          builder: (context, _, __) {
+        child: ValueListenableBuilder<MediaInfo>(
+          valueListenable: SystemControlService.mediaInfoListenable,
+          builder: (context, smtc, __) {
             final musicData = _currentPayload?['musicData'] as Map?;
             final hasMusic = musicData != null && musicData.isNotEmpty;
-            final smtc = SystemControlService.getMediaInfo();
             final smtcHasMusic = !smtc.isEmpty;
             final title = musicData?['title']?.toString() ??
                 (smtcHasMusic ? smtc.title : '');

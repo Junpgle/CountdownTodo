@@ -5,6 +5,7 @@ import android.app.*
 import android.app.usage.UsageStatsManager
 import android.appwidget.AppWidgetManager
 import android.content.BroadcastReceiver
+import android.content.ContentUris
 import android.content.ComponentName
 import android.content.Context
 import android.content.ContentValues
@@ -22,7 +23,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Environment
 import android.os.Process
-import android.os.SystemClock
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -30,6 +31,7 @@ import android.provider.CalendarContract
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
+import android.view.MotionEvent
 import androidx.annotation.NonNull
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
@@ -65,7 +67,11 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val BAND_CHANNEL = "com.math_quiz_app/band_communication"
     private val BACKGROUND_NOTIFICATION_CHANNEL = "com.math_quiz_app/background_notifications"
     private val APP_UPDATE_CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/app_update"
+    private val DEVICE_CALENDAR_READ_CHANNEL = "countdown_todo/device_calendar_read"
     private val CALENDAR_PERMISSION_REQUEST = 2407
+    private val LOCAL_NETWORK_PERMISSION_REQUEST = 2408
+    private val CALENDAR_READ_PERMISSION_REQUEST = 2409
+    private val ACCESS_LOCAL_NETWORK_PERMISSION = "android.permission.ACCESS_LOCAL_NETWORK"
     private val CALENDAR_APP_MARKER = "CountDownTodo"
     private val CALENDAR_EXT_NAME = "countdowntodo_source"
     private val CALENDAR_EXT_VALUE = "CountDownTodo"
@@ -93,10 +99,65 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val SPECIAL_TODO_ISLAND_BIZ_TAG = "math_quiz_special_todo" // 🚴 特殊待办独立岛 bizTag
     private val UPDATE_ISLAND_BIZ_TAG = "math_quiz_update" // 🚀 版本更新独立岛 bizTag
     private val TAG = "MathQuizApp"
-    private fun isHyperOsMiniWindow(): Boolean {
+
+    // HyperOS 的自由窗回调不一定把 isInMultiWindowMode 置为 true。
+    // 保存系统传入的 Configuration，使用其 windowing mode 作为可靠的
+    // freeform 信号；当前/最大 WindowMetrics 则作为没有该厂商字段时的兜底。
+    private var isFreeformWindow = false
+
+    private fun updateWindowModeFromConfiguration(configuration: Configuration?) {
+        val configurationText = configuration?.toString() ?: return
+        isFreeformWindow =
+            configurationText.contains("mWindowingMode=freeform", ignoreCase = true) ||
+                configurationText.contains("windowingMode=freeform", ignoreCase = true)
+    }
+
+    private fun isCompactWindow(flutterView: android.view.View? = null): Boolean {
+        if (isInMultiWindowMode || isFreeformWindow) return true
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+
+        return try {
+            val currentBounds = windowManager.currentWindowMetrics.bounds
+            val maximumBounds = windowManager.maximumWindowMetrics.bounds
+            val currentWidth = currentBounds.width()
+            val currentHeight = currentBounds.height()
+            val maximumWidth = maximumBounds.width()
+            val maximumHeight = maximumBounds.height()
+
+            if (maximumWidth <= 0 || maximumHeight <= 0) return false
+
+            val metricsAreCompact =
+                currentWidth < maximumWidth * 0.85f ||
+                    currentHeight < maximumHeight * 0.85f
+            val viewIsCompact = flutterView != null &&
+                (flutterView.width < maximumWidth * 0.85f ||
+                    flutterView.height < maximumHeight * 0.85f)
+            metricsAreCompact || viewIsCompact
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "Unable to query current window metrics", error)
+            false
+        }
+    }
+
+    private fun isHyperOsMiniWindow(flutterView: android.view.View? = null): Boolean {
         return Build.VERSION.SDK_INT >= 37 &&
             Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true) &&
-            isInMultiWindowMode
+            isCompactWindow(flutterView)
+    }
+
+    private fun windowRenderingInfo(flutterView: android.view.View? = null): Map<String, Any> {
+        return mapOf(
+            "androidSdkInt" to Build.VERSION.SDK_INT,
+            "isAndroid17" to (Build.VERSION.SDK_INT >= 37),
+            "manufacturer" to Build.MANUFACTURER,
+            "isInMultiWindowMode" to isInMultiWindowMode,
+            "isFreeformWindow" to isFreeformWindow,
+            "isCompactWindow" to isCompactWindow(flutterView),
+            "isHyperOsMiniWindow" to isHyperOsMiniWindow(flutterView),
+            "width" to (flutterView?.width ?: 0),
+            "height" to (flutterView?.height ?: 0),
+            "hasWindowFocus" to hasWindowFocus()
+        )
     }
 
     private fun keepFlutterDrawingInMiniWindow() {
@@ -132,14 +193,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
             methodChannel?.invokeMethod(
                 "windowConfigurationChanged",
-                mapOf(
-                    "isInMultiWindowMode" to isInMultiWindowMode,
-                    "width" to flutterView.width,
-                    "height" to flutterView.height,
-                    "hasWindowFocus" to hasWindowFocus()
-                )
+                windowRenderingInfo(flutterView)
             )
         }
+    }
+
+    private val releaseHighRefreshRatePreferenceRunnable = Runnable {
+        releaseHighRefreshRatePreference()
     }
 
     private val notificationExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
@@ -164,7 +224,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val channelId: String,
         val islandBizTag: String,
         val imagePath: String?,
-        val originalText: String?
+        val originalText: String?,
+        val timerAnchorMs: Long?,
+        val timerCountsDown: Boolean
     )
 
     /**
@@ -191,12 +253,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     private val lastNotificationFingerprint = ConcurrentHashMap<Int, NotificationFingerprint>()
     private val largeIconCache = ConcurrentHashMap<Int, Icon>()
-    private val lastNotificationTimestampMs = ConcurrentHashMap<Int, Long>()
 
     // 全局保存 MethodChannel 实例，以便在广播中调用 Flutter
     private var methodChannel: MethodChannel? = null
     private var deepLinkChannel: MethodChannel? = null
     private var minorModeManager: MinorModeManager? = null
+    private var powerSaveModeManager: AndroidPowerSaveModeManager? = null
     private var pendingDeepLink: String? = null
     // 保存待处理的番茄钟动作（在methodChannel初始化前）
     private var pendingPomodoroAction: String? = null
@@ -209,6 +271,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private var pendingPlanBlockId: String? = null
     private var pendingPlanBlockTodoId: String? = null
     private val pendingCalendarPermissionResults = mutableListOf<MethodChannel.Result>()
+    private val pendingCalendarReadPermissionResults = mutableListOf<MethodChannel.Result>()
+    private val pendingLocalNetworkPermissionResults = mutableListOf<MethodChannel.Result>()
     // 手环通信插件，全局可访问
     private var bandPlugin: BandCommunicationPlugin? = null
 
@@ -244,6 +308,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        updateWindowModeFromConfiguration(resources.configuration)
+
         // ── 在 super.onCreate 之前恢复 pending 状态 ──
         // configureFlutterEngine 在 super.onCreate 内部执行，必须在此之前恢复，
         // 否则 pendingDeepLink/pendingTodoConfirm 等标志在 channel 初始化时仍为空。
@@ -275,6 +341,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         requestHighestSupportedRefreshRate()
         super.onCreate(savedInstanceState)
+        scheduleHighRefreshRateRelease()
         // 确保每日更新检查已注册。任务由 WorkManager 持久化，App 退出后仍可执行。
         AppUpdateScheduler.scheduleDailyCheck(applicationContext)
         HomeWidgetPlugin.getData(this)
@@ -321,17 +388,56 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         Log.d(TAG, "🚀 Broadcast receiver registered: ${todoActionReceiver::class.java.simpleName}, ${pomodoroActionReceiver::class.java.simpleName}")
     }
 
+    override fun onStart() {
+        super.onStart()
+        AndroidAppVisibility.onActivityStarted()
+    }
+
+    override fun onStop() {
+        AndroidAppVisibility.onActivityStopped()
+        window.decorView.removeCallbacks(releaseHighRefreshRatePreferenceRunnable)
+        releaseHighRefreshRatePreference()
+        super.onStop()
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                window.decorView.removeCallbacks(releaseHighRefreshRatePreferenceRunnable)
+                requestHighestSupportedRefreshRate()
+            }
+
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_CANCEL -> scheduleHighRefreshRateRelease()
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
     /**
      * Prefer the highest refresh-rate mode at the device's current resolution.
      *
      * Some Android vendors keep a Flutter SurfaceView at the 60 Hz mode that
      * was active during engine startup even when the user selected 120 Hz.
      * A window-level mode preference lets Flutter receive the real high-rate
-     * VSync stream. Android still applies the user's display, power-saving,
-     * and thermal policies, and unsupported devices remain unchanged.
+     * VSync stream. The preference is now temporary: it is active during
+     * touch interaction and released after a short idle period so the system
+     * can return static pages to its adaptive/low refresh-rate policy.
      */
     private fun requestHighestSupportedRefreshRate() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val isThermallyConstrained =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                powerManager.currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE
+        if (!AndroidEnergyPolicy.shouldRequestHighRefreshRate(
+                isPowerSaveMode = powerManager.isPowerSaveMode,
+                isThermallyConstrained = isThermallyConstrained
+            )
+        ) {
+            releaseHighRefreshRatePreference()
+            return
+        }
 
         @Suppress("DEPRECATION")
         val currentDisplay = windowManager.defaultDisplay ?: return
@@ -356,6 +462,24 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         )
     }
 
+    private fun scheduleHighRefreshRateRelease() {
+        window.decorView.removeCallbacks(releaseHighRefreshRatePreferenceRunnable)
+        window.decorView.postDelayed(
+            releaseHighRefreshRatePreferenceRunnable,
+            AndroidEnergyPolicy.HIGH_REFRESH_IDLE_TIMEOUT_MS
+        )
+    }
+
+    private fun releaseHighRefreshRatePreference() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        if (window.attributes.preferredDisplayModeId == 0) return
+
+        window.attributes = window.attributes.apply {
+            preferredDisplayModeId = 0
+        }
+        Log.d(TAG, "Released high refresh preference to Android display policy")
+    }
+
     private fun scheduleEdgeToEdgeRestore() {
         window.decorView.removeCallbacks(restoreWindowAfterResizeRunnable)
         // 首次尺寸回调早于 HyperOS 的缩放事务，稍后再补一次稳定帧。
@@ -368,11 +492,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         newConfig: Configuration
     ) {
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
+        updateWindowModeFromConfiguration(newConfig)
         scheduleEdgeToEdgeRestore()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        updateWindowModeFromConfiguration(newConfig)
         scheduleEdgeToEdgeRestore()
     }
 
@@ -381,6 +507,18 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         if (isHyperOsMiniWindow()) {
             // 迷你窗通常没有焦点，但仍应持续绘制；焦点切换后补发稳定帧。
             keepFlutterDrawingInMiniWindow()
+            scheduleEdgeToEdgeRestore()
+        }
+    }
+
+    override fun onPostResume() {
+        super.onPostResume()
+        if (Build.VERSION.SDK_INT >= 37 &&
+            Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true)
+        ) {
+            // When the Activity is restored directly into a freeform window,
+            // HyperOS may skip the multi-window callback. Query again after
+            // FlutterView has been attached so Dart receives the real bounds.
             scheduleEdgeToEdgeRestore()
         }
     }
@@ -589,6 +727,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         if (!action.startsWith("com.math_quiz.ACTION_OPEN_")) return
         
         val shortcutType = when (action) {
+            "com.math_quiz.ACTION_OPEN_FINANCE_ENTRY" -> "finance_entry"
+            "com.math_quiz.ACTION_OPEN_TODO_ADD" -> "todo_add"
+            "com.math_quiz.ACTION_OPEN_JOURNAL" -> "journal"
+            "com.math_quiz.ACTION_OPEN_CHALLENGE" -> "challenge"
+            "com.math_quiz.ACTION_OPEN_POMODORO" -> "pomodoro"
+            "com.math_quiz.ACTION_OPEN_HABITS" -> "habits"
             "com.math_quiz.ACTION_OPEN_SETTINGS" -> "settings"
             "com.math_quiz.ACTION_OPEN_SCHEDULE" -> "schedule"
             "com.math_quiz.ACTION_OPEN_BAND" -> "band"
@@ -766,6 +910,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     override fun onDestroy() {
         window.decorView.removeCallbacks(restoreWindowAfterResizeRunnable)
+        window.decorView.removeCallbacks(releaseHighRefreshRatePreferenceRunnable)
+        val pendingLocalNetworkResults = pendingLocalNetworkPermissionResults.toList()
+        pendingLocalNetworkPermissionResults.clear()
+        pendingLocalNetworkResults.forEach { it.success(false) }
+        bandPlugin?.dispose()
+        bandPlugin = null
+        powerSaveModeManager?.dispose()
+        powerSaveModeManager = null
         super.onDestroy()
         minorModeManager?.dispose()
         minorModeManager = null
@@ -780,7 +932,6 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         notificationExecutor.shutdownNow()
         lastNotificationFingerprint.clear()
         largeIconCache.clear()
-        lastNotificationTimestampMs.clear()
         methodChannel = null
         deepLinkChannel = null
     }
@@ -825,7 +976,52 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             val pendingResults = pendingCalendarPermissionResults.toList()
             pendingCalendarPermissionResults.clear()
             pendingResults.forEach { it.success(granted) }
+        } else if (requestCode == CALENDAR_READ_PERMISSION_REQUEST) {
+            val granted = grantResults.isNotEmpty() &&
+                grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            val pendingResults = pendingCalendarReadPermissionResults.toList()
+            pendingCalendarReadPermissionResults.clear()
+            pendingResults.forEach { it.success(granted) }
+        } else if (requestCode == LOCAL_NETWORK_PERMISSION_REQUEST) {
+            val granted = grantResults.isNotEmpty() &&
+                grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            val pendingResults = pendingLocalNetworkPermissionResults.toList()
+            pendingLocalNetworkPermissionResults.clear()
+            pendingResults.forEach { it.success(granted) }
         }
+    }
+
+    /**
+     * Android 17 only enforces ACCESS_LOCAL_NETWORK for apps targeting API 37.
+     * Older target versions retain the INTERNET-based compatibility grant, so
+     * they must not show a new permission prompt.
+     */
+    private fun isLocalNetworkPermissionEnforced(): Boolean =
+        Build.VERSION.SDK_INT >= 37 && applicationInfo.targetSdkVersion >= 37
+
+    private fun hasLocalNetworkPermission(): Boolean {
+        if (!isLocalNetworkPermissionEnforced()) return true
+        return ContextCompat.checkSelfPermission(
+            this,
+            ACCESS_LOCAL_NETWORK_PERMISSION
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestLocalNetworkPermission(result: MethodChannel.Result) {
+        if (!isLocalNetworkPermissionEnforced() || hasLocalNetworkPermission()) {
+            result.success(true)
+            return
+        }
+
+        val shouldStartRequest = pendingLocalNetworkPermissionResults.isEmpty()
+        pendingLocalNetworkPermissionResults.add(result)
+        if (!shouldStartRequest) return
+
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(ACCESS_LOCAL_NETWORK_PERMISSION),
+            LOCAL_NETWORK_PERMISSION_REQUEST
+        )
     }
 
     private fun requestCalendarPermission(result: MethodChannel.Result) {
@@ -846,6 +1042,32 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             ),
             CALENDAR_PERMISSION_REQUEST
         )
+    }
+
+    // Separate from the existing calendar-export flow: presenting a system
+    // event must never request WRITE_CALENDAR.
+    private fun requestCalendarReadPermission(result: MethodChannel.Result) {
+        if (hasCalendarReadPermission()) {
+            result.success(true)
+            return
+        }
+
+        val shouldStartRequest = pendingCalendarReadPermissionResults.isEmpty()
+        pendingCalendarReadPermissionResults.add(result)
+        if (!shouldStartRequest) return
+
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.READ_CALENDAR),
+            CALENDAR_READ_PERMISSION_REQUEST
+        )
+    }
+
+    private fun hasCalendarReadPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.READ_CALENDAR
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun hasCalendarPermission(): Boolean {
@@ -906,6 +1128,93 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     private fun findDefaultWritableCalendarId(): Long? {
         return (getWritableCalendars().firstOrNull()?.get("id") as? Number)?.toLong()
+    }
+
+    private fun getReadableCalendars(): List<Map<String, Any?>> {
+        val calendars = mutableListOf<Map<String, Any?>>()
+        val projection = arrayOf(
+            CalendarContract.Calendars._ID,
+            CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+            CalendarContract.Calendars.ACCOUNT_NAME,
+            CalendarContract.Calendars.CALENDAR_COLOR,
+            CalendarContract.Calendars.IS_PRIMARY
+        )
+        contentResolver.query(
+            CalendarContract.Calendars.CONTENT_URI,
+            projection,
+            "${CalendarContract.Calendars.VISIBLE} = 1",
+            null,
+            "${CalendarContract.Calendars.IS_PRIMARY} DESC, ${CalendarContract.Calendars._ID} ASC"
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                calendars.add(
+                    mapOf(
+                        "id" to cursor.getLong(0),
+                        "name" to (cursor.getString(1) ?: "日历"),
+                        "account" to (cursor.getString(2) ?: ""),
+                        "color" to cursor.getInt(3),
+                        "primary" to (cursor.getInt(4) == 1)
+                    )
+                )
+            }
+        }
+        return calendars
+    }
+
+    private fun readDeviceCalendarEvents(
+        startMs: Long,
+        endMs: Long
+    ): List<Map<String, Any?>> {
+        if (endMs < startMs) return emptyList()
+        val readableIds = getReadableCalendars()
+            .mapNotNull { (it["id"] as? Number)?.toLong() }
+            .toSet()
+        if (readableIds.isEmpty()) return emptyList()
+
+        val uriBuilder = CalendarContract.Instances.CONTENT_URI.buildUpon()
+        ContentUris.appendId(uriBuilder, startMs)
+        ContentUris.appendId(uriBuilder, endMs)
+        val projection = arrayOf(
+            CalendarContract.Instances.EVENT_ID,
+            CalendarContract.Instances.CALENDAR_ID,
+            CalendarContract.Instances.TITLE,
+            CalendarContract.Instances.BEGIN,
+            CalendarContract.Instances.END,
+            CalendarContract.Instances.ALL_DAY,
+            CalendarContract.Instances.EVENT_LOCATION,
+            CalendarContract.Instances.DISPLAY_COLOR
+        )
+        val events = mutableListOf<Map<String, Any?>>()
+        contentResolver.query(
+            uriBuilder.build(),
+            projection,
+            null,
+            null,
+            "${CalendarContract.Instances.BEGIN} ASC"
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val calendarId = cursor.getLong(1)
+                if (!readableIds.contains(calendarId)) continue
+                val begin = cursor.getLong(3)
+                val end = cursor.getLong(4)
+                if (end < begin) continue
+                val eventId = cursor.getLong(0)
+                events.add(
+                    mapOf(
+                        // One recurring EVENT_ID can represent many instances.
+                        "id" to "${eventId}_${begin}",
+                        "calendarId" to calendarId,
+                        "title" to (cursor.getString(2) ?: "未命名日程"),
+                        "startMs" to begin,
+                        "endMs" to end,
+                        "allDay" to (cursor.getInt(5) == 1),
+                        "location" to (cursor.getString(6) ?: ""),
+                        "color" to cursor.getInt(7)
+                    )
+                )
+            }
+        }
+        return events
     }
 
     private fun clearCalendarEvents(calendarId: Long?): Int {
@@ -1117,10 +1426,49 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         minorModeManager = MinorModeManager(this).also { manager ->
             manager.register(flutterEngine)
         }
+        powerSaveModeManager = AndroidPowerSaveModeManager(this) { enabled ->
+            if (enabled) {
+                window.decorView.removeCallbacks(releaseHighRefreshRatePreferenceRunnable)
+                releaseHighRefreshRatePreference()
+            }
+        }.also { manager ->
+            manager.register(flutterEngine)
+        }
 
         // 赋值给全局变量
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         deepLinkChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DEEP_LINK_CHANNEL)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            DEVICE_CALENDAR_READ_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "checkPermission" -> result.success(hasCalendarReadPermission())
+                "requestPermission" -> requestCalendarReadPermission(result)
+                "getSources" -> {
+                    if (!hasCalendarReadPermission()) {
+                        result.error("NO_PERMISSION", "Calendar read permission is not granted", null)
+                    } else {
+                        result.success(getReadableCalendars())
+                    }
+                }
+                "readEvents" -> {
+                    if (!hasCalendarReadPermission()) {
+                        result.error("NO_PERMISSION", "Calendar read permission is not granted", null)
+                    } else {
+                        val args = call.arguments as? Map<*, *>
+                        val startMs = (args?.get("startMs") as? Number)?.toLong()
+                        val endMs = (args?.get("endMs") as? Number)?.toLong()
+                        if (startMs == null || endMs == null || endMs < startMs) {
+                            result.error("INVALID_ARGS", "A valid startMs/endMs range is required", null)
+                        } else {
+                            result.success(readDeviceCalendarEvents(startMs, endMs))
+                        }
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
         deepLinkChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "getInitialDeepLink" -> {
@@ -1236,6 +1584,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     flushPendingNotificationEvents()
                     result.success(null)
                 }
+                "getWindowRenderingInfo" -> {
+                    result.success(
+                        windowRenderingInfo(
+                            findViewById(FlutterActivity.FLUTTER_VIEW_ID)
+                        )
+                    )
+                }
                 "showOngoingNotification" -> {
                     val args = call.arguments as? Map<String, Any>
                     if (args != null) {
@@ -1271,7 +1626,6 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     nm.cancel(TODO_RECOGNIZE_NOTIFICATION_ID)
                     lastNotificationFingerprint.remove(TODO_RECOGNIZE_NOTIFICATION_ID)
-                    lastNotificationTimestampMs.remove(TODO_RECOGNIZE_NOTIFICATION_ID)
                     result.success(null)
                 }
 
@@ -1282,7 +1636,6 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                         nm.cancel(notifId)
                         lastNotificationFingerprint.remove(notifId)
-                        lastNotificationTimestampMs.remove(notifId)
                     }
                     result.success(null)
                 }
@@ -1384,9 +1737,22 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     val args = call.arguments as? Map<String, Any>
                     val newJson = args?.get("remindersJson") as? String ?: "[]"
                     val clearFirst = args?.get("clearFirst") as? Boolean ?: true
+                    val forceReschedule =
+                        args?.get("forceReschedule") as? Boolean ?: false
                     val prefs = getSharedPreferences(ReminderService.PREFS_NAME, MODE_PRIVATE)
 
                     val existingJson = prefs.getString(ReminderService.KEY_REMINDERS, "[]") ?: "[]"
+                    if (!AndroidEnergyPolicy.shouldRescheduleReminderSchedule(
+                            existingJson = existingJson,
+                            incomingJson = newJson,
+                            clearFirst = clearFirst,
+                            forceReschedule = forceReschedule
+                        )
+                    ) {
+                        Log.d(TAG, "Skip unchanged reminder schedule")
+                        result.success(true)
+                        return@setMethodCallHandler
+                    }
                     val existing = KJSONArray(existingJson)
                     val incoming = KJSONArray(newJson)
 
@@ -1487,7 +1853,6 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     nm.cancel(notifId)
                     lastNotificationFingerprint.remove(notifId)
-                    lastNotificationTimestampMs.remove(notifId)
 
                     result.success(true)
                 }
@@ -1497,6 +1862,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         (getSystemService(Context.ALARM_SERVICE) as AlarmManager).canScheduleExactAlarms()
                     } else true
                     result.success(canSchedule)
+                }
+
+                "checkLocalNetworkPermission" -> {
+                    result.success(hasLocalNetworkPermission())
+                }
+
+                "requestLocalNetworkPermission" -> {
+                    requestLocalNetworkPermission(result)
                 }
 
                 "openExactAlarmSettings" -> {
@@ -1590,15 +1963,18 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         .apply()
 
                     BackgroundNotificationScheduler.startImportantNotificationPoll(applicationContext)
-                    BackgroundNotificationScheduler.runImmediateNotificationPoll(applicationContext)
+                    val immediatePollEnqueued =
+                        BackgroundNotificationScheduler.runImmediateNotificationPoll(applicationContext)
                     Log.d(TAG, "📬 Background notification poll configured userId=$userId apiBaseUrl=$apiBaseUrl")
+                    Log.d(TAG, "📬 Immediate poll enqueued=$immediatePollEnqueued")
                     result.success(true)
                 }
 
                 "runImmediateNotificationPoll" -> {
-                    BackgroundNotificationScheduler.runImmediateNotificationPoll(applicationContext)
-                    Log.d(TAG, "📬 Immediate background notification poll requested")
-                    result.success(true)
+                    val enqueued = BackgroundNotificationScheduler
+                        .runImmediateNotificationPoll(applicationContext, force = true)
+                    Log.d(TAG, "📬 Immediate background notification poll requested enqueued=$enqueued")
+                    result.success(enqueued)
                 }
 
                 "stopNotificationPoll" -> {
@@ -1706,8 +2082,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         bandChannel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "init" -> {
-                    plugin?.init()
-                    result.success(true)
+                    result.success(plugin?.init() ?: false)
                 }
                 "getConnectedDevice" -> {
                     plugin?.getConnectedDevice()
@@ -1728,6 +2103,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 }
                 "unregisterListener" -> {
                     plugin?.unregisterMessageListener()
+                    result.success(true)
+                }
+                "shutdown" -> {
+                    plugin?.stop()
                     result.success(true)
                 }
                 "isAppInstalled" -> {
@@ -2017,13 +2396,22 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val totalCycles  = (args["totalCycles"]  as? Number)?.toInt() ?: 4
         @Suppress("UNCHECKED_CAST")
         val tagNames     = (args["tagNames"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+        val timerMode    = args["timerMode"]      as? String
+        val timerAnchorMs = (args["timerAnchorMs"] as? Number)?.toLong() ?: 0L
+        val isPaused     = args["isPaused"]       as? Boolean ?: false
         // alertKey 非空时说明这是一个"开始"事件，触发一次性普通提醒
         val alertKey     = (args["alertKey"] as? String)?.trim() ?: ""
 
         val isFocusing = phase == "focusing"
+        val timerSpec = AndroidEnergyPolicy.resolvePomodoroTimer(
+            timerMode = timerMode,
+            timerAnchorMs = timerAnchorMs,
+            isPaused = isPaused,
+            nowMs = System.currentTimeMillis()
+        )
 
         val phaseLabel = if (isFocusing) "🍅 专注中" else "☕ 休息中"
-        val title = "$phaseLabel  $countdown"
+        val title = if (timerSpec == null) "$phaseLabel  $countdown" else phaseLabel
 
         val taskLine = when {
             todoTitle.isNotEmpty() -> todoTitle
@@ -2035,7 +2423,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         val subText = "第 $currentCycle/$totalCycles 轮"
         val color = if (isFocusing) 0xFFF44336.toInt() else 0xFF4CAF50.toInt()
-        val shortText = countdown
+        val shortText = if (timerSpec == null) countdown else null
         val iconResId = if (isFocusing) R.drawable.hourglass else R.drawable.hourglass_check
 
         buildAndNotify(
@@ -2052,7 +2440,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             iconResId      = iconResId,
             channelId      = POMODORO_CHANNEL_ID,
             notificationId = POMODORO_NOTIFICATION_ID,
-            islandBizTag   = POMODORO_ISLAND_BIZ_TAG
+            islandBizTag   = POMODORO_ISLAND_BIZ_TAG,
+            timerAnchorMs  = timerSpec?.anchorTimeMs,
+            timerCountsDown = timerSpec?.countsDown ?: false
         )
 
         // 🔔 只有携带 alertKey 时才触发一次性普通提醒（开始事件）
@@ -2198,7 +2588,6 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.cancel(NOTIFICATION_ID)
             lastNotificationFingerprint.remove(NOTIFICATION_ID)
-            lastNotificationTimestampMs.remove(NOTIFICATION_ID)
             return
         }
 
@@ -2346,16 +2735,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             contentIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val extras = Bundle().apply {
-            putBoolean("android.extra.requestPromotedOngoing", true)
-        }
         val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(smallIcon)
             .setLargeIcon(Icon.createWithResource(this, R.drawable.ic_notification))
             .setContentTitle(title)
             .setContentText(text)
             .setSubText(subText)
-            .setOngoing(true)
+            // 成功/失败只是结果提示，不应继续占用 ongoing/live-update 槽位。
+            .setOngoing(false)
             .setOnlyAlertOnce(true)
             .setWhen(System.currentTimeMillis())
             .setShowWhen(true)
@@ -2365,13 +2752,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             .setColorized(false)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
-            .setRequestPromotedOngoing(true)
-            .addExtras(extras)
             .build()
 
         try {
             val notificationManager =
                 getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            // 先撤销识别中的 promoted notification，避免 HyperOS 继续显示旧的
+            // 进度胶囊，再用同一 ID 发布可自动消失的结果通知。
+            notificationManager.cancel(TODO_RECOGNIZE_NOTIFICATION_ID)
             notificationManager.notify(TODO_RECOGNIZE_NOTIFICATION_ID, notification)
         } catch (e: Exception) {
             Log.e(TAG, "showTodoRecognitionNotification error", e)
@@ -2479,7 +2867,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         notificationId: Int = NOTIFICATION_ID,
         islandBizTag: String = TODO_ISLAND_BIZ_TAG,
         imagePath: String? = null,
-        originalText: String? = null
+        originalText: String? = null,
+        timerAnchorMs: Long? = null,
+        timerCountsDown: Boolean = false
     ) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val intent = Intent(this, MainActivity::class.java).apply {
@@ -2513,18 +2903,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             channelId = channelId,
             islandBizTag = islandBizTag,
             imagePath = imagePath,
-            originalText = originalText
+            originalText = originalText,
+            timerAnchorMs = timerAnchorMs,
+            timerCountsDown = timerCountsDown
         )
         if (fingerprint == lastNotificationFingerprint[notificationId]) {
             return
-        }
-
-        if (notificationId == POMODORO_NOTIFICATION_ID && isOngoing) {
-            val nowElapsed = SystemClock.elapsedRealtime()
-            val lastElapsed = lastNotificationTimestampMs[notificationId] ?: 0L
-            if (lastElapsed > 0L && (nowElapsed - lastElapsed) < 500L) {
-                return
-            }
         }
 
         // ==========================================
@@ -2538,7 +2922,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             .setSubText(subText)
             .setOngoing(isOngoing)
             .setOnlyAlertOnce(true)
-            .setWhen(System.currentTimeMillis())
+            .setWhen(timerAnchorMs ?: System.currentTimeMillis())
             .setShowWhen(true)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -2546,6 +2930,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             .setColorized(false)
             .setContentIntent(pendingIntent)
             .setRequestPromotedOngoing(true)
+
+        if (timerAnchorMs != null) {
+            builder
+                .setUsesChronometer(true)
+                .setChronometerCountDown(timerCountsDown)
+        }
 
         // 🚨 显式要求系统提升为“推荐的持续通知”(Live Updates)
         val extras = Bundle()
@@ -2766,6 +3156,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     pictureKey = "island_icon"
                 )
 
+                if (timerAnchorMs != null) {
+                    if (timerCountsDown) {
+                        hyperBuilder.setBigIslandCountdown(timerAnchorMs, "island_icon")
+                    } else {
+                        hyperBuilder.setBigIslandCountUp(timerAnchorMs, "island_icon")
+                    }
+                }
+
                 hyperBuilder.setIslandConfig(
                     priority = 2,
                     timeout = null,
@@ -2845,7 +3243,6 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         try {
             notificationManager.notify(notificationId, notification)
             lastNotificationFingerprint[notificationId] = fingerprint
-            lastNotificationTimestampMs[notificationId] = SystemClock.elapsedRealtime()
         } catch (e: Exception) {
             Log.e(TAG, "Notify error", e)
         }

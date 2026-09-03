@@ -1,6 +1,84 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
+        android:shortcutId="finance_entry"
+        android:enabled="true"
+        android:icon="@drawable/ic_finance_entry"
+        android:shortcutShortLabel="@string/shortcut_finance_entry_short"
+        android:shortcutLongLabel="@string/shortcut_finance_entry_long"
+        android:shortcutDisabledMessage="@string/shortcut_finance_entry_disabled">
+        <intent
+            android:action="com.math_quiz.ACTION_OPEN_FINANCE_ENTRY"
+            android:targetPackage="com.math_quiz.junpgle.com.math_quiz_app"
+            android:targetClass="com.math_quiz.junpgle.com.math_quiz_app.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="todo_add"
+        android:enabled="true"
+        android:icon="@drawable/ic_todo_add"
+        android:shortcutShortLabel="@string/shortcut_todo_add_short"
+        android:shortcutLongLabel="@string/shortcut_todo_add_long"
+        android:shortcutDisabledMessage="@string/shortcut_todo_add_disabled">
+        <intent
+            android:action="com.math_quiz.ACTION_OPEN_TODO_ADD"
+            android:targetPackage="com.math_quiz.junpgle.com.math_quiz_app"
+            android:targetClass="com.math_quiz.junpgle.com.math_quiz_app.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="journal"
+        android:enabled="true"
+        android:icon="@drawable/ic_journal"
+        android:shortcutShortLabel="@string/shortcut_journal_short"
+        android:shortcutLongLabel="@string/shortcut_journal_long"
+        android:shortcutDisabledMessage="@string/shortcut_journal_disabled">
+        <intent
+            android:action="com.math_quiz.ACTION_OPEN_JOURNAL"
+            android:targetPackage="com.math_quiz.junpgle.com.math_quiz_app"
+            android:targetClass="com.math_quiz.junpgle.com.math_quiz_app.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="challenge"
+        android:enabled="true"
+        android:icon="@drawable/ic_challenge"
+        android:shortcutShortLabel="@string/shortcut_challenge_short"
+        android:shortcutLongLabel="@string/shortcut_challenge_long"
+        android:shortcutDisabledMessage="@string/shortcut_challenge_disabled">
+        <intent
+            android:action="com.math_quiz.ACTION_OPEN_CHALLENGE"
+            android:targetPackage="com.math_quiz.junpgle.com.math_quiz_app"
+            android:targetClass="com.math_quiz.junpgle.com.math_quiz_app.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="pomodoro"
+        android:enabled="true"
+        android:icon="@drawable/ic_pomodoro"
+        android:shortcutShortLabel="@string/shortcut_pomodoro_short"
+        android:shortcutLongLabel="@string/shortcut_pomodoro_long"
+        android:shortcutDisabledMessage="@string/shortcut_pomodoro_disabled">
+        <intent
+            android:action="com.math_quiz.ACTION_OPEN_POMODORO"
+            android:targetPackage="com.math_quiz.junpgle.com.math_quiz_app"
+            android:targetClass="com.math_quiz.junpgle.com.math_quiz_app.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="habits"
+        android:enabled="true"
+        android:icon="@drawable/ic_habits"
+        android:shortcutShortLabel="@string/shortcut_habits_short"
+        android:shortcutLongLabel="@string/shortcut_habits_long"
+        android:shortcutDisabledMessage="@string/shortcut_habits_disabled">
+        <intent
+            android:action="com.math_quiz.ACTION_OPEN_HABITS"
+            android:targetPackage="com.math_quiz.junpgle.com.math_quiz_app"
+            android:targetClass="com.math_quiz.junpgle.com.math_quiz_app.MainActivity" />
+    </shortcut>
+
+    <shortcut
         android:shortcutId="settings"
         android:enabled="true"
         android:icon="@drawable/ic_settings"
@@ -11,7 +89,6 @@
             android:action="com.math_quiz.ACTION_OPEN_SETTINGS"
             android:targetPackage="com.math_quiz.junpgle.com.math_quiz_app"
             android:targetClass="com.math_quiz.junpgle.com.math_quiz_app.MainActivity" />
-        <categories android:name="android.shortcut.conversation" />
     </shortcut>
 
     <shortcut
@@ -25,7 +102,6 @@
             android:action="com.math_quiz.ACTION_OPEN_SCHEDULE"
             android:targetPackage="com.math_quiz.junpgle.com.math_quiz_app"
             android:targetClass="com.math_quiz.junpgle.com.math_quiz_app.MainActivity" />
-        <categories android:name="android.shortcut.conversation" />
     </shortcut>
 
     <shortcut
@@ -39,6 +115,5 @@
             android:action="com.math_quiz.ACTION_OPEN_BAND"
             android:targetPackage="com.math_quiz.junpgle.com.math_quiz_app"
             android:targetClass="com.math_quiz.junpgle.com.math_quiz_app.MainActivity" />
-        <categories android:name="android.shortcut.conversation" />
     </shortcut>
 </shortcuts>

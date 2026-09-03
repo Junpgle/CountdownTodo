@@ -11,6 +11,24 @@
     <string name="checking_out">Order placed</string>
 
     <!-- App Shortcuts -->
+    <string name="shortcut_finance_entry_short">记一笔</string>
+    <string name="shortcut_finance_entry_long">记一笔</string>
+    <string name="shortcut_finance_entry_disabled">记账不可用</string>
+    <string name="shortcut_todo_add_short">待办</string>
+    <string name="shortcut_todo_add_long">新增待办</string>
+    <string name="shortcut_todo_add_disabled">待办不可用</string>
+    <string name="shortcut_journal_short">日记</string>
+    <string name="shortcut_journal_long">打开日记</string>
+    <string name="shortcut_journal_disabled">日记不可用</string>
+    <string name="shortcut_challenge_short">挑战</string>
+    <string name="shortcut_challenge_long">挑战中心</string>
+    <string name="shortcut_challenge_disabled">挑战中心不可用</string>
+    <string name="shortcut_pomodoro_short">专注</string>
+    <string name="shortcut_pomodoro_long">番茄钟</string>
+    <string name="shortcut_pomodoro_disabled">番茄钟不可用</string>
+    <string name="shortcut_habits_short">习惯</string>
+    <string name="shortcut_habits_long">习惯中心</string>
+    <string name="shortcut_habits_disabled">习惯中心不可用</string>
     <string name="shortcut_settings_short">设置</string>
     <string name="shortcut_settings_long">应用设置</string>
     <string name="shortcut_settings_disabled">设置不可用</string>

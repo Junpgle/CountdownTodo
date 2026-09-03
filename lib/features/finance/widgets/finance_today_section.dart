@@ -333,7 +333,8 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
               ),
               const SizedBox(height: 2),
               Text(
-                '最近一笔 · ${transaction.transactionDate}',
+                '最近一笔 · ${transaction.transactionDate}'
+                '${transaction.installmentLabel == null ? '' : ' · 分期 ${transaction.installmentLabel}'}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 11, color: subColor),

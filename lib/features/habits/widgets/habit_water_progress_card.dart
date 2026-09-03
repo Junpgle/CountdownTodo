@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../../../utils/android_energy_policy.dart';
+import '../../../services/power_save_mode_service.dart';
 
 /// 喝水详情页的今日进度卡：用杯内液面表达累计饮水量。
 class HabitWaterProgressCard extends StatelessWidget {
@@ -55,6 +57,7 @@ class HabitWaterProgressCard extends StatelessWidget {
                 curve: Curves.easeOutCubic,
                 builder: (context, animatedRatio, child) {
                   return _AnimatedWaterCup(
+                    key: ValueKey('$currentValue:$targetValue'),
                     ratio: animatedRatio,
                     colorScheme: colorScheme,
                   );
@@ -158,6 +161,7 @@ class _AnimatedWaterCup extends StatefulWidget {
   final ColorScheme colorScheme;
 
   const _AnimatedWaterCup({
+    super.key,
     required this.ratio,
     required this.colorScheme,
   });
@@ -176,11 +180,28 @@ class _AnimatedWaterCupState extends State<_AnimatedWaterCup>
     _waveController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2600),
-    )..repeat();
+    );
+    PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
+    _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    if (AndroidEnergyPolicy.shouldRunDecorativeMotion) {
+      if (!_waveController.isAnimating) {
+        _waveController.repeat(
+          count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 3),
+        );
+      }
+    } else {
+      _waveController
+        ..stop()
+        ..reset();
+    }
   }
 
   @override
   void dispose() {
+    PowerSaveModeService.enabledListenable.removeListener(_syncAnimation);
     _waveController.dispose();
     super.dispose();
   }

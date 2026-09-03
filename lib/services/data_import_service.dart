@@ -102,13 +102,17 @@ class DataImportService {
         final budgets = finance['budgets'];
         final recurringRules = finance['recurring_rules'];
         final templates = finance['templates'];
+        final loans = finance['loans'];
+        final loanInstallments = finance['loan_installments'];
         types.add(ImportTypePreview(
           key: key,
           label: _typeLabels[key] ?? key,
           count: (transactions is List ? transactions.length : 0) +
               (budgets is List ? budgets.length : 0) +
               (recurringRules is List ? recurringRules.length : 0) +
-              (templates is List ? templates.length : 0),
+              (templates is List ? templates.length : 0) +
+              (loans is List ? loans.length : 0) +
+              (loanInstallments is List ? loanInstallments.length : 0),
         ));
         continue;
       }

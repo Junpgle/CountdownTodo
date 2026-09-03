@@ -300,6 +300,34 @@ void main() {
       expect(accepted.newTodos.single.isDateOnly, isTrue);
     });
 
+    test(
+        'legacy plan_todos schedules an existing todo instead of duplicating it',
+        () {
+      const response = '''
+[ACTION_START]
+[{"action":"plan_todos","todos":[{"title":"复习高数","startTime":"2026-07-20 19:00","dueDate":"2026-07-20 20:00"}]}]
+[ACTION_END]
+''';
+
+      final actions = AiActionParser.extractTodoActions(
+        response,
+        originalText: '帮我规划今天的待办',
+        existingTodoTitles: const {'todo-math': '复习高数'},
+      );
+      final result = AiTodoActionExecutor.execute(
+        actions: actions,
+        existingTodos: const [
+          {'id': 'todo-math', 'title': '复习高数'},
+        ],
+      );
+
+      expect(actions.single.type, AiTodoActionType.createPlanBlock);
+      expect(actions.single.todoId, 'todo-math');
+      expect(result.newTodos, isEmpty);
+      expect(result.newPlanBlocks, hasLength(1));
+      expect(result.newPlanBlocks.single.todoId, 'todo-math');
+    });
+
     test('action protocol documents recurrence occurrence safety', () {
       final prompt = AiTodoContextBuilder.buildActionProtocolPrompt('修改循环待办');
 
@@ -307,6 +335,93 @@ void main() {
       expect(prompt, contains('recurrenceScope="future"'));
       expect(prompt, contains('绝不能把seriesId当期次ID'));
       expect(prompt, contains('新建循环待办必须提供首次发生日期'));
+    });
+
+    test('planning protocol prioritizes plan blocks over todo creation', () {
+      final prompt =
+          AiTodoContextBuilder.buildActionProtocolPrompt('帮我规划今天的待办');
+
+      expect(prompt, contains('- create_plan_block:'));
+      expect(prompt, contains('禁止用plan_todos或create_todo复制已有待办'));
+      expect(prompt, isNot(contains('- create_todo:')));
+      expect(prompt, isNot(contains('- create_schedule:')));
+    });
+
+    test('parses create_habit payload and preserves habit fields', () {
+      const response = '''
+[ACTION_START]
+[{"action":"create_habit","habits":[{"name":"每天喝水","icon":"💧","sourceType":"quantityCheckIn","periodType":"daily","targetValue":1600,"unit":"ml","quickValues":[200,500],"reminderPolicy":{"fixedTimes":[480],"progressReminder":true}}]}]
+[ACTION_END]
+''';
+
+      final actions = AiActionParser.extractTodoActions(
+        response,
+        originalText: '创建每天喝水习惯',
+      );
+
+      expect(actions, hasLength(1));
+      final action = actions.single;
+      expect(action.type, AiTodoActionType.createHabit);
+      expect(action.title, '每天喝水');
+      expect(action.habitSourceType, 'quantityCheckIn');
+      expect(action.targetValue, 1600);
+      expect(action.unit, 'ml');
+      expect(action.quickValues, [200, 500]);
+      expect(action.habitReminderPolicy?['fixedTimes'], [480]);
+
+      final restored = AiTodoAction.fromJson(action.toJson());
+      expect(restored.type, AiTodoActionType.createHabit);
+      expect(restored.habitSourceType, 'quantityCheckIn');
+      expect(restored.targetValue, 1600);
+    });
+
+    test('routes habit creation away from new todo creation', () {
+      final action = AiTodoAction(
+        type: AiTodoActionType.createHabit,
+        title: '每天阅读',
+        icon: '📖',
+        habitSourceType: 'durationCheckIn',
+        habitPeriodType: 'daily',
+        durationMinutes: 30,
+      );
+
+      final result = AiTodoActionExecutor.execute(
+        actions: [action],
+        existingTodos: const [],
+      );
+
+      expect(result.newHabitActions, [action]);
+      expect(result.newTodos, isEmpty);
+      expect(result.hasChanges, isTrue);
+      expect(action.isAdded, isFalse);
+    });
+
+    test('habit request protocol tells the model to use create_habit', () {
+      final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(
+        '创建一个每天喝水的习惯',
+      );
+
+      expect(prompt, contains('- create_habit:'));
+      expect(prompt, contains('必须使用create_habit'));
+      expect(prompt, isNot(contains('- create_todo:')));
+    });
+
+    test('ambiguous recurring activity asks habit or todo before creating', () {
+      final prompt = AiTodoContextBuilder.buildActionProtocolPrompt('创建每天喝水');
+
+      expect(prompt, contains('要创建成习惯，还是循环待办'));
+      expect(prompt, contains('不要输出create_habit、create_todo或plan_todos动作'));
+      expect(prompt, isNot(contains('- create_habit:')));
+      expect(prompt, isNot(contains('- create_todo:')));
+    });
+
+    test('explicit recurring todo still exposes todo actions', () {
+      final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(
+        '创建一个每天喝水的待办',
+      );
+
+      expect(prompt, contains('- create_todo:'));
+      expect(prompt, isNot(contains('要创建成习惯，还是循环待办')));
     });
 
     test('automatic classification selects one active series representative',

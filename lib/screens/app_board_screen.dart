@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
+import '../services/power_save_mode_service.dart';
+import '../utils/android_energy_policy.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
 // Custom Colors to match Tailwind Emerald
@@ -22,7 +24,7 @@ class AppBoardScreen extends StatefulWidget {
 }
 
 class _AppBoardScreenState extends State<AppBoardScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   List<TodoItem> _todos = [];
   List<CountdownItem> _countdowns = [];
   List<CourseItem> _courses = [];
@@ -34,48 +36,118 @@ class _AppBoardScreenState extends State<AppBoardScreen>
   TodoItem? _detailTask;
   DateTime _now = DateTime.now();
   final ValueNotifier<DateTime> _nowNotifier = ValueNotifier(DateTime.now());
-  late Timer _timer;
+  Timer? _timer;
   final ScrollController _cdScrollController = ScrollController();
   final ScrollController _marqueeController = ScrollController();
   Timer? _marqueeTimer;
+  bool _appInForeground = true;
+  bool _tickerModeEnabled = false;
+
+  bool get _shouldRunTimers =>
+      mounted && _appInForeground && _tickerModeEnabled;
+  bool get _shouldRunMarquee =>
+      _shouldRunTimers && AndroidEnergyPolicy.shouldRunDecorativeMotion;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    PowerSaveModeService.enabledListenable.addListener(_onPowerSaveModeChanged);
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    _appInForeground =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     _loadData();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        _now = DateTime.now();
-        _nowNotifier.value = _now;
-      }
-    });
-    _startMarquee();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final tickerModeEnabled = TickerMode.valuesOf(context).enabled;
+    if (_tickerModeEnabled == tickerModeEnabled) return;
+    _tickerModeEnabled = tickerModeEnabled;
+    _syncTimersWithVisibility();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appInForeground = state == AppLifecycleState.resumed;
+    _syncTimersWithVisibility();
   }
 
   @override
   void dispose() {
-    _timer.cancel();
-    _marqueeTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    PowerSaveModeService.enabledListenable
+        .removeListener(_onPowerSaveModeChanged);
+    _stopTimers();
     _nowNotifier.dispose();
     _cdScrollController.dispose();
     _marqueeController.dispose();
     super.dispose();
   }
 
-  void _startMarquee() {
-    // Use a slower, less frequent timer to reduce layout thrashing.
-    // 100ms with 3px step = ~30px/s smooth scroll at lower CPU cost.
-    _marqueeTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      if (_marqueeController.hasClients) {
-        double maxScroll = _marqueeController.position.maxScrollExtent;
-        double currentScroll = _marqueeController.offset;
-        if (currentScroll >= maxScroll - 1) {
-          _marqueeController.jumpTo(0);
-        } else {
-          _marqueeController.jumpTo(currentScroll + 3);
-        }
+  void _syncTimersWithVisibility() {
+    if (_shouldRunTimers) {
+      _startTimers();
+    } else {
+      _stopTimers();
+    }
+  }
+
+  void _startTimers() {
+    _timer ??= Timer.periodic(AndroidEnergyPolicy.visibleClockInterval, (_) {
+      if (!_shouldRunTimers) {
+        _stopTimers();
+        return;
       }
+      _now = DateTime.now();
+      _nowNotifier.value = _now;
     });
+    if (_shouldRunMarquee) _scheduleMarqueeTick(Duration.zero);
+  }
+
+  void _stopTimers() {
+    _timer?.cancel();
+    _timer = null;
+    _marqueeTimer?.cancel();
+    _marqueeTimer = null;
+  }
+
+  void _scheduleMarqueeTick(Duration delay) {
+    if (!_shouldRunMarquee || _marqueeTimer != null) return;
+    _marqueeTimer = Timer(delay, _handleMarqueeTick);
+  }
+
+  void _handleMarqueeTick() {
+    _marqueeTimer = null;
+    if (!_shouldRunMarquee) return;
+
+    var nextDelay = const Duration(seconds: 1);
+    if (_marqueeController.hasClients) {
+      final maxScroll = _marqueeController.position.maxScrollExtent;
+      if (maxScroll > 1) {
+        final scrollInterval = AndroidEnergyPolicy.decorativeScrollInterval(
+          const Duration(milliseconds: 100),
+        );
+        final scrollDistance =
+            30 * scrollInterval.inMicroseconds / Duration.microsecondsPerSecond;
+        final currentScroll = _marqueeController.offset;
+        _marqueeController.jumpTo(
+          currentScroll >= maxScroll - 1 ? 0 : currentScroll + scrollDistance,
+        );
+        // Keep the original ~30px/s speed while Android batches the decorative
+        // movement into half as many timer wakeups.
+        nextDelay = scrollInterval;
+      }
+    }
+    _scheduleMarqueeTick(nextDelay);
+  }
+
+  void _onPowerSaveModeChanged() {
+    _stopTimers();
+    _now = DateTime.now();
+    _nowNotifier.value = _now;
+    _syncTimersWithVisibility();
   }
 
   int _calculateCurrentWeek() {
@@ -614,11 +686,29 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
-    )..repeat(reverse: true);
+    );
+    PowerSaveModeService.enabledListenable.addListener(_syncAnimation);
+    _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    if (AndroidEnergyPolicy.shouldRunDecorativeMotion) {
+      if (!_controller.isAnimating) {
+        _controller.repeat(
+          reverse: true,
+          count: AndroidEnergyPolicy.decorativeRepeatCount(androidCount: 2),
+        );
+      }
+    } else {
+      _controller
+        ..stop()
+        ..reset();
+    }
   }
 
   @override
   void dispose() {
+    PowerSaveModeService.enabledListenable.removeListener(_syncAnimation);
     _controller.dispose();
     super.dispose();
   }

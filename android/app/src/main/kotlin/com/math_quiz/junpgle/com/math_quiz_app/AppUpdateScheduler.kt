@@ -33,6 +33,7 @@ object AppUpdateScheduler {
                 Constraints.Builder()
                     // 更新包较大，只在非计费网络（通常为 Wi-Fi）上执行。
                     .setRequiredNetworkType(NetworkType.UNMETERED)
+                    .setRequiresBatteryNotLow(true)
                     .build()
             )
             .setBackoffCriteria(
@@ -44,7 +45,7 @@ object AppUpdateScheduler {
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             request
         )
         Log.d(TAG, "Scheduled daily app update check")
