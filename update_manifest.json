@@ -1,10 +1,10 @@
 {
-  "version_code": 60100,
-  "version_name": "6.1.0",
+  "version_code": 60206,
+  "version_name": "6.2.6",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 6.1.0",
-    "description": "【新增】新增个人记账与离线同步，支持收入、支出、退款、分类、支付方式、统计、搜索筛选、导入导出和软删除恢复。\n【新增】记账支持一句话解析，并完善 AI 草稿确认、图片识别与 MiMo Token Plan API 适配。\n【新增】新增 AI 调用用量与费用统计，支持按模型配置单价并将已定价费用自动写入个人账单。\n【优化】重构悬浮底栏公共组件，覆盖首页、专注、习惯、时间轴、屏幕时间、待办等页面，统一交互、宽度和选中态。\n【优化】持续完善 Liquid Glass 顶栏、按钮、筛选面板与设置页面视觉层级，并优化宽屏布局。\n【新增】首页新增快捷入口收纳与宽屏抽屉布局，支持快速进入待办、记账等功能。\n【修复】修复 AI 对话切换会话时的消息归属和请求取消问题，并将 API 密钥迁移到系统安全存储。\n【优化】改进 AI 模型选择与连接测试，文本模型与视觉模型可独立选择。\n【修复】修正 Android AI 输入框玻璃层、Web 通知设置和多页面异步加载问题。\n【适配】完善 Android 小组件与 HyperOS 自由窗、macOS 功能引导与桌面入口。\n【优化】优化番茄钟操作区和设置开关卡片，提升横屏与桌面端可用性。",
+    "title": "版本更新 6.2.6",
+    "description": "【新增】支持只读读取手机系统日历，并在首页今日日程、周视图、半月视图和月视图展示；全天、跨日和瞬时日程也可识别。\n【新增】增加手机日历一次性功能引导和可持久化开关，日历内容仅用于展示，不写入应用数据或参与同步。\n【优化】统一课程、待办和手机日历详情展示，支持从卡片容器共享动画进入详情。\n【修复】修复首页短内容滚动回弹、慢速上滑被长按手势拦截，以及首页手机日程展示问题。\n【优化】统一管理类页面、快捷入口和 Android 快捷方式导航，提升常用功能可达性。\n【新增】新增挑战中心首页与挑战库入口，保留经典挑战内容。\n【优化】Android 接入系统省电模式联动，降低传感器、后台任务、通知和空闲动画唤醒，减少持续耗电。\n【适配】完善 Android 17 权限、自由窗和窗口渲染适配。\n【优化】手环后台通信改为按需启停，新增持久化开关，默认关闭以降低耗电。\n【新增】AI 助手支持多模态、智能上下文和会话回访，完善模型设置。\n【优化】完善 AI 计费与用量统计，补齐 MiMo、智谱和 DeepSeek 计费精度及本月费用入账。\n【新增】AI 习惯支持目标与规划动作，并优化习惯交互提示。\n【新增】个人记账新增分期与贷款管理，并补齐贷款同步、备份和退款边界。\n【优化】优化个人时间轴展示账本收支和图片识别待办去重，增强跨功能一致性。",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "mac_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
@@ -41,6 +41,20 @@
           "embedded_bytes": 39059189,
           "algorithm": "apk-zip-local-spans",
           "recommended": true
+        },
+        {
+          "from_version": "6.1.0",
+          "from_sha256": "0e6004145cb836083ee7215640a10c262d72035a2849e29180af83d8b960f8a9",
+          "to_version": "6.2.6",
+          "to_sha256": "94e88cba017333ece2b0fe5e14c10333c22846db22db8ab6b420202f2fc23a35",
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-6.1.0_to_6.2.6.patch",
+          "patch_size": 24861323,
+          "full_apk_size": 42110295,
+          "operation_count": 136,
+          "copied_bytes": 17250776,
+          "embedded_bytes": 24859519,
+          "algorithm": "apk-zip-local-spans",
+          "recommended": true
         }
       ]
     }
@@ -68,6 +82,26 @@
     "image_url": "https://gitee.com/Junpgle/CountdownTodo/raw/master/wallpapergitee/15.jpg"
   },
   "changelog_history": [
+    {
+      "version_name": "6.2.6",
+      "date": "2026-09-03",
+      "items": [
+        "【新增】支持只读读取手机系统日历，并在首页今日日程、周视图、半月视图和月视图展示；全天、跨日和瞬时日程也可识别。",
+        "【新增】增加手机日历一次性功能引导和可持久化开关，日历内容仅用于展示，不写入应用数据或参与同步。",
+        "【优化】统一课程、待办和手机日历详情展示，支持从卡片容器共享动画进入详情。",
+        "【修复】修复首页短内容滚动回弹、慢速上滑被长按手势拦截，以及首页手机日程展示问题。",
+        "【优化】统一管理类页面、快捷入口和 Android 快捷方式导航，提升常用功能可达性。",
+        "【新增】新增挑战中心首页与挑战库入口，保留经典挑战内容。",
+        "【优化】Android 接入系统省电模式联动，降低传感器、后台任务、通知和空闲动画唤醒，减少持续耗电。",
+        "【适配】完善 Android 17 权限、自由窗和窗口渲染适配。",
+        "【优化】手环后台通信改为按需启停，新增持久化开关，默认关闭以降低耗电。",
+        "【新增】AI 助手支持多模态、智能上下文和会话回访，完善模型设置。",
+        "【优化】完善 AI 计费与用量统计，补齐 MiMo、智谱和 DeepSeek 计费精度及本月费用入账。",
+        "【新增】AI 习惯支持目标与规划动作，并优化习惯交互提示。",
+        "【新增】个人记账新增分期与贷款管理，并补齐贷款同步、备份和退款边界。",
+        "【优化】优化个人时间轴展示账本收支和图片识别待办去重，增强跨功能一致性。"
+      ]
+    },
     {
       "version_name": "6.1.0",
       "date": "2026-08-30",
