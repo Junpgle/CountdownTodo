@@ -8,6 +8,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     required bool isPast,
     required bool isFuture,
     Key? key,
+    Widget? dragHandle,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final bool isLight = widget.isLight;
@@ -466,10 +467,11 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                 ),
                                               ),
                                               const SizedBox(width: 4),
-                                              _buildTodoDragHandle(
-                                                todo,
-                                                colorScheme.onSurfaceVariant,
-                                              ),
+                                              dragHandle ??
+                                                  _buildTodoDragHandle(
+                                                    todo,
+                                                    colorScheme.onSurfaceVariant,
+                                                  ),
                                               const SizedBox(width: 6),
                                               Expanded(
                                                 child: Column(
@@ -872,14 +874,18 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
           ),
         ),
       ),
-      child: Semantics(
+      child: _buildTodoDragHandleIcon(todo, color),
+    );
+  }
+
+  Widget _buildTodoDragHandleIcon(TodoItem todo, Color color) {
+    return Semantics(
         label: '长按拖动 ${todo.title}',
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
           child: Icon(Icons.drag_indicator_rounded, size: 16, color: color),
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildAnimatedSection(
@@ -1230,15 +1236,22 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                             final int index = entry.key;
                             final item = entry.value;
                             if (item.todo != null) {
-                              return ReorderableDelayedDragStartListener(
-                                  key:
-                                      _getTodoDismissKey('drag', item.todo!.id),
+                              return _buildTodoItemCard(
+                                item.todo!,
+                                isPast: false,
+                                isFuture: false,
+                                key: _getTodoDismissKey(
+                                    'dismiss', item.todo!.id),
+                                dragHandle: ReorderableDelayedDragStartListener(
                                   index: index,
-                                  child: _buildTodoItemCard(item.todo!,
-                                      isPast: false,
-                                      isFuture: false,
-                                      key: _getTodoDismissKey(
-                                          'dismiss', item.todo!.id)));
+                                  child: _buildTodoDragHandleIcon(
+                                    item.todo!,
+                                    Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                                ),
+                              );
                             }
                             return Container(
                                 key: ValueKey('group_${item.group!.id}'),
