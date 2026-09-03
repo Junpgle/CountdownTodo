@@ -29,8 +29,16 @@ class DeviceCalendarEvent {
   final String? location;
   final int? colorValue;
 
-  bool overlaps(DateTime rangeStart, DateTime rangeEnd) =>
-      end.isAfter(rangeStart) && start.isBefore(rangeEnd);
+  bool overlaps(DateTime rangeStart, DateTime rangeEnd) {
+    // Some calendar providers represent an instant reminder with identical
+    // start/end timestamps. The platform bridge keeps that record and the
+    // presentation layer gives it a one-minute hit area, so it remains
+    // discoverable in every calendar view.
+    final effectiveEnd = end.isAfter(start)
+        ? end
+        : start.add(const Duration(minutes: 1));
+    return effectiveEnd.isAfter(rangeStart) && start.isBefore(rangeEnd);
+  }
 
   factory DeviceCalendarEvent.fromPlatformMap(Map<dynamic, dynamic> raw) {
     final startMs = (raw['startMs'] as num?)?.toInt() ?? 0;
@@ -115,6 +123,21 @@ class DeviceCalendarReadService {
 
   static bool get isSupported =>
       debugIsSupportedOverride ?? (AppPlatform.isAndroid || AppPlatform.isIOS);
+
+  /// Returns the first visible day of the month grid containing [value].
+  /// Keeping this range shared by the homepage and course views means the
+  /// provider is queried once for the foreground calendar window.
+  static DateTime monthGridStart(DateTime value) {
+    final firstDay = DateTime(value.year, value.month, 1);
+    return firstDay.subtract(Duration(days: firstDay.weekday - 1));
+  }
+
+  /// Returns the exclusive end of the complete month grid containing [value].
+  static DateTime monthGridEnd(DateTime value) {
+    final nextMonth = DateTime(value.year, value.month + 1, 1);
+    final trailingDays = (8 - nextMonth.weekday) % 7;
+    return nextMonth.add(Duration(days: trailingDays));
+  }
 
   static Future<bool> isEnabled() async {
     if (!isSupported) return false;

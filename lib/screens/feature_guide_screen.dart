@@ -2397,7 +2397,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             icon: Icons.calendar_view_week_outlined,
             iconColor: Colors.teal,
             title: '可选：读取手机日历',
-            subtitle: '把手机中的日程只读展示到首页和周视图。默认关闭；不会写回系统日历、生成待办、上传或参与同步。',
+            subtitle: '把手机中的日程只读展示到首页、周视图和半月/月视图。默认关闭；不会写回系统日历、生成待办、上传或参与同步。',
           ),
           const SizedBox(height: 24),
           const GuideDeviceCalendarReadToggle(),

@@ -502,7 +502,7 @@ class SearchService {
     SearchResult(
       id: 'setting_calendar_read',
       title: '读取手机日历',
-      subtitle: '仅本机只读展示到首页和周视图，不写入也不同步',
+      subtitle: '仅本机只读展示到首页、周视图和半月/月视图，不写入也不同步',
       icon: Icons.phone_android_outlined,
       type: SearchResultType.setting,
       breadcrumb: '设置 > 数据与互联',

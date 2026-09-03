@@ -134,8 +134,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
   void _showAllDayDeviceCalendarEvents(
     BuildContext context,
     List<DeviceCalendarEvent> events,
-    String dateStr,
-  ) {
+    String dateStr, {
+    GlobalKey? sourceKey,
+    Color? sourceColor,
+  }) {
     showAppModalBottomSheet(
       context: context,
       builder: (ctx) => SafeArea(
@@ -161,7 +163,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       : '全天 · 手机日历（只读）'),
                   onTap: () {
                     Navigator.pop(ctx);
-                    _showDeviceCalendarEventDetail(context, event);
+                    _showDeviceCalendarEventDetail(
+                      context,
+                      event,
+                      sourceKey: sourceKey,
+                      sourceColor: sourceColor,
+                    );
                   },
                 ),
               ),
@@ -174,8 +181,25 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
 
   void _showDeviceCalendarEventDetail(
     BuildContext context,
-    DeviceCalendarEvent event,
-  ) {
+    DeviceCalendarEvent event, {
+    GlobalKey? sourceKey,
+    Color? sourceColor,
+  }) {
+    final color = sourceColor ??
+        (event.colorValue == null
+            ? Theme.of(context).colorScheme.tertiary
+            : Color(event.colorValue!));
+    if (sourceKey != null) {
+      PageTransitions.pushFromRect(
+        context: context,
+        page: DeviceCalendarEventDetailScreen(event: event),
+        sourceKey: sourceKey,
+        sourceColor: color,
+        sourceBorderRadius: BorderRadius.circular(4),
+        placeholderIcon: Icons.phone_android_rounded,
+      );
+      return;
+    }
     Navigator.of(context).push(
       PageTransitions.slideHorizontal(
         DeviceCalendarEventDetailScreen(event: event),
@@ -235,19 +259,43 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               ? _colorForAllDayDeviceEvent(context, deviceEvents.first)
               : (allDone ? colorScheme.onTertiary : colorScheme.onSecondary);
 
+          final currentDay = monday.add(Duration(days: index));
+          final dayKey = DateFormat('yyyy-MM-dd').format(currentDay);
+          final allDaySourceKey = deviceEvents.isEmpty
+              ? null
+              : _getDeviceCalendarCardKey(
+                  deviceEvents.first.id,
+                  dayKey,
+                  surface: 'week-all-day',
+                );
+
           return Expanded(
             child: GestureDetector(
               onTap: () {
-                DateTime currentDay = monday.add(Duration(days: index));
                 String dateStr = DateFormat('MM-dd').format(currentDay);
                 if (deviceEvents.isNotEmpty) {
-                  _showAllDayDeviceCalendarEvents(
-                      context, deviceEvents, dateStr);
+                  if (deviceEvents.length == 1) {
+                    _showDeviceCalendarEventDetail(
+                      context,
+                      deviceEvents.first,
+                      sourceKey: allDaySourceKey,
+                      sourceColor: todoColor.withValues(alpha: 0.92),
+                    );
+                  } else {
+                    _showAllDayDeviceCalendarEvents(
+                      context,
+                      deviceEvents,
+                      dateStr,
+                      sourceKey: allDaySourceKey,
+                      sourceColor: todoColor.withValues(alpha: 0.92),
+                    );
+                  }
                 } else {
                   _showAllDayTodos(context, dayTodos, dateStr);
                 }
               },
               child: Container(
+                key: allDaySourceKey,
                 margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
                 padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
                 decoration: BoxDecoration(
@@ -1462,6 +1510,11 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             final color = event.colorValue == null
                 ? Theme.of(context).colorScheme.tertiary.withValues(alpha: 0.78)
                 : Color(event.colorValue!).withValues(alpha: 0.78);
+            final calendarCardKey = _getDeviceCalendarCardKey(
+              event.id,
+              DateFormat('yyyy-MM-dd').format(dayStart),
+              surface: 'week-timed',
+            );
 
             eventsPerDay[weekday]!.add(_TimelineEvent(
               top: top,
@@ -1476,8 +1529,14 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   width: width,
                   height: height,
                   child: GestureDetector(
-                    onTap: () => _showDeviceCalendarEventDetail(context, event),
+                    onTap: () => _showDeviceCalendarEventDetail(
+                      context,
+                      event,
+                      sourceKey: calendarCardKey,
+                      sourceColor: color,
+                    ),
                     child: Container(
+                      key: calendarCardKey,
                       alignment: Alignment.center,
                       clipBehavior: Clip.hardEdge,
                       padding: const EdgeInsets.symmetric(

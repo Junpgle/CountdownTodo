@@ -11,7 +11,7 @@ Future<bool> showDeviceCalendarReadOnlyConfirmation(
         builder: (context) => AlertDialog(
           title: const Text('读取手机日历？'),
           content: const Text(
-            '只会在本机前台读取日程，用于首页和周视图展示。'
+            '只会在本机前台读取日程，用于首页、周视图和半月/月视图展示。'
             '不会写入系统日历，不会导入为待办，也不会上传或参与任何同步。',
           ),
           actions: [
@@ -102,7 +102,7 @@ class _GuideDeviceCalendarReadToggleState
           _loading
               ? '正在检查本机日历访问状态…'
               : _permissionGranted
-                  ? '首页与周视图会在打开时读取当前日程'
+                  ? '首页与周视图、半月/月视图会在打开时读取当前日程'
                   : '默认关闭；开启后才会请求日历读取权限',
         ),
       ),
@@ -220,7 +220,9 @@ class _DeviceCalendarReadPageState extends State<DeviceCalendarReadPage> {
                     : _setEnabled,
                 title: const Text('在 App 中显示手机日程'),
                 subtitle: Text(
-                  _permissionGranted ? '首页与周视图会在打开时读取当前日程' : '开启后会请求日历读取权限',
+                  _permissionGranted
+                      ? '首页与周视图、半月/月视图会在打开时读取当前日程'
+                      : '开启后会请求日历读取权限',
                 ),
               ),
             ),

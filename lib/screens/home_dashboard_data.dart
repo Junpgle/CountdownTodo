@@ -714,7 +714,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         CoachMarkStep(
           targetKey: _courseCenterKey,
           title: '手机日历（可选）',
-          description: '可将手机日程只读显示在首页和周视图。它默认关闭，绝不会写入、上传或参与同步。',
+          description: '可将手机日程只读显示在首页、周视图和半月/月视图。它默认关闭，绝不会写入、上传或参与同步。',
           buttonLabel: '去设置',
           finishOnButtonTap: true,
           onButtonTap: () {

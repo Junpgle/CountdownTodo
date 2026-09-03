@@ -261,7 +261,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
             id: 'calendar_read',
             icon: Icons.phone_android_outlined,
             title: '读取手机日历',
-            subtitle: '只读展示到首页和周视图，永不写入或同步',
+            subtitle: '只读展示到首页、周视图和半月/月视图，永不写入或同步',
             onTap: () {
               Navigator.push(
                 context,

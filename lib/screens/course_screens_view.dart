@@ -576,12 +576,28 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                                       crossDayTodoMap: _monthCrossDayTodoMap,
                                       logMap: _monthLogMap,
                                       pomMap: _monthPomMap,
+                                      deviceCalendarMap:
+                                          _monthDeviceCalendarMap,
                                       pomodoroTags: _pomodoroTags,
                                       activeDataViews: _activeDataViews,
                                       allTodos: _allTodos,
                                       viewMode: _viewMode,
                                       currentWeekMonday:
                                           _getMondayOfCurrentWeek(),
+                                      deviceCalendarCardKeyBuilder:
+                                          (event, dateKey) =>
+                                              _getDeviceCalendarCardKey(
+                                        event.id,
+                                        dateKey,
+                                        surface: 'month',
+                                      ),
+                                      onDeviceCalendarTap: (event, sourceKey) {
+                                        _showDeviceCalendarEventDetail(
+                                          context,
+                                          event,
+                                          sourceKey: sourceKey,
+                                        );
+                                      },
                                       onMonthChanged: (m) =>
                                           setState(() => _selectedMonth = m),
                                       onDayTapped: (d) {

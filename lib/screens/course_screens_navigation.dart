@@ -15,13 +15,14 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       // with a skeleton while the optional device-calendar query resolves.
       _deviceCalendarEvents = [];
       _updateWeekDeviceCalendarEvents();
+      _updateMonthDeviceCalendarEvents();
     });
 
     // 🚀 核心优化：根据周次自动判断学期，然后过滤课程
     _updateWeekCourses();
     _updateWeekTodos();
     _updateWeekTimeLogsPomodorosAndPlans();
-    await _loadDeviceCalendarEventsForCurrentWeek();
+    await _loadDeviceCalendarEventsForCurrentView();
     if (!mounted || _currentWeek != newWeek) return;
     _checkCollapsedSlots();
     _courseExpandCtrl.forward(from: 0);
@@ -45,10 +46,13 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         if (_pulseController.isAnimating) {
           _pulseController.stop();
         }
-        if (mode == 2 && !_monthDataPrepared) {
+        if (mode > 0 && !_monthDataPrepared) {
           _groupDataForMonthView();
         }
       }
+    });
+    _loadDeviceCalendarEventsForCurrentView().then((_) {
+      if (mounted) setState(() {});
     });
   }
 
@@ -57,6 +61,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       _isNextSlide = delta > 0;
       _selectedMonth =
           DateTime(_selectedMonth.year, _selectedMonth.month + delta, 1);
+    });
+    _loadDeviceCalendarEventsForCurrentView().then((_) {
+      if (mounted) setState(() {});
     });
   }
 
@@ -274,6 +281,10 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       items.addAll(_monthPomMap[dStr] ?? []);
     }
 
+    if (_activeDataViews.contains('deviceCalendar')) {
+      items.addAll(_monthDeviceCalendarMap[dStr] ?? []);
+    }
+
     items.sort((a, b) {
       int getStartTime(dynamic item) {
         if (item is CourseItem) {
@@ -302,6 +313,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
                   .toLocal();
           return dt.hour * 100 + dt.minute;
         }
+        if (item is DeviceCalendarEvent) {
+          return item.start.hour * 100 + item.start.minute;
+        }
         return 9999;
       }
 
@@ -317,6 +331,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         if (item is TimeLogItem) return 2;
         if (item is TodoPlanBlock) return 3;
         if (item is PomodoroRecord) return 4;
+        if (item is DeviceCalendarEvent) return 5;
         return 5;
       }
 
@@ -390,7 +405,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
                     itemCount: items.length,
                     itemBuilder: (context, index) =>
-                        _buildDetailSidebarItem(context, items[index]),
+                        _buildDetailSidebarItem(context, items[index], dStr),
                   ),
           ),
         ],
@@ -398,7 +413,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     );
   }
 
-  Widget _buildDetailSidebarItem(BuildContext context, dynamic item) {
+  Widget _buildDetailSidebarItem(BuildContext context, dynamic item,
+      [String? sourceDate]) {
     if (item is CourseItem) {
       final color = _getCourseColor(item.courseName);
       return ListTile(
@@ -529,6 +545,40 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         title: const Text('番茄专注', style: TextStyle(fontSize: 15)),
         subtitle: Text('时长: ${item.effectiveDuration ~/ 60} 分钟',
             style: const TextStyle(fontSize: 12)),
+      );
+    } else if (item is DeviceCalendarEvent) {
+      final colorScheme = Theme.of(context).colorScheme;
+      final color = item.colorValue == null
+          ? colorScheme.tertiary
+          : Color(item.colorValue!);
+      final dateKey = sourceDate ?? DateFormat('yyyy-MM-dd').format(item.start);
+      final sourceKey = _getDeviceCalendarCardKey(
+        item.id,
+        dateKey,
+        surface: 'sidebar',
+      );
+      return ListTile(
+        key: sourceKey,
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.phone_android_rounded, color: color, size: 20),
+        ),
+        title: Text(item.title, style: const TextStyle(fontSize: 15)),
+        subtitle: Text(
+          item.allDay
+              ? '全天 · 手机日历（只读）'
+              : '${DateFormat('HH:mm').format(item.start)} - ${DateFormat('HH:mm').format(item.end)} · 手机日历（只读）',
+          style: const TextStyle(fontSize: 12),
+        ),
+        onTap: () => _showDeviceCalendarEventDetail(
+          context,
+          item,
+          sourceKey: sourceKey,
+        ),
       );
     }
     return const SizedBox.shrink();

@@ -289,12 +289,12 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     final todayStart = DateTime(now.year, now.month, now.day);
     final tomorrowStart = todayStart.add(const Duration(days: 1));
     final afterTomorrowStart = tomorrowStart.add(const Duration(days: 1));
-    // Read one shared current-week window when the app first needs calendar
-    // data. The week view then reuses the same in-memory range instead of
-    // starting another provider query after the user leaves the homepage.
-    final calendarWeekStart =
-        todayStart.subtract(Duration(days: todayStart.weekday - 1));
-    final calendarWeekEnd = calendarWeekStart.add(const Duration(days: 7));
+    // Read one shared current-month grid window when the app first needs
+    // calendar data. The week, half-month and month views reuse this in-memory
+    // range instead of starting another provider query after the homepage.
+    final calendarGridStart =
+        DeviceCalendarReadService.monthGridStart(todayStart);
+    final calendarGridEnd = DeviceCalendarReadService.monthGridEnd(todayStart);
     final results = await Future.wait([
       StorageService.getPlanBlocksByDay(widget.username, now),
       StorageService.getPlanBlocksByDay(
@@ -308,8 +308,8 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       ),
       CourseService.getAllCourses(widget.username),
       DeviceCalendarReadService.readEvents(
-        start: calendarWeekStart,
-        end: calendarWeekEnd,
+        start: calendarGridStart,
+        end: calendarGridEnd,
       ),
     ]);
     final blocks = results[0] as List<TodoPlanBlock>;
