@@ -46,7 +46,7 @@ void main() {
       expect(event.colorValue, 0xff123456);
     });
 
-    test('normalizes malformed provider ranges without creating a local item',
+    test('keeps zero-duration provider events visible with a minimum duration',
         () {
       final start = DateTime(2026, 9, 2, 9);
       final event = DeviceCalendarEvent.fromPlatformMap({
@@ -63,6 +63,10 @@ void main() {
       expect(event.end, start.add(const Duration(minutes: 1)));
       expect(event.allDay, isTrue);
       expect(event.colorValue, isNull);
+      expect(
+        event.overlaps(start, start.add(const Duration(days: 1))),
+        isTrue,
+      );
     });
 
     test('uses half-open ranges when deciding whether to display an event', () {
@@ -84,6 +88,17 @@ void main() {
         isTrue,
       );
     });
+  });
+
+  test('builds a complete visible month-grid range for shared reads', () {
+    expect(
+      DeviceCalendarReadService.monthGridStart(DateTime(2026, 9, 3)),
+      DateTime(2026, 8, 31),
+    );
+    expect(
+      DeviceCalendarReadService.monthGridEnd(DateTime(2026, 9, 3)),
+      DateTime(2026, 10, 5),
+    );
   });
 
   test('reuses a foreground range instead of querying the calendar again',
@@ -118,5 +133,38 @@ void main() {
     );
 
     expect(providerReads, 1);
+  });
+
+  test('returns a zero-duration provider event from the read-only bridge',
+      () async {
+    final start = DateTime(2026, 9, 2, 9);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'checkPermission') return true;
+      if (call.method == 'readEvents') {
+        return [
+          {
+            'id': 'zero-duration',
+            'calendarId': 'calendar',
+            'title': '瞬时提醒',
+            'startMs': start.millisecondsSinceEpoch,
+            'endMs': start.millisecondsSinceEpoch,
+            'allDay': false,
+          },
+        ];
+      }
+      return null;
+    });
+
+    await DeviceCalendarReadService.setEnabled(true);
+    final events = await DeviceCalendarReadService.readEvents(
+      start: DateTime(2026, 9, 2),
+      end: DateTime(2026, 9, 3),
+    );
+
+    expect(events, hasLength(1));
+    expect(events.single.id, 'zero-duration');
+    expect(events.single.start, start);
+    expect(events.single.end, start.add(const Duration(minutes: 1)));
   });
 }

@@ -1165,7 +1165,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         startMs: Long,
         endMs: Long
     ): List<Map<String, Any?>> {
-        if (endMs <= startMs) return emptyList()
+        if (endMs < startMs) return emptyList()
         val readableIds = getReadableCalendars()
             .mapNotNull { (it["id"] as? Number)?.toLong() }
             .toSet()
@@ -1197,7 +1197,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 if (!readableIds.contains(calendarId)) continue
                 val begin = cursor.getLong(3)
                 val end = cursor.getLong(4)
-                if (end <= begin) continue
+                if (end < begin) continue
                 val eventId = cursor.getLong(0)
                 events.add(
                     mapOf(
@@ -1459,7 +1459,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         val args = call.arguments as? Map<*, *>
                         val startMs = (args?.get("startMs") as? Number)?.toLong()
                         val endMs = (args?.get("endMs") as? Number)?.toLong()
-                        if (startMs == null || endMs == null || endMs <= startMs) {
+                        if (startMs == null || endMs == null || endMs < startMs) {
                             result.error("INVALID_ARGS", "A valid startMs/endMs range is required", null)
                         } else {
                             result.success(readDeviceCalendarEvents(startMs, endMs))

@@ -121,7 +121,7 @@ import EventKit
       calendars: calendarStore.calendars(for: .event)
     )
     return calendarStore.events(matching: predicate).compactMap { event in
-      guard event.endDate > event.startDate else { return nil }
+      guard event.endDate >= event.startDate else { return nil }
       return [
         "id": "\(event.eventIdentifier ?? event.calendarItemIdentifier)_\(Int64(event.startDate.timeIntervalSince1970 * 1000))",
         "calendarId": event.calendar.calendarIdentifier,
