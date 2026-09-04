@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/chat_message.dart';
+import 'ai_action_parser.dart';
 import 'storage/user_session_storage.dart';
 import 'storage/storage_key_scope.dart';
 import 'secure_storage_service.dart';
@@ -48,6 +49,9 @@ class ChatStorageService {
   static const String _sessionsKey = 'chat_sessions';
   static const String _activeSessionKey = 'chat_active_session';
   static const String _customPromptKey = 'chat_custom_prompt';
+  static const String _promptProtocolVersionKey =
+      'chat_prompt_protocol_version';
+  static const int promptProtocolVersion = 2;
   static const String _promptEnabledKey = 'chat_prompt_enabled';
   static const String _chatModelKey = 'chat_model';
   static const String _chatApiKeyKey = 'chat_api_key';
@@ -93,8 +97,8 @@ class ChatStorageService {
 - 给出具体可执行的建议
 - 涉及时间安排时说明理由
 - 待办表示要完成的结果，规划块表示用户可调整的执行时段，考试/课程/会议等外部时间约束属于固定日程
-- 习惯是独立的周期追踪目标；用户明确要创建习惯时必须使用create_habit，不得用循环待办或plan_todos代替
-- 如果用户只描述周期性事项但没有明确要创建成习惯还是待办，先询问用户选择，不得擅自生成create_habit、create_todo或plan_todos
+- 习惯是独立的周期追踪目标；用户明确要创建习惯时必须使用create_habit
+- 如果用户只描述周期性事项但没有明确要创建成习惯还是待办，先询问用户选择，不得擅自生成任何创建动作
 - 不得为了容纳时间段把固定日程创建成待办，也不得把可调整的自我执行时段创建成固定日程
 - 没有日期时不要默认今天全天；重复待办也不要自动称为习惯
 - 循环待办和循环日程都由多个可独立寻址的真实期次组成；修改默认只针对本期，只有用户明确要求时才修改本期及以后；完成只属于待办单期，取消日程使用独立状态
@@ -102,7 +106,37 @@ class ChatStorageService {
 - 查询已有账单、预算或汇总时，依据系统提供的只读记账上下文直接回答，不要声称执行了写入；必要时追加 [FINANCE_ACTION_START] 和 [FINANCE_ACTION_END] 包裹的JSON数组。
 - 修改已有账单使用 action=update_finance，删除已有账单使用 action=delete_finance；只能复制上下文里的真实 transactionId，先生成待确认操作，不得直接保存或删除。''';
 
-  static String get defaultPrompt => _defaultPrompt;
+  static const String _currentPromptProtocol = '''
+【CDT 当前聊天协议 v2 | CDT_CHAT_PROTOCOL_V2】
+- 普通待办只能使用create_todo，时间字段使用timeMode=unscheduled/dateOnly/deadline和dueDate；不要把普通待办表示成时间区间。
+- 把已有待办安排到用户可调整的执行时段时，必须使用create_plan_block并携带上下文中的真实todoId；不得复制创建同名待办。
+- 输出结构化动作时必须使用CDT Actions v2信封，并为每个对象提供action字段。
+- 不得输出任何旧版动作标记、旧版规划动作名或缺少action字段的todos/updates对象。
+- 周期性事项类型不明确时先询问用户选择习惯或循环待办，不生成创建动作。''';
+
+  static String get defaultPrompt => '$_defaultPrompt\n$_currentPromptProtocol';
+
+  static String ensureCurrentPromptProtocol(String prompt) {
+    final value = prompt.trim();
+    if (value.isEmpty) return defaultPrompt;
+    final sanitized = _removeLegacyChatProtocol(prompt);
+    if (sanitized.contains('CDT_CHAT_PROTOCOL_V2')) return sanitized;
+    return '$sanitized\n$_currentPromptProtocol';
+  }
+
+  static String _removeLegacyChatProtocol(String prompt) {
+    final legacyProtocol = RegExp(
+      r'\bplan_todos\b|\[(?:PLAN_TODOS|CREATE_TODO|UPDATE_TODO|'
+      r'COMPLETE_TODO|DELETE_TODO|RESCHEDULE_TODO)\]',
+      caseSensitive: false,
+    );
+    final sanitized = prompt
+        .split('\n')
+        .where((line) => !legacyProtocol.hasMatch(line))
+        .join('\n')
+        .trim();
+    return sanitized.isEmpty ? _defaultPrompt : sanitized;
+  }
 
   static String _historyKey(String sessionId) => 'chat_history_$sessionId';
 
@@ -223,9 +257,21 @@ class ChatStorageService {
     }
     try {
       final List<dynamic> jsonList = jsonDecode(historyStr);
-      return jsonList
+      final history = jsonList
           .map((json) => ChatMessage.fromJson(json as Map<String, dynamic>))
           .toList();
+      var changed = false;
+      final migratedHistory = history.map((message) {
+        if (message.role != ChatRole.assistant) return message;
+        final cleanedContent = AiActionParser.cleanActionContent(
+          message.content,
+        );
+        if (cleanedContent == message.content) return message;
+        changed = true;
+        return message.copyWith(content: cleanedContent);
+      }).toList();
+      if (changed) await saveHistory(migratedHistory, sid);
+      return migratedHistory;
     } catch (e) {
       return [];
     }
@@ -294,7 +340,16 @@ class ChatStorageService {
   static Future<String> getCustomPrompt() async {
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_customPromptKey);
-    return prefs.getString(scopedKey) ?? _defaultPrompt;
+    final stored = prefs.getString(scopedKey);
+    if (stored == null || stored.trim().isEmpty) return defaultPrompt;
+    final migrated = ensureCurrentPromptProtocol(stored);
+    final versionKey = await _getScopedKey(_promptProtocolVersionKey);
+    if (migrated != stored ||
+        prefs.getInt(versionKey) != promptProtocolVersion) {
+      await prefs.setString(scopedKey, migrated);
+      await prefs.setInt(versionKey, promptProtocolVersion);
+    }
+    return migrated;
   }
 
   static Future<void> saveCustomPrompt(String prompt) async {
@@ -302,8 +357,13 @@ class ChatStorageService {
     final scopedKey = await _getScopedKey(_customPromptKey);
     if (prompt.trim().isEmpty) {
       await prefs.remove(scopedKey);
+      await prefs.remove(await _getScopedKey(_promptProtocolVersionKey));
     } else {
-      await prefs.setString(scopedKey, prompt);
+      await prefs.setString(scopedKey, ensureCurrentPromptProtocol(prompt));
+      await prefs.setInt(
+        await _getScopedKey(_promptProtocolVersionKey),
+        promptProtocolVersion,
+      );
     }
   }
 
@@ -323,6 +383,7 @@ class ChatStorageService {
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_customPromptKey);
     await prefs.remove(scopedKey);
+    await prefs.remove(await _getScopedKey(_promptProtocolVersionKey));
   }
 
   static Future<Map<String, String>?> getChatConfig() async {

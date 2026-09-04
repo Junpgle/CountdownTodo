@@ -19,9 +19,9 @@ class AiTodoContextBuilder {
     final basePrompt = promptEnabled && customPrompt.trim().isNotEmpty
         ? customPrompt
         : ChatStorageService.defaultPrompt;
-    var resolvedBasePrompt = basePrompt
-        .replaceAll('{now}', nowText)
-        .replaceAll('{todos}', '待办将按需通过智能上下文注入');
+    var resolvedBasePrompt = ChatStorageService.ensureCurrentPromptProtocol(
+      basePrompt,
+    ).replaceAll('{now}', nowText).replaceAll('{todos}', '待办将按需通过智能上下文注入');
     resolvedBasePrompt = _compactCapabilitySection(resolvedBasePrompt);
     return '''$resolvedBasePrompt
 
@@ -107,12 +107,12 @@ class AiTodoContextBuilder {
         '- create_habit: {"action":"create_habit","habits":[{"name":"习惯名称","icon":"🎯","sourceType":"quantityCheckIn|timeCheckIn|durationCheckIn|pomodoroTag|recurringTodo","periodType":"daily|weekly|weekdays|monthly|custom","targetValue":1600,"unit":"ml","durationMinutes":30,"targetTimeMinute":420,"timeComparison":"before|after","timeToleranceMinutes":0,"weekdaysMask":127,"customIntervalDays":null,"dayBoundaryMinute":0,"quickValues":[200,500],"sourceIds":[],"displayMode":"habitOnly|todoOnly|both","defaultFocusMinutes":25,"reminderPolicy":{"fixedTimes":[480],"progressReminder":false,"nearEndReminder":false,"dailySummaryReminder":false}}]}',
       );
       add(
-        '- 习惯创建规则：明确创建习惯时必须使用create_habit，禁止用create_todo或plan_todos代替。数量目标使用quantityCheckIn并填写targetValue/unit；时间点目标使用timeCheckIn并填写targetTimeMinute（分钟数）和timeComparison；时长目标使用durationCheckIn并填写durationMinutes；只有上下文提供真实番茄标签UUID时才使用pomodoroTag并填写sourceIds，否则使用durationCheckIn；完成一次型目标使用recurringTodo，sourceIds为空时由应用创建并绑定循环待办。periodType为weekdays时用weekdaysMask（周一bit0至周日bit6），custom时必须填写customIntervalDays。',
+        '- 习惯创建规则：明确创建习惯时必须使用create_habit，不能用普通待办动作代替。数量目标使用quantityCheckIn并填写targetValue/unit；时间点目标使用timeCheckIn并填写targetTimeMinute（分钟数）和timeComparison；时长目标使用durationCheckIn并填写durationMinutes；只有上下文提供真实番茄标签UUID时才使用pomodoroTag并填写sourceIds，否则使用durationCheckIn；完成一次型目标使用recurringTodo，sourceIds为空时由应用创建并绑定循环待办。periodType为weekdays时用weekdaysMask（周一bit0至周日bit6），custom时必须填写customIntervalDays。',
       );
     }
     if (ambiguousHabitTodoChoice) {
       add(
-        '- 创建类型不明确：用户只描述了周期性事项但没有说明要创建为习惯还是待办。先询问“要创建成习惯，还是循环待办？”，不要输出create_habit、create_todo或plan_todos动作。',
+        '- 创建类型不明确：用户只描述了周期性事项但没有说明要创建为习惯还是待办。先询问“要创建成习惯，还是循环待办？”，不要输出任何创建动作。',
       );
     }
     if (requestsScheduleAction) {
@@ -151,7 +151,7 @@ class AiTodoContextBuilder {
     }
     if (isPlanningRequest) {
       add(
-        '- 规划优先规则：把上下文中已有待办安排到可调整执行时段时，必须使用create_plan_block；禁止用plan_todos或create_todo复制已有待办。每个已有待办都要使用真实todoId',
+        '- 规划优先规则：把上下文中已有待办安排到可调整执行时段时，必须使用create_plan_block；禁止用create_todo复制已有待办。每个已有待办都要使用真实todoId',
       );
       add(
         '- create_plan_block: {"action":"create_plan_block","blocks":[{"todoId":"已有待办ID","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"reminderMinutes":5}]}',
@@ -227,7 +227,7 @@ ${actions.join('\n')}
 {"protocol":"cdt.actions","version":$actionProtocolVersion,"actions":[{"action":"..."}]}
 [ACTION_END]
 
-兼容说明：应用仍能读取旧版 JSON 数组，但新回复必须输出上述 v$actionProtocolVersion 信封。
+输出约束：只允许输出上述 v$actionProtocolVersion 信封，不输出裸 JSON 数组。
 
 记账动作块格式（查询/修改/删除已有账单时使用）：
 [FINANCE_ACTION_START]
@@ -239,7 +239,7 @@ ${actions.join('\n')}
 - 时间字段统一使用 yyyy-MM-dd HH:mm（如 startTime / dueDate）
 - 待办时间必须带timeMode：unscheduled无日期、dateOnly某天内完成、deadline具体截止时刻；null表示清空，字段缺省表示不修改
 - 没有日期和时间的待办保持未安排，不得默认今天全天
-- 只有日期没有具体时刻时才使用dateOnly；isAllDay仅作旧协议兼容
+- 只有日期没有具体时刻时才使用dateOnly；普通待办不要使用日期区间字段表达时间
 - 单一时刻默认表示截止点，不得自动扩展为一小时执行区间
 - 取件、取餐、取药默认是可完成的待办，不得仅为触发提醒而伪装成全天事件
 - 考试、课程、会议、面试、预约、航班等外部决定时间的事项必须使用固定日程动作，不能静默创建为待办或规划块
@@ -274,8 +274,9 @@ ${actions.join('\n')}
         ? customPrompt
         : ChatStorageService.defaultPrompt;
 
-    final resolvedBasePrompt =
-        basePrompt.replaceAll('{now}', nowText).replaceAll('{todos}', todoList);
+    final resolvedBasePrompt = ChatStorageService.ensureCurrentPromptProtocol(
+      basePrompt,
+    ).replaceAll('{now}', nowText).replaceAll('{todos}', todoList);
 
     return '''$resolvedBasePrompt
 
@@ -287,7 +288,7 @@ $scheduleList
 
 【事项语义】
 - 待办表示需要完成的结果；没有日期和时间时保持未安排，不能默认今天全天。
-- 习惯表示需要按周期追踪的目标；用户明确创建习惯时必须使用create_habit，不能用循环待办或plan_todos代替。
+- 习惯表示需要按周期追踪的目标；用户明确创建习惯时必须使用create_habit，不能用循环待办代替。
 - 如果用户只描述周期性事项（如“每天跑步”“每周整理房间”）但没有明确选择习惯或待办，必须先询问“要创建成习惯，还是循环待办？”，不要擅自生成任何创建动作。
 - 只有日期没有具体时刻时表示“某天内完成”；单一时刻表示截止点，不能自动补一小时。
 - 规划块表示用户自行安排、可以调整的执行时段。
@@ -305,7 +306,7 @@ JSON操作块必须且只能使用以下协议：
 2. [ACTION_START] 内必须是 CDT Actions v$actionProtocolVersion 信封：protocol="cdt.actions"、version=$actionProtocolVersion、actions 为 JSON 数组。
 3. 每个操作对象必须包含 "action" 字段。
 4. 禁止使用 Markdown 代码块，例如 ```json。
-5. 禁止使用 [PLAN_TODOS]、[CREATE_TODO]、[UPDATE_TODO] 等任何旧标记。
+5. 禁止使用任何旧版动作标记。
 6. 禁止只输出 {"todos":[...]}、{"updates":[...]} 等缺少 "action" 字段的对象。
 7. 如果同时输出操作块和建议块，顺序必须是：正文 -> [ACTION_START]...[ACTION_END] -> [SUGGEST_START]...[SUGGEST_END]。
 
@@ -323,7 +324,6 @@ JSON操作块必须且只能使用以下协议：
 - create_schedule: {"action":"create_schedule","schedules":[{"title":"日程名","date":"YYYY-MM-DD","startTime":"YYYY-MM-DD HH:mm或null","endTime":"YYYY-MM-DD HH:mm或null","location":null,"remark":null,"reminderMinutes":[15],"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}。date必填；时间待定时起止均为null；只有开始时刻时endTime为null
 - update_schedule: {"action":"update_schedule","updates":[{"scheduleId":"真实期次ID","recurrenceSeriesId":"可选系列ID","recurrenceScope":"occurrence|future","title":"新标题","date":"YYYY-MM-DD","startTime":"YYYY-MM-DD HH:mm或null","endTime":"YYYY-MM-DD HH:mm或null","location":null,"remark":null,"reminderMinutes":[],"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}。字段缺省=保持，null=清空；修改重复规则必须使用future
 - cancel_schedule / delete_schedule: 使用scheduleId；默认occurrence，只有明确“本期及以后”才用future；日程没有待办式“完成勾选”
-- plan_todos: 同create_todo字段，仅用于创建全新的待办事项；如果用户要求把已有待办安排到具体执行时间，必须使用create_plan_block
 - create_plan_block: {"action":"create_plan_block","blocks":[{"todoId":"已有待办ID","title":"标题快照","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","reminderMinutes":5}]}，用于把已有待办安排到具体时间块；用户说"规划今天/明天/本周时间""安排到几点到几点"时优先使用这个动作。重要：规划中提到的每一个已有待办都必须生成对应的plan block，不要只生成一个
 - update_plan_block / reschedule_plan_blocks / delete_plan_block / skip_plan_block / start_plan_block_pomodoro: 必须使用已有规划块ID(planBlockId/blockId/id)，用于修改、重排、删除、跳过或直接开始某个规划块的番茄钟
 - update_todo: {"action":"update_todo","updates":[{"todoId":"真实期次ID","recurrenceSeriesId":"可选系列ID","recurrenceScope":"occurrence|future","title":"新标题","timeMode":"unscheduled|dateOnly|deadline","dueDate":"...","groupId":"...","reminderMinutes":5}]}。字段缺省=保持，字段为null=清空
@@ -942,7 +942,7 @@ ${sections.join('\n')}
     final basePrompt = promptEnabled && customPrompt.trim().isNotEmpty
         ? customPrompt
         : ChatStorageService.defaultPrompt;
-    return basePrompt
+    return ChatStorageService.ensureCurrentPromptProtocol(basePrompt)
         .replaceAll('{now}', nowText)
         .replaceAll('{todos}', _formatTodos(todos, todoGroups));
   }
@@ -979,8 +979,9 @@ ${sections.join('\n')}
       final id = t['id'] ?? 'unknown';
       final title = t['title'] ?? '';
       final remark = t['remark'] ?? '';
-      final startTime = t['startTime'] ?? '';
-      final endTime = t['endTime'] ?? '';
+      final dueDateValue =
+          t['dueDate'] ?? t['due_date'] ?? t['endTime'] ?? t['end_time'];
+      final dueDate = _parseFlexibleDateTime(dueDateValue);
       final timeMode = switch (t['timeMode']?.toString()) {
         'dateOnly' => '日期内完成',
         'deadline' => '定时截止',
@@ -1006,7 +1007,12 @@ ${sections.join('\n')}
       final recurrenceText = recurrenceSeriesId.isEmpty
           ? ' | 循环: none'
           : ' | 系列ID: $recurrenceSeriesId | 期次角色: $recurrenceRole | 系列规则: $recurrenceRule${recurrenceRule == 'customDays' ? '(${customIntervalDays ?? 1}天)' : ''}${recurrenceEndDate.isNotEmpty ? ' | 系列结束: $recurrenceEndDate' : ''}${recurrence != recurrenceRule ? ' | 本期存储规则: $recurrence' : ''}';
-      return '- [期次todoId: $id] 标题: $title | 状态: $status${remark.toString().isNotEmpty ? ' | 备注: $remark' : ''}${folderName.isNotEmpty ? ' | 分类: $folderName' : ''}${startTime.toString().isNotEmpty ? ' | 日期锚点: $startTime' : ''}${endTime.toString().isNotEmpty ? ' | 截止: $endTime' : ''} | 时间语义: $timeMode$recurrenceText | 提醒: 提前$reminderMinutes分钟';
+      final timeText = switch (t['timeMode']?.toString()) {
+        'dateOnly' when dueDate != null => ' | 目标日期: ${_formatDate(dueDate)}',
+        'deadline' when dueDate != null => ' | 截止: ${_formatDateTime(dueDate)}',
+        _ => '',
+      };
+      return '- [期次todoId: $id] 标题: $title | 状态: $status${remark.toString().isNotEmpty ? ' | 备注: $remark' : ''}${folderName.isNotEmpty ? ' | 分类: $folderName' : ''}$timeText | 时间语义: $timeMode$recurrenceText | 提醒: 提前$reminderMinutes分钟';
     }).join('\n')}';
   }
 
