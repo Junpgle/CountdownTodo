@@ -33,6 +33,7 @@ class AiActionParser {
     Map<String, String> existingScheduleTitles = const {},
   }) {
     final actions = <AiTodoAction>[];
+    final planningIntent = _looksLikePlanningIntent(originalText);
 
     void parseAndProcess(String jsonStr) {
       if (jsonStr.trim().isEmpty) return;
@@ -49,6 +50,7 @@ class AiActionParser {
                 Map<String, dynamic>.from(item),
                 existingTodoTitles,
                 existingScheduleTitles,
+                planningIntent: planningIntent,
               ));
             }
           } else {
@@ -56,6 +58,7 @@ class AiActionParser {
               data,
               existingTodoTitles,
               existingScheduleTitles,
+              planningIntent: planningIntent,
             ));
           }
         } else if (data is List) {
@@ -65,6 +68,7 @@ class AiActionParser {
                 item,
                 existingTodoTitles,
                 existingScheduleTitles,
+                planningIntent: planningIntent,
               ));
             }
           }
@@ -156,11 +160,14 @@ class AiActionParser {
   }
 
   static List<AiTodoAction> _processActionMap(
-    Map<String, dynamic> data,
-    Map<String, String> existingTodoTitles,
-    Map<String, String> existingScheduleTitles,
-  ) {
-    final actionData = _withInferredAction(data);
+      Map<String, dynamic> data,
+      Map<String, String> existingTodoTitles,
+      Map<String, String> existingScheduleTitles,
+      {bool planningIntent = false}) {
+    final actionData = _withInferredAction(
+      data,
+      planningIntent: planningIntent,
+    );
     switch (actionData['action']) {
       case 'create_todo':
         return _listFromOrSelf(actionData, actionData['todos']).map((todo) {
@@ -187,22 +194,23 @@ class AiActionParser {
         }).toList();
       case 'plan_todos':
         // Older prompts used plan_todos for both new todos and scheduling an
-        // existing todo. Preserve the former, but translate the latter into
-        // the current plan-block model so it cannot create a duplicate todo.
-        return _listFromOrSelf(actionData, actionData['todos']).map((todo) {
-          final existingTodoId =
-              _existingTodoIdForPlan(todo, existingTodoTitles);
-          final normalized = <String, dynamic>{
-            ...todo,
-            'title': todo['title'] ?? todo['titleSnapshot'],
-            'action':
-                existingTodoId == null ? 'plan_todos' : 'create_plan_block',
-          };
-          if (existingTodoId != null) {
-            normalized['todoId'] = existingTodoId;
-          }
-          return AiTodoAction.fromJson(normalized);
-        }).toList();
+        // existing todo. Only the latter is safe to preserve. An unmatched or
+        // ambiguous title is discarded instead of falling through to todo
+        // creation, because planning must never duplicate an existing item.
+        return _listFromOrSelf(actionData, actionData['todos'])
+            .map((todo) {
+              final existingTodoId =
+                  _existingTodoIdForPlan(todo, existingTodoTitles);
+              if (existingTodoId == null) return null;
+              return AiTodoAction.fromJson({
+                ...todo,
+                'title': todo['title'] ?? todo['titleSnapshot'],
+                'action': 'create_plan_block',
+                'todoId': existingTodoId,
+              });
+            })
+            .whereType<AiTodoAction>()
+            .toList();
       case 'create_schedule':
       case 'create_fixed_schedule':
         return _listFromOrSelf(
@@ -241,14 +249,24 @@ class AiActionParser {
         return _listFromOrSelf(
           actionData,
           actionData['blocks'] ?? actionData['plans'] ?? actionData['todos'],
-        ).map((block) {
-          return AiTodoAction.fromJson({
-            ...block,
-            'todoId': block['todoId'] ?? block['todo_id'] ?? block['todoUuid'],
-            'title': block['title'] ?? block['titleSnapshot'],
-            'action': actionData['action'],
-          });
-        }).toList();
+        )
+            .map((block) {
+              final inferredTodoId = _existingTodoIdForPlan(
+                block,
+                existingTodoTitles,
+              );
+              return AiTodoAction.fromJson({
+                ...block,
+                'todoId': block['todoId'] ??
+                    block['todo_id'] ??
+                    block['todoUuid'] ??
+                    inferredTodoId,
+                'title': block['title'] ?? block['titleSnapshot'],
+                'action': actionData['action'],
+              });
+            })
+            .where((action) => action.todoId?.trim().isNotEmpty == true)
+            .toList();
       case 'update_plan_block':
       case 'delete_plan_block':
       case 'reschedule_plan_blocks':
@@ -463,7 +481,10 @@ class AiActionParser {
         .toList();
   }
 
-  static Map<String, dynamic> _withInferredAction(Map<String, dynamic> data) {
+  static Map<String, dynamic> _withInferredAction(
+    Map<String, dynamic> data, {
+    bool planningIntent = false,
+  }) {
     if (data['action'] != null) return data;
     if (data['todos'] is List) {
       final todoList = data['todos'] as List;
@@ -474,7 +495,10 @@ class AiActionParser {
               t.containsKey('todoUuid')));
       return {
         ...data,
-        'action': hasExistingRef ? 'create_plan_block' : 'create_todo',
+        // An actionless todos payload in a planning request is a legacy
+        // planning response. Route it through plan-block validation so it
+        // cannot silently create duplicate TodoItems without a real todoId.
+        'action': hasExistingRef || planningIntent ? 'create_plan_block' : null,
       };
     }
     if (data['habits'] is List ||
@@ -505,6 +529,13 @@ class AiActionParser {
     return data;
   }
 
+  static bool _looksLikePlanningIntent(String text) {
+    return RegExp(
+      r'(规划|安排.*(待办|任务|时间|计划)|计划.*(待办|任务|时间)|排.*计划|plan(?:ning)?|time\s*block)',
+      caseSensitive: false,
+    ).hasMatch(text);
+  }
+
   static String? _existingTodoIdForPlan(
     Map<String, dynamic> todo,
     Map<String, String> existingTodoTitles,
@@ -529,7 +560,7 @@ class AiActionParser {
         .where((entry) => _normalizeTitle(entry.value) == normalizedTitle)
         .toList();
     // Only infer by title when it is unambiguous. An ambiguous title is safer
-    // as a new todo than attaching a plan block to the wrong occurrence.
+    // to discard than to attach a plan block to the wrong occurrence.
     return matches.length == 1 ? matches.single.key : null;
   }
 
