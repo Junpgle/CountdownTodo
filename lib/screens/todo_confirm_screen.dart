@@ -154,12 +154,13 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
 
   List<ParsedTodoResult> _parseResults(List<Map<String, dynamic>> results) {
     return results.map((rawResult) {
-      // Pending image results may have been produced by an older prompt or
-      // stored before the timeMode migration. Normalize them again here so a
-      // process restart cannot reintroduce the old start/end representation.
-      final result = widget.imagePath != null
-          ? RecognizedTodoAdapter.normalizeImageResult(rawResult)
-          : Map<String, dynamic>.from(rawResult);
+      // Pending recognition results may have been produced by an older prompt
+      // or stored before the timeMode migration. Normalize every result here
+      // so a process restart cannot reintroduce the old start/end semantics.
+      final result = RecognizedTodoAdapter.normalizeResult(
+        rawResult,
+        promoteSpecialTodo: widget.imagePath != null,
+      );
       final rawTimeMode = result['timeMode'] ?? result['time_mode'];
       final declaredTimeMode = RecognizedTodoAdapter.parseTimeMode(rawTimeMode);
       final startTime = RecognizedTodoAdapter.parseDateTime(

@@ -6,6 +6,7 @@ import 'ai_chat_service.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
 import 'secure_storage_service.dart';
+import 'recognized_todo_adapter.dart';
 import '../features/finance/services/ai_usage_cost_service.dart';
 import '../models/chat_message.dart';
 
@@ -72,19 +73,20 @@ class LLMConfig {
      * 未识别具体品牌：外卖用"外卖取餐"，快递用"快递取件"，奶茶用"奶茶取餐"
    - remark: 取餐码/取件码的值（纯数字或字母数字组合）
    - 这是需要用户完成领取动作的待办，不是固定日程
-   - 普通文本没有可靠日期时：isAllDay=false，startTime=null，endTime=null，不得擅自设为今天
-   - 文本明确领取日期但没有具体时刻时：isAllDay=true，startTime为当天"00:00"，endTime为当天"23:59"
-   - 文本明确最晚领取时刻时：isAllDay=false，startTime为目标日期"00:00"，endTime为最晚领取时刻
+   - 普通文本没有可靠日期时：timeMode="unscheduled"，dueDate=null，不得擅自设为今天
+   - 文本明确领取日期但没有具体时刻时：timeMode="dateOnly"，dueDate为当天"23:59"
+   - 文本明确最晚领取时刻时：timeMode="deadline"，dueDate为最晚领取时刻
+   - 普通todo只输出上述timeMode和dueDate；固定日程和规划块才使用时间区间字段
 
 4. 示例：
    输入: "KFC取餐码1234"
-   输出: {"itemKind":"todo","title":"KFC取餐","remark":"取餐码: 1234","isAllDay":false,"startTime":null,"endTime":null,"timeMode":"unscheduled","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
+   输出: {"itemKind":"todo","title":"KFC取餐","remark":"取餐码: 1234","timeMode":"unscheduled","dueDate":null,"recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
 
    输入: "顺丰快递到了取件码8866"
-   输出: {"itemKind":"todo","title":"顺丰取件","remark":"取件码: 8866","isAllDay":false,"startTime":null,"endTime":null,"timeMode":"unscheduled","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
+   输出: {"itemKind":"todo","title":"顺丰取件","remark":"取件码: 8866","timeMode":"unscheduled","dueDate":null,"recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
 
    输入: "茶百道做好了A056"
-   输出: {"itemKind":"todo","title":"茶百道取餐","remark":"取餐码: A056","isAllDay":false,"startTime":null,"endTime":null,"timeMode":"unscheduled","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
+   输出: {"itemKind":"todo","title":"茶百道取餐","remark":"取餐码: A056","timeMode":"unscheduled","dueDate":null,"recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
 
 ===== 通用事项规则 =====
 如果不是取餐/取件场景，则按以下规则：
@@ -93,8 +95,8 @@ class LLMConfig {
 2. title: 核心动作/事件。必须极度精简！必须去除口语化前缀（如"提醒我"、"帮我记一下"、"我要"）、去除时间和地点。
 3. location: fixedSchedule 的地点单独写入此字段；没有则为null。todo和planBlock的地点继续放在remark中并把location设为null。
 4. remark: 提取人物、携带物品等补充信息；todo和planBlock也在这里保留地点。地点词必须从title中彻底删除，若无补充信息设为null。
-5. 时间字段：todo 未安排时起止均为null；日期待办为当天00:00到23:59；截止待办为当天00:00到截止点。fixedSchedule 时间待定时用日期的00:00到23:59并设isAllDay=true；只有开始时刻时startTime为原时刻且endTime=null；明确区间才同时填写。planBlock必须有明确开始和结束。
-6. timeMode: 未安排为"unscheduled"；仅日期为"dateOnly"；待办单一截止时刻为"deadline"；明确开始—结束区间为"range"。固定日程只有开始时刻也使用"range"且endTime为null。
+5. 时间字段：普通todo只输出timeMode和dueDate：未安排为unscheduled/dueDate=null；日期待办为dateOnly/dueDate为当天23:59；截止待办为deadline/dueDate为截止时刻。fixedSchedule和planBlock才使用时间区间字段。
+6. timeMode：普通todo只能是"unscheduled"、"dateOnly"或"deadline"，绝不能使用"range"；fixedSchedule和planBlock使用"range"。固定日程只有开始时刻时endTime=null。
 7. recurrence: 识别重复周期。
    - 极其重要：只有当文本包含"每天"、"每周"、"每个[周几]"、"每月"、"每年"、"每隔X天"、"工作日"等表示【持续循环】的词时才设定。
    - 特别注意：类似"下周一"、"这周五"、"下个月1号"是指【特定的某一天】，不是重复事件，recurrence 必须设为 "none"。
@@ -108,7 +110,8 @@ class LLMConfig {
 
 【输出格式】
 如果输入包含多个事项，请返回JSON数组；如果是单个事项，也请返回JSON数组（只有一个元素）。
-例如：[{"itemKind":"fixedSchedule","title":"项目会议","location":"第一会议室","remark":null,"isAllDay":false,"startTime":"YYYY-MM-DD HH:mm","endTime":"YYYY-MM-DD HH:mm","timeMode":"range","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null,"reminderMinutes":15}]
+例如：[{"itemKind":"todo","title":"提交报告","remark":null,"timeMode":"deadline","dueDate":"YYYY-MM-DD HH:mm","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null,"reminderMinutes":5}]
+固定日程或规划块需要时间区间时，才使用startTime/endTime和timeMode="range"。
 
 【重要约束】
 必须且只能返回纯JSON格式数组，绝对不要包含任何Markdown标记（如```json），确保能够直接被程序反序列化。
@@ -145,17 +148,19 @@ class LLMConfig {
      * 未识别具体品牌：外卖用"外卖取餐"，快递用"快递取件"，奶茶用"奶茶取餐"
    - remark: 取餐码/取件码的值
    - 这是需要用户完成领取动作的待办，不是固定日程
-   - 截图能可靠确认是当前已出餐/已到站通知且没有期限时：isAllDay=true，startTime为当天"00:00"，endTime为当天"23:59"
-   - 截图包含明确领取期限时，按期限设置日期待办或具体截止时刻
-   - 截图日期来源不可靠时，不得猜测今天，时间字段设为null
+   - 截图能可靠确认是当前已出餐/已到站通知且没有期限时：timeMode="unscheduled"，dueDate=null
+   - 截图包含明确领取日期但没有具体时刻时：timeMode="dateOnly"，dueDate为当天"23:59"
+   - 截图包含明确领取期限时：timeMode="deadline"，dueDate为最晚领取时刻
+   - 截图日期来源不可靠时，不得猜测今天，todo的dueDate设为null
+   - 普通todo只输出上述timeMode和dueDate；固定日程和规划块才使用时间区间字段
 
 ===== 通用事项规则 =====
 1. itemKind: 必须为todo/fixedSchedule/planBlock/needsConfirmation之一。会议、考试、课程、预约等不能静默输出为todo
 2. title: 核心事件名称（如"开会"、"交作业"、"体检"），去除时间和地点
 3. location: fixedSchedule的地点单独写入，没有则null；todo和planBlock设为null
 4. remark: 人物、携带物品等补充信息；todo和planBlock也在这里保留地点，没有则null
-5. 时间字段：todo沿用未安排/日期/截止语义；fixedSchedule时间待定时保留日期并设isAllDay=true，只有开始时刻时startTime为原时刻且endTime=null，明确区间才同时填写；planBlock必须有明确起止
-6. timeMode: 未安排为unscheduled；仅日期为dateOnly；待办单一截止时刻为deadline；明确区间及固定日程开始时刻为range
+5. 时间字段：普通todo只输出timeMode和dueDate，遵循未安排/日期/截止语义；fixedSchedule时间待定时保留日期但startTime/endTime均为null，只有开始时刻时endTime=null，明确区间才同时填写；planBlock必须有明确起止
+6. timeMode：普通todo只能为unscheduled/dateOnly/deadline；明确区间才使用range，且只适用于fixedSchedule或planBlock
 7. recurrence: 重复规则（none/daily/weekly/monthly/yearly/weekdays/customDays）
    - 循环只输出一条系列起始事项，不要为未来每一期重复输出JSON
    - 图片未提供可靠首次日期时保留recurrence，但起止时间设为null并等待用户确认；不得猜测今天
@@ -165,7 +170,8 @@ class LLMConfig {
 
 【输出格式】
 如果图片中有多个事项，请返回JSON数组；如果是单个事项，也请返回JSON数组（只有一个元素）。
-例如：[{"itemKind":"fixedSchedule","title":"项目会议","location":"第一会议室","remark":null,"isAllDay":false,"startTime":"YYYY-MM-DD HH:mm","endTime":"YYYY-MM-DD HH:mm","timeMode":"range","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null,"reminderMinutes":15}]
+例如：[{"itemKind":"todo","title":"提交报告","location":null,"remark":null,"timeMode":"deadline","dueDate":"YYYY-MM-DD HH:mm","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null,"reminderMinutes":5}]
+固定日程或规划块需要时间区间时，才使用startTime/endTime和timeMode="range"。
 
   必须且只能返回纯JSON数组格式，不要包含Markdown标记。''';
 
@@ -194,12 +200,16 @@ class LLMConfig {
 
   /// 追加到默认或自定义识别提示词末尾的强制语义护栏。
   /// 用户仍可定制提取风格，但不能覆盖当前数据模型的类型与时间边界。
+  static const String recognitionPromptProtocolMarker =
+      'CDT_RECOGNITION_PROTOCOL_V2';
+
   static const String itemSemanticGuardrailPrompt = '''
-【当前事项协议护栏（优先于前文，必须遵守）】
+【当前事项协议护栏（优先于前文，必须遵守）| CDT_RECOGNITION_PROTOCOL_V2】
 每条JSON必须增加itemKind，值只能是todo、fixedSchedule、planBlock或needsConfirmation。
 todo是要完成的结果；fixedSchedule是课程、考试、会议、预约、交通等外部决定时间的占用；planBlock是用户可调整的执行区间；无法判断的时间段用needsConfirmation。
 不得把固定日程静默输出为todo，也不得把待办截止点自动扩展成一小时区间。
-todo无日期时保持未安排；fixedSchedule时间待定时保留日期且不捏造时刻，只有开始时刻时不得补结束时间；planBlock必须有明确起止。
+普通todo只能使用timeMode=unscheduled/dateOnly/deadline和dueDate；unscheduled的dueDate必须为null，dateOnly的dueDate为当天23:59，deadline的dueDate为单一截止时刻，不能表示成执行时间区间。
+fixedSchedule和planBlock才使用时间区间字段与timeMode=range；fixedSchedule时间待定时不捏造时刻，只有开始时刻时不得补结束时间；planBlock必须有明确起止。
 重复不等于习惯。没有首次发生日期时保留循环规则但时间留空，交给用户确认，禁止默认今天。
 fixedSchedule地点使用location字段；todo和planBlock地点放在remark。默认提醒：todo/planBlock为5分钟，fixedSchedule为15分钟。''';
 
@@ -318,6 +328,7 @@ class CustomVisionModel {
 
 class LLMService {
   static const String _configKey = 'llm_config';
+  static const int _recognitionPromptProtocolVersion = 2;
   static const String _zhipuApiKeyKey = 'zhipu_api_key';
   static const String _providerApiKeyPrefix = 'provider_api_key_';
   static const String _customTextModelsKey = 'custom_text_models';
@@ -500,7 +511,37 @@ class LLMService {
           );
         }
       }
+      final rawTextPrompt = json['text_prompt']?.toString();
+      final rawVisionPrompt = json['vision_prompt']?.toString();
+      final migratedTextPrompt = _ensureRecognitionPrompt(
+        rawTextPrompt,
+        fallback: LLMConfig.defaultTextPrompt,
+      );
+      final migratedVisionPrompt = _ensureRecognitionPrompt(
+        rawVisionPrompt,
+        fallback: LLMConfig.defaultVisionPrompt,
+      );
+      final storedPromptVersion = int.tryParse(
+          json['recognition_prompt_protocol_version']?.toString() ?? '');
+      final promptChanged =
+          (rawTextPrompt != null && rawTextPrompt != migratedTextPrompt) ||
+              (rawVisionPrompt != null &&
+                  rawVisionPrompt != migratedVisionPrompt) ||
+              storedPromptVersion != _recognitionPromptProtocolVersion;
+      if (promptChanged) {
+        json['recognition_prompt_protocol_version'] =
+            _recognitionPromptProtocolVersion;
+        if (rawTextPrompt != null) {
+          json['text_prompt'] = migratedTextPrompt;
+        }
+        if (rawVisionPrompt != null) {
+          json['vision_prompt'] = migratedVisionPrompt;
+        }
+        await prefs.setString(_configKey, jsonEncode(_withoutApiKey(json)));
+      }
       json['api_key'] = apiKey;
+      json['text_prompt'] = migratedTextPrompt;
+      json['vision_prompt'] = migratedVisionPrompt;
       return LLMConfig.fromJson(json);
     } catch (_) {
       return null;
@@ -514,10 +555,56 @@ class LLMService {
     } else {
       await SecureStorageService.write(_configApiKeyStorageKey, config.apiKey);
     }
-    await prefs.setString(
-      _configKey,
-      jsonEncode(_withoutApiKey(config.toJson())),
+    final json = _withoutApiKey(config.toJson());
+    json['recognition_prompt_protocol_version'] =
+        _recognitionPromptProtocolVersion;
+    json['text_prompt'] = _ensureRecognitionPrompt(
+      config.textPrompt,
+      fallback: LLMConfig.defaultTextPrompt,
     );
+    json['vision_prompt'] = _ensureRecognitionPrompt(
+      config.visionPrompt,
+      fallback: LLMConfig.defaultVisionPrompt,
+    );
+    await prefs.setString(_configKey, jsonEncode(json));
+  }
+
+  static String _ensureRecognitionPrompt(
+    String? prompt, {
+    required String fallback,
+  }) {
+    final value = prompt?.trim();
+    if (value == null || value.isEmpty) return fallback;
+    final sanitized = _removeLegacyRecognitionProtocol(prompt!);
+    if (sanitized.contains(LLMConfig.recognitionPromptProtocolMarker)) {
+      return sanitized;
+    }
+    return '$sanitized\n\n${LLMConfig.itemSemanticGuardrailPrompt}';
+  }
+
+  static String _removeLegacyRecognitionProtocol(String prompt) {
+    final legacyAction = RegExp(
+      r'\bplan_todos\b|\[(?:PLAN_TODOS|CREATE_TODO|UPDATE_TODO|'
+      r'COMPLETE_TODO|DELETE_TODO|RESCHEDULE_TODO)\]',
+      caseSensitive: false,
+    );
+    final lines = prompt.split('\n').where((line) {
+      if (legacyAction.hasMatch(line)) return false;
+      if (line.contains('isAllDay') || line.contains('is_all_day')) {
+        return false;
+      }
+      final lower = line.toLowerCase();
+      final mentionsTodo = lower.contains('todo') || line.contains('待办');
+      final mentionsLegacyRange = lower.contains('starttime') ||
+          lower.contains('endtime') ||
+          line.contains('起止') ||
+          (line.contains('00:00') && line.contains('23:59'));
+      return !(mentionsTodo && mentionsLegacyRange);
+    });
+    final sanitized = lines.join('\n').trim();
+    return sanitized.isEmpty
+        ? LLMConfig.itemSemanticGuardrailPrompt
+        : sanitized;
   }
 
   static Future<void> clearConfig() async {
@@ -865,11 +952,11 @@ class LLMService {
     final nowStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
-    final resolvedPrompt = config.textPrompt
-        .replaceAll('{now}', nowStr)
-        .replaceAll('{input}', input);
-    final prompt =
-        '$resolvedPrompt\n\n${LLMConfig.itemSemanticGuardrailPrompt}';
+    final resolvedPrompt = _ensureRecognitionPrompt(
+      config.textPrompt,
+      fallback: LLMConfig.defaultTextPrompt,
+    ).replaceAll('{now}', nowStr).replaceAll('{input}', input);
+    final prompt = resolvedPrompt;
 
     final headers = {
       'Content-Type': 'application/json',
@@ -945,7 +1032,9 @@ class LLMService {
     // print('原始返回:\n$fullContent');
     // print('==================================');
 
-    final results = _extractJsonList(fullContent);
+    final results = RecognizedTodoAdapter.normalizeResults(
+      _extractJsonList(fullContent),
+    );
 
     // print('解析结果: $results');
     // print('==================================');
@@ -961,9 +1050,10 @@ class LLMService {
       imagePath,
       operation: 'vision_todo',
       onUsage: onUsage,
-      promptBuilder: (config, nowStr) =>
-          '${config.visionPrompt.replaceAll('{now}', nowStr)}\n\n'
-          '${LLMConfig.itemSemanticGuardrailPrompt}',
+      promptBuilder: (config, nowStr) => _ensureRecognitionPrompt(
+        config.visionPrompt,
+        fallback: LLMConfig.defaultVisionPrompt,
+      ).replaceAll('{now}', nowStr),
     );
   }
 
@@ -977,6 +1067,7 @@ class LLMService {
     return _parseImageWithPrompt(
       imagePath,
       operation: 'vision_finance',
+      normalizeTodoResults: false,
       onUsage: onUsage,
       promptBuilder: (_, nowStr) =>
           LLMConfig.defaultFinanceVisionPrompt.replaceAll('{now}', nowStr),
@@ -987,6 +1078,7 @@ class LLMService {
     String imagePath, {
     required String operation,
     required String Function(LLMConfig config, String nowStr) promptBuilder,
+    bool normalizeTodoResults = true,
     void Function(ChatUsageSummary usage)? onUsage,
   }) async {
     await _ensureAiInteractionAllowed();
@@ -1096,7 +1188,10 @@ class LLMService {
     final reasoning = (message['reasoning_content'] as String?) ?? '';
     final fullContent =
         reasoning.isNotEmpty ? '$reasoning\n\n$content' : content;
-    return _extractJsonList(fullContent);
+    final results = _extractJsonList(fullContent);
+    return normalizeTodoResults
+        ? RecognizedTodoAdapter.normalizeImageResults(results)
+        : results;
   }
 
   static Future<void> _ensureAiInteractionAllowed() async {

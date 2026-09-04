@@ -8,6 +8,7 @@ import '../storage_service.dart';
 import '../services/api_service.dart';
 import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
+import '../services/recognized_todo_adapter.dart';
 import '../services/ai_recognition_chat_bridge.dart';
 import '../services/database_helper.dart';
 import '../screens/home_settings_screen.dart';
@@ -620,10 +621,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     } catch (_) {}
 
     try {
-      final results = await LLMService.parseTodoWithLLM(
+      final rawResults = await LLMService.parseTodoWithLLM(
         input,
         onUsage: (usage) => recognitionUsage = usage,
       );
+      final results = RecognizedTodoAdapter.normalizeResults(rawResults);
 
       if (widget.onLLMResultsParsed != null && results.length > 1) {
         if (recognitionHandle != null) {
@@ -646,35 +648,46 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         return;
       }
 
-      final parsedResultsList = results.map((result) {
-        final startTime = result['startTime'] != null
-            ? DateTime.tryParse(result['startTime'])
-            : null;
-        final endTime = result['endTime'] != null
-            ? DateTime.tryParse(result['endTime'])
-            : null;
-        final isAllDay = result['isAllDay'] ?? false;
+      final parsedResultsList = results.map((rawResult) {
+        final result = RecognizedTodoAdapter.normalizeResult(rawResult);
+        final startTime = RecognizedTodoAdapter.parseDateTime(
+          result['startTime'] ??
+              result['start_time'] ??
+              result['createdDate'] ??
+              result['created_date'],
+        );
+        final endTime = RecognizedTodoAdapter.parseDateTime(
+          result['endTime'] ??
+              result['end_time'] ??
+              result['dueDate'] ??
+              result['due_date'],
+        );
+        final isAllDay = RecognizedTodoAdapter.parseBool(
+          result['isAllDay'] ?? result['is_all_day'],
+        );
         return ParsedTodoResult(
-          title: result['title'] ?? input,
-          remark: result['remark'],
+          title: result['title']?.toString() ?? input,
+          remark: (result['remark'] ?? result['notes'] ?? result['note'])
+              ?.toString(),
           location: result['location']?.toString(),
           isAllDay: isAllDay,
           startTime: startTime,
           endTime: endTime,
           timeSemantics: _parseTimeSemantics(
-            result['timeMode'],
+            result['timeMode'] ?? result['time_mode'],
             isAllDay: isAllDay,
             startTime: startTime,
             endTime: endTime,
           ),
-          recurrence: _parseRecurrenceType(result['recurrence']),
-          customIntervalDays: result['customIntervalDays'],
-          recurrenceEndDate: DateTime.tryParse(
-            (result['recurrenceEndDate'] ?? result['recurrence_end_date'] ?? '')
-                .toString(),
+          recurrence: _parseRecurrenceType(result['recurrence']?.toString()),
+          customIntervalDays:
+              result['customIntervalDays'] ?? result['custom_interval_days'],
+          recurrenceEndDate: RecognizedTodoAdapter.parseDateTime(
+            result['recurrenceEndDate'] ?? result['recurrence_end_date'],
           ),
-          reminderMinutes: result['reminderMinutes'],
-          itemKind: result['itemKind']?.toString(),
+          reminderMinutes:
+              result['reminderMinutes'] ?? result['reminder_minutes'],
+          itemKind: (result['itemKind'] ?? result['item_kind'])?.toString(),
           originalText: input,
         );
       }).toList();

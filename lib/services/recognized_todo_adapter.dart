@@ -1,7 +1,7 @@
 import '../models.dart';
 import 'item_semantics_service.dart';
 
-/// Normalizes vision results before they enter the current TodoItem protocol.
+/// Normalizes recognition results before they enter the current TodoItem protocol.
 ///
 /// Vision providers and saved custom prompts can still return the older
 /// startTime/endTime/isAllDay shape. The app's current todo protocol uses
@@ -12,18 +12,43 @@ import 'item_semantics_service.dart';
 class RecognizedTodoAdapter {
   RecognizedTodoAdapter._();
 
+  static List<Map<String, dynamic>> normalizeResults(
+    Iterable<Map<String, dynamic>> results, {
+    DateTime? now,
+  }) {
+    return results.map((result) => normalizeResult(result, now: now)).toList();
+  }
+
   static List<Map<String, dynamic>> normalizeImageResults(
     Iterable<Map<String, dynamic>> results, {
     DateTime? now,
   }) {
     return results
-        .map((result) => normalizeImageResult(result, now: now))
+        .map(
+          (result) => normalizeResult(
+            result,
+            now: now,
+            promoteSpecialTodo: true,
+          ),
+        )
         .toList();
   }
 
   static Map<String, dynamic> normalizeImageResult(
     Map<String, dynamic> source, {
     DateTime? now,
+  }) {
+    return normalizeResult(
+      source,
+      now: now,
+      promoteSpecialTodo: true,
+    );
+  }
+
+  static Map<String, dynamic> normalizeResult(
+    Map<String, dynamic> source, {
+    DateTime? now,
+    bool promoteSpecialTodo = false,
   }) {
     final result = Map<String, dynamic>.from(source);
     final effectiveNow = now ?? DateTime.now();
@@ -80,7 +105,8 @@ class RecognizedTodoAdapter {
     // meant Android had no date window in which to put the item on the island.
     // Scope this compatibility promotion to image-recognized special todos;
     // normal text-created pickup todos keep the new unscheduled semantics.
-    final shouldPromoteSpecial = isSpecial &&
+    final shouldPromoteSpecial = promoteSpecialTodo &&
+        isSpecial &&
         isTodo &&
         !isDateOnly &&
         !hasExplicitTiming &&
