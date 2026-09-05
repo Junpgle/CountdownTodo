@@ -43,55 +43,153 @@ abstract final class FinanceTextParser {
   static const Map<String, String> _expenseCategoryAliases = {
     '餐饮': '餐饮',
     '吃饭': '餐饮',
+    '吃东西': '餐饮',
+    '用餐': '餐饮',
     '早餐': '餐饮',
+    '早饭': '餐饮',
     '午餐': '餐饮',
+    '午饭': '餐饮',
     '晚餐': '餐饮',
+    '晚饭': '餐饮',
+    '夜宵': '餐饮',
     '咖啡': '餐饮',
+    '奶茶': '餐饮',
+    '饮料': '餐饮',
     '外卖': '餐饮',
+    '点餐': '餐饮',
     '餐厅': '餐饮',
+    '食堂': '餐饮',
     '买菜': '餐饮',
     '交通': '交通',
     '地铁': '交通',
     '公交': '交通',
     '打车': '交通',
+    '出租车': '交通',
+    '网约车': '交通',
     '滴滴': '交通',
+    '共享单车': '交通',
+    '单车': '交通',
+    '公交车': '交通',
+    '火车': '交通',
+    '高铁': '交通',
+    '飞机': '交通',
+    '机票': '交通',
     '加油': '交通',
+    '充电': '交通',
     '停车': '交通',
+    '过路费': '交通',
+    '高速费': '交通',
     '购物': '购物',
     '买东西': '购物',
+    '买了东西': '购物',
+    '购买商品': '购物',
+    '商场': '购物',
+    '超市': '购物',
+    '网购': '购物',
     '衣服': '购物',
+    '鞋子': '购物',
+    '鞋': '购物',
+    '化妆品': '购物',
+    '日用品': '购物',
+    '数码': '购物',
+    '手机': '购物',
+    '电脑': '购物',
+    '家具': '购物',
+    '家电': '购物',
     '淘宝': '购物',
     '京东': '购物',
+    '拼多多': '购物',
+    '房贷': '居住',
     '房租': '居住',
+    '租房': '居住',
     '水电': '居住',
+    '水费': '居住',
+    '电费': '居住',
     '燃气': '居住',
+    '物业': '居住',
     '居住': '居住',
+    '住房': '居住',
     '学习': '学习',
     '课程': '学习',
+    '学费': '学习',
     '教材': '学习',
+    '书籍': '学习',
+    '买书': '学习',
     '培训': '学习',
+    '考试': '学习',
+    '报名': '学习',
+    '学校': '学习',
     '娱乐': '娱乐',
     '电影': '娱乐',
+    '看电影': '娱乐',
     '游戏': '娱乐',
+    '游戏充值': '娱乐',
+    '电影票': '娱乐',
     '演唱会': '娱乐',
+    '音乐': '娱乐',
+    'ktv': '娱乐',
+    '旅游': '娱乐',
+    '旅行': '娱乐',
     '健康': '健康',
     '医院': '健康',
+    '看病': '健康',
+    '挂号': '健康',
     '买药': '健康',
+    '买了药': '健康',
+    '药品': '健康',
+    '药店': '健康',
+    '体检': '健康',
+    '看牙': '健康',
+    '牙医': '健康',
+    '健身': '健康',
+    '医疗': '健康',
     '社交': '社交',
     '礼物': '社交',
+    '送礼': '社交',
     '红包': '社交',
+    '请客': '社交',
+    '份子钱': '社交',
+    '人情': '社交',
     '订阅': '订阅',
     '会员': '订阅',
+    '续费': '订阅',
+    '月费': '订阅',
+    '年费': '订阅',
+    '网盘': '订阅',
+    'icloud': '订阅',
+    'ai服务': 'AI 服务',
+    '人工智能': 'AI 服务',
+    'chatgpt': 'AI 服务',
+    'openai': 'AI 服务',
+    'claude': 'AI 服务',
+    'gemini': 'AI 服务',
+    '模型': 'AI 服务',
+    'api': 'AI 服务',
+    '贷款利息': '贷款利息',
+    '借款利息': '贷款利息',
+    '还款利息': '贷款利息',
+    '利息': '贷款利息',
+    '其他': '其他',
   };
 
   static const Map<String, String> _incomeCategoryAliases = {
     '工资': '工资',
     '薪资': '工资',
+    '薪水': '工资',
     '发薪': '工资',
+    '月薪': '工资',
+    '兼职工资': '工资',
     '零花钱': '零花钱',
     '生活费': '零花钱',
+    '零用钱': '零花钱',
+    '家里给': '零花钱',
+    '父母给': '零花钱',
     '奖金': '奖金',
     '年终奖': '奖金',
+    '绩效': '奖金',
+    '奖励': '奖金',
+    '其他收入': '其他',
+    '其他': '其他',
   };
 
   static final RegExp _blockMarker = RegExp(
@@ -688,11 +786,27 @@ abstract final class FinanceTextParser {
     final aliases = type == FinanceTransactionType.income
         ? _incomeCategoryAliases
         : _expenseCategoryAliases;
-    final normalized = text.toLowerCase();
+    final normalized = text.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+    String? matchedCategory;
+    var matchedLength = 0;
     for (final entry in aliases.entries) {
-      if (normalized.contains(entry.key.toLowerCase())) return entry.value;
+      final alias = entry.key.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+      if (normalized.contains(alias) && alias.length > matchedLength) {
+        matchedCategory = entry.value;
+        matchedLength = alias.length;
+      }
     }
-    return null;
+    return matchedCategory;
+  }
+
+  /// Maps natural-language finance terms to the canonical local category name.
+  /// The entry screen uses this same mapping when resolving the result to a
+  /// real local category UUID, so aliases do not remain as display-only text.
+  static String? inferCategoryName(
+    String text,
+    FinanceTransactionType type,
+  ) {
+    return _inferSentenceCategory(text, type);
   }
 
   static String? _deriveSentenceMerchant(

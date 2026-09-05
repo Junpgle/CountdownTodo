@@ -227,5 +227,41 @@ void main() {
       expect(draft.categoryName, '交通');
       expect(draft.paymentMethodName, '现金');
     });
+
+    test('常见事项会按语义归入默认分类', () {
+      final cases = <String, String>{
+        '买了衣服20': '购物',
+        '买了药80': '健康',
+        '交房租1000': '居住',
+        '报名课程300': '学习',
+        '买了电影票50': '娱乐',
+        '去医院看病80': '健康',
+        '给朋友买礼物100': '社交',
+        '续费会员25': '订阅',
+        '充值ChatGPT20': 'AI 服务',
+        '支付贷款利息200': '贷款利息',
+      };
+
+      for (final entry in cases.entries) {
+        final draft = FinanceTextParser.parseOneSentence(entry.key, now: now);
+        expect(draft, isNotNull, reason: entry.key);
+        expect(draft!.categoryName, entry.value, reason: entry.key);
+      }
+    });
+
+    test('收入语义会归入工资、零花钱和奖金', () {
+      final cases = <String, String>{
+        '收到工资8000': '工资',
+        '收到生活费1000': '零花钱',
+        '收到年终奖5000': '奖金',
+      };
+
+      for (final entry in cases.entries) {
+        final draft = FinanceTextParser.parseOneSentence(entry.key, now: now);
+        expect(draft, isNotNull, reason: entry.key);
+        expect(draft!.type, FinanceTransactionType.income);
+        expect(draft.categoryName, entry.value, reason: entry.key);
+      }
+    });
   });
 }

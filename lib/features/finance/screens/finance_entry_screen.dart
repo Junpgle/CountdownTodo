@@ -229,9 +229,19 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     );
     if (!hasValidCategoryUuid && draft.categoryName != null) {
       final wanted = _normalizeOptionName(draft.categoryName!);
+      final semanticWanted = FinanceTextParser.inferCategoryName(
+        draft.categoryName!,
+        _type,
+      );
       _categoryUuid = _categories
           .where((item) => item.type == categoryType && !item.isDeleted)
-          .where((item) => _normalizeOptionName(item.name) == wanted)
+          .where((item) {
+            final itemName = _normalizeOptionName(item.name);
+            if (itemName == wanted) return true;
+            if (semanticWanted == null) return false;
+            return FinanceTextParser.inferCategoryName(item.name, _type) ==
+                semanticWanted;
+          })
           .map((item) => item.uuid)
           .firstOrNull;
     }
@@ -272,6 +282,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   String _normalizeOptionName(String value) {
     return value
         .replaceAll(RegExp(r'^[^\u4e00-\u9fffA-Za-z0-9]+'), '')
+        .replaceAll(RegExp(r'\s+'), '')
         .trim()
         .toLowerCase();
   }
