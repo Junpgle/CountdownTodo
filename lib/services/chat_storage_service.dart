@@ -130,11 +130,26 @@ class ChatStorageService {
       r'COMPLETE_TODO|DELETE_TODO|RESCHEDULE_TODO)\]',
       caseSensitive: false,
     );
-    final sanitized = prompt
-        .split('\n')
-        .where((line) => !legacyProtocol.hasMatch(line))
-        .join('\n')
-        .trim();
+    final legacyContainers = RegExp(
+      r'["\x27`]?(?:todos|todo_list|updates|items)["\x27`]?[ \t]*:',
+      caseSensitive: false,
+    );
+    final sanitized = prompt.split('\n').where((line) {
+      if (legacyProtocol.hasMatch(line)) return false;
+
+      final lower = line.toLowerCase();
+      final mentionsTodo = lower.contains('todo') || line.contains('待办');
+      final mentionsLegacyRange = lower.contains('starttime') ||
+          lower.contains('endtime') ||
+          lower.contains('start_time') ||
+          lower.contains('end_time') ||
+          line.contains('起止') ||
+          (line.contains('00:00') && line.contains('23:59'));
+      final mentionsLegacyTodoContainer =
+          legacyContainers.hasMatch(line) && mentionsTodo;
+      return !(mentionsTodo &&
+          (mentionsLegacyRange || mentionsLegacyTodoContainer));
+    }).join('\n').trim();
     return sanitized.isEmpty ? _defaultPrompt : sanitized;
   }
 

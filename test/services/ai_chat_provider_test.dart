@@ -221,6 +221,13 @@ void main() {
     final stored =
         jsonDecode(prefs.getString('llm_config')!) as Map<String, dynamic>;
     expect(stored['recognition_prompt_protocol_version'], 2);
+
+    final migratedChatPrompt = ChatStorageService.ensureCurrentPromptProtocol(
+      '自定义聊天规则\n普通待办返回 {"todos":[{"title":"事项"}]}\n'
+      '待办使用 start_time 和 end_time 表示时间段',
+    );
+    expect(migratedChatPrompt, isNot(contains('"todos"')));
+    expect(migratedChatPrompt, isNot(contains('start_time')));
   });
 
   test('keeps LLM API keys out of SharedPreferences', () async {
