@@ -7,6 +7,12 @@ import '../services/finance_repository.dart';
 import '../services/finance_storage.dart';
 import '../services/finance_text_parser.dart';
 
+class _FinanceOptionSelection<T> {
+  const _FinanceOptionSelection(this.value);
+
+  final T? value;
+}
+
 class FinanceEntryScreen extends StatefulWidget {
   final FinanceTransaction? transaction;
   final FinanceTransaction? originalTransaction;
@@ -577,50 +583,33 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     ColorScheme colorScheme, {
     required bool isWide,
   }) {
-    final category = DropdownButtonFormField<String>(
+    final selectedCategory = _visibleCategories
+        .where((item) => item.uuid == _categoryUuid)
+        .firstOrNull;
+    final selectedPaymentMethod = _visiblePaymentMethods
+        .where((item) => item.uuid == _paymentMethodUuid)
+        .firstOrNull;
+
+    final category = _buildFinancePickerField(
       key: ValueKey('finance-category-$_type-$_categoryUuid'),
-      initialValue: _categoryUuid,
-      isExpanded: true,
-      decoration: _fieldDecoration(colorScheme, labelText: '分类'),
-      items: [
-        for (final item in _visibleCategories)
-          DropdownMenuItem<String>(
-            value: item.uuid,
-            child: Text(
-              '${item.icon}  ${item.name}',
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-      ],
-      onChanged: _isSaving || _isBoundRefund
-          ? null
-          : (value) => setState(() => _categoryUuid = value),
+      colorScheme: colorScheme,
+      label: '分类',
+      placeholder: '请选择分类',
+      selectedName: selectedCategory?.name,
+      selectedIcon: selectedCategory?.icon,
+      fieldIcon: Icons.category_outlined,
+      onTap: _isSaving || _isBoundRefund ? null : _pickCategory,
     );
-    final payment = DropdownButtonFormField<String>(
+
+    final payment = _buildFinancePickerField(
       key: ValueKey('finance-payment-$_paymentMethodUuid'),
-      initialValue: _paymentMethodUuid,
-      isExpanded: true,
-      decoration: _fieldDecoration(
-        colorScheme,
-        labelText: '付款方式（可选）',
-      ),
-      items: [
-        const DropdownMenuItem<String>(
-          value: null,
-          child: Text('未指定'),
-        ),
-        for (final method in _visiblePaymentMethods)
-          DropdownMenuItem<String>(
-            value: method.uuid,
-            child: Text(
-              '${method.icon}  ${method.name}',
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-      ],
-      onChanged: _isSaving
-          ? null
-          : (value) => setState(() => _paymentMethodUuid = value),
+      colorScheme: colorScheme,
+      label: '付款方式（可选）',
+      placeholder: '未指定',
+      selectedName: selectedPaymentMethod?.name,
+      selectedIcon: selectedPaymentMethod?.icon,
+      fieldIcon: Icons.account_balance_wallet_outlined,
+      onTap: _isSaving ? null : _pickPaymentMethod,
     );
     if (!isWide) {
       return Column(
@@ -639,6 +628,377 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         Expanded(child: payment),
       ],
     );
+  }
+
+  Widget _buildFinancePickerField({
+    required Key key,
+    required ColorScheme colorScheme,
+    required String label,
+    required String placeholder,
+    required String? selectedName,
+    required String? selectedIcon,
+    required IconData fieldIcon,
+    required VoidCallback? onTap,
+  }) {
+    final hasSelection = selectedName != null && selectedName.isNotEmpty;
+    final displayName = hasSelection ? selectedName : placeholder;
+    final valueColor = hasSelection
+        ? colorScheme.onSurface
+        : colorScheme.onSurfaceVariant.withValues(alpha: 0.82);
+
+    return Material(
+      key: key,
+      color: colorScheme.surface.withValues(alpha: 0),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.82),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+          child: Row(
+            children: [
+              Icon(
+                fieldIcon,
+                size: 20,
+                color: hasSelection
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        if (hasSelection && selectedIcon != null) ...[
+                          Text(selectedIcon,
+                              style: const TextStyle(fontSize: 18)),
+                          const SizedBox(width: 7),
+                        ],
+                        Flexible(
+                          child: Text(
+                            displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: valueColor,
+                              fontSize: 15,
+                              fontWeight: hasSelection
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickCategory() async {
+    final selected = await _showFinanceOptionPicker<FinanceCategory>(
+      title: '选择分类',
+      subtitle: '选择这笔账单所属的本地分类',
+      headerIcon: Icons.category_outlined,
+      options: _visibleCategories,
+      selectedUuid: _categoryUuid,
+      optionUuid: (item) => item.uuid,
+      optionBuilder: (context, item, isSelected, onTap) =>
+          _buildFinanceOptionTile(
+        context,
+        title: item.name,
+        iconText: item.icon,
+        accent: _optionAccent(item.colorValue, Theme.of(context).colorScheme),
+        isSelected: isSelected,
+        onTap: onTap,
+      ),
+    );
+    if (!mounted || selected?.value == null) return;
+    setState(() => _categoryUuid = selected!.value!.uuid);
+  }
+
+  Future<void> _pickPaymentMethod() async {
+    final selected = await _showFinanceOptionPicker<FinancePaymentMethod>(
+      title: '选择付款方式',
+      subtitle: '记录这笔账单使用的支付渠道',
+      headerIcon: Icons.account_balance_wallet_outlined,
+      options: _visiblePaymentMethods,
+      selectedUuid: _paymentMethodUuid,
+      optionUuid: (item) => item.uuid,
+      includeUnset: true,
+      optionBuilder: (context, item, isSelected, onTap) =>
+          _buildFinanceOptionTile(
+        context,
+        title: item.name,
+        iconText: item.icon,
+        accent: _optionAccent(item.colorValue, Theme.of(context).colorScheme),
+        isSelected: isSelected,
+        onTap: onTap,
+      ),
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _paymentMethodUuid = selected.value?.uuid);
+  }
+
+  Future<_FinanceOptionSelection<T>?> _showFinanceOptionPicker<T>({
+    required String title,
+    required String subtitle,
+    required IconData headerIcon,
+    required List<T> options,
+    required String? selectedUuid,
+    required String Function(T option) optionUuid,
+    required Widget Function(
+      BuildContext context,
+      T option,
+      bool isSelected,
+      VoidCallback onTap,
+    ) optionBuilder,
+    bool includeUnset = false,
+  }) {
+    return showModalBottomSheet<_FinanceOptionSelection<T>>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.76,
+      ),
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        final totalCount = options.length + (includeUnset ? 1 : 0);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 2, 20, 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      headerIcon,
+                      color: colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            color: colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '$totalCount 项',
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                itemCount: totalCount,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  if (includeUnset && index == 0) {
+                    return _buildFinanceOptionTile(
+                      context,
+                      title: '未指定',
+                      subtitle: '暂不记录付款方式',
+                      icon: Icons.remove_rounded,
+                      accent: colorScheme.outline,
+                      isSelected: selectedUuid == null,
+                      onTap: () => Navigator.of(sheetContext).pop(
+                        _FinanceOptionSelection<T>(null),
+                      ),
+                    );
+                  }
+                  final option = options[index - (includeUnset ? 1 : 0)];
+                  return optionBuilder(
+                    context,
+                    option,
+                    optionUuid(option) == selectedUuid,
+                    () => Navigator.of(sheetContext).pop(
+                      _FinanceOptionSelection<T>(option),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildFinanceOptionTile(
+    BuildContext context, {
+    required String title,
+    String? subtitle,
+    String? iconText,
+    IconData? icon,
+    required Color accent,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final iconBackground =
+        isSelected ? colorScheme.primary : accent.withValues(alpha: 0.16);
+    final iconColor = isSelected ? colorScheme.onPrimary : accent;
+
+    return Material(
+      color: isSelected
+          ? colorScheme.primaryContainer.withValues(alpha: 0.58)
+          : colorScheme.surfaceContainerLow.withValues(alpha: 0.72),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+          color: isSelected
+              ? colorScheme.primary.withValues(alpha: 0.55)
+              : colorScheme.outlineVariant.withValues(alpha: 0.48),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: iconBackground,
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: iconText == null
+                    ? Icon(icon, color: iconColor, size: 20)
+                    : Text(iconText, style: const TextStyle(fontSize: 20)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
+                        fontSize: 15,
+                        fontWeight:
+                            isSelected ? FontWeight.w700 : FontWeight.w600,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 160),
+                child: isSelected
+                    ? Icon(
+                        Icons.check_circle_rounded,
+                        key: const ValueKey('selected'),
+                        color: colorScheme.primary,
+                      )
+                    : Icon(
+                        Icons.chevron_right_rounded,
+                        key: const ValueKey('unselected'),
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _optionAccent(int? colorValue, ColorScheme colorScheme) {
+    return colorValue == null ? colorScheme.primary : Color(colorValue);
   }
 
   Widget _buildDateField(ColorScheme colorScheme) {
