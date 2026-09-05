@@ -242,11 +242,15 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   bool _shouldKeepUnresolvedDraftCategory() {
     final draft = widget.initialDraft;
     if (draft == null || widget.transaction != null) return false;
+    final isRecognitionDraft = draft.source == FinanceEntrySource.ai ||
+        draft.source == FinanceEntrySource.import;
     final requestedUuid = draft.categoryUuid?.trim();
     final requestedName = draft.categoryName?.trim();
     if ((requestedUuid == null || requestedUuid.isEmpty) &&
         (requestedName == null || requestedName.isEmpty)) {
-      return false;
+      // Recognition/import drafts must never silently become the first local
+      // category (usually 餐饮) just because the model omitted a category.
+      return isRecognitionDraft;
     }
     final categoryType = financeCategoryTypeForTransaction(_type);
     final resolved = _categoryUuid != null &&
