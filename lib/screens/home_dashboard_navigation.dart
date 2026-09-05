@@ -76,27 +76,33 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
   Future<void> _openRecognizedFinanceDrafts(
     List<FinanceEntryDraft> drafts,
   ) async {
-    if (drafts.isEmpty) return;
-    var savedCount = 0;
-    for (final draft in drafts) {
-      if (!mounted) return;
-      final saved = await Navigator.of(context).push<FinanceTransaction>(
-        PageTransitions.slideHorizontal(
-          FinanceEntryScreen(initialDraft: draft),
-        ),
-      );
-      if (saved != null) {
-        draft.isAdded = true;
-        savedCount++;
-      } else {
-        draft.isIgnored = true;
+    if (drafts.isEmpty || _isOpeningFinanceDrafts) return;
+    _isOpeningFinanceDrafts = true;
+    try {
+      var savedCount = 0;
+      for (final draft in drafts) {
+        if (!mounted) return;
+        if (draft.isAdded || draft.isIgnored) continue;
+        final saved = await Navigator.of(context).push<FinanceTransaction>(
+          PageTransitions.slideHorizontal(
+            FinanceEntryScreen(initialDraft: draft),
+          ),
+        );
+        if (saved != null) {
+          draft.isAdded = true;
+          savedCount++;
+        } else {
+          draft.isIgnored = true;
+        }
       }
-    }
-    await ExternalShareHandler.clearPendingFinanceRecognized();
-    if (mounted && savedCount > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已保存 $savedCount 笔识别账单')),
-      );
+      await ExternalShareHandler.clearPendingFinanceRecognized();
+      if (mounted && savedCount > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已保存 $savedCount 笔识别账单')),
+        );
+      }
+    } finally {
+      _isOpeningFinanceDrafts = false;
     }
   }
 
@@ -242,13 +248,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
               .where((draft) => !draft.isAdded && !draft.isIgnored)
               .toList()
           : const <FinanceEntryDraft>[];
-      if (financeDrafts.isNotEmpty && !_isOpeningPendingFinance) {
-        _isOpeningPendingFinance = true;
-        try {
-          await _openRecognizedFinanceDrafts(financeDrafts);
-        } finally {
-          _isOpeningPendingFinance = false;
-        }
+      if (financeDrafts.isNotEmpty) {
+        await _openRecognizedFinanceDrafts(financeDrafts);
         pendingData = await ExternalShareHandler.getPendingTodoConfirm();
         if (!mounted) return;
         if (pendingData == null) return;

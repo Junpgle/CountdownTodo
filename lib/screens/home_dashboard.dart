@@ -268,7 +268,9 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
 
   // 待确认的事项数据（从图片识别来）
   Map<String, dynamic>? _pendingTodoConfirm;
-  bool _isOpeningPendingFinance = false;
+  // 图片识别完成后，聊天桥接刷新和外部分享回调可能同时请求打开
+  // 同一批记账草案；所有入口必须共用这把导航锁。
+  bool _isOpeningFinanceDrafts = false;
 
   // ── 跨端专注感知 ──
   CrossDevicePomodoroState? _remotePomodoro; // 其他设备正在进行的专注
