@@ -201,5 +201,31 @@ void main() {
         isNull,
       );
     });
+
+    test('没有逗号和元也能从自然语言中识别金额及字段', () {
+      final draft = FinanceTextParser.parseOneSentence(
+        '今天午餐28.5微信支付分类餐饮',
+        now: now,
+      );
+
+      expect(draft, isNotNull);
+      expect(draft!.amountMinor, 2850);
+      expect(draft.merchant, '午餐');
+      expect(draft.paymentMethodName, '微信');
+      expect(draft.categoryName, '餐饮');
+    });
+
+    test('识别无单位金额时不会把日期数字当成金额', () {
+      final draft = FinanceTextParser.parseOneSentence(
+        '8月29日打车12现金',
+        now: now,
+      );
+
+      expect(draft, isNotNull);
+      expect(draft!.amountMinor, 1200);
+      expect(draft.transactionDate, '2026-08-29');
+      expect(draft.categoryName, '交通');
+      expect(draft.paymentMethodName, '现金');
+    });
   });
 }

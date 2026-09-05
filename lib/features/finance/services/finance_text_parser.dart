@@ -142,13 +142,15 @@ abstract final class FinanceTextParser {
 
     final current = now ?? DateTime.now();
     final type = _parseType(text);
-    final category = _extractSentenceValue(
-          text,
-          RegExp(
-            r'(?:分类|类别|归类为?|记到)\s*[:=]?\s*([^,，。；;]+)',
-          ),
-        ) ??
-        _inferSentenceCategory(text, type);
+    final explicitCategory = _extractSentenceValue(
+      text,
+      RegExp(
+        r'(?:分类|类别|归类为?|记到)\s*[:=]?\s*([^,，。；;]+)',
+      ),
+    );
+    final category = explicitCategory == null
+        ? _inferSentenceCategory(text, type)
+        : _inferSentenceCategory(explicitCategory, type) ?? explicitCategory;
     final payment = _normalizeSentencePayment(
       _extractSentenceValue(
         text,
@@ -578,7 +580,51 @@ abstract final class FinanceTextParser {
       final match = pattern.firstMatch(text);
       if (match != null) return match;
     }
-    return null;
+
+    // A natural sentence often omits both the comma and the currency unit,
+    // for example "午餐28.5微信支付". Pick a likely amount from the remaining
+    // numeric tokens, while excluding dates and clock-like values.
+    final fallback = RegExp(
+      r'(?<![\d.])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(?![\d.])',
+    );
+    RegExpMatch? best;
+    var bestScore = -1;
+    for (final match in fallback.allMatches(text)) {
+      if (!_isLikelySentenceAmount(text, match)) continue;
+      final before = text.substring(0, match.start);
+      final recentBefore =
+          before.length > 10 ? before.substring(before.length - 10) : before;
+      var score = match.group(1)!.contains('.') ? 2 : 0;
+      if (RegExp(
+        r'(?:花(?:了|费)?|消费|支付|付款|金额|支出|收入|收到|退款|共|合计|实付)\s*[:=]?\s*$',
+      ).hasMatch(recentBefore)) {
+        score += 10;
+      }
+      // In an unlabelled sentence the last valid number is the most likely
+      // amount (e.g. "买了2个苹果 午餐28").
+      if (best == null || score >= bestScore) {
+        best = match;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  static bool _isLikelySentenceAmount(String text, RegExpMatch match) {
+    final before = text.substring(0, match.start);
+    final after = text.substring(match.end);
+    if (RegExp(r'^\s*(?:年|月|日|号|点|时|分)').hasMatch(after)) {
+      return false;
+    }
+    if (RegExp(r'(?:年|月|日|号)\s*$').hasMatch(before)) return false;
+    if (RegExp(r'[-/.]\s*$').hasMatch(before) ||
+        RegExp(r'^\s*[-/.]').hasMatch(after)) {
+      return false;
+    }
+    if (RegExp(r':\s*$').hasMatch(before) || RegExp(r'^\s*:').hasMatch(after)) {
+      return false;
+    }
+    return true;
   }
 
   static String _normalizeOneSentence(String input) {
@@ -592,17 +638,37 @@ abstract final class FinanceTextParser {
   }
 
   static String? _extractSentenceValue(String text, RegExp pattern) {
-    final value = pattern.firstMatch(text)?.group(1)?.trim();
-    return value == null || value.isEmpty ? null : value;
+    final value = pattern.firstMatch(text)?.group(1);
+    if (value == null) return null;
+    var normalized = value.trim();
+    normalized = normalized
+        .replaceFirst(RegExp(r'^[,，。；;、\s]+'), '')
+        .replaceFirst(RegExp(r'[,，。；;、\s]+$'), '')
+        .trim();
+    final nextField = RegExp(
+      r'(?:^|\s)(?:分类|类别|归类为?|记到|付款方式|支付方式|付款|支付|备注|说明|商家|商户|店铺|项目|名称)\s*[:=]?',
+    ).firstMatch(normalized);
+    if (nextField != null) {
+      if (nextField.start == 0) return null;
+      normalized = normalized.substring(0, nextField.start).trim();
+    }
+    return normalized.isEmpty ? null : normalized;
   }
 
   static String? _normalizeSentencePayment(String? explicit, String text) {
     final explicitValue = _knownSentencePayment(explicit);
     if (explicitValue != null) return explicitValue;
+    final paymentInText = _knownSentencePayment(text);
     if (explicit != null && explicit.trim().isNotEmpty) {
+      if (paymentInText != null &&
+          RegExp(
+            r'^(?:分类|类别|归类为?|记到|备注|说明|商家|商户|店铺|项目|名称)\s*[:=]?',
+          ).hasMatch(explicit.trim())) {
+        return paymentInText;
+      }
       return explicit.trim();
     }
-    return _knownSentencePayment(text);
+    return paymentInText;
   }
 
   static String? _knownSentencePayment(String? value) {

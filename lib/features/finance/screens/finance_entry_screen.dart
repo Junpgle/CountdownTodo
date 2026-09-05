@@ -1272,7 +1272,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                       const SizedBox(height: 20),
                       TextFormField(
                         controller: _amountController,
-                        autofocus: !_isEditing,
+                        autofocus: false,
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true),
                         inputFormatters: [
@@ -1507,7 +1507,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
               ],
             ),
             Text(
-              '输入一句话，自动填入金额、分类、商家和付款方式',
+              '输入一句话，自动填入金额、分类、商家和付款方式；逗号和“元”可以省略',
               style: TextStyle(
                 color: colorScheme.onSurfaceVariant,
                 fontSize: 12,
@@ -1538,6 +1538,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
               builder: (context, constraints) {
                 final input = TextField(
                   controller: _oneSentenceController,
+                  autofocus: true,
                   textInputAction: TextInputAction.done,
                   maxLength: 200,
                   onSubmitted: (_) => _applyOneSentence(),
