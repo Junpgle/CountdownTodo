@@ -20,6 +20,7 @@ import 'notification_service.dart';
 import 'recognized_todo_adapter.dart';
 import 'todo_recognition_state.dart';
 import 'ai_recognition_chat_bridge.dart';
+import '../utils/persistent_image_storage.dart';
 
 class ExternalShareHandler {
   static StreamSubscription? _intentDataStreamSubscription;
@@ -178,7 +179,7 @@ class ExternalShareHandler {
       await Future.delayed(const Duration(milliseconds: 400));
 
       String filePath = media.path;
-      File file = File(filePath);
+      File file = await _waitForReadableFile(filePath);
       String ext = filePath.split('.').last.toLowerCase();
 
       // 生成文件唯一标识。getInitialMedia 和 getMediaStream 可能同时返回
@@ -227,10 +228,19 @@ class ExternalShareHandler {
           return;
         }
 
+        // 分享插件返回的通常是临时缓存文件。把它复制到应用自己的持久
+        // 目录后再进入识别/聊天镜像，避免分享扩展退出或系统清理缓存时，
+        // 首轮读取失败、只能靠聊天框重新选图才成功。
+        filePath = await _materializeSharedImage(filePath);
+        file = File(filePath);
+
         // 压缩图片
         String compressedPath = await _compressImage(filePath);
 
         final compressedFile = File(compressedPath);
+        if (!await compressedFile.exists()) {
+          throw Exception('图片压缩结果不可读取');
+        }
         final compressedSize = await compressedFile.length();
         statusNotifier.value =
             "图片已压缩 (${(compressedSize / 1024).toStringAsFixed(0)}KB)\n正在调用大模型分析...";
@@ -683,6 +693,53 @@ class ExternalShareHandler {
     }
 
     return result.path;
+  }
+
+  /// 等待分享扩展完成文件复制。部分来源会先发送 intent，再异步写入
+  /// 缓存文件；直接 File.length/readAsBytes 会把这类正常分享误判成失败。
+  static Future<File> _waitForReadableFile(String path) async {
+    final file = File(path);
+    int? previousSize;
+    var stableReads = 0;
+    Object? lastError;
+    for (var attempt = 0; attempt < 12; attempt++) {
+      try {
+        if (await file.exists()) {
+          final size = await file.length();
+          if (size > 0) {
+            if (size == previousSize) {
+              stableReads++;
+            } else {
+              previousSize = size;
+              stableReads = 1;
+            }
+            if (stableReads >= 2) return file;
+          }
+        }
+      } catch (error) {
+        lastError = error;
+      }
+      await Future.delayed(
+        Duration(milliseconds: attempt == 0 ? 100 : 250),
+      );
+    }
+    final detail = lastError == null ? '' : ': $lastError';
+    throw Exception('分享图片暂不可读取$detail');
+  }
+
+  static Future<String> _materializeSharedImage(String sourcePath) async {
+    try {
+      final persistedPath = await persistImagePath(
+        sourcePath,
+        'analysis_images',
+      );
+      if (persistedPath != null && persistedPath.isNotEmpty) {
+        return persistedPath;
+      }
+    } catch (_) {
+      // 复制失败时仍尝试使用插件路径；当前进程内它通常仍然可读。
+    }
+    return sourcePath;
   }
 
   static Future<String> _safeReadFile(File file) async {
