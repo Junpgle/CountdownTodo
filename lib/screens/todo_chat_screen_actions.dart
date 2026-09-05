@@ -2441,9 +2441,6 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
     if (msg.smartContext.trim().isNotEmpty) {
       sections.add('[SMART_CONTEXT]\n${msg.smartContext.trim()}');
-    } else {
-      sections.add(
-          '[SMART_CONTEXT]\n本次回复未触发关键词注入额外上下文（日程/课程/专注记录/冲突/团队）。\n待办、日程等对象会在相关意图出现时按需注入。');
     }
 
     return sections.join('\n\n');
