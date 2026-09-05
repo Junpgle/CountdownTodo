@@ -639,8 +639,9 @@ class ExternalShareHandler {
       [...results.first, ...results.last],
       source: FinanceEntrySource.import,
     );
-    if (todoResults.isEmpty && financeDrafts.isEmpty && errors.isNotEmpty) {
-      throw Exception('图片识别失败：${errors.first}');
+    if (todoResults.isEmpty && financeDrafts.isEmpty) {
+      final detail = errors.isNotEmpty ? ': ${errors.first}' : '';
+      throw Exception('图片识别未返回可识别内容$detail');
     }
     return _ImageRecognitionResult(
       todoResults: todoResults,

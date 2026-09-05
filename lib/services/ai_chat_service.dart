@@ -264,6 +264,43 @@ class AiChatService {
     ];
   }
 
+  /// Builds the one streaming request shape used by text chat and image
+  /// recognition. Keeping provider branching here prevents secondary callers
+  /// from silently falling back to the old non-streaming payload.
+  static Map<String, dynamic> buildStreamingRequestBody({
+    required String apiUrl,
+    required String model,
+    required List<Map<String, dynamic>> messages,
+    required bool deepThinking,
+    String provider = 'zhipu',
+    double temperature = 0.7,
+    int maxTokens = 2000,
+  }) {
+    final effective = effectiveProvider(provider, apiUrl);
+    final bool isNvidiaNim = effective == 'nvidia_nim';
+    final bool isMimo = usesMimoChatProtocol(provider, apiUrl);
+    final body = <String, dynamic>{
+      'model': model,
+      'messages': isNvidiaNim ? normalizeMessagesForNim(messages) : messages,
+      'temperature': temperature,
+      'stream': true,
+    };
+
+    if (isNvidiaNim) {
+      body['max_tokens'] = maxTokens;
+      if (model.startsWith('deepseek-ai/deepseek-v4')) {
+        body['reasoning_effort'] = deepThinking ? 'high' : 'none';
+      }
+    } else {
+      body[isMimo ? 'max_completion_tokens' : 'max_tokens'] = maxTokens;
+      body['stream_options'] = {'include_usage': true};
+      body['thinking'] = {
+        'type': deepThinking ? 'enabled' : 'disabled',
+      };
+    }
+    return body;
+  }
+
   static Stream<AiChatStreamChunk> streamChat({
     required String apiUrl,
     required String apiKey,
@@ -302,28 +339,15 @@ class AiChatService {
       request.headers.addAll(_headers(apiKey));
 
       final effective = effectiveProvider(provider, apiUrl);
-      final bool isNvidiaNim = effective == 'nvidia_nim';
-      final bool isMimo = usesMimoChatProtocol(provider, apiUrl);
-
-      final body = <String, dynamic>{
-        'model': model,
-        'messages': isNvidiaNim ? normalizeMessagesForNim(messages) : messages,
-        'temperature': temperature,
-        'stream': true,
-      };
-
-      if (isNvidiaNim) {
-        body['max_tokens'] = maxTokens;
-        if (model.startsWith('deepseek-ai/deepseek-v4')) {
-          body['reasoning_effort'] = deepThinking ? 'high' : 'none';
-        }
-      } else {
-        body[isMimo ? 'max_completion_tokens' : 'max_tokens'] = maxTokens;
-        body['stream_options'] = {'include_usage': true};
-        body['thinking'] = {
-          'type': deepThinking ? 'enabled' : 'disabled',
-        };
-      }
+      final body = buildStreamingRequestBody(
+        apiUrl: apiUrl,
+        model: model,
+        messages: messages,
+        deepThinking: deepThinking,
+        provider: provider,
+        temperature: temperature,
+        maxTokens: maxTokens,
+      );
 
       request.body = jsonEncode(body);
 
@@ -445,12 +469,15 @@ class AiChatService {
         );
       }
       if (!cancelled && !usageRecorded) {
-        await _recordUsage(
+        final usageSummary = await _recordUsage(
           provider: effective,
           model: model,
           operation: usageOperation,
           imageCount: imageCount,
         );
+        if (usageSummary != null) {
+          yield AiChatStreamChunk(usageSummary: usageSummary);
+        }
       }
     } finally {
       client.close();

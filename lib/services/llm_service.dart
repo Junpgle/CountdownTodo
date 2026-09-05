@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../features/finance/services/finance_ai_context_service.dart';
 import '../utils/image_input_reader.dart';
 import 'ai_chat_service.dart';
+import 'ai_multimodal_message_builder.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
 import 'secure_storage_service.dart';
@@ -1069,15 +1072,20 @@ class LLMService {
       operation: 'vision_finance',
       normalizeTodoResults: false,
       onUsage: onUsage,
-      promptBuilder: (_, nowStr) =>
-          LLMConfig.defaultFinanceVisionPrompt.replaceAll('{now}', nowStr),
+      promptBuilder: (_, nowStr) async {
+        final prompt =
+            LLMConfig.defaultFinanceVisionPrompt.replaceAll('{now}', nowStr);
+        final catalog = await FinanceAiContextService.buildCatalogContext();
+        return catalog.isEmpty ? prompt : '$prompt\n\n$catalog';
+      },
     );
   }
 
   static Future<List<Map<String, dynamic>>> _parseImageWithPrompt(
     String imagePath, {
     required String operation,
-    required String Function(LLMConfig config, String nowStr) promptBuilder,
+    required FutureOr<String> Function(LLMConfig config, String nowStr)
+        promptBuilder,
     bool normalizeTodoResults = true,
     void Function(ChatUsageSummary usage)? onUsage,
   }) async {
@@ -1093,101 +1101,72 @@ class LLMService {
       throw Exception('图片太大，请使用小于10MB的图片');
     }
 
-    final base64Image = await Future.microtask(
-      () => base64Encode(imageInput.bytes),
-    );
     final now = DateTime.now();
     final nowStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    final prompt = promptBuilder(config, nowStr);
+    final prompt = await promptBuilder(config, nowStr);
 
-    final configuredVisionProvider = config.visionProvider?.trim();
-    final visionProvider = configuredVisionProvider?.isNotEmpty == true
+    final configuredVisionProvider = config.visionProvider?.trim() ?? '';
+    final visionProvider = configuredVisionProvider.isNotEmpty
         ? configuredVisionProvider
-        : (config.provider == AiChatService.mimoTokenPlanProvider ||
-                AiChatService.inferProviderFromApiUrl(config.apiUrl) ==
-                    AiChatService.mimoTokenPlanProvider
-            ? AiChatService.mimoTokenPlanProvider
-            : null);
+        : config.provider;
     final endpoint = await resolveVisionEndpoint(
       config.visionModel,
       provider: visionProvider,
     );
-    final visionUrl = endpoint.url.isNotEmpty
-        ? endpoint.url
-        : AiChatService.resolveChatUrl(config.provider, config.apiUrl);
+    final visionUrl = endpoint.url.isNotEmpty ? endpoint.url : config.apiUrl;
     final visionKey = endpoint.key.isNotEmpty ? endpoint.key : config.apiKey;
-    final headers = {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $visionKey',
-    };
-    final imageUrl = 'data:${imageInput.mimeType};base64,$base64Image';
-    final body = jsonEncode({
-      'model': config.visionModel,
-      'messages': [
-        {
-          'role': 'user',
-          'content': [
-            {'type': 'text', 'text': prompt},
-            {
-              'type': 'image_url',
-              'image_url': {'url': imageUrl},
-            },
-          ],
-        },
-      ],
-      'temperature': 0.1,
-    });
-
-    final response = await http
-        .post(
-          Uri.parse(visionUrl),
-          headers: headers,
-          body: body,
-        )
-        .timeout(const Duration(seconds: 90));
-    if (response.statusCode != 200) {
-      throw Exception('API调用失败: ${response.statusCode}');
+    final capabilities = await getMultimodalCapabilities(
+      config.visionModel,
+      provider: visionProvider,
+    );
+    if (!capabilities.contains('image')) {
+      throw Exception('当前视觉模型不支持图片输入');
     }
 
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final usage = AiTokenUsage.fromJson(data['usage']);
-    try {
-      final usageProvider = AiChatService.effectiveProvider(
-        visionProvider ?? config.provider,
-        visionUrl,
-      );
-      final record = await AiUsageCostService.recordUsage(
-        provider: usageProvider.isEmpty ? 'custom' : usageProvider,
-        model: config.visionModel,
-        operation: operation,
-        promptTokens: usage?.promptTokens ?? 0,
-        completionTokens: usage?.completionTokens ?? 0,
-        totalTokens: usage?.totalTokens ?? 0,
-        cachedPromptTokens: usage?.cachedPromptTokens ?? 0,
-        imageTokens: usage?.imageTokens ?? 0,
-        audioTokens: usage?.audioTokens ?? 0,
-        videoTokens: usage?.videoTokens ?? 0,
-        reasoningTokens: usage?.reasoningTokens ?? 0,
-        audioSeconds: usage?.audioSeconds ?? 0,
-        imageCount: 1,
-        usageAvailable: usage != null,
-      );
-      if (record != null) {
-        onUsage?.call(AiChatService.usageSummaryFromRecord(record));
-      }
-    } catch (_) {
-      // Cost tracking must not invalidate a successful image recognition.
+    final attachment = ChatImageAttachment(
+      path: imagePath,
+      name: imageInput.displayName,
+      mimeType: imageInput.mimeType,
+      sizeBytes: fileSize,
+      kind: ChatAttachmentKind.image,
+    );
+    final messages = <Map<String, dynamic>>[
+      {
+        'role': 'user',
+        'content': AiMultimodalMessageBuilder.buildContent(
+          text: prompt,
+          attachment: attachment,
+          bytes: imageInput.bytes,
+          provider: visionProvider,
+        ),
+      },
+    ];
+
+    var content = '';
+    var reasoningContent = '';
+    ChatUsageSummary? usageSummary;
+    await for (final chunk in AiChatService.streamChat(
+      apiUrl: visionUrl,
+      apiKey: visionKey,
+      model: config.visionModel,
+      messages: messages,
+      deepThinking: false,
+      provider: visionProvider,
+      temperature: 0.1,
+      timeout: const Duration(seconds: 90),
+      usageOperation: operation,
+      imageCount: 1,
+    )) {
+      usageSummary = chunk.usageSummary ?? usageSummary;
+      content += chunk.content;
+      reasoningContent += chunk.reasoningContent;
     }
-    final choices = data['choices'] as List?;
-    if (choices == null || choices.isEmpty) {
-      throw Exception('API返回数据格式异常');
+    if (usageSummary != null) {
+      onUsage?.call(usageSummary);
     }
-    final message = choices[0]['message'] as Map<String, dynamic>;
-    final content = (message['content'] as String?) ?? '';
-    final reasoning = (message['reasoning_content'] as String?) ?? '';
     final fullContent =
-        reasoning.isNotEmpty ? '$reasoning\n\n$content' : content;
+        reasoningContent.isNotEmpty ? '$reasoningContent\n\n$content' : content;
     final results = _extractJsonList(fullContent);
     return normalizeTodoResults
         ? RecognizedTodoAdapter.normalizeImageResults(results)

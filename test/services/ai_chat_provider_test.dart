@@ -148,6 +148,50 @@ void main() {
     expect(usage!.cachedPromptTokens, 600);
   });
 
+  test('图片识别和聊天共用流式多模态请求协议', () {
+    final content = [
+      {'type': 'text', 'text': '识别账单'},
+      {
+        'type': 'image_url',
+        'image_url': {'url': 'data:image/png;base64,AQID'},
+      },
+    ];
+    final body = AiChatService.buildStreamingRequestBody(
+      apiUrl: 'https://api.example.com/v1/chat/completions',
+      model: 'vision-model',
+      provider: 'custom',
+      deepThinking: false,
+      temperature: 0.1,
+      messages: [
+        {'role': 'user', 'content': content},
+      ],
+    );
+
+    expect(body['stream'], isTrue);
+    expect(body['stream_options'], {'include_usage': true});
+    expect(body['thinking'], {'type': 'disabled'});
+    expect(body['max_tokens'], 2000);
+    expect(body['messages'], [
+      {'role': 'user', 'content': content},
+    ]);
+  });
+
+  test('provider协议字段仍由统一请求构造器决定', () {
+    final body = AiChatService.buildStreamingRequestBody(
+      apiUrl: AiChatService.mimoApiBaseUrl,
+      model: 'mimo-v2.5',
+      provider: 'mimo',
+      deepThinking: false,
+      messages: const [
+        {'role': 'user', 'content': '看看图片'},
+      ],
+    );
+
+    expect(body['max_completion_tokens'], 2000);
+    expect(body.containsKey('max_tokens'), isFalse);
+    expect(body['stream'], isTrue);
+  });
+
   test('migrates stored recognition prompts away from legacy todo fields',
       () async {
     const legacyTextPrompt =
