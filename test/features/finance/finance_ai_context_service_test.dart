@@ -32,6 +32,10 @@ void main() {
       isFalse,
     );
     expect(
+      FinanceAiContextService.shouldInjectCatalogFor('记录一下今天的学习时长'),
+      isFalse,
+    );
+    expect(
       FinanceAiContextService.shouldInjectCatalogFor('把这个待办分类到工作'),
       isFalse,
     );

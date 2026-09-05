@@ -48,7 +48,6 @@ abstract final class FinanceAiContextService {
     '买了',
     '购买',
     '记一笔',
-    '记录',
   ];
 
   static const _queryWords = [
