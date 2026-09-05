@@ -197,7 +197,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         _isLoading = false;
       });
       _resolveDraftSelections();
-      _normalizeSelections();
+      _normalizeSelections(
+        allowDefaultCategory: !_shouldKeepUnresolvedDraftCategory(),
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -212,12 +214,17 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   }
 
   void _resolveSelectionsFromDraft(FinanceEntryDraft draft) {
-    if (_categoryUuid == null && draft.categoryName != null) {
+    final categoryType = financeCategoryTypeForTransaction(_type);
+    final hasValidCategoryUuid = _categories.any(
+      (item) =>
+          item.uuid == _categoryUuid &&
+          item.type == categoryType &&
+          !item.isDeleted,
+    );
+    if (!hasValidCategoryUuid && draft.categoryName != null) {
       final wanted = _normalizeOptionName(draft.categoryName!);
       _categoryUuid = _categories
-          .where((item) =>
-              item.type == financeCategoryTypeForTransaction(_type) &&
-              !item.isDeleted)
+          .where((item) => item.type == categoryType && !item.isDeleted)
           .where((item) => _normalizeOptionName(item.name) == wanted)
           .map((item) => item.uuid)
           .firstOrNull;
@@ -230,6 +237,26 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           .map((item) => item.uuid)
           .firstOrNull;
     }
+  }
+
+  bool _shouldKeepUnresolvedDraftCategory() {
+    final draft = widget.initialDraft;
+    if (draft == null || widget.transaction != null) return false;
+    final requestedUuid = draft.categoryUuid?.trim();
+    final requestedName = draft.categoryName?.trim();
+    if ((requestedUuid == null || requestedUuid.isEmpty) &&
+        (requestedName == null || requestedName.isEmpty)) {
+      return false;
+    }
+    final categoryType = financeCategoryTypeForTransaction(_type);
+    final resolved = _categoryUuid != null &&
+        _categories.any(
+          (item) =>
+              item.uuid == _categoryUuid &&
+              item.type == categoryType &&
+              !item.isDeleted,
+        );
+    return !resolved;
   }
 
   String _normalizeOptionName(String value) {
@@ -271,11 +298,16 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     return result;
   }
 
-  void _normalizeSelections({bool notify = true}) {
+  void _normalizeSelections({
+    bool notify = true,
+    bool allowDefaultCategory = true,
+  }) {
     final categories = _visibleCategories;
     if (_categoryUuid == null ||
         categories.every((item) => item.uuid != _categoryUuid)) {
-      _categoryUuid = categories.isEmpty ? null : categories.first.uuid;
+      _categoryUuid = allowDefaultCategory && categories.isNotEmpty
+          ? categories.first.uuid
+          : null;
     }
     if (_paymentMethodUuid != null &&
         _visiblePaymentMethods
@@ -321,7 +353,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _paymentMethodUuid = draft.paymentMethodUuid;
       _selectedTemplateUuid = null;
       _resolveSelectionsFromDraft(draft);
-      _normalizeSelections(notify: false);
+      _normalizeSelections(
+        notify: false,
+        allowDefaultCategory: !_shouldKeepUnresolvedDraftCategory(),
+      );
     });
     _showMessage('已填入表单，请核对后保存');
   }

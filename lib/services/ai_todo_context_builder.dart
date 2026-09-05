@@ -83,7 +83,8 @@ class AiTodoContextBuilder {
             _matchesAny(userMessage, _fixedScheduleKeywords);
     final requestsFinanceAction = _matchesAny(userMessage, _financeKeywords) ||
         userMessage.contains('#记账') ||
-        userMessage.contains('账单');
+        userMessage.contains('账单') ||
+        RegExp(r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)').hasMatch(userMessage);
     if (requestsTodoAction && (!isPlanningRequest || explicitlyCreatesTodo)) {
       add(
         '- create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","timeMode":"unscheduled|dateOnly|deadline","dueDate":null,"groupId":null,"reminderMinutes":5,"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}',
@@ -128,7 +129,7 @@ class AiTodoContextBuilder {
     }
     if (requestsFinanceAction) {
       add(
-        '- 记账草案：回复正文末尾追加 [FINANCE_START]...[FINANCE_END]，其中必须是JSON数组；每笔使用 {"type":"expense|income|refund","amount":28.50,"category":"餐饮","merchant":"午餐","date":"YYYY-MM-DD","paymentMethod":"微信","note":"备注"}，金额单位为元，缺失的可选字段用null；只生成草案，不要声称已保存',
+        '- 记账草案：回复正文末尾追加 [FINANCE_START]...[FINANCE_END]，其中必须是JSON数组；每笔使用 {"type":"expense|income|refund","amount":28.50,"category":"餐饮","categoryUuid":null,"merchant":"午餐","date":"YYYY-MM-DD","paymentMethod":"微信","paymentMethodUuid":null,"note":"备注"}，金额单位为元，缺失的可选字段用null；若提供本地记账目录，UUID只能复制目录中的真实值；只生成草案，不要声称已保存',
       );
       add(
         '- 记账与取餐码双识别：同一条消息同时包含账单和取餐/取件信息时，两者都保留，记账放FINANCE块，取餐放ACTION块，禁止二选一',

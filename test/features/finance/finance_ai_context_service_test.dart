@@ -1,4 +1,5 @@
 import 'package:countdown_todo/features/finance/services/finance_ai_context_service.dart';
+import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/services/ai_todo_context_builder.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -18,6 +19,54 @@ void main() {
       FinanceAiContextService.shouldInjectFor('把昨天那笔改成 30 元'),
       isTrue,
     );
+    expect(
+      FinanceAiContextService.shouldInjectCatalogFor('今天午餐花了 28 元'),
+      isTrue,
+    );
+    expect(
+      FinanceAiContextService.shouldInjectCatalogFor('请统计本月支出'),
+      isFalse,
+    );
+    expect(
+      FinanceAiContextService.shouldInjectCatalogFor('查看本月账单'),
+      isFalse,
+    );
+    expect(
+      FinanceAiContextService.shouldInjectCatalogFor('把这个待办分类到工作'),
+      isFalse,
+    );
+  });
+
+  test('本地记账目录包含真实UUID并排除归档和删除项目', () {
+    final context = FinanceAiContextService.formatCatalogContext(
+      categories: [
+        FinanceCategory(
+          uuid: 'category-coffee',
+          name: '咖啡',
+          sortOrder: 10,
+        ),
+        FinanceCategory(
+          uuid: 'category-old',
+          name: '旧分类',
+          isArchived: true,
+        ),
+      ],
+      paymentMethods: [
+        FinancePaymentMethod(uuid: 'payment-wechat', name: '微信'),
+        FinancePaymentMethod(
+          uuid: 'payment-deleted',
+          name: '已删除',
+          isDeleted: true,
+        ),
+      ],
+    );
+
+    expect(context, contains('categoryUuid=category-coffee'));
+    expect(context, contains('categoryName=咖啡'));
+    expect(context, contains('paymentMethodUuid=payment-wechat'));
+    expect(context, isNot(contains('category-old')));
+    expect(context, isNot(contains('payment-deleted')));
+    expect(context, contains('UUID只能原样复制'));
   });
 
   test('按用户表达解析日、周、月和年度范围', () {
@@ -48,5 +97,9 @@ void main() {
     expect(prompt, contains('delete_finance'));
     expect(prompt, contains('[FINANCE_ACTION_START]'));
     expect(prompt, contains('绝不编造transactionId'));
+
+    final creationPrompt =
+        AiTodoContextBuilder.buildActionProtocolPrompt('今天午餐 28 元');
+    expect(creationPrompt, contains('categoryUuid'));
   });
 }
