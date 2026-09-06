@@ -1,12 +1,14 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:countdown_todo/models/ai_todo_action.dart';
 import 'package:countdown_todo/models/chat_message.dart';
+import 'package:countdown_todo/screens/settings/pages/ai_assistant_settings_page.dart';
 import 'package:countdown_todo/services/ai_action_parser.dart';
 import 'package:countdown_todo/services/ai_multimodal_message_builder.dart';
 import 'package:countdown_todo/services/chat_storage_service.dart';
 import 'package:countdown_todo/services/llm_service.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -260,6 +262,57 @@ void main() {
         await LLMService.getMultimodalCapabilities('legacy-vision'),
         {'image'},
       );
+    });
+  });
+
+  group('AI assistant settings page', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      const channel = MethodChannel(
+        'plugins.it_nomads.com/flutter_secure_storage',
+      );
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        switch (call.method) {
+          case 'read':
+            return null;
+          case 'readAll':
+            return <String, String>{};
+          case 'containsKey':
+            return false;
+          case 'write':
+          case 'delete':
+          case 'deleteAll':
+            return null;
+          case 'isProtectedDataAvailable':
+            return true;
+        }
+        return null;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    });
+
+    testWidgets('exposes behavior controls and persists smart context',
+        (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: AiAssistantSettingsPage(isEmbedded: true),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('智能上下文'), findsOneWidget);
+      expect(find.text('启用智能上下文'), findsOneWidget);
+      expect(find.text('在输入区显示注入预览'), findsOneWidget);
+      expect(find.text('默认扩展上下文范围'), findsOneWidget);
+      expect(find.text('默认开启深度思考'), findsOneWidget);
+      expect(find.text('启用自定义提示词'), findsOneWidget);
+      expect(find.text('模型与 API 配置'), findsOneWidget);
+
+      await tester.tap(find.bySemanticsLabel('启用智能上下文'));
+      await tester.pump();
+      expect(await ChatStorageService.isSmartContextEnabled(), isFalse);
     });
   });
 }

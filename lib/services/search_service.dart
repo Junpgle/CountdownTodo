@@ -149,6 +149,15 @@ class SearchService {
       extraData: {'route': '/settings', 'target': 'llm_config'},
     ),
     SearchResult(
+      id: 'setting_ai_assistant',
+      title: 'AI 助手设置 / 智能上下文',
+      subtitle: '调整智能上下文、注入预览、提示词与深度思考',
+      icon: Icons.auto_awesome_rounded,
+      type: SearchResultType.setting,
+      breadcrumb: '设置 > AI',
+      extraData: {'route': '/settings', 'target': 'ai_assistant'},
+    ),
+    SearchResult(
       id: 'setting_llm_retry',
       title: '图片识别重试次数 / AI 重试',
       subtitle: '识别超时后自动重试的次数',

@@ -31,6 +31,7 @@ import 'settings/pages/interconnect_settings_page.dart';
 import 'settings/pages/platform_specific_settings_page.dart';
 import 'settings/pages/permission_settings_page.dart';
 import 'settings/pages/minor_mode_settings_page.dart';
+import 'settings/pages/ai_assistant_settings_page.dart';
 import 'settings/llm_config_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -194,6 +195,9 @@ class _SettingsPageState extends State<SettingsPage> {
     } else if (target == 'llm_config') {
       paneId = 'llm_config';
       paneBuilder = () => const LLMConfigPage(isEmbedded: true);
+    } else if (target == 'ai_assistant') {
+      paneId = 'ai_assistant';
+      paneBuilder = () => const AiAssistantSettingsPage(isEmbedded: true);
     } else if (target == 'animation') {
       paneId = 'animation';
       paneBuilder = () => const AnimationSettingsPage(isEmbedded: true);
@@ -242,6 +246,8 @@ class _SettingsPageState extends State<SettingsPage> {
             initialTarget: target, username: _username);
       } else if (paneId == 'llm_config') {
         pushWidget = const LLMConfigPage();
+      } else if (paneId == 'ai_assistant') {
+        pushWidget = const AiAssistantSettingsPage();
       } else if (paneId == 'animation') {
         pushWidget = const AnimationSettingsPage();
       } else if (paneId == 'platform') {
@@ -704,6 +710,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return '数据与互联';
       case 'llm_config':
         return '模型与 API 配置';
+      case 'ai_assistant':
+        return 'AI 助手设置';
       case 'platform':
         return AppPlatform.isWindows
             ? 'Windows 专属'
@@ -1027,6 +1035,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: '模型与 API 配置',
                   widgetBuilder: () => const LLMConfigPage(isEmbedded: true),
                 ),
+                _buildMacSidebarItem(
+                  id: 'ai_assistant',
+                  icon: Icons.auto_awesome_rounded,
+                  color: theme.colorScheme.tertiary,
+                  title: 'AI 助手设置',
+                  widgetBuilder: () =>
+                      const AiAssistantSettingsPage(isEmbedded: true),
+                ),
 
                 const SizedBox(height: 12),
                 const Divider(height: 1),
@@ -1294,6 +1310,19 @@ class _SettingsPageState extends State<SettingsPage> {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(context,
                       PageTransitions.slideHorizontal(const LLMConfigPage())),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  leading: Icon(Icons.auto_awesome_rounded,
+                      color: Theme.of(context).colorScheme.tertiary),
+                  title: const Text('AI 助手设置'),
+                  subtitle: const Text('智能上下文、提示词、预览与深度思考'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(
+                        const AiAssistantSettingsPage()),
+                  ),
                 ),
               ],
             ),
