@@ -124,11 +124,11 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
         _habitsRevision.value++;
       }));
       // 通知按钮事件：如果不在番茄钟页，先导航过去，
-      // PomodoroScreen 的 listen() 会自动 replay pending 事件。
+      // 并把动作随路由传给工作台，避免动作在导航期间丢失。
       for (final action in ['pomodoroFinishEarly', 'pomodoroAbandon']) {
         _notifSubs.add(NotificationService.listen(action, (call) {
           // debugPrint("🍅 收到 $action");
-          _navigateToPomodoro();
+          _navigateToPomodoro(notificationAction: action);
         }));
       }
     }

@@ -60,7 +60,7 @@ mixin _HomeDashboardContract {
 
   void _showOriginalText(String text);
 
-  void _navigateToPomodoro();
+  void _navigateToPomodoro({String? notificationAction});
 
   Future<void> _handleMacIslandCommand(MacIslandCommand command);
 

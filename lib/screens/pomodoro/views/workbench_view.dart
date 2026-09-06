@@ -1887,8 +1887,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     }
   }
 
-  Future<void> _finishEarly() async {
+  Future<void> _finishEarly({bool finishWholeSession = false}) async {
     if (_isHandlingEnd) return;
+    if (_phase != PomodoroPhase.focusing) return;
     _isHandlingEnd = true;
     try {
       await _stopStrictSensorMonitoring();
@@ -1929,7 +1930,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           alertKey: 'pomo_end_$now',
           todoTitle: _boundTodo?.title,
           isBreak: false);
-      await _proceedAfterRecord();
+      await _proceedAfterRecord(continueWithBreak: !finishWholeSession);
     } finally {
       _isHandlingEnd = false;
     }
@@ -2071,10 +2072,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     return completed ?? false;
   }
 
-  Future<void> _proceedAfterRecord() async {
+  Future<void> _proceedAfterRecord({bool continueWithBreak = true}) async {
     if (!mounted) return;
     final isCountUp = _settings.mode == TimerMode.countUp;
-    if (!isCountUp && _currentCycle < _settings.cycles) {
+    if (shouldStartBreakAfterCompletion(
+      isCountUp: isCountUp,
+      currentCycle: _currentCycle,
+      cycles: _settings.cycles,
+      continueWithBreak: continueWithBreak,
+    )) {
       await _startBreak();
     } else {
       setState(() {
@@ -2214,7 +2220,20 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   // 公开方法：供外部调用提前完成
   void handleFinishEarly() {
-    _finishEarly();
+    // Android notification actions mean “finish this Pomodoro”, not “finish
+    // this focus round and start its break”. Keep the confirmation dialog,
+    // but do not restart a background timer after it is confirmed.
+    _finishEarly(finishWholeSession: true);
+  }
+
+  @visibleForTesting
+  static bool shouldStartBreakAfterCompletion({
+    required bool isCountUp,
+    required int currentCycle,
+    required int cycles,
+    required bool continueWithBreak,
+  }) {
+    return continueWithBreak && !isCountUp && currentCycle < cycles;
   }
 
   // 公开方法：供外部调用放弃专注

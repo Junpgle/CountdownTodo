@@ -327,7 +327,7 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
 
   /// 将已有的 PomodoroScreen 带到前台，或 push 新的。
   /// 用 remove + push 代替 popUntil，避免破坏栈中其他路由。
-  void _navigateToPomodoro() {
+  void _navigateToPomodoro({String? notificationAction}) {
     if (!mounted || _navigatingToPomodoro) return;
     // 🚀 去重：如果已在番茄钟页，直接返回
     if (_pomodoroRoute != null && _pomodoroRoute!.isCurrent) return;
@@ -351,7 +351,10 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     // push 新的番茄钟页
     _navigatingToPomodoro = true;
     final route = PageTransitions.material(
-      builder: (_) => PomodoroScreen(username: widget.username),
+      builder: (_) => PomodoroScreen(
+        username: widget.username,
+        initialNotificationAction: notificationAction,
+      ),
       settings: const RouteSettings(name: 'pomodoro'),
     );
     _pomodoroRoute = route;

@@ -17,6 +17,12 @@ import '../services/feature_tip_service.dart';
 class PomodoroScreen extends StatefulWidget {
   final String username;
 
+  /// Notification action received while the app was not already showing this
+  /// route. The dashboard consumes the native event to bring this page to the
+  /// foreground, so the action must travel with the route instead of relying
+  /// on a broadcast replay after the page is created.
+  final String? initialNotificationAction;
+
   /// 0 = 工作台（默认），1 = 统计看板
   final int initialTab;
 
@@ -28,6 +34,7 @@ class PomodoroScreen extends StatefulWidget {
     required this.username,
     this.initialTab = 0,
     this.initialDimension = 0,
+    this.initialNotificationAction,
   });
 
   @override
@@ -47,6 +54,8 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   final GlobalKey _statsTabKey = GlobalKey();
   final List<StreamSubscription<MethodCall>> _notifSubs = [];
   bool _disposed = false;
+  String? _pendingNotificationAction;
+  bool _notificationActionDispatchScheduled = false;
 
   PomodoroWorkbenchState? get _workbenchState => _workbenchKey.currentState;
 
@@ -166,16 +175,48 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   }
 
   void _setupMethodChannelListener() {
+    _pendingNotificationAction = widget.initialNotificationAction;
     _notifSubs.add(NotificationService.listen('pomodoroFinishEarly', (call) {
-      // debugPrint('[PomodoroScreen] Triggering finishEarly from notification');
-      if (!mounted || _disposed) return;
-      _workbenchState?.handleFinishEarly();
+      _queueNotificationAction('pomodoroFinishEarly');
     }));
     _notifSubs.add(NotificationService.listen('pomodoroAbandon', (call) {
-      // debugPrint('[PomodoroScreen] Triggering abandonFocus from notification');
-      if (!mounted || _disposed) return;
-      _workbenchState?.handleAbandonFocus();
+      _queueNotificationAction('pomodoroAbandon');
     }));
+  }
+
+  void _queueNotificationAction(String action) {
+    if (!mounted || _disposed) return;
+    _pendingNotificationAction = action;
+    _dispatchPendingNotificationAction();
+  }
+
+  void _dispatchPendingNotificationAction() {
+    if (_disposed || !mounted || !_workbenchReady) return;
+    if (_workbenchState == null || _pendingNotificationAction == null) return;
+    if (_notificationActionDispatchScheduled) return;
+
+    _notificationActionDispatchScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _notificationActionDispatchScheduled = false;
+      if (_disposed || !mounted) return;
+      final action = _pendingNotificationAction;
+      _pendingNotificationAction = null;
+      if (action == 'pomodoroFinishEarly') {
+        _workbenchState?.handleFinishEarly();
+      } else if (action == 'pomodoroAbandon') {
+        _workbenchState?.handleAbandonFocus();
+      }
+    });
+  }
+
+  void _handleWorkbenchReady() {
+    if (!_disposed && mounted && !_workbenchReady) {
+      setState(() => _workbenchReady = true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _checkCoachMarks();
+      });
+    }
+    _dispatchPendingNotificationAction();
   }
 
   @override
@@ -234,14 +275,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                         setState(() => _currentPhase = phase);
                       }
                     },
-                    onReady: () {
-                      if (!_disposed && mounted && !_workbenchReady) {
-                        setState(() => _workbenchReady = true);
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) _checkCoachMarks();
-                        });
-                      }
-                    },
+                    onReady: _handleWorkbenchReady,
                     onRecordAdded: () {
                       if (!_disposed && mounted) {
                         try {
@@ -352,14 +386,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                           setState(() => _currentPhase = phase);
                         }
                       },
-                      onReady: () {
-                        if (!_disposed && mounted && !_workbenchReady) {
-                          setState(() => _workbenchReady = true);
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) _checkCoachMarks();
-                          });
-                        }
-                      },
+                      onReady: _handleWorkbenchReady,
                       onRecordAdded: () {
                         if (!_disposed && mounted) {
                           try {
