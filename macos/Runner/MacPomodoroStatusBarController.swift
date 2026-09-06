@@ -2873,6 +2873,17 @@ struct MacIslandSwiftUIView: View {
                         .truncationMode(.middle)
                 }
                 Spacer(minLength: 8)
+                Button(action: { model.onDismissClipboardLink?() }) {
+                    Text("忽略")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.85))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(Color.white.opacity(0.15))
+                        .cornerRadius(9)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
                 Button(action: { model.onOpenClipboardLink?() }) {
                     Text("打开网址")
                         .font(.system(size: 11, weight: .medium))
