@@ -1,5 +1,9 @@
 <resources>
     <string name="app_name">CountDownTodo</string>
+    <string name="share_target_course">CountDownTodo - 导入课表</string>
+    <string name="share_target_image">CountDownTodo - 识别图片</string>
+    <string name="share_target_finance">CountDownTodo - 导入记账</string>
+    <string name="share_target_file">CountDownTodo - 保存文件</string>
     <!-- Notification permission -->
     <string name="permission_grant">Grant</string>
     <string name="permission_message">Please grant the notification permission.</string>

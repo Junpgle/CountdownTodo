@@ -120,6 +120,7 @@ todo.md
 !/test/services/animation_config_service_test.dart
 !/test/services/item_semantics_service_test.dart
 !/test/services/schedule_conflict_service_test.dart
+!/test/services/external_share_payload_classifier_test.dart
 !/test/services/sync_capability_service_test.dart
 !/test/services/sync_oplog_policy_test.dart
 !/test/services/strict_focus_sensor_service_test.dart
