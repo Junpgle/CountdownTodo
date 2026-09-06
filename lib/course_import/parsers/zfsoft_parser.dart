@@ -139,7 +139,8 @@ class ZfSoftScheduleParser {
     // 全局去重：防止因扫描多个表格导致的课程冲突
     final seen = <String>{};
     return courses.where((c) {
-      final key = "${c.date}-${c.startTime}-${c.courseName}";
+      final key =
+          "${c.date}-${c.weekday}-${c.startTime}-${c.endTime}-${c.courseName}-${c.teacherName}-${c.roomName}";
       if (seen.contains(key)) return false;
       seen.add(key);
       return true;

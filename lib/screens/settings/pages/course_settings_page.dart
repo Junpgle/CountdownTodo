@@ -8,6 +8,7 @@ import '../../../services/reminder_schedule_service.dart';
 import '../../../storage_service.dart';
 import '../../../services/api_service.dart';
 import '../../../course_import/handlers/course_import_handler.dart';
+import '../../../course_import/course_schedule_semantics.dart';
 import '../../../course_import/widgets/course_adaptation_screen.dart';
 import '../../course_calendar_adjustment_screen.dart';
 import '../../../models.dart';
@@ -108,15 +109,11 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     _courseImportHandler = CourseImportHandler(
       context: context,
       username: _username,
-      semesterStart: sStart,
       onRescheduleReminders: _rescheduleReminders,
       showMessage: (msg) {
         if (!mounted) return;
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(msg)));
-      },
-      onSemesterStartChanged: (date) {
-        if (mounted) setState(() => _semesterStart = date);
       },
     );
 
@@ -262,18 +259,21 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       if (!mounted) return;
 
       if (userSettings != null) {
-        final prefs = await SharedPreferences.getInstance();
         if (userSettings['semester_start'] != null) {
           _semesterStart = DateTime.fromMillisecondsSinceEpoch(
               userSettings['semester_start']);
-          await prefs.setString(StorageService.keySemesterStart,
-              _semesterStart!.toIso8601String());
+          await StorageService.saveAppSetting(
+            StorageService.keySemesterStart,
+            _semesterStart!.toIso8601String(),
+          );
         }
         if (userSettings['semester_end'] != null) {
           _semesterEnd =
               DateTime.fromMillisecondsSinceEpoch(userSettings['semester_end']);
-          await prefs.setString(
-              StorageService.keySemesterEnd, _semesterEnd!.toIso8601String());
+          await StorageService.saveAppSetting(
+            StorageService.keySemesterEnd,
+            _semesterEnd!.toIso8601String(),
+          );
         }
 
         // 处理多学期数据
@@ -287,6 +287,12 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
           if (cloudSemesters.isNotEmpty) {
             await StorageService.saveSemesters(cloudSemesters);
+            final currentSemester = cloudSemesters.where((s) => s.isCurrent);
+            if (currentSemester.isNotEmpty) {
+              await StorageService.setActiveSemesterId(
+                  currentSemester.first.id);
+              _activeSemesterId = currentSemester.first.id;
+            }
             if (!mounted) return;
             setState(() {
               _semesters = cloudSemesters;
@@ -312,7 +318,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
             .map<CourseItem?>((c) {
               final int weekIndex = (c['week_index'] as num?)?.toInt() ?? 1;
               final int weekday = (c['weekday'] as num?)?.toInt() ?? 1;
-              final String semesterId = c['semester'] ?? 'default';
+              final String semesterId =
+                  (c['semester'] ?? c['semester_id'] ?? 'default').toString();
 
               // 根据学期ID找到对应的开学日期
               DateTime? semesterStartForCourse;
@@ -322,18 +329,24 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                   break;
                 }
               }
-              // 如果找不到对应的学期，使用当前的开学日期
-              semesterStartForCourse ??= _semesterStart;
+              // 只有默认学期才可以回退到旧的全局开学日期；未知学期不能
+              // 借用当前学期的日期，否则会把多学期云端课表错排到同一时间轴。
+              if (semesterStartForCourse == null && semesterId == 'default') {
+                semesterStartForCourse = _semesterStart;
+              }
 
-              if (semesterStartForCourse == null) return null;
+              final cloudDate = c['date']?.toString() ?? '';
+              if (semesterStartForCourse == null && cloudDate.isEmpty) {
+                return null;
+              }
 
-              final DateTime semesterMonday = semesterStartForCourse
-                  .subtract(Duration(days: semesterStartForCourse.weekday - 1));
-
-              final DateTime courseDate = semesterMonday
-                  .add(Duration(days: (weekIndex - 1) * 7 + (weekday - 1)));
-              final String dateStr =
-                  DateFormat('yyyy-MM-dd').format(courseDate);
+              final String dateStr = semesterStartForCourse != null
+                  ? CourseScheduleSemantics.dateFor(
+                      semesterStart: semesterStartForCourse,
+                      weekIndex: weekIndex,
+                      weekday: weekday,
+                    )
+                  : cloudDate;
 
               return CourseItem(
                 courseName: c['course_name'] ?? '',
@@ -361,7 +374,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         if (mode == ImportMode.merge) {
           await CourseService.mergeCoursesToSql(_username, courses);
         } else {
-          await CourseService.saveCourses(_username, courses);
+          await CourseService.replaceCoursesForSemesters(_username, courses);
         }
 
         if (!mounted) return;
@@ -1198,7 +1211,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                             lastDate: DateTime(2100),
                           );
                           if (picked != null) {
-                            setState(() => startDate = picked);
+                            setState(() => startDate =
+                                CourseScheduleSemantics.mondayOf(picked));
                           }
                         },
                       ),
@@ -1243,12 +1257,14 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                       );
                       return;
                     }
+                    final normalizedStart =
+                        CourseScheduleSemantics.mondayOf(startDate!);
                     Navigator.pop(
                       ctx,
                       SemesterInfo(
                         id: semester.id,
                         name: nameController.text,
-                        startDate: startDate!,
+                        startDate: normalizedStart,
                         endDate: endDate,
                         isCurrent: semester.isCurrent,
                       ),
@@ -1409,11 +1425,13 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                             helpText: '选择开学日期',
                           );
                           if (picked != null) {
+                            final normalizedStart =
+                                CourseScheduleSemantics.mondayOf(picked);
                             setState(() {
-                              startDate = picked;
+                              startDate = normalizedStart;
                               // 自动生成学期名称
                               nameController.text =
-                                  _generateSemesterName(picked);
+                                  _generateSemesterName(normalizedStart);
                             });
                           }
                         },
@@ -1470,13 +1488,16 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                       );
                       return;
                     }
-                    final id = 'semester_${startDate!.millisecondsSinceEpoch}';
+                    final normalizedStart =
+                        CourseScheduleSemantics.mondayOf(startDate!);
+                    final id =
+                        'semester_${normalizedStart.millisecondsSinceEpoch}';
                     Navigator.pop(
                       ctx,
                       SemesterInfo(
                         id: id,
                         name: nameController.text,
-                        startDate: startDate!,
+                        startDate: normalizedStart,
                         endDate: endDate,
                       ),
                     );

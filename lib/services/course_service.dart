@@ -15,10 +15,15 @@ import '../course_import/parsers/xmu_parser.dart';
 import '../course_import/parsers/xidian_parser.dart';
 import '../course_import/parsers/zfsoft_parser.dart';
 import '../course_import/parsers/xujc_parser.dart';
+import '../course_import/course_schedule_semantics.dart';
 
 import '../models.dart';
 
 // CourseItem moved to models.dart
+
+typedef CourseTimeRepairCallback = Future<List<CourseItem>?> Function(
+  List<CourseItem> courses,
+);
 
 class CourseService {
   static const String _keyCourseData = 'course_schedule_json';
@@ -51,9 +56,14 @@ class CourseService {
     final db = await dbHelper.database;
     await DatabaseHelper.ensureCourseTableSchema(db);
     await _ensureCoursesColumnsForWrite(db);
+    final uniqueCourses = <String, CourseItem>{};
+    for (final course in courses) {
+      uniqueCourses[course.uuid] = course;
+    }
+
     final batch = db.batch();
     batch.delete('courses');
-    for (var c in courses) {
+    for (var c in uniqueCourses.values) {
       batch.insert('courses', {
         'uuid': c.uuid,
         'course_name': c.courseName,
@@ -79,7 +89,8 @@ class CourseService {
   // --- 内部辅助：统一将解析后的实体类集合保存到本地 ---
   static Future<void> saveCourses(
       String username, List<CourseItem> courses) async {
-    // 1. 🚀 写入 SQL
+    // This method is the explicit full-table replacement primitive used by
+    // backups and migrations.  Semester-aware imports use the methods below.
     try {
       final dbHelper = DatabaseHelper.instance;
       await _writeCoursesToSql(dbHelper, courses);
@@ -89,12 +100,10 @@ class CourseService {
       final errorText = e.toString();
       if (errorText.contains('no column named is_deleted') ||
           errorText.contains('no such column: is_deleted')) {
-        try {
-          await _writeCoursesToSql(DatabaseHelper.instance, courses);
-          // debugPrint("✅ [Course] SQL 兜底重试成功: ${courses.length} 条");
-        } catch (retryError) {
-          // debugPrint("❌ [Course] SQL 兜底重试失败: $retryError");
-        }
+        await _writeCoursesToSql(DatabaseHelper.instance, courses);
+        // debugPrint("✅ [Course] SQL 兜底重试成功: ${courses.length} 条");
+      } else {
+        rethrow;
       }
     }
 
@@ -113,83 +122,205 @@ class CourseService {
   /// 冲突定义：同一天（date 相同）且时间段有重叠
   static Future<List<CourseItem>> detectTimeConflicts(
       String username, List<CourseItem> newCourses) async {
-    final existingCourses = await getAllCourses(username);
+    final existingCourses = await getAllCourses(
+      username,
+      applyCalendarAdjustments: false,
+    );
     if (existingCourses.isEmpty) return [];
 
-    // 用 date（具体日期）判断冲突，而不是 weekIndex
-    // 这样不同学期的课表不会误判为冲突
-    final conflicts = <CourseItem>[];
+    final conflicts = <String, CourseItem>{};
     for (final newCourse in newCourses) {
       for (final existing in existingCourses) {
-        // 同一天、时间段有重叠
-        if (existing.date == newCourse.date &&
-            existing.startTime < newCourse.endTime &&
-            existing.endTime > newCourse.startTime) {
-          conflicts.add(existing);
+        if (CourseScheduleSemantics.overlaps(existing, newCourse)) {
+          conflicts[existing.uuid] = existing;
         }
       }
     }
-    return conflicts;
+    return conflicts.values.toList();
   }
 
   /// 合并新旧课程写入数据库
-  /// 策略：按 uuid 去重，新课程覆盖同 uuid 的旧课程，其余旧课程保留
+  /// 策略：同一学期同一时间段的新课程替换旧课程，其余课程保留。
   static Future<void> mergeCoursesToSql(
       String username, List<CourseItem> newCourses) async {
-    final existingCourses = await getAllCourses(username);
+    final existingCourses = await getAllCourses(
+      username,
+      applyCalendarAdjustments: false,
+    );
+    await saveCourses(
+      username,
+      CourseScheduleSemantics.mergeBySlot(existingCourses, newCourses),
+    );
+  }
 
-    // 按 uuid 索引旧课程
-    final mergedMap = <String, CourseItem>{};
-    for (final c in existingCourses) {
-      mergedMap[c.uuid] = c;
+  /// Replaces only [semesterId], preserving courses belonging to every other
+  /// semester.
+  static Future<void> replaceCoursesForSemester(
+    String username,
+    String semesterId,
+    List<CourseItem> courses,
+  ) async {
+    if (courses.any((course) => course.semesterId != semesterId)) {
+      throw ArgumentError('课程学期与导入目标不一致');
     }
-    // 新课程覆盖同 uuid 的旧课程
-    for (final c in newCourses) {
-      mergedMap[c.uuid] = c;
-    }
+    final existingCourses = await getAllCourses(
+      username,
+      applyCalendarAdjustments: false,
+    );
+    await saveCourses(
+      username,
+      CourseScheduleSemantics.replaceSemester(
+        existingCourses,
+        courses,
+        semesterId: semesterId,
+      ),
+    );
+  }
 
-    final mergedCourses = mergedMap.values.toList();
-    await saveCourses(username, mergedCourses);
+  /// Replaces only the semesters represented by [courses].
+  ///
+  /// This is used by cloud restores, where one response can contain several
+  /// semesters but should not erase local semesters that were not returned.
+  static Future<void> replaceCoursesForSemesters(
+    String username,
+    Iterable<CourseItem> courses,
+  ) async {
+    final incomingBySemester = <String, List<CourseItem>>{};
+    for (final course in courses) {
+      final semesterId =
+          course.semesterId.isEmpty ? 'default' : course.semesterId;
+      final normalizedCourse = course.semesterId == semesterId
+          ? course
+          : CourseScheduleSemantics.assignIdOnly(
+              [course],
+              semesterId: semesterId,
+            ).single;
+      incomingBySemester
+          .putIfAbsent(semesterId, () => [])
+          .add(normalizedCourse);
+    }
+    if (incomingBySemester.isEmpty) return;
+
+    final existingCourses = await getAllCourses(
+      username,
+      applyCalendarAdjustments: false,
+    );
+    var replaced = existingCourses;
+    for (final entry in incomingBySemester.entries) {
+      replaced = CourseScheduleSemantics.replaceSemester(
+        replaced,
+        entry.value,
+        semesterId: entry.key,
+      );
+    }
+    await saveCourses(username, replaced);
+  }
+
+  /// Merges imported courses by semester and time slot.
+  static Future<void> mergeCoursesForSemester(
+    String username,
+    String semesterId,
+    List<CourseItem> courses,
+  ) async {
+    if (courses.any((course) => course.semesterId != semesterId)) {
+      throw ArgumentError('课程学期与导入目标不一致');
+    }
+    await mergeCoursesToSql(username, courses);
   }
 
   // ================= 导入与解析逻辑 =================
+
+  static Future<DateTime?> _resolveSemesterStartForImport(
+      String semesterId, DateTime? explicitStart) async {
+    if (explicitStart != null) return explicitStart;
+
+    final configuredStart =
+        await StorageService.getSemesterStartById(semesterId);
+    if (configuredStart != null) return configuredStart;
+    return semesterId == 'default'
+        ? await StorageService.getSemesterStart()
+        : null;
+  }
+
+  /// Converts parser output into the canonical representation for one
+  /// semester.  Relative week/day is authoritative; concrete dates are
+  /// rebuilt from the selected semester's start date.
+  static Future<List<CourseItem>> prepareImportedCourses(
+    List<CourseItem> parsedCourses, {
+    required String semesterId,
+    DateTime? semesterStart,
+  }) async {
+    final effectiveStart =
+        await _resolveSemesterStartForImport(semesterId, semesterStart);
+    if (effectiveStart == null) {
+      throw StateError('缺少学期开始日期，无法导入课表');
+    }
+
+    final prepared = CourseScheduleSemantics.assignToSemester(
+      parsedCourses,
+      semesterId: semesterId,
+      semesterStart: effectiveStart,
+    );
+
+    if (prepared.any((course) => course.date.trim().isEmpty)) {
+      throw StateError('缺少学期开始日期，无法计算课程日期');
+    }
+    return prepared;
+  }
+
+  static Future<List<CourseItem>?> _repairMissingTimes(
+    List<CourseItem> courses,
+    CourseTimeRepairCallback? repairMissingTimes,
+  ) async {
+    if (courses.every(CourseScheduleSemantics.hasUsableTime)) {
+      return courses;
+    }
+    if (repairMissingTimes == null) return null;
+
+    final repaired = await repairMissingTimes(courses);
+    if (repaired == null ||
+        repaired
+            .any((course) => !CourseScheduleSemantics.hasUsableTime(course))) {
+      return null;
+    }
+    return repaired;
+  }
 
   // 1. 从字符串导入课表 (合工大)
   static Future<bool> importScheduleFromJson(String username, String jsonString,
       {DateTime? semesterStart,
       bool merge = false,
-      String semesterId = 'default'}) async {
-    // 调用提取的 parser 进行校验
-    if (!HfutScheduleParser.isValid(jsonString)) {
-      return false;
-    }
-
+      String semesterId = 'default',
+      CourseTimeRepairCallback? repairMissingTimes}) async {
     try {
-      List<CourseItem> parsedCourses =
-          HfutScheduleParser.parse(jsonString, semesterStart: semesterStart);
+      // 在解析前确认目标学期，避免无配置时先做无效解析。
+      final effectiveSemesterStart =
+          await _resolveSemesterStartForImport(semesterId, semesterStart);
+      if (effectiveSemesterStart == null ||
+          !HfutScheduleParser.isValid(jsonString)) {
+        return false;
+      }
+
+      List<CourseItem> parsedCourses = HfutScheduleParser.parse(jsonString,
+          semesterStart: effectiveSemesterStart);
       if (parsedCourses.isEmpty) return false;
 
-      // 设置学期ID
-      parsedCourses = parsedCourses
-          .map((c) => CourseItem(
-                courseName: c.courseName,
-                teacherName: c.teacherName,
-                date: c.date,
-                weekday: c.weekday,
-                startTime: c.startTime,
-                endTime: c.endTime,
-                weekIndex: c.weekIndex,
-                roomName: c.roomName,
-                lessonType: c.lessonType,
-                semesterId: semesterId,
-                teamUuid: c.teamUuid,
-              ))
-          .toList();
+      parsedCourses = await prepareImportedCourses(
+        parsedCourses,
+        semesterId: semesterId,
+        semesterStart: effectiveSemesterStart,
+      );
+      final repairedCourses = await _repairMissingTimes(
+        parsedCourses,
+        repairMissingTimes,
+      );
+      if (repairedCourses == null) return false;
+      parsedCourses = repairedCourses;
 
       if (merge) {
         await mergeCoursesToSql(username, parsedCourses);
       } else {
-        await saveCourses(username, parsedCourses);
+        await replaceCoursesForSemester(username, semesterId, parsedCourses);
       }
       return true;
     } catch (e) {
@@ -201,33 +332,30 @@ class CourseService {
   // 2. 导入厦大（本部）课表
   static Future<bool> importXmuScheduleFromHtml(
       String username, String htmlString, DateTime semesterStart,
-      {bool merge = false, String semesterId = 'default'}) async {
+      {bool merge = false,
+      String semesterId = 'default',
+      CourseTimeRepairCallback? repairMissingTimes}) async {
     try {
       List<CourseItem> parsedCourses =
           XmuScheduleParser.parseHtml(htmlString, semesterStart);
       if (parsedCourses.isEmpty) return false;
 
-      // 设置学期ID
-      parsedCourses = parsedCourses
-          .map((c) => CourseItem(
-                courseName: c.courseName,
-                teacherName: c.teacherName,
-                date: c.date,
-                weekday: c.weekday,
-                startTime: c.startTime,
-                endTime: c.endTime,
-                weekIndex: c.weekIndex,
-                roomName: c.roomName,
-                lessonType: c.lessonType,
-                semesterId: semesterId,
-                teamUuid: c.teamUuid,
-              ))
-          .toList();
+      parsedCourses = await prepareImportedCourses(
+        parsedCourses,
+        semesterId: semesterId,
+        semesterStart: semesterStart,
+      );
+      final repairedCourses = await _repairMissingTimes(
+        parsedCourses,
+        repairMissingTimes,
+      );
+      if (repairedCourses == null) return false;
+      parsedCourses = repairedCourses;
 
       if (merge) {
         await mergeCoursesToSql(username, parsedCourses);
       } else {
-        await saveCourses(username, parsedCourses);
+        await replaceCoursesForSemester(username, semesterId, parsedCourses);
       }
       return true;
     } catch (e) {
@@ -239,33 +367,30 @@ class CourseService {
   // 🚀 2.1 导入厦大嘉庚学院课表
   static Future<bool> importXujcScheduleFromHtml(
       String username, String htmlString, DateTime semesterStart,
-      {bool merge = false, String semesterId = 'default'}) async {
+      {bool merge = false,
+      String semesterId = 'default',
+      CourseTimeRepairCallback? repairMissingTimes}) async {
     try {
       List<CourseItem> parsedCourses =
           XujcScheduleParser.parseHtml(htmlString, semesterStart);
       if (parsedCourses.isEmpty) return false;
 
-      // 设置学期ID
-      parsedCourses = parsedCourses
-          .map((c) => CourseItem(
-                courseName: c.courseName,
-                teacherName: c.teacherName,
-                date: c.date,
-                weekday: c.weekday,
-                startTime: c.startTime,
-                endTime: c.endTime,
-                weekIndex: c.weekIndex,
-                roomName: c.roomName,
-                lessonType: c.lessonType,
-                semesterId: semesterId,
-                teamUuid: c.teamUuid,
-              ))
-          .toList();
+      parsedCourses = await prepareImportedCourses(
+        parsedCourses,
+        semesterId: semesterId,
+        semesterStart: semesterStart,
+      );
+      final repairedCourses = await _repairMissingTimes(
+        parsedCourses,
+        repairMissingTimes,
+      );
+      if (repairedCourses == null) return false;
+      parsedCourses = repairedCourses;
 
       if (merge) {
         await mergeCoursesToSql(username, parsedCourses);
       } else {
-        await saveCourses(username, parsedCourses);
+        await replaceCoursesForSemester(username, semesterId, parsedCourses);
       }
       return true;
     } catch (e) {
@@ -277,33 +402,30 @@ class CourseService {
   // 🚀 3. 新增：导入西电 ics 课表
   static Future<bool> importXidianScheduleFromIcs(
       String username, String icsString, DateTime semesterStart,
-      {bool merge = false, String semesterId = 'default'}) async {
+      {bool merge = false,
+      String semesterId = 'default',
+      CourseTimeRepairCallback? repairMissingTimes}) async {
     try {
       List<CourseItem> parsedCourses =
           XidianScheduleParser.parseIcs(icsString, semesterStart);
       if (parsedCourses.isEmpty) return false;
 
-      // 设置学期ID
-      parsedCourses = parsedCourses
-          .map((c) => CourseItem(
-                courseName: c.courseName,
-                teacherName: c.teacherName,
-                date: c.date,
-                weekday: c.weekday,
-                startTime: c.startTime,
-                endTime: c.endTime,
-                weekIndex: c.weekIndex,
-                roomName: c.roomName,
-                lessonType: c.lessonType,
-                semesterId: semesterId,
-                teamUuid: c.teamUuid,
-              ))
-          .toList();
+      parsedCourses = await prepareImportedCourses(
+        parsedCourses,
+        semesterId: semesterId,
+        semesterStart: semesterStart,
+      );
+      final repairedCourses = await _repairMissingTimes(
+        parsedCourses,
+        repairMissingTimes,
+      );
+      if (repairedCourses == null) return false;
+      parsedCourses = repairedCourses;
 
       if (merge) {
         await mergeCoursesToSql(username, parsedCourses);
       } else {
-        await saveCourses(username, parsedCourses);
+        await replaceCoursesForSemester(username, semesterId, parsedCourses);
       }
       return true;
     } catch (e) {
@@ -313,11 +435,26 @@ class CourseService {
   }
 
   // 4. 从文件路径导入课表 (供外部 App 唤起时调用)
-  static Future<bool> importScheduleFromFile(
-      String username, String filePath) async {
+  static Future<bool> importScheduleFromFile(String username, String filePath,
+      {DateTime? semesterStart,
+      bool merge = false,
+      String semesterId = 'default',
+      CourseTimeRepairCallback? repairMissingTimes}) async {
     try {
+      // 文件读取前先确认学期，避免外部唤起后才发现导入条件不完整。
+      final effectiveSemesterStart =
+          await _resolveSemesterStartForImport(semesterId, semesterStart);
+      if (effectiveSemesterStart == null) return false;
+
       String content = await readTextFile(filePath);
-      return await importScheduleFromJson(username, content);
+      return await importScheduleFromJson(
+        username,
+        content,
+        semesterStart: effectiveSemesterStart,
+        merge: merge,
+        semesterId: semesterId,
+        repairMissingTimes: repairMissingTimes,
+      );
     } catch (e) {
       return false;
     }
@@ -328,7 +465,8 @@ class CourseService {
       String username, String htmlString, DateTime semesterStart,
       {Map<int, Map<String, int>>? customTimes,
       bool merge = false,
-      String semesterId = 'default'}) async {
+      String semesterId = 'default',
+      CourseTimeRepairCallback? repairMissingTimes}) async {
     try {
       // 调用解析器，并传入可能的自定义时间配置
       List<CourseItem> parsedCourses = ZfSoftScheduleParser.parseHtml(
@@ -338,27 +476,22 @@ class CourseService {
       );
       if (parsedCourses.isEmpty) return false;
 
-      // 设置学期ID
-      parsedCourses = parsedCourses
-          .map((c) => CourseItem(
-                courseName: c.courseName,
-                teacherName: c.teacherName,
-                date: c.date,
-                weekday: c.weekday,
-                startTime: c.startTime,
-                endTime: c.endTime,
-                weekIndex: c.weekIndex,
-                roomName: c.roomName,
-                lessonType: c.lessonType,
-                semesterId: semesterId,
-                teamUuid: c.teamUuid,
-              ))
-          .toList();
+      parsedCourses = await prepareImportedCourses(
+        parsedCourses,
+        semesterId: semesterId,
+        semesterStart: semesterStart,
+      );
+      final repairedCourses = await _repairMissingTimes(
+        parsedCourses,
+        repairMissingTimes,
+      );
+      if (repairedCourses == null) return false;
+      parsedCourses = repairedCourses;
 
       if (merge) {
         await mergeCoursesToSql(username, parsedCourses);
       } else {
-        await saveCourses(username, parsedCourses);
+        await replaceCoursesForSemester(username, semesterId, parsedCourses);
       }
       return true;
     } catch (e) {

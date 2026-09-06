@@ -1057,6 +1057,10 @@ class DataImportService {
       StorageService.keyIgnoredScheduleConflicts,
       StorageService.keyConflictDetectionEnabled,
       StorageService.keySyncInterval,
+      StorageService.keySemesterStart,
+      StorageService.keySemesterEnd,
+      StorageService.keySemesters,
+      StorageService.keyActiveSemester,
     };
 
     return keysNeedingSuffix.contains(key) ||

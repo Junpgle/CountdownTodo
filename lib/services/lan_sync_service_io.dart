@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../course_import/course_schedule_semantics.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/pomodoro_service.dart';
@@ -770,24 +771,37 @@ class LanSyncService {
   Future<void> _mergeCourses(String username, List<Map<String, dynamic>> remote,
       Function(int) onChanged) async {
     if (remote.isEmpty) return;
-    final local = await CourseService.getAllCourses(username);
-    final Map<String, CourseItem> merged = {};
-    for (var c in local) {
-      final key = '${c.courseName}_${c.date}_${c.startTime}';
-      merged[key] = c;
-    }
-    bool changed = false;
-    for (var r in remote) {
-      final remoteCourse = CourseItem.fromJson(r);
-      final key =
-          '${remoteCourse.courseName}_${remoteCourse.date}_${remoteCourse.startTime}';
-      if (!merged.containsKey(key)) {
-        merged[key] = remoteCourse;
-        changed = true;
-      }
-    }
+    final local = await CourseService.getAllCourses(
+      username,
+      applyCalendarAdjustments: false,
+    );
+    final remoteCourses = remote.map(CourseItem.fromJson).toList();
+    final merged = CourseScheduleSemantics.mergeBySlot(local, remoteCourses);
+    final localByUuid = {for (final course in local) course.uuid: course};
+
+    bool sameCourse(CourseItem left, CourseItem right) =>
+        left.courseName == right.courseName &&
+        left.teacherName == right.teacherName &&
+        left.date == right.date &&
+        left.weekday == right.weekday &&
+        left.startTime == right.startTime &&
+        left.endTime == right.endTime &&
+        left.weekIndex == right.weekIndex &&
+        left.roomName == right.roomName &&
+        left.lessonType == right.lessonType &&
+        left.semesterId == right.semesterId &&
+        left.teamUuid == right.teamUuid &&
+        left.version == right.version &&
+        left.updatedAt == right.updatedAt &&
+        left.isDeleted == right.isDeleted;
+
+    final changed = merged.length != local.length ||
+        merged.any((course) {
+          final old = localByUuid[course.uuid];
+          return old == null || !sameCourse(old, course);
+        });
     if (changed) {
-      await CourseService.saveCourses(username, merged.values.toList());
+      await CourseService.saveCourses(username, merged);
       onChanged(merged.length);
     }
   }

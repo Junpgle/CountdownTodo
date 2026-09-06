@@ -415,10 +415,32 @@ class DataExportService {
 
     // 用户特定的键后缀
     final userSuffix = '_$username';
+    final semesterSettings = {
+      StorageService.keySemesterStart,
+      StorageService.keySemesterEnd,
+      StorageService.keySemesters,
+      StorageService.keyActiveSemester,
+    };
 
     for (final key in keys) {
       // 跳过排除的键
       if (excludedKeys.contains(key)) continue;
+
+      // 多学期设置也按账号隔离。导出时统一还原为基础键名，避免把源账号
+      // 后缀带到另一台设备后无法被当前账号读取。
+      final matchingSemesterKey = semesterSettings.firstWhere(
+        (baseKey) => key == '$baseKey$userSuffix',
+        orElse: () => '',
+      );
+      if (matchingSemesterKey.isNotEmpty) {
+        final value = prefs.get(key);
+        if (value != null) settings[matchingSemesterKey] = value;
+        continue;
+      }
+      if (semesterSettings.contains(key) &&
+          prefs.containsKey('$key$userSuffix')) {
+        continue;
+      }
 
       // 跳过其他用户的数据（包含 _ 且不是当前用户的）
       if (key.contains('_') &&

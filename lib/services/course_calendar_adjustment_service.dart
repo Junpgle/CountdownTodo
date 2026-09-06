@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../course_import/course_schedule_semantics.dart';
 import '../models.dart';
 import '../storage_service.dart';
 
@@ -353,7 +354,26 @@ class CourseCalendarAdjustmentService {
       return rawCourses;
     }
 
-    final semesterMonday = await _resolveSemesterMonday(rawCourses);
+    final fallbackSemesterMonday =
+        await _resolveFallbackSemesterMonday(rawCourses);
+    final semesterMondayCache = <String, DateTime?>{};
+
+    Future<DateTime?> semesterMondayFor(CourseItem course) async {
+      final semesterId = course.semesterId;
+      if (semesterMondayCache.containsKey(semesterId)) {
+        return semesterMondayCache[semesterId];
+      }
+
+      final start = semesterId.isNotEmpty
+          ? await StorageService.getSemesterStartById(semesterId)
+          : null;
+      final monday = start == null
+          ? fallbackSemesterMonday
+          : CourseScheduleSemantics.mondayOf(start);
+      semesterMondayCache[semesterId] = monday;
+      return monday;
+    }
+
     final byDate = <String, List<CourseItem>>{};
     for (final course in rawCourses) {
       final date = course.date.trim();
@@ -371,11 +391,12 @@ class CourseCalendarAdjustmentService {
       if (sourceCourses.isEmpty) continue;
       final targetDate = _df.parseStrict(transfer.toDate);
       final targetWeekday = targetDate.weekday;
-      final targetWeekIndex = semesterMonday == null
-          ? sourceCourses.first.weekIndex
-          : targetDate.difference(semesterMonday).inDays ~/ 7 + 1;
 
       for (final course in sourceCourses) {
+        final semesterMonday = await semesterMondayFor(course);
+        final targetWeekIndex = semesterMonday == null
+            ? course.weekIndex
+            : targetDate.difference(semesterMonday).inDays ~/ 7 + 1;
         adjusted.add(_copyCourseForDate(
           course,
           date: transfer.toDate,
@@ -393,7 +414,7 @@ class CourseCalendarAdjustmentService {
     return _dedupe(adjusted);
   }
 
-  static Future<DateTime?> _resolveSemesterMonday(
+  static Future<DateTime?> _resolveFallbackSemesterMonday(
       List<CourseItem> courses) async {
     final semStart = await StorageService.getSemesterStart();
     if (semStart != null) {
@@ -432,6 +453,7 @@ class CourseCalendarAdjustmentService {
       weekIndex: weekIndex,
       roomName: course.roomName,
       lessonType: course.lessonType,
+      semesterId: course.semesterId,
       teamUuid: course.teamUuid,
       version: course.version,
       updatedAt: course.updatedAt,
@@ -445,7 +467,7 @@ class CourseCalendarAdjustmentService {
     final result = <CourseItem>[];
     for (final course in courses) {
       final key =
-          '${course.date}|${course.courseName}|${course.roomName}|${course.startTime}|${course.endTime}';
+          '${course.semesterId}|${course.date}|${course.courseName}|${course.roomName}|${course.startTime}|${course.endTime}';
       if (seen.add(key)) result.add(course);
     }
     return result;

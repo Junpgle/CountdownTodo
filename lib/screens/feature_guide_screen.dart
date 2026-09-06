@@ -20,6 +20,7 @@ import 'personal_timeline_screen.dart';
 import '../widgets/global_search_overlay.dart';
 import 'settings/pages/preference_settings_page.dart';
 import '../services/course_service.dart';
+import '../course_import/course_schedule_semantics.dart';
 import '../services/permission_request_coordinator.dart';
 import '../services/minor_mode_service.dart';
 import '../services/liquid_glass_effect_service.dart';
@@ -500,9 +501,16 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
     List<CourseItem>? courses;
     if (cloudCoursesRaw != null && cloudCoursesRaw.isNotEmpty) {
-      courses = cloudCoursesRaw
-          .map((e) => CourseItem.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+      courses = cloudCoursesRaw.map((e) {
+        final map = Map<String, dynamic>.from(e as Map);
+        // The API uses `semester`, while CourseItem accepts the local storage
+        // name `semester_id`; preserve it before deserializing.
+        map['semester_id'] = map['semester_id'] ??
+            map['semester'] ??
+            map['semesterId'] ??
+            'default';
+        return CourseItem.fromJson(map);
+      }).toList();
     }
 
     DateTime? semStart;
@@ -534,7 +542,10 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     if (_cloudCourses == null || _cloudCourses!.isEmpty) return;
     setState(() => _importingCourses = true);
     try {
-      await CourseService.saveCourses(widget.loggedInUser!, _cloudCourses!);
+      await CourseService.replaceCoursesForSemesters(
+        widget.loggedInUser!,
+        _cloudCourses!,
+      );
       if (mounted) {
         setState(() => _hasCloudCourses = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -559,14 +570,19 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     if (_cloudSemesterStart == null || _cloudSemesterEnd == null) return;
     setState(() => _importingSemester = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(StorageService.keySemesterStart,
-          _cloudSemesterStart!.toIso8601String());
-      await prefs.setString(
-          StorageService.keySemesterEnd, _cloudSemesterEnd!.toIso8601String());
+      await StorageService.saveAppSetting(
+        StorageService.keySemesterStart,
+        CourseScheduleSemantics.mondayOf(_cloudSemesterStart!)
+            .toIso8601String(),
+      );
+      await StorageService.saveAppSetting(
+        StorageService.keySemesterEnd,
+        _cloudSemesterEnd!.toIso8601String(),
+      );
       if (mounted) {
         setState(() {
-          _semesterStart = _cloudSemesterStart;
+          _semesterStart =
+              CourseScheduleSemantics.mondayOf(_cloudSemesterStart!);
           _semesterEnd = _cloudSemesterEnd;
           _hasCloudSemester = false;
         });
