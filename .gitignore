@@ -157,6 +157,7 @@ todo.md
 !/test/widgets/app_status_toast_test.dart
 !/test/widgets/home_bottom_navigation_content_test.dart
 !/test/widgets/floating_bottom_bar_test.dart
+!/test/widgets/finance_transaction_detail_screen_test.dart
 !/test/widgets/home_drawer_menu_test.dart
 !/test/widgets/management_pages_test.dart
 !/test/widgets/management_components_test.dart
