@@ -257,10 +257,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                 isDesktop ? 24 : 16,
                 widget.isEmbedded
                     ? (isDesktop ? 20 : 16)
-                    : floatingGlassSettingsContentTopInset(
-                        context,
-                        extra: isDesktop ? 20 : 16,
-                      ),
+                    : floatingGlassSettingsContentTopInset(context),
                 isDesktop ? 24 : 16,
                 isDesktop ? 32 : 16,
               ),
@@ -452,91 +449,92 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   ],
                 ),
                 const SizedBox(height: 24),
-            Card(
-              elevation: 1,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.grey[600]),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        '关闭总开关将同时关闭该类别下所有子通知。单独开启某个子通知不会自动开启总开关。',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[700],
+                Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.grey[600]),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            '关闭总开关将同时关闭该类别下所有子通知。单独开启某个子通知不会自动开启总开关。',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[700],
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            OptionalLiquidGlassCard(
-              borderRadius: 16,
-              margin: EdgeInsets.zero,
-              fallbackDecoration: BoxDecoration(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.grey.shade900
-                    : Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.fromBorderSide(
-                    const BorderSide(color: Colors.transparent, width: 1.5)),
-              ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: _showScheduledReminders,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0, vertical: 16.0),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.teal.withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.manage_search,
-                            color: Colors.teal, size: 28),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              '定时闹钟管理',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 16),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '查看当前已注册到系统的精确闹钟提醒',
-                              style: TextStyle(
-                                  fontSize: 12, color: Colors.grey[600]),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      const Icon(Icons.chevron_right, color: Colors.grey),
-                    ],
                   ),
                 ),
-              ),
-            ),
-            if (_reminderEnabled && _todoGroups.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              _buildCategoryRemindersSection(),
-            ],
-          ],
-        );
+                const SizedBox(height: 16),
+                OptionalLiquidGlassCard(
+                  borderRadius: 16,
+                  margin: EdgeInsets.zero,
+                  fallbackDecoration: BoxDecoration(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey.shade900
+                        : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.fromBorderSide(const BorderSide(
+                        color: Colors.transparent, width: 1.5)),
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: _showScheduledReminders,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16.0, vertical: 16.0),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.teal.withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.manage_search,
+                                color: Colors.teal, size: 28),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  '定时闹钟管理',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '查看当前已注册到系统的精确闹钟提醒',
+                                  style: TextStyle(
+                                      fontSize: 12, color: Colors.grey[600]),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          const Icon(Icons.chevron_right, color: Colors.grey),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                if (_reminderEnabled && _todoGroups.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _buildCategoryRemindersSection(),
+                ],
+              ],
+            );
           },
         ),
       ),
@@ -566,10 +564,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                 isDesktop ? 24 : 16,
                 widget.isEmbedded
                     ? (isDesktop ? 20 : 16)
-                    : floatingGlassSettingsContentTopInset(
-                        context,
-                        extra: isDesktop ? 20 : 16,
-                      ),
+                    : floatingGlassSettingsContentTopInset(context),
                 isDesktop ? 24 : 16,
                 isDesktop ? 32 : 16,
               ),

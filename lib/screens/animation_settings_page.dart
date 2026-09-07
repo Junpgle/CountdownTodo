@@ -268,10 +268,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                 isDesktop ? 24 : 16,
                 widget.isEmbedded
                     ? (isDesktop ? 20 : 16)
-                    : floatingGlassSettingsContentTopInset(
-                        context,
-                        extra: isDesktop ? 20 : 16,
-                      ),
+                    : floatingGlassSettingsContentTopInset(context),
                 isDesktop ? 24 : 16,
                 isDesktop ? 32 : 16,
               ),
