@@ -31,12 +31,6 @@ void main() {
       ),
       ExternalShareMode.financeImport,
     );
-    expect(
-      ExternalSharePayloadClassifier.modeFor(
-        media(ExternalSharePayloadClassifier.fileMime),
-      ),
-      ExternalShareMode.fileInbox,
-    );
   });
 
   test('keeps ordinary MIME types on automatic routing', () {

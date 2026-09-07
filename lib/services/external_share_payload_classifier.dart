@@ -13,7 +13,6 @@ enum ExternalShareMode {
   courseImport,
   imageRecognition,
   financeImport,
-  fileInbox,
 }
 
 /// Distinguishes inline shared text from a text file shared by URI.
@@ -25,7 +24,6 @@ abstract final class ExternalSharePayloadClassifier {
   static const courseMime = 'application/vnd.countdowntodo.course';
   static const imageMime = 'application/vnd.countdowntodo.image';
   static const financeMime = 'application/vnd.countdowntodo.finance';
-  static const fileMime = 'application/vnd.countdowntodo.file';
 
   static ExternalShareMode modeFor(SharedMediaFile media) {
     switch (media.mimeType?.trim().toLowerCase()) {
@@ -35,8 +33,6 @@ abstract final class ExternalSharePayloadClassifier {
         return ExternalShareMode.imageRecognition;
       case financeMime:
         return ExternalShareMode.financeImport;
-      case fileMime:
-        return ExternalShareMode.fileInbox;
       default:
         return ExternalShareMode.automatic;
     }
@@ -45,8 +41,7 @@ abstract final class ExternalSharePayloadClassifier {
   static Future<bool> isInlineText(SharedMediaFile media) async {
     final mode = modeFor(media);
     if (mode == ExternalShareMode.courseImport ||
-        mode == ExternalShareMode.imageRecognition ||
-        mode == ExternalShareMode.fileInbox) {
+        mode == ExternalShareMode.imageRecognition) {
       return false;
     }
 

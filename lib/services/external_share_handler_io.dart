@@ -22,6 +22,7 @@ import 'todo_recognition_state.dart';
 import 'ai_recognition_chat_bridge.dart';
 import '../utils/persistent_image_storage.dart';
 import '../course_import/course_import_preflight.dart';
+import '../course_import/handlers/course_import_handler.dart';
 import '../course_import/widgets/course_time_repair_dialog.dart';
 import '../course_import/widgets/zf_time_config_dialog.dart';
 
@@ -154,15 +155,26 @@ class ExternalShareHandler {
 
     String filePath = firstPath;
     final ext = filePath.split('.').last.toLowerCase();
-    final imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+    const imageExtensions = {
+      'jpg',
+      'jpeg',
+      'png',
+      'gif',
+      'webp',
+      'bmp',
+      'heic',
+      'heif',
+      'avif',
+      'tif',
+      'tiff',
+    };
     final isImage = requestedMode == ExternalShareMode.imageRecognition ||
         (requestedMode == ExternalShareMode.automatic &&
             (media.type == SharedMediaType.image ||
                 imageExtensions.contains(ext) ||
                 media.mimeType?.toLowerCase().startsWith('image/') == true));
     final isFinanceImport = requestedMode == ExternalShareMode.financeImport;
-    final isFileInbox = requestedMode == ExternalShareMode.fileInbox;
-    final needsCourseImport = !isImage && !isFinanceImport && !isFileInbox;
+    final needsCourseImport = !isImage && !isFinanceImport;
 
     // 图片分享走识图流程，不需要课表学期；其余文件在任何读取、去重和
     // 解析之前先完成登录与目标学期校验。
@@ -283,9 +295,7 @@ class ExternalShareHandler {
           ? "正在准备图片..."
           : isFinanceImport
               ? "正在准备记账内容..."
-              : isFileInbox
-                  ? "正在准备保存文件..."
-                  : "正在等待分享课表文件...";
+              : "正在等待分享课表文件...";
       await Future.delayed(const Duration(milliseconds: 400));
 
       File file = await _waitForReadableFile(filePath);
@@ -294,14 +304,22 @@ class ExternalShareHandler {
       // 生成文件唯一标识。getInitialMedia 和 getMediaStream 可能同时返回
       // 同一份分享内容，因此两条入口必须使用同一套去重规则。
       final fileKey = await _generateFileKey(filePath);
-      if (await _isShareAlreadyHandled(fileKey, filePath)) {
-        // debugPrint("文件已处理或正在处理，跳过: $filePath");
+      // 课表分享是一次明确的“导入”操作。同一份文件重新分享时，仍然
+      // 必须让用户选择“共存/替换”，不能被上次失败或取消前留下的状态
+      // 静默吞掉；识图和记账仍保留跨进程去重保护。
+      final shouldDeduplicate = !needsCourseImport;
+      if (shouldDeduplicate &&
+          await _isShareAlreadyHandled(fileKey, filePath)) {
+        statusNotifier.value = "分享内容已经处理过";
+        await Future.delayed(const Duration(milliseconds: 600));
         closeDialogSafely();
         ReceiveSharingIntent.instance.reset();
         _isProcessing = false;
         return;
       }
       if (!_processingFileKeys.add(fileKey)) {
+        statusNotifier.value = "分享内容正在处理中";
+        await Future.delayed(const Duration(milliseconds: 600));
         closeDialogSafely();
         ReceiveSharingIntent.instance.reset();
         _isProcessing = false;
@@ -310,6 +328,14 @@ class ExternalShareHandler {
       claimedFileKey = fileKey;
 
       if (isImage) {
+        if (requestedMode == ExternalShareMode.imageRecognition &&
+            !await _isLikelyImageFile(file, media, imageExtensions)) {
+          statusNotifier.value = "❌ 识别图片仅支持图片文件";
+          await Future.delayed(const Duration(seconds: 2));
+          closeDialogSafely();
+          return;
+        }
+
         // 图片处理：调用大模型识别事项并保留类型声明
         statusNotifier.value = "识别到图片\n正在压缩图片...";
 
@@ -509,20 +535,6 @@ class ExternalShareHandler {
         if (context.mounted) {
           await onFinanceRecognized?.call(drafts, filePath);
         }
-      } else if (isFileInbox) {
-        statusNotifier.value = "正在无损保存原始文件...";
-        final savedPath = await _saveSharedFile(file, filePath)
-            .timeout(const Duration(seconds: 60));
-        statusNotifier.value = "✅ 文件已保存\n${_displayFileName(savedPath)}";
-        await _markFileProcessed(fileKey);
-        await Future.delayed(const Duration(milliseconds: 1000));
-        closeDialogSafely();
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text('文件已保存到收件箱: ${_displayFileName(savedPath)}')),
-          );
-        }
       } else {
         // 文件处理：课表导入
         statusNotifier.value = "获取课表文件中...";
@@ -541,6 +553,30 @@ class ExternalShareHandler {
           return CourseTimeRepairDialog.show(context, courses);
         }
 
+        var importModeCancelled = false;
+        if (!context.mounted) {
+          closeDialogSafely();
+          return;
+        }
+        final courseImportHandler = CourseImportHandler(
+          context: context,
+          username: username,
+          onRescheduleReminders: () {},
+          showMessage: (_) {},
+        );
+
+        Future<bool?> selectImportMode(List<CourseItem> courses) async {
+          statusNotifier.value = "解析完成\n请选择导入方式";
+          final mode = await courseImportHandler.askImportMode(courses);
+          if (mode == null) {
+            importModeCancelled = true;
+            return null;
+          }
+          statusNotifier.value =
+              mode == ImportMode.merge ? "正在合并课表..." : "正在替换原课表...";
+          return mode == ImportMode.merge;
+        }
+
         bool success = false;
         String sourceName = "";
 
@@ -551,7 +587,8 @@ class ExternalShareHandler {
           success = await CourseService.importXidianScheduleFromIcs(
               username, content, targetSemester.startDate,
               semesterId: targetSemesterId,
-              repairMissingTimes: repairMissingTimes);
+              repairMissingTimes: repairMissingTimes,
+              selectImportMode: selectImportMode);
         } else if (content.contains('timetable_con') ||
             content.contains('id="table1"') ||
             content.contains('kbgrid_table') ||
@@ -579,7 +616,8 @@ class ExternalShareHandler {
               username, content, targetSemester.startDate,
               customTimes: customTimes,
               semesterId: targetSemesterId,
-              repairMissingTimes: repairMissingTimes);
+              repairMissingTimes: repairMissingTimes,
+              selectImportMode: selectImportMode);
         } else if ((['mhtml', 'html', 'htm'].contains(ext) ||
                 content.contains('quoted-printable') ||
                 content.toLowerCase().contains('<html')) &&
@@ -592,7 +630,8 @@ class ExternalShareHandler {
           success = await CourseService.importXmuScheduleFromHtml(
               username, content, targetSemester.startDate,
               semesterId: targetSemesterId,
-              repairMissingTimes: repairMissingTimes);
+              repairMissingTimes: repairMissingTimes,
+              selectImportMode: selectImportMode);
         } else if (['json', 'txt'].contains(ext) ||
             content.trim().startsWith('[') ||
             content.trim().startsWith('{')) {
@@ -602,7 +641,8 @@ class ExternalShareHandler {
               username, content,
               semesterStart: targetSemester.startDate,
               semesterId: targetSemesterId,
-              repairMissingTimes: repairMissingTimes);
+              repairMissingTimes: repairMissingTimes,
+              selectImportMode: selectImportMode);
         } else {
           statusNotifier.value = "❌ 未知的文件格式\n暂不支持解析该文件";
           await Future.delayed(const Duration(seconds: 2));
@@ -617,6 +657,8 @@ class ExternalShareHandler {
           await Future.delayed(const Duration(milliseconds: 800));
           closeDialogSafely();
           if (context.mounted) onSuccess();
+        } else if (importModeCancelled) {
+          closeDialogSafely();
         } else {
           statusNotifier.value = "❌ 导入失败\n课表解析错误或文件已损坏";
           await Future.delayed(const Duration(seconds: 2));
@@ -723,6 +765,91 @@ class ExternalShareHandler {
     return result.path;
   }
 
+  static Future<bool> _isLikelyImageFile(
+    File file,
+    SharedMediaFile media,
+    Set<String> imageExtensions,
+  ) async {
+    if (media.type == SharedMediaType.image ||
+        media.mimeType?.toLowerCase().startsWith('image/') == true) {
+      return true;
+    }
+
+    final fileName = file.path.split(RegExp(r'[\\/]')).last.toLowerCase();
+    final dot = fileName.lastIndexOf('.');
+    if (dot >= 0 && imageExtensions.contains(fileName.substring(dot + 1))) {
+      return true;
+    }
+
+    try {
+      final header = await file.openRead(0, 12).fold<List<int>>(
+        <int>[],
+        (bytes, chunk) => bytes..addAll(chunk),
+      );
+      if (header.length >= 3 &&
+          header[0] == 0xff &&
+          header[1] == 0xd8 &&
+          header[2] == 0xff) {
+        return true; // JPEG
+      }
+      if (header.length >= 8 &&
+          header[0] == 0x89 &&
+          header[1] == 0x50 &&
+          header[2] == 0x4e &&
+          header[3] == 0x47 &&
+          header[4] == 0x0d &&
+          header[5] == 0x0a &&
+          header[6] == 0x1a &&
+          header[7] == 0x0a) {
+        return true; // PNG
+      }
+      if (header.length >= 6 &&
+          header[0] == 0x47 &&
+          header[1] == 0x49 &&
+          header[2] == 0x46 &&
+          header[3] == 0x38) {
+        return true; // GIF
+      }
+      if (header.length >= 2 && header[0] == 0x42 && header[1] == 0x4d) {
+        return true; // BMP
+      }
+      if (header.length >= 4 &&
+          ((header[0] == 0x49 &&
+                  header[1] == 0x49 &&
+                  header[2] == 0x2a &&
+                  header[3] == 0x00) ||
+              (header[0] == 0x4d &&
+                  header[1] == 0x4d &&
+                  header[2] == 0x00 &&
+                  header[3] == 0x2a))) {
+        return true; // TIFF
+      }
+      if (header.length >= 12 &&
+          header[0] == 0x52 &&
+          header[1] == 0x49 &&
+          header[2] == 0x46 &&
+          header[3] == 0x46 &&
+          header[8] == 0x57 &&
+          header[9] == 0x45 &&
+          header[10] == 0x42 &&
+          header[11] == 0x50) {
+        return true; // WEBP
+      }
+      if (header.length >= 12 &&
+          header[4] == 0x66 &&
+          header[5] == 0x74 &&
+          header[6] == 0x79 &&
+          header[7] == 0x70) {
+        final brand = String.fromCharCodes(header.sublist(8, 12));
+        return const {'heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1', 'avif'}
+            .contains(brand);
+      }
+    } catch (_) {
+      return false;
+    }
+    return false;
+  }
+
   /// 等待分享扩展完成文件复制。部分来源会先发送 intent，再异步写入
   /// 缓存文件；直接 File.length/readAsBytes 会把这类正常分享误判成失败。
   static Future<File> _waitForReadableFile(String path) async {
@@ -777,36 +904,6 @@ class ExternalShareHandler {
       List<int> bytes = await file.readAsBytes();
       return utf8.decode(bytes, allowMalformed: true);
     }
-  }
-
-  /// 保存“文件收集”入口收到的原始字节，不经过文本解码、压缩或解析。
-  ///
-  /// 这个入口对应分享面板里的“保存文件”，与课表/识图/记账流程隔离，
-  /// 也让大文件保留原始内容，后续可以在收件箱里再决定如何处理。
-  static Future<String> _saveSharedFile(
-    File source,
-    String originalPath,
-  ) async {
-    final supportDirectory = await getApplicationSupportDirectory();
-    final inbox = Directory('${supportDirectory.path}/shared_file_inbox');
-    await inbox.create(recursive: true);
-
-    final sourceName = _displayFileName(originalPath).isEmpty
-        ? 'shared_file'
-        : _displayFileName(originalPath);
-    final safeName = sourceName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-    final target = File(
-      '${inbox.path}/${DateTime.now().millisecondsSinceEpoch}_$safeName',
-    );
-    await source.copy(target.path);
-    return target.path;
-  }
-
-  static String _displayFileName(String path) {
-    final normalized = path.trim();
-    if (normalized.isEmpty) return '';
-    final segments = normalized.split(RegExp(r'[\\/]'));
-    return segments.last.trim();
   }
 
   /// 生成文件内容指纹。

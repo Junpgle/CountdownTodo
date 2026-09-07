@@ -2,6 +2,7 @@ package com.math_quiz.junpgle.com.math_quiz_app
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 
 /**
@@ -33,6 +34,17 @@ abstract class ShareTargetActivity : Activity() {
             type = targetMimeType
             clipData = source.clipData
             putExtras(source)
+            if (source.action == Intent.ACTION_SEND_MULTIPLE) {
+                val streamCount = source.getParcelableArrayListExtra<Uri>(
+                    Intent.EXTRA_STREAM,
+                )?.size ?: source.clipData?.itemCount ?: 0
+                if (streamCount > 0) {
+                    putExtra(
+                        Intent.EXTRA_MIME_TYPES,
+                        Array(streamCount) { targetMimeType },
+                    )
+                }
+            }
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
@@ -51,8 +63,4 @@ class ImageRecognitionShareActivity : ShareTargetActivity() {
 
 class FinanceImportShareActivity : ShareTargetActivity() {
     override val targetMimeType = "application/vnd.countdowntodo.finance"
-}
-
-class FileInboxShareActivity : ShareTargetActivity() {
-    override val targetMimeType = "application/vnd.countdowntodo.file"
 }

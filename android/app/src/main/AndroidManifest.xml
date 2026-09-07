@@ -119,7 +119,7 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
-        <!-- 外部分享按用途拆成四个独立目标。代理 Activity 会把原始内容
+        <!-- 外部分享按用途拆成三个独立目标。代理 Activity 会把原始内容
              转交给 MainActivity，并用私有 MIME 类型标记用户选择的用途。 -->
         <activity
             android:name=".CourseImportShareActivity"
@@ -151,7 +151,14 @@
             <intent-filter android:label="@string/share_target_image">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="image/*" />
+                <!-- Some gallery/file managers report an image as a generic
+                     file. The Dart side validates the selected payload. -->
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter android:label="@string/share_target_image">
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
 
@@ -165,27 +172,6 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/*" />
-            </intent-filter>
-        </activity>
-
-        <activity
-            android:name=".FileInboxShareActivity"
-            android:exported="true"
-            android:label="@string/share_target_file"
-            android:theme="@style/NormalTheme"
-            android:noHistory="true">
-            <intent-filter android:label="@string/share_target_file">
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="*/*" />
-            </intent-filter>
-            <intent-filter android:label="@string/share_target_file">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="file" />
-                <data android:scheme="content" />
-                <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
 
