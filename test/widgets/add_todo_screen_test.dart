@@ -30,8 +30,8 @@ void main() {
     await tester.pump();
 
     await tester.enterText(find.byType(TextField).first, '团队会议');
-    await tester.tap(find.text('日程'));
-    await tester.pump();
+    await tester.tap(find.bySemanticsLabel('日程'));
+    await tester.pumpAndSettle();
 
     expect(find.byType(AddTodoScreen), findsOneWidget);
     expect(find.text('团队会议'), findsOneWidget);

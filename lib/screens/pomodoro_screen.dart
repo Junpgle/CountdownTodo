@@ -248,7 +248,6 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
     final windowWidth = MediaQuery.sizeOf(context).width;
-    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
 
     // Keep the side-by-side layout for wide windows. Compact Android 17
     // freeform windows reuse the tab layout below so the fixed stats column
@@ -256,8 +255,14 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     final useWideLandscapeLayout = isLandscape && windowWidth >= 720;
     if (useWideLandscapeLayout) {
       return Scaffold(
+        extendBody: true,
         body: SafeArea(
           bottom: false,
+          minimum: EdgeInsets.only(
+            bottom: isFocusingOrWatching
+                ? 0
+                : floatingBottomNavigationContentPaddingFor(context),
+          ),
           child: Row(
             children: [
               // Left: large workbench area
@@ -359,11 +364,12 @@ class _PomodoroScreenState extends State<PomodoroScreen>
             ],
           ),
         ),
+        bottomNavigationBar: _buildBottomTabBar(isFocusingOrWatching),
       );
     }
 
     return Scaffold(
-      extendBody: useFloatingBottomBar,
+      extendBody: true,
       body: FloatingGlassScrollAware(
         child: SafeArea(
           bottom: false,
@@ -403,18 +409,11 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                   ],
                 ),
               ),
-
-              // 手机竖屏时底栏挂到 Scaffold 的悬浮层，避免在内容 Column
-              // 中占据一整块底部高度；桌面/横屏保留原有的普通布局。
-              if (!useFloatingBottomBar)
-                _buildBottomTabBar(isFocusingOrWatching),
             ],
           ),
         ),
       ),
-      bottomNavigationBar: useFloatingBottomBar
-          ? _buildBottomTabBar(isFocusingOrWatching)
-          : null,
+      bottomNavigationBar: _buildBottomTabBar(isFocusingOrWatching),
     );
   }
 
@@ -465,68 +464,28 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   }
 
   Widget _buildBottomTabBar(bool isFocusingOrWatching) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
-
-    final Widget navigation = useFloatingBottomBar
-        ? FloatingBottomNavigationBar(
-            mobilePortraitOnly: false,
-            items: [
-              const FloatingBottomNavigationItem(
-                icon: Icons.timer_outlined,
-                label: '工作台',
-              ),
-              FloatingBottomNavigationItem(
-                key: _statsTabKey,
-                icon: Icons.bar_chart_rounded,
-                label: '统计看板',
-              ),
-            ],
-            selectedIndex: _tabController.index,
-            onTabSelected: (index) => _tabController.animateTo(index),
-          )
-        : SafeArea(
-            top: false,
-            left: false,
-            right: false,
-            child: FloatingBottomBar(
-              height: 96,
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border(
-                    top: BorderSide(
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-                      width: 1,
-                    ),
-                  ),
-                ),
-                child: TabBar(
-                  controller: _tabController,
-                  indicatorSize: TabBarIndicatorSize.label,
-                  dividerColor: colorScheme.surface.withValues(alpha: 0),
-                  tabs: [
-                    const Tab(
-                      icon: Icon(Icons.timer_outlined),
-                      text: '工作台',
-                      iconMargin: EdgeInsets.only(bottom: 2),
-                    ),
-                    Tab(
-                      key: _statsTabKey,
-                      icon: const Icon(Icons.bar_chart_rounded),
-                      text: '统计看板',
-                      iconMargin: const EdgeInsets.only(bottom: 2),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
+    final Widget navigation = FloatingBottomNavigationBar(
+      mobilePortraitOnly: false,
+      items: [
+        const FloatingBottomNavigationItem(
+          icon: Icons.timer_outlined,
+          label: '工作台',
+        ),
+        FloatingBottomNavigationItem(
+          key: _statsTabKey,
+          icon: Icons.bar_chart_rounded,
+          label: '统计看板',
+        ),
+      ],
+      selectedIndex: _tabController.index,
+      onTabSelected: (index) => _tabController.animateTo(index),
+    );
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
       height: isFocusingOrWatching ? 0 : null,
-      clipBehavior: useFloatingBottomBar && !isFocusingOrWatching
+      clipBehavior: !isFocusingOrWatching
           ? Clip.none
           : Clip.hardEdge,
       decoration: const BoxDecoration(),

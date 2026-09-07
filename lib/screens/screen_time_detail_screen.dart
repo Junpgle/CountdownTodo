@@ -516,9 +516,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
     return Scaffold(
-      extendBody: useFloatingBottomBar,
+      extendBody: true,
       backgroundColor: cs.surfaceContainerLowest,
       appBar: FloatingGlassAppBar(
         title: const Text("详细统计",
@@ -529,32 +528,31 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
         surfaceTintColor: Colors.transparent,
         flexibleSpace: const FloatingGlassTopBarBackground(),
       ),
-      bottomNavigationBar: useFloatingBottomBar
-          ? FloatingBottomNavigationBar(
-              items: const [
-                FloatingBottomNavigationItem(
-                  icon: Icons.today_outlined,
-                  label: '日',
-                ),
-                FloatingBottomNavigationItem(
-                  icon: Icons.date_range_outlined,
-                  label: '周',
-                ),
-                FloatingBottomNavigationItem(
-                  icon: Icons.calendar_month_outlined,
-                  label: '月',
-                ),
-              ],
-              selectedIndex: _currentRange.index,
-              onTabSelected: (index) {
-                final range = ScreenTimeRange.values[index];
-                setState(() {
-                  _currentRange = range;
-                  _selectedDate = _periodStart(_selectedDate, range);
-                });
-              },
-            )
-          : null,
+      bottomNavigationBar: FloatingBottomNavigationBar(
+        mobilePortraitOnly: false,
+        items: const [
+          FloatingBottomNavigationItem(
+            icon: Icons.today_outlined,
+            label: '日',
+          ),
+          FloatingBottomNavigationItem(
+            icon: Icons.date_range_outlined,
+            label: '周',
+          ),
+          FloatingBottomNavigationItem(
+            icon: Icons.calendar_month_outlined,
+            label: '月',
+          ),
+        ],
+        selectedIndex: _currentRange.index,
+        onTabSelected: (index) {
+          final range = ScreenTimeRange.values[index];
+          setState(() {
+            _currentRange = range;
+            _selectedDate = _periodStart(_selectedDate, range);
+          });
+        },
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Center(
@@ -584,6 +582,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     final filteredStats =
         ScreenTimeDetailScreen.getFilteredStats(periodStats, _currentFilter);
     final topApps = getGroupedApps(filteredStats);
+    final bottomContentPadding =
+        floatingBottomNavigationContentPaddingFor(context);
 
     // 分类
     Map<String, List<dynamic>> catGroups = {};
@@ -640,7 +640,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildFilters(
-                            padding: const EdgeInsets.only(bottom: 12)),
+                            padding: const EdgeInsets.only(bottom: 12),
+                            includeRange: false),
                         Expanded(
                             child: SingleChildScrollView(
                                 child: Column(
@@ -652,6 +653,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
                               _buildSectionHeader(_trendTitle(_currentRange),
                                   Icons.bar_chart_rounded),
                               _buildChartCard(height: 280),
+                              SizedBox(height: bottomContentPadding),
                             ]))),
                       ])),
               const SizedBox(width: 24),
@@ -683,7 +685,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
                               "其余应用明细", Icons.format_list_bulleted_rounded),
                           _buildRestList(topApps, skipCount: 6),
                         ],
-                        const SizedBox(height: 40),
+                        SizedBox(height: bottomContentPadding),
                       ]))),
             ]),
           ),
@@ -699,7 +701,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _buildFilters(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          includeRange: !floatingBottomBarShouldFloat(context),
+          includeRange: false,
         ),
         _buildHeroCard(selectedTotal, diff, datePrefix),
         Padding(
@@ -731,7 +733,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
                     "其余应用明细", Icons.format_list_bulleted_rounded),
                 _buildRestList(topApps, skipCount: maxTop),
               ],
-              const SizedBox(height: 40),
+              SizedBox(height: bottomContentPadding),
             ])),
       ]));
     });

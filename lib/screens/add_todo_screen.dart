@@ -1657,10 +1657,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final bgColor = theme.brightness == Brightness.light
         ? const Color(0xFFF2F2F7)
         : theme.colorScheme.surface;
-    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
 
     return Scaffold(
-      extendBody: useFloatingBottomBar,
+      extendBody: true,
       backgroundColor: bgColor,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
@@ -1693,7 +1692,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           const SizedBox(width: 8),
         ],
       ),
-      bottomNavigationBar: useFloatingBottomBar && _selectedTabIndex == 0
+      bottomNavigationBar: _selectedTabIndex == 0
           ? _buildManualKindBottomBar()
           : null,
       body: AnimatedSwitcher(
@@ -1846,8 +1845,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   Widget _buildManualInputTab({Key? key}) {
     final colors = Theme.of(context).colorScheme;
-    return LayoutBuilder(builder: (context, constraints) {
-      final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+    return LayoutBuilder(builder: (context, _) {
       return SingleChildScrollView(
         key: key,
         physics: const AlwaysScrollableScrollPhysics(),
@@ -1855,21 +1853,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Type Switcher
-            if (!useFloatingBottomBar) ...[
-              Center(
-                child: SizedBox(
-                  width: 200,
-                  child: _buildCustomSegmentedControl(
-                    labels: const ["待办", "日程"],
-                    selectedIndex:
-                        _manualCaptureKind == _ManualCaptureKind.todo ? 0 : 1,
-                    onChanged: _selectManualCaptureKind,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
             // Input Section
             OptionalLiquidGlassCard(
               borderRadius: 24,
@@ -2369,7 +2352,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 ),
               ),
             ],
-            const SizedBox(height: 60),
+            SizedBox(
+              height: floatingBottomNavigationContentPaddingFor(context),
+            ),
           ],
         ),
       );
@@ -2378,6 +2363,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   Widget _buildManualKindBottomBar() {
     return FloatingBottomNavigationBar(
+      mobilePortraitOnly: false,
       items: const [
         FloatingBottomNavigationItem(
           icon: Icons.check_circle_outline_rounded,

@@ -1386,38 +1386,38 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final colorScheme = theme.colorScheme;
 
     final isWide = MediaQuery.of(context).size.width > 900;
-    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
     final topPadding = MediaQuery.paddingOf(context).top;
     final topBarHeight = floatingGlassTopBarHeight(context);
+    final bottomContentPadding =
+        floatingBottomNavigationContentPaddingFor(context);
     return Scaffold(
-      extendBody: useFloatingBottomBar,
-      bottomNavigationBar: useFloatingBottomBar
-          ? FloatingBottomNavigationBar(
-              items: const [
-                FloatingBottomNavigationItem(
-                  icon: Icons.today_outlined,
-                  label: '日',
-                ),
-                FloatingBottomNavigationItem(
-                  icon: Icons.date_range_outlined,
-                  label: '周',
-                ),
-                FloatingBottomNavigationItem(
-                  icon: Icons.calendar_month_outlined,
-                  label: '月',
-                ),
-                FloatingBottomNavigationItem(
-                  icon: Icons.event_note_outlined,
-                  label: '年',
-                ),
-              ],
-              selectedIndex: _dimension.index,
-              onTabSelected: (index) {
-                setState(() => _dimension = TimelineDimension.values[index]);
-                _loadData();
-              },
-            )
-          : null,
+      extendBody: true,
+      bottomNavigationBar: FloatingBottomNavigationBar(
+        mobilePortraitOnly: false,
+        items: const [
+          FloatingBottomNavigationItem(
+            icon: Icons.today_outlined,
+            label: '日',
+          ),
+          FloatingBottomNavigationItem(
+            icon: Icons.date_range_outlined,
+            label: '周',
+          ),
+          FloatingBottomNavigationItem(
+            icon: Icons.calendar_month_outlined,
+            label: '月',
+          ),
+          FloatingBottomNavigationItem(
+            icon: Icons.event_note_outlined,
+            label: '年',
+          ),
+        ],
+        selectedIndex: _dimension.index,
+        onTabSelected: (index) {
+          setState(() => _dimension = TimelineDimension.values[index]);
+          _loadData();
+        },
+      ),
       body: Stack(
         children: [
           _buildBackground(colorScheme),
@@ -1593,7 +1593,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                                         const SizedBox(height: 16),
                                         _buildReflection(colorScheme),
                                       ],
-                                      const SizedBox(height: 60),
+                                      SizedBox(height: bottomContentPadding),
                                     ],
                                   ),
                           ),
@@ -1809,7 +1809,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   }
 
   Widget _buildGreeting(ColorScheme cs) {
-    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
     final label = _timelinePeriodLabel();
     final sub = _timelinePeriodSubtitle();
 
@@ -1862,8 +1861,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                   ),
                 ],
                 const SizedBox(height: 10),
-                if (!useFloatingBottomBar) _buildDimensionToggle(cs),
-                const SizedBox(height: 8),
                 Text(
                   _getMotivationText(),
                   maxLines: 1,
@@ -1951,63 +1948,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       }
     });
     _loadData();
-  }
-
-  Widget _buildDimensionToggle(ColorScheme cs, {bool floating = false}) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: floating
-            ? cs.surface.withValues(alpha: 0)
-            : cs.surfaceContainerHighest.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: TimelineDimension.values.map((d) {
-          final isSelected = _dimension == d;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () {
-                setState(() => _dimension = d);
-                _loadData();
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? (floating
-                          ? cs.surfaceContainerHighest.withValues(alpha: 0.72)
-                          : cs.surface)
-                      : cs.surface.withValues(alpha: 0),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: isSelected && !floating
-                      ? [
-                          BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.05),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2))
-                        ]
-                      : null,
-                ),
-                child: Center(
-                  child: Text(
-                    _getDimensionName(d),
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight:
-                          isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: isSelected ? cs.primary : cs.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
   }
 
   String _getDimensionName(TimelineDimension d) {
