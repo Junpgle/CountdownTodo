@@ -4,11 +4,10 @@ import '../../../widgets/floating_bottom_bar.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 
-/// Leaves enough scrollable room for the floating navigation bar and its
-/// bottom margin, so the final finance card can clear the bar completely.
+/// Leaves enough scrollable room for the shared navigation bar and its bottom
+/// margin, so the final finance card can clear the bar completely.
 double financeBottomContentPaddingFor(BuildContext context) {
-  if (!floatingBottomBarShouldFloat(context)) return 32;
-  return floatingBottomBarHeightFor(context) + 48;
+  return floatingBottomNavigationContentPaddingFor(context);
 }
 
 class FinanceOverviewPanel extends StatelessWidget {

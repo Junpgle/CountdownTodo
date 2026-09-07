@@ -296,9 +296,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
     final scaffold = Scaffold(
-      extendBody: useFloatingBottomBar,
+      extendBody: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('记账'),
@@ -447,79 +446,46 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                   ],
                 ),
       // 记账入口固定在底栏中央，避免扩展 FAB 覆盖账单内容。
-      bottomNavigationBar: useFloatingBottomBar
-          ? FloatingBottomNavigationBar(
-              items: [
-                FloatingBottomNavigationItem(
-                  icon: Icons.insights_outlined,
-                  label: '概览',
+      bottomNavigationBar: FloatingBottomNavigationBar(
+        mobilePortraitOnly: false,
+        items: [
+          const FloatingBottomNavigationItem(
+            icon: Icons.insights_outlined,
+            label: '概览',
+          ),
+          FloatingBottomNavigationItem(
+            label: '记一笔',
+            selectable: false,
+            onPressed: () => _openEntry(sourceKey: _bottomAddActionKey),
+            builder: (context, selectedLayer, interactive) => Center(
+              child: HomeBottomNavigationActionButton(
+                buttonKey: selectedLayer ? null : _bottomAddActionKey,
+                primaryColor: colorScheme.primary,
+                interactive: interactive,
+                onPressed: () => _openEntry(sourceKey: _bottomAddActionKey),
+                semanticsLabel: '记一笔',
+                child: Icon(
+                  Icons.add_rounded,
+                  color: colorScheme.onPrimary,
+                  size: 28,
                 ),
-                FloatingBottomNavigationItem(
-                  label: '记一笔',
-                  selectable: false,
-                  onPressed: () => _openEntry(sourceKey: _bottomAddActionKey),
-                  builder: (context, selectedLayer, interactive) => Center(
-                    child: HomeBottomNavigationActionButton(
-                      buttonKey: selectedLayer ? null : _bottomAddActionKey,
-                      primaryColor: colorScheme.primary,
-                      interactive: interactive,
-                      onPressed: () =>
-                          _openEntry(sourceKey: _bottomAddActionKey),
-                      semanticsLabel: '记一笔',
-                      child: Icon(
-                        Icons.add_rounded,
-                        color: colorScheme.onPrimary,
-                        size: 28,
-                      ),
-                    ),
-                  ),
-                ),
-                const FloatingBottomNavigationItem(
-                  icon: Icons.receipt_long_outlined,
-                  label: '账单',
-                ),
-              ],
-              selectedIndex: _selectedIndex == 0 ? 0 : 2,
-              onTabSelected: (index) {
-                if (index == 0) {
-                  setState(() => _selectedIndex = 0);
-                } else if (index == 2) {
-                  setState(() => _selectedIndex = 1);
-                }
-              },
-            )
-          : NavigationBar(
-              selectedIndex: _selectedIndex == 0 ? 0 : 2,
-              onDestinationSelected: (index) {
-                if (index == 1) {
-                  _openEntry(sourceKey: _bottomAddActionKey);
-                } else {
-                  setState(() => _selectedIndex = index == 0 ? 0 : 1);
-                }
-              },
-              destinations: [
-                const NavigationDestination(
-                  icon: Icon(Icons.insights_outlined),
-                  selectedIcon: Icon(Icons.insights),
-                  label: '概览',
-                ),
-                NavigationDestination(
-                  icon: SizedBox(
-                    key: _bottomAddActionKey,
-                    width: 32,
-                    height: 32,
-                    child: const Icon(Icons.add_rounded),
-                  ),
-                  selectedIcon: const Icon(Icons.add_rounded),
-                  label: '记一笔',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.receipt_long_outlined),
-                  selectedIcon: Icon(Icons.receipt_long),
-                  label: '账单',
-                ),
-              ],
+              ),
             ),
+          ),
+          const FloatingBottomNavigationItem(
+            icon: Icons.receipt_long_outlined,
+            label: '账单',
+          ),
+        ],
+        selectedIndex: _selectedIndex == 0 ? 0 : 2,
+        onTabSelected: (index) {
+          if (index == 0) {
+            setState(() => _selectedIndex = 0);
+          } else if (index == 2) {
+            setState(() => _selectedIndex = 1);
+          }
+        },
+      ),
     );
 
     final isDesktop = !kIsWeb &&

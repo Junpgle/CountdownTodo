@@ -5,6 +5,7 @@ import '../../../screens/pomodoro_screen.dart';
 import '../../../services/pomodoro_control_service.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../utils/page_transitions.dart';
+import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/platform_backdrop_filter.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
@@ -172,13 +173,15 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
       } else if (snapshot.isEmpty) {
         content = _buildEmpty();
       } else {
+        final bottomPadding =
+            floatingBottomNavigationContentPaddingFor(context);
         content = RefreshIndicator(
           onRefresh: _loadData,
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 840),
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding),
                 children: [
                   _buildSummaryCard(snapshot),
                   const SizedBox(height: 16),

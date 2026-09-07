@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../widgets/floating_bottom_bar.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
@@ -167,6 +168,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 600;
+        final bottomPadding =
+            floatingBottomNavigationContentPaddingFor(context);
 
         if (isWide) {
           return Row(
@@ -177,7 +180,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                 child: RefreshIndicator(
                   onRefresh: _loadData,
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                    padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding),
                     children: [
                       _buildMonthHeader(),
                       const SizedBox(height: 12),
@@ -195,7 +198,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
               Expanded(
                 flex: 4,
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                  padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding),
                   children: [
                     _buildSelectedDayDetail(),
                   ],
@@ -208,7 +211,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
         return RefreshIndicator(
           onRefresh: _loadData,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding),
             children: [
               _buildMonthHeader(),
               const SizedBox(height: 12),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/page_transitions.dart';
+import '../../../widgets/floating_bottom_bar.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
@@ -206,7 +207,12 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 840),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              12,
+              16,
+              floatingBottomNavigationContentPaddingFor(context),
+            ),
             children: [
               LayoutBuilder(
                 builder: (context, constraints) {
