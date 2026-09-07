@@ -43,6 +43,11 @@ class CourseImportHandler {
   Future<SemesterInfo?> _askTargetSemester() =>
       CourseImportPreflight.selectTargetSemester(context);
 
+  /// Exposes the same import-mode choice to external share imports after
+  /// their content has been parsed but before anything is written.
+  Future<ImportMode?> askImportMode(List<CourseItem> newCourses) =>
+      _askImportMode(newCourses);
+
   /// 检测冲突并让用户选择导入模式
   /// 返回 ImportMode，如果用户取消则返回 null
   Future<ImportMode?> _askImportMode(List<CourseItem> newCourses) async {
@@ -52,8 +57,8 @@ class CourseImportHandler {
     if (!context.mounted) return null;
 
     if (conflicts.isNotEmpty) {
-      // 有冲突：提示用户将替换同一学期同一时间段的旧课程
-      final confirmed = await showDialog<bool>(
+      // 有冲突：让用户明确选择按时段共存，或替换整个目标学期。
+      final mode = await showDialog<ImportMode>(
         context: context,
         builder: (ctx) {
           final colorScheme = Theme.of(ctx).colorScheme;
@@ -80,7 +85,7 @@ class CourseImportHandler {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '以下 ${conflictSummary.length} 门课程与新课表存在时间冲突，导入后将被替换：',
+                    '以下 ${conflictSummary.length} 门课程与新课表存在时间冲突，请选择导入方式：',
                     style: TextStyle(
                         fontSize: 14, color: colorScheme.onSurfaceVariant),
                   ),
@@ -103,7 +108,7 @@ class CourseImportHandler {
                       )),
                   const SizedBox(height: 12),
                   Text(
-                    '不冲突的课程将保留。',
+                    '共存导入仅替换冲突时段并保留其他课程；替换当前学期会清空该学期旧课表。',
                     style: TextStyle(
                         fontSize: 13, color: colorScheme.onSurfaceVariant),
                   ),
@@ -112,21 +117,23 @@ class CourseImportHandler {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
+                onPressed: () => Navigator.pop(ctx),
                 child: const Text('取消'),
               ),
+              OutlinedButton(
+                onPressed: () => Navigator.pop(ctx, ImportMode.replace),
+                child: const Text('替换当前学期'),
+              ),
               FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('继续导入'),
+                onPressed: () => Navigator.pop(ctx, ImportMode.merge),
+                child: const Text('共存导入'),
               ),
             ],
           );
         },
       );
 
-      if (confirmed != true) return null;
-      // 有冲突时自动使用按时间段合并，保留其他学期和不冲突课程。
-      return ImportMode.merge;
+      return mode;
     } else {
       // 无冲突：让用户选择导入方式
       final mode = await showDialog<ImportMode>(

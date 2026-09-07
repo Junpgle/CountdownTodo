@@ -25,6 +25,12 @@ typedef CourseTimeRepairCallback = Future<List<CourseItem>?> Function(
   List<CourseItem> courses,
 );
 
+/// Returns true for coexist/merge, false for replacing the selected semester,
+/// or null when the user cancels the import.
+typedef CourseImportModeSelector = Future<bool?> Function(
+  List<CourseItem> courses,
+);
+
 class CourseService {
   static const String _keyCourseData = 'course_schedule_json';
 
@@ -286,12 +292,39 @@ class CourseService {
     return repaired;
   }
 
+  static Future<bool> _saveImportedCourses(
+    String username,
+    List<CourseItem> courses, {
+    required String semesterId,
+    required bool merge,
+    CourseImportModeSelector? selectImportMode,
+  }) async {
+    var shouldMerge = merge;
+    if (selectImportMode != null) {
+      final selectedMerge = await selectImportMode(courses);
+      if (selectedMerge == null) return false;
+      shouldMerge = selectedMerge;
+    }
+
+    if (shouldMerge) {
+      if (selectImportMode != null) {
+        await mergeCoursesForSemester(username, semesterId, courses);
+      } else {
+        await mergeCoursesToSql(username, courses);
+      }
+    } else {
+      await replaceCoursesForSemester(username, semesterId, courses);
+    }
+    return true;
+  }
+
   // 1. 从字符串导入课表 (合工大)
   static Future<bool> importScheduleFromJson(String username, String jsonString,
       {DateTime? semesterStart,
       bool merge = false,
       String semesterId = 'default',
-      CourseTimeRepairCallback? repairMissingTimes}) async {
+      CourseTimeRepairCallback? repairMissingTimes,
+      CourseImportModeSelector? selectImportMode}) async {
     try {
       // 在解析前确认目标学期，避免无配置时先做无效解析。
       final effectiveSemesterStart =
@@ -317,12 +350,13 @@ class CourseService {
       if (repairedCourses == null) return false;
       parsedCourses = repairedCourses;
 
-      if (merge) {
-        await mergeCoursesToSql(username, parsedCourses);
-      } else {
-        await replaceCoursesForSemester(username, semesterId, parsedCourses);
-      }
-      return true;
+      return await _saveImportedCourses(
+        username,
+        parsedCourses,
+        semesterId: semesterId,
+        merge: merge,
+        selectImportMode: selectImportMode,
+      );
     } catch (e) {
       // print("解析工大课表出错: $e");
       return false;
@@ -334,7 +368,8 @@ class CourseService {
       String username, String htmlString, DateTime semesterStart,
       {bool merge = false,
       String semesterId = 'default',
-      CourseTimeRepairCallback? repairMissingTimes}) async {
+      CourseTimeRepairCallback? repairMissingTimes,
+      CourseImportModeSelector? selectImportMode}) async {
     try {
       List<CourseItem> parsedCourses =
           XmuScheduleParser.parseHtml(htmlString, semesterStart);
@@ -352,12 +387,13 @@ class CourseService {
       if (repairedCourses == null) return false;
       parsedCourses = repairedCourses;
 
-      if (merge) {
-        await mergeCoursesToSql(username, parsedCourses);
-      } else {
-        await replaceCoursesForSemester(username, semesterId, parsedCourses);
-      }
-      return true;
+      return await _saveImportedCourses(
+        username,
+        parsedCourses,
+        semesterId: semesterId,
+        merge: merge,
+        selectImportMode: selectImportMode,
+      );
     } catch (e) {
       // print("解析厦大课表出错: $e");
       return false;
@@ -369,7 +405,8 @@ class CourseService {
       String username, String htmlString, DateTime semesterStart,
       {bool merge = false,
       String semesterId = 'default',
-      CourseTimeRepairCallback? repairMissingTimes}) async {
+      CourseTimeRepairCallback? repairMissingTimes,
+      CourseImportModeSelector? selectImportMode}) async {
     try {
       List<CourseItem> parsedCourses =
           XujcScheduleParser.parseHtml(htmlString, semesterStart);
@@ -387,12 +424,13 @@ class CourseService {
       if (repairedCourses == null) return false;
       parsedCourses = repairedCourses;
 
-      if (merge) {
-        await mergeCoursesToSql(username, parsedCourses);
-      } else {
-        await replaceCoursesForSemester(username, semesterId, parsedCourses);
-      }
-      return true;
+      return await _saveImportedCourses(
+        username,
+        parsedCourses,
+        semesterId: semesterId,
+        merge: merge,
+        selectImportMode: selectImportMode,
+      );
     } catch (e) {
       // print("解析嘉庚课表出错: $e");
       return false;
@@ -404,7 +442,8 @@ class CourseService {
       String username, String icsString, DateTime semesterStart,
       {bool merge = false,
       String semesterId = 'default',
-      CourseTimeRepairCallback? repairMissingTimes}) async {
+      CourseTimeRepairCallback? repairMissingTimes,
+      CourseImportModeSelector? selectImportMode}) async {
     try {
       List<CourseItem> parsedCourses =
           XidianScheduleParser.parseIcs(icsString, semesterStart);
@@ -422,12 +461,13 @@ class CourseService {
       if (repairedCourses == null) return false;
       parsedCourses = repairedCourses;
 
-      if (merge) {
-        await mergeCoursesToSql(username, parsedCourses);
-      } else {
-        await replaceCoursesForSemester(username, semesterId, parsedCourses);
-      }
-      return true;
+      return await _saveImportedCourses(
+        username,
+        parsedCourses,
+        semesterId: semesterId,
+        merge: merge,
+        selectImportMode: selectImportMode,
+      );
     } catch (e) {
       // print("解析西电课表出错: $e");
       return false;
@@ -439,7 +479,8 @@ class CourseService {
       {DateTime? semesterStart,
       bool merge = false,
       String semesterId = 'default',
-      CourseTimeRepairCallback? repairMissingTimes}) async {
+      CourseTimeRepairCallback? repairMissingTimes,
+      CourseImportModeSelector? selectImportMode}) async {
     try {
       // 文件读取前先确认学期，避免外部唤起后才发现导入条件不完整。
       final effectiveSemesterStart =
@@ -454,6 +495,7 @@ class CourseService {
         merge: merge,
         semesterId: semesterId,
         repairMissingTimes: repairMissingTimes,
+        selectImportMode: selectImportMode,
       );
     } catch (e) {
       return false;
@@ -466,7 +508,8 @@ class CourseService {
       {Map<int, Map<String, int>>? customTimes,
       bool merge = false,
       String semesterId = 'default',
-      CourseTimeRepairCallback? repairMissingTimes}) async {
+      CourseTimeRepairCallback? repairMissingTimes,
+      CourseImportModeSelector? selectImportMode}) async {
     try {
       // 调用解析器，并传入可能的自定义时间配置
       List<CourseItem> parsedCourses = ZfSoftScheduleParser.parseHtml(
@@ -488,12 +531,13 @@ class CourseService {
       if (repairedCourses == null) return false;
       parsedCourses = repairedCourses;
 
-      if (merge) {
-        await mergeCoursesToSql(username, parsedCourses);
-      } else {
-        await replaceCoursesForSemester(username, semesterId, parsedCourses);
-      }
-      return true;
+      return await _saveImportedCourses(
+        username,
+        parsedCourses,
+        semesterId: semesterId,
+        merge: merge,
+        selectImportMode: selectImportMode,
+      );
     } catch (e) {
       // print("解析正方教务课表出错: $e");
       return false;
