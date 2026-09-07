@@ -21,6 +21,7 @@ import '../features/habits/screens/habit_detail_screen.dart';
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
 import '../features/thirty_day_challenge/screens/challenge_center_screen.dart';
+import '../utils/app_platform.dart';
 
 class SearchResultWithScore {
   final SearchResult result;
@@ -31,6 +32,27 @@ class SearchResultWithScore {
 class SearchService {
   static final SearchService instance = SearchService._();
   SearchService._();
+
+  static const _windowsOnlySettings = {
+    'float_window_style',
+    'force_refresh',
+    'island_priority',
+    'tai_db',
+  };
+  static const _androidOnlySettings = {
+    'live_updates',
+    'island_support',
+    'test_notification',
+  };
+  static const _macOsOnlySettings = {
+    'mac_status_bar',
+    'mac_island_shortcut',
+    'mac_island_reminders',
+    'mac_island_clipboard_links',
+    'mac_island_clipboard_browser',
+    'mac_island_test',
+    'mac_island_without_notch',
+  };
 
   int _latestSearchId = 0;
   Future<void>? _warmupFuture;
@@ -691,7 +713,7 @@ class SearchService {
         _searchDatabase(q, searchTerms).catchError((_) => <SearchResult>[]);
 
     // 1. 静态索引扫描
-    for (var s in _staticSettings) {
+    for (var s in _staticSettings.where(_isStaticSettingAvailable)) {
       int score = _calculateScore(
         s.title.toLowerCase(),
         s.subtitle?.toLowerCase(),
@@ -763,6 +785,15 @@ class SearchService {
     }
 
     return finalResults;
+  }
+
+  static bool _isStaticSettingAvailable(SearchResult result) {
+    final target = result.extraData?['target']?.toString();
+    if (target == null) return true;
+    if (_windowsOnlySettings.contains(target)) return AppPlatform.isWindows;
+    if (_androidOnlySettings.contains(target)) return AppPlatform.isAndroid;
+    if (_macOsOnlySettings.contains(target)) return AppPlatform.isMacOS;
+    return true;
   }
 
   List<String> _extractSearchTerms(String query) {

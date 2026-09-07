@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -28,7 +29,7 @@ enum ImportMode {
 class CourseImportHandler {
   final BuildContext context;
   final String username;
-  final VoidCallback onRescheduleReminders;
+  final FutureOr<void> Function() onRescheduleReminders;
   final Function(String) showMessage;
 
   CourseImportHandler({
@@ -453,7 +454,13 @@ class CourseImportHandler {
 
       _closeLoadingDialog();
       showMessage('✅ $sourceName 导入成功！');
-      onRescheduleReminders();
+      try {
+        await onRescheduleReminders();
+      } catch (error) {
+        // Scheduling is a post-import refresh. A notification failure must
+        // not turn a successfully saved course import into a false error.
+        debugPrint('⚠️ 课表导入后刷新提醒失败: $error');
+      }
     } catch (e) {
       _closeLoadingDialog();
       showMessage('❌ 导入失败: $e');
@@ -754,7 +761,13 @@ class CourseImportHandler {
       if (!context.mounted) return;
       _closeLoadingDialog();
       showMessage('✅ $sourceName 导入成功！');
-      onRescheduleReminders();
+      try {
+        await onRescheduleReminders();
+      } catch (error) {
+        // Scheduling is a post-import refresh. A notification failure must
+        // not turn a successfully saved course import into a false error.
+        debugPrint('⚠️ 课表导入后刷新提醒失败: $error');
+      }
     } catch (e) {
       _closeLoadingDialog();
       showMessage('❌ 导入异常: $e');

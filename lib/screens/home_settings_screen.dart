@@ -103,10 +103,10 @@ class _SettingsPageState extends State<SettingsPage> {
       'sync_interval',
       'conflict_detection',
       'server_choice',
+      'llm_retry',
       'update',
       'force_download',
       'update_source',
-      'changelog',
     ];
     final preferenceTargets = [
       'theme',
@@ -143,7 +143,6 @@ class _SettingsPageState extends State<SettingsPage> {
       'data_import',
     ];
     final advancedTargets = [
-      'llm_retry',
       'migration',
       'cache',
       'storage',
@@ -163,6 +162,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'mac_status_bar',
       'mac_island_reminders',
       'mac_island_clipboard_links',
+      'mac_island_clipboard_browser',
       'mac_island_test',
       'mac_island_without_notch'
     ];
@@ -532,11 +532,25 @@ class _SettingsPageState extends State<SettingsPage> {
               onChangePassword: _showChangePasswordDialog,
             ),
             UpdateSettingsSection(key: _embeddedUpdateSettingsSectionKey),
-            SyncSettingsSection(username: _username),
+            SyncSettingsSection(
+              username: _username,
+              initialTarget: _accountSyncTarget,
+            ),
           ],
         ),
       ),
     );
+  }
+
+  String? get _accountSyncTarget {
+    const targets = {
+      'sync_interval',
+      'conflict_detection',
+      'server_choice',
+      'llm_retry',
+    };
+    final target = widget.initialTarget;
+    return targets.contains(target) ? target : null;
   }
 
   Future<void> _rescheduleReminders() async {
@@ -1223,7 +1237,10 @@ class _SettingsPageState extends State<SettingsPage> {
             onChangePassword: _showChangePasswordDialog,
           ),
           UpdateSettingsSection(key: _updateSettingsSectionKey),
-          SyncSettingsSection(username: _username),
+          SyncSettingsSection(
+            username: _username,
+            initialTarget: _accountSyncTarget,
+          ),
           const SizedBox(height: 24),
           const Padding(
             padding: EdgeInsets.only(left: 8.0, bottom: 8.0),

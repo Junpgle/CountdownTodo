@@ -17,6 +17,7 @@ import '../features/finance/models/finance_models.dart';
 import '../features/finance/services/finance_text_parser.dart';
 import 'llm_service.dart';
 import 'notification_service.dart';
+import 'reminder_schedule_service.dart';
 import 'recognized_todo_adapter.dart';
 import 'todo_recognition_state.dart';
 import 'ai_recognition_chat_bridge.dart';
@@ -561,7 +562,7 @@ class ExternalShareHandler {
         final courseImportHandler = CourseImportHandler(
           context: context,
           username: username,
-          onRescheduleReminders: () {},
+          onRescheduleReminders: ReminderScheduleService.scheduleCurrentUser,
           showMessage: (_) {},
         );
 
@@ -656,6 +657,13 @@ class ExternalShareHandler {
           await _markFileProcessed(fileKey);
           await Future.delayed(const Duration(milliseconds: 800));
           closeDialogSafely();
+          try {
+            await ReminderScheduleService.scheduleCurrentUser();
+          } catch (error) {
+            // The course data has already been saved. Keep a notification
+            // refresh failure from hiding a successful share import.
+            debugPrint('⚠️ 分享课表后刷新提醒失败: $error');
+          }
           if (context.mounted) onSuccess();
         } else if (importModeCancelled) {
           closeDialogSafely();
