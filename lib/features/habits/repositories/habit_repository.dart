@@ -250,6 +250,7 @@ abstract final class HabitRepository {
     goal.markAsChanged();
     await HabitStorage.saveHabitGoals([goal]);
     StorageService.triggerRefresh(const {DataRefreshDomain.habits});
+    unawaited(HabitReminderService.rescheduleAll());
   }
 
   /// 修改目标规则。
@@ -291,6 +292,7 @@ abstract final class HabitRepository {
       await HabitStorage.saveRuleRevisions(allRules);
       await HabitStorage.saveHabitGoals([goal]);
       StorageService.triggerRefresh(const {DataRefreshDomain.habits});
+      unawaited(HabitReminderService.rescheduleAll());
       return;
     }
 
@@ -319,6 +321,7 @@ abstract final class HabitRepository {
       await HabitStorage.saveRuleRevisions([current]);
       await HabitStorage.saveHabitGoals([goal]);
       StorageService.triggerRefresh(const {DataRefreshDomain.habits});
+      unawaited(HabitReminderService.rescheduleAll());
       return;
     }
 
@@ -363,6 +366,7 @@ abstract final class HabitRepository {
     await HabitStorage.saveRuleRevisions(changes);
     await HabitStorage.saveHabitGoals([goal]);
     StorageService.triggerRefresh(const {DataRefreshDomain.habits});
+    unawaited(HabitReminderService.rescheduleAll());
   }
 
   /// 归档 / 取消归档习惯。
@@ -372,6 +376,7 @@ abstract final class HabitRepository {
     goal.markAsChanged();
     await HabitStorage.saveHabitGoals([goal]);
     StorageService.triggerRefresh(const {DataRefreshDomain.habits});
+    unawaited(HabitReminderService.rescheduleAll());
   }
 
   /// 逻辑删除习惯。
@@ -390,6 +395,7 @@ abstract final class HabitRepository {
     await HabitStorage.saveRuleRevisions(changes);
     await HabitStorage.saveHabitGoals([goal]);
     StorageService.triggerRefresh(const {DataRefreshDomain.habits});
+    unawaited(HabitReminderService.rescheduleAll());
   }
 
   // ── 打卡 ─────────────────────────────────────────────

@@ -8,6 +8,7 @@ import 'api_service.dart';
 import 'band_sync_service.dart';
 import 'float_window_service.dart';
 import 'notification_service.dart';
+import 'scheduled_reminder_registry.dart';
 import 'pomodoro_service.dart';
 import 'pomodoro_sync_service.dart';
 
@@ -301,16 +302,22 @@ class PomodoroControlService {
     required int cycle,
     required int totalCycles,
   }) {
-    NotificationService.scheduleReminders([
-      {
-        'triggerAtMs': endMs,
-        'title': '🍅 专注时间到！',
-        'text': todoTitle != null && todoTitle.isNotEmpty
-            ? '"$todoTitle" 专注时段已结束'
-            : '本轮专注已结束，做个总结吧',
-        'notifId': 40001,
-      }
-    ]);
+    NotificationService.scheduleReminders(
+      [
+        {
+          'triggerAtMs': endMs,
+          'title': '🍅 专注时间到！',
+          'text': todoTitle != null && todoTitle.isNotEmpty
+              ? '"$todoTitle" 专注时段已结束'
+              : '本轮专注已结束，做个总结吧',
+          'notifId': 40001,
+          'type': 'pomodoro',
+          'source': ScheduledReminderSources.pomodoro,
+        }
+      ],
+      clearFirst: false,
+      replaceSource: ScheduledReminderSources.pomodoro,
+    );
   }
 
   static Future<void> _ensureSyncConnected(String? deviceId) async {

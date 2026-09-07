@@ -1755,6 +1755,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     }
                     val existing = KJSONArray(existingJson)
                     val incoming = KJSONArray(newJson)
+                    val incomingIds = mutableSetOf<Int>()
+                    for (i in 0 until incoming.length()) {
+                        incomingIds.add(incoming.getJSONObject(i).optInt("notifId", -1))
+                    }
 
                     val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
@@ -1777,7 +1781,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                                 // Course reminders fire before class starts; keep those visible
                                 // until the actual course start so opening the app before class
                                 // does not dismiss the reminder.
-                                if (!shouldKeepCourseReminderNotification(obj)) {
+                                // Flutter sends the complete aggregate. If a
+                                // reminder is absent from it, it was removed
+                                // by a source rebuild or a setting toggle and
+                                // its visible notification must be dismissed.
+                                // Keep an existing course notification only
+                                // when that same reminder is still registered.
+                                if (!incomingIds.contains(notifId)) {
                                     val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                                     nm.cancel(notifId)
                                 }
@@ -1786,10 +1796,6 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         prefs.edit().putString(ReminderService.KEY_REMINDERS, newJson).apply()
                     } else {
                         // ── Upsert logic (original) ──────────────
-                        val incomingIds = mutableSetOf<Int>()
-                        for (i in 0 until incoming.length()) {
-                            incomingIds.add(incoming.getJSONObject(i).optInt("notifId", -1))
-                        }
                         val merged = KJSONArray()
                         for (i in 0 until existing.length()) {
                             val obj = existing.getJSONObject(i)
@@ -2269,42 +2275,6 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             }
             notificationManager.createNotificationChannel(alertChannel)
         }
-    }
-
-    private fun shouldKeepCourseReminderNotification(obj: org.json.JSONObject): Boolean {
-        if (obj.optString("type") != "course") return false
-
-        val nowMs = System.currentTimeMillis()
-        val explicitStartMs = obj.optLong("courseStartMs", -1L)
-        if (explicitStartMs > 0L) {
-            return nowMs < explicitStartMs
-        }
-
-        val triggerAtMs = obj.optLong("triggerAtMs", -1L)
-        if (triggerAtMs <= 0L) return false
-
-        val timeStr = obj.optString("timeStr", "")
-        val startText = timeStr.substringBefore("-").trim()
-        val parts = startText.split(":")
-        if (parts.size < 2) return false
-
-        val hour = parts[0].toIntOrNull() ?: return false
-        val minute = parts[1].toIntOrNull() ?: return false
-        if (hour !in 0..23 || minute !in 0..59) return false
-
-        val calendar = Calendar.getInstance().apply {
-            timeInMillis = triggerAtMs
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-
-        var inferredStartMs = calendar.timeInMillis
-        if (inferredStartMs < triggerAtMs) {
-            inferredStartMs += 24L * 60L * 60L * 1000L
-        }
-        return nowMs < inferredStartMs
     }
 
     private fun updateCourseNotification(args: Map<String, Any>) {

@@ -5,6 +5,7 @@ import '../storage_service.dart';
 import 'course_service.dart';
 import 'item_semantics_service.dart';
 import 'notification_service.dart';
+import 'scheduled_reminder_registry.dart';
 
 /// 保活提醒调度服务
 ///
@@ -18,7 +19,8 @@ import 'notification_service.dart';
 ///       32001 ~ 32999  →  特殊待办提醒（快递/外卖/餐饮）
 ///       34001 ~ 41999  →  固定日程提醒（每个日程最多 8 个）
 ///       52001 ~ 59999  →  周期账单提醒
-///   - 每次调用 scheduleAll 都覆盖上一次的完整列表（幂等）
+///   - 每次调用 scheduleAll 只替换 reminder_schedule 自己的列表（幂等），
+///     不影响番茄钟和习惯提醒
 ///   - 只注册未来 7 天内的提醒，超出部分在下次 App 启动时补注册
 class ReminderScheduleService {
   static const int _todoBaseId = 30001;
@@ -279,8 +281,16 @@ class ReminderScheduleService {
       await StorageService.savePlanBlocks(username, remindedBlocks);
     }
 
+    final ownedReminders = reminders
+        .map((reminder) => ScheduledReminderRegistry.withSource(
+              reminder,
+              ScheduledReminderSources.reminderSchedule,
+            ))
+        .toList(growable: false);
     await NotificationService.scheduleReminders(
-      reminders,
+      ownedReminders,
+      clearFirst: false,
+      replaceSource: ScheduledReminderSources.reminderSchedule,
       forceReschedule: force,
     );
   }

@@ -10,6 +10,7 @@ import '../../../utils/app_dialogs.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../services/pomodoro_control_service.dart';
 import '../../../services/notification_service.dart';
+import '../../../services/scheduled_reminder_registry.dart';
 import '../../../services/pomodoro_sync_service.dart';
 import '../../../services/strict_focus_sensor_service.dart';
 import '../../../services/strict_focus_haptic_service.dart';
@@ -1288,14 +1289,20 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             ? '"$todoTitle" 专注时段已结束'
             : '本轮专注已结束，做个总结吧')
         : '第 $cycle/$total 轮完成，下一轮专注准备好了';
-    NotificationService.scheduleReminders([
-      {
-        'triggerAtMs': endMs,
-        'title': alarmTitle,
-        'text': alarmText,
-        'notifId': alarmNotifId,
-      }
-    ]);
+    NotificationService.scheduleReminders(
+      [
+        {
+          'triggerAtMs': endMs,
+          'title': alarmTitle,
+          'text': alarmText,
+          'notifId': alarmNotifId,
+          'type': 'pomodoro',
+          'source': ScheduledReminderSources.pomodoro,
+        }
+      ],
+      clearFirst: false,
+      replaceSource: ScheduledReminderSources.pomodoro,
+    );
   }
 
   Future<void> _recoverFromBackground() async {

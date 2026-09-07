@@ -12,6 +12,7 @@ import 'storage/app_settings_storage.dart';
 import 'macos_pomodoro_status_bar_service.dart';
 import 'todo_notification_policy.dart';
 import 'item_semantics_service.dart';
+import 'scheduled_reminder_registry.dart';
 import '../utils/time_utils.dart';
 
 class NotificationService {
@@ -22,6 +23,7 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   static Future<void>? _initializationFuture;
+  static Future<void> _scheduleQueue = Future<void>.value();
   static bool _initialized = false;
 
   static final Map<String, DateTime> _recentGenericNotifications = {};
@@ -192,6 +194,7 @@ class NotificationService {
     required String timeStr,
     required String teacher,
   }) async {
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isCourseNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await ensureInitialized();
@@ -226,13 +229,14 @@ class NotificationService {
     required bool isOver,
     int score = 0,
   }) async {
-    if (!await AppSettingsStorage.isQuizNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
     if (isOver) {
       await cancelQuizNotification();
       return;
     }
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
+    if (!await AppSettingsStorage.isQuizNotificationEnabled()) return;
 
     try {
       await _channel.invokeMethod('showOngoingNotification', {
@@ -348,6 +352,7 @@ class NotificationService {
   }
 
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isTodoSummaryNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
     await ensureInitialized();
@@ -410,6 +415,7 @@ class NotificationService {
 
   static Future<void> showUpcomingTodoNotification(TodoItem todo) async {
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
 
     final todoType = ItemSemanticsService.specialTodoTypeForTitle(todo.title);
     final isSpecialTodo = todoType != 'default' ||
@@ -445,7 +451,7 @@ class NotificationService {
     if (isSpecialTodo) {
       if (!await AppSettingsStorage.isSpecialTodoNotificationEnabled()) return;
     } else {
-      if (!await AppSettingsStorage.isTodoSummaryNotificationEnabled()) return;
+      if (!await AppSettingsStorage.isTodoLiveNotificationEnabled()) return;
     }
 
     final dueDate = todo.dueDate?.toLocal();
@@ -524,6 +530,7 @@ class NotificationService {
     int? timerAnchorMs,
     bool isPaused = false,
   }) async {
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isPomodoroNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
@@ -558,6 +565,7 @@ class NotificationService {
     String? todoTitle,
     bool isBreak = false,
   }) async {
+    if (!await AppSettingsStorage.isNormalNotificationEnabled()) return;
     if (!await AppSettingsStorage.isPomodoroEndNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     if (!_sentPomodoroEndAlertKeys.add(alertKey)) return;
@@ -594,7 +602,14 @@ class NotificationService {
   }
 
   static Future<void> cancelNotification() async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    if (_isDesktopSupported) {
+      await ensureInitialized();
+      for (final id in const [12345, 12346, 12347, 12352, 12354, 12355]) {
+        await _plugin.cancel(id: id);
+      }
+      return;
+    }
     try {
       await _channel.invokeMethod('cancelNotification');
     } catch (_) {
@@ -619,81 +634,104 @@ class NotificationService {
     }
   }
 
-  static Future<void> scheduleReminders(List<Map<String, dynamic>> reminders,
-      {bool clearFirst = true, bool forceReschedule = false}) async {
-    if (!await AppSettingsStorage.isReminderNotificationEnabled() &&
-        !(clearFirst && reminders.isEmpty)) {
-      return;
-    }
+  static Future<void> scheduleReminders(
+    List<Map<String, dynamic>> reminders, {
+    bool clearFirst = true,
+    bool forceReschedule = false,
+    String? replaceSource,
+  }) {
+    final operation = _scheduleQueue.then<void>(
+      (_) => _scheduleReminders(
+        reminders,
+        clearFirst: clearFirst,
+        forceReschedule: forceReschedule,
+        replaceSource: replaceSource,
+      ),
+    );
+    _scheduleQueue = operation.then<void>((_) {}, onError: (_, __) {});
+    return operation;
+  }
+
+  static Future<void> _scheduleReminders(
+    List<Map<String, dynamic>> reminders, {
+    required bool clearFirst,
+    required bool forceReschedule,
+    required String? replaceSource,
+  }) async {
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
-    if (reminders.isEmpty && !clearFirst) return;
+    if (reminders.isEmpty && !clearFirst && replaceSource == null) return;
     await ensureInitialized();
 
+    final existing = ScheduledReminderRegistry.retainActive(
+      await getScheduledReminders(),
+    );
+    final normalEnabled =
+        await AppSettingsStorage.isNormalNotificationEnabled();
+    final incoming = normalEnabled
+        ? await _filterScheduledReminders(reminders)
+        : <Map<String, dynamic>>[];
+    final activeIncoming = ScheduledReminderRegistry.retainActive(incoming);
+    final merged = ScheduledReminderRegistry.merge(
+      existing: existing,
+      incoming: activeIncoming,
+      replaceSource: replaceSource,
+      replaceAll: clearFirst && replaceSource == null,
+    );
+
     if (_isDesktopSupported) {
-      final existing = clearFirst
-          ? <Map<String, dynamic>>[]
-          : await StorageService.getWindowsScheduledReminders();
-      if (clearFirst) {
-        await _plugin.cancelAll();
-        await StorageService.saveWindowsScheduledReminders([]);
+      final finalIds = merged
+          .map(ScheduledReminderRegistry.notifIdOf)
+          .whereType<int>()
+          .toSet();
+      final oldIds = (await StorageService.getWindowsScheduledReminders())
+          .map(ScheduledReminderRegistry.notifIdOf)
+          .whereType<int>()
+          .toSet();
+      for (final id in oldIds.difference(finalIds)) {
+        try {
+          await _plugin.cancel(id: id);
+        } catch (_) {
+          // Desktop notification cancellation is best-effort.
+        }
       }
 
-      final List<Map<String, dynamic>> scheduledOnDesktop = [];
       final now = DateTime.now();
-
-      for (final r in reminders) {
-        final triggerAtMs = (r['triggerAtMs'] as num?)?.toInt();
+      for (final reminder in activeIncoming) {
+        final triggerAtMs = _readInt(reminder['triggerAtMs']);
         if (triggerAtMs == null) continue;
         final triggerAt = DateTime.fromMillisecondsSinceEpoch(triggerAtMs);
-        final startAtMs = (r['startAtMs'] as num?)?.toInt() ??
-            (r['courseStartMs'] as num?)?.toInt();
-        final startAt = startAtMs == null
-            ? null
-            : DateTime.fromMillisecondsSinceEpoch(startAtMs);
-        final shouldRetain =
-            triggerAt.isAfter(now) || (startAt != null && startAt.isAfter(now));
-        if (!shouldRetain) continue;
-        scheduledOnDesktop.add(r);
 
         // 已进入“提前提醒窗口”但事项尚未开始时，不再向系统预约过去的时间，
         // 仍保留给 macOS 灵动岛立即补发。
-        if (!triggerAt.isAfter(now)) {
-          continue;
-        }
+        if (!triggerAt.isAfter(now)) continue;
 
         try {
           await _plugin.zonedSchedule(
-            id: r['notifId'],
+            id: ScheduledReminderRegistry.notifIdOf(reminder) ??
+                triggerAtMs.hashCode,
             scheduledDate: tz.TZDateTime.from(triggerAt, tz.local),
             notificationDetails: _desktopNotificationDetails,
             androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-            title: r['title'] ?? '',
-            body: r['text'] ?? '',
+            title: reminder['title'] ?? '',
+            body: reminder['text'] ?? '',
           );
-        } catch (e) {
-//           debugPrint('桌面端预约提醒失败: $e');
+        } catch (_) {
+          // Desktop notification scheduling is best-effort.
         }
       }
 
-      if (scheduledOnDesktop.isNotEmpty || clearFirst) {
-        final scheduledIds =
-            scheduledOnDesktop.map((reminder) => reminder['notifId']).toSet();
-        existing.removeWhere(
-            (reminder) => scheduledIds.contains(reminder['notifId']));
-        existing.addAll(scheduledOnDesktop);
-        await StorageService.saveWindowsScheduledReminders(existing);
-      }
+      await StorageService.saveWindowsScheduledReminders(merged);
       if (Platform.isMacOS) {
         await MacPomodoroStatusBarService.scheduleIslandReminders(
-          scheduledOnDesktop,
-          clearFirst: clearFirst,
+          merged,
+          clearFirst: true,
         );
       }
       return;
     }
 
     try {
-      final payload = reminders.map((r) {
+      final payload = merged.map((r) {
         final imagePath = r['analysisImagePath']?.toString();
         return {
           'triggerAtMs': r['triggerAtMs'],
@@ -701,6 +739,7 @@ class NotificationService {
           'title': r['title'] ?? '',
           'text': r['text'] ?? '',
           'notifId': r['notifId'],
+          if (r['source'] != null) 'source': r['source'],
           if (r['type'] != null) 'type': r['type'],
           if (r['todoType'] != null) 'todoType': r['todoType'],
           if (r['courseName'] != null) 'courseName': r['courseName'],
@@ -715,6 +754,15 @@ class NotificationService {
           if (r['fixedScheduleId'] != null)
             'fixedScheduleId': r['fixedScheduleId'],
           if (r['todoId'] != null) 'todoId': r['todoId'],
+          if (r['habitGoalId'] != null) 'habitGoalId': r['habitGoalId'],
+          if (r['financeRuleUuid'] != null)
+            'financeRuleUuid': r['financeRuleUuid'],
+          if (r['financePeriodKey'] != null)
+            'financePeriodKey': r['financePeriodKey'],
+          if (r['financeAutoGenerate'] != null)
+            'financeAutoGenerate': r['financeAutoGenerate'],
+          if (r['financeDueAtMs'] != null)
+            'financeDueAtMs': r['financeDueAtMs'],
           if (imagePath != null && imagePath.isNotEmpty)
             'analysisImagePath': imagePath,
         };
@@ -722,12 +770,65 @@ class NotificationService {
 
       await _channel.invokeMethod('scheduleReminders', {
         'remindersJson': jsonEncode(payload),
-        'clearFirst': clearFirst,
+        // Native receives the complete aggregate, so it can rebuild only the
+        // final registry state and cannot accidentally retain removed alarms.
+        'clearFirst': true,
         'forceReschedule': forceReschedule,
       });
     } catch (_) {
       // Native notification calls are best-effort.
     }
+  }
+
+  static Future<List<Map<String, dynamic>>> _filterScheduledReminders(
+    Iterable<Map<String, dynamic>> reminders,
+  ) async {
+    final liveActivityEnabled =
+        await AppSettingsStorage.isLiveActivityNotificationEnabled();
+    final reminderEnabled =
+        await AppSettingsStorage.isReminderNotificationEnabled();
+    final courseEnabled =
+        await AppSettingsStorage.isCourseNotificationEnabled();
+    final todoLiveEnabled =
+        await AppSettingsStorage.isTodoLiveNotificationEnabled();
+    final specialTodoEnabled =
+        await AppSettingsStorage.isSpecialTodoNotificationEnabled();
+    final financeEnabled =
+        await AppSettingsStorage.isFinanceBudgetAlertEnabled();
+    final pomodoroEndEnabled =
+        await AppSettingsStorage.isPomodoroEndNotificationEnabled();
+
+    return reminders
+        .where((reminder) {
+          final source = ScheduledReminderRegistry.sourceOf(reminder);
+          final type = reminder['type']?.toString();
+          if (source == ScheduledReminderSources.pomodoro ||
+              type == 'pomodoro' ||
+              type == 'pomodoro_end') {
+            return pomodoroEndEnabled;
+          }
+          if (!reminderEnabled) return false;
+          switch (type) {
+            case 'course':
+              return liveActivityEnabled && courseEnabled;
+            case 'upcoming_todo':
+              return liveActivityEnabled && todoLiveEnabled;
+            case 'special_todo':
+              return liveActivityEnabled && specialTodoEnabled;
+            case 'finance_recurring':
+              return financeEnabled;
+            default:
+              return true;
+          }
+        })
+        .map(Map<String, dynamic>.from)
+        .toList(growable: false);
+  }
+
+  static int? _readInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
   }
 
   static Future<List<Map<String, dynamic>>> getScheduledReminders() async {
@@ -806,6 +907,7 @@ class NotificationService {
     required int maxAttempts,
     required String status,
   }) async {
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await ensureInitialized();
@@ -848,6 +950,7 @@ class NotificationService {
     // 先撤掉 ongoing 进度通知，再发送可点击的普通结果通知；否则系统/小岛
     // 会继续把上一条“识别中”当作活动任务保留在顶部。
     await cancelTodoRecognizeNotification();
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     await ensureInitialized();
 
@@ -882,6 +985,7 @@ class NotificationService {
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await cancelTodoRecognizeNotification();
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     await ensureInitialized();
 

@@ -564,7 +564,12 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
           _debouncedFetchAnnouncements();
         }
         _debouncedUpdateTodoWidget(allTodos, todosChanged);
-        _debouncedScheduleAllReminders(todosChanged || coursesChanged);
+        _debouncedScheduleAllReminders(
+          todosChanged ||
+              coursesChanged ||
+              plansChanged ||
+              fixedSchedulesChanged,
+        );
       }
       if (!hadTaskFailure) {
         _dashboardLoadRetryAttempt = 0;

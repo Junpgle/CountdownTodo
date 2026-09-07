@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../storage_service.dart';
 import '../../models.dart';
+import '../../features/habits/services/habit_reminder_service.dart';
 import '../../services/course_service.dart';
 import '../../services/reminder_schedule_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/scheduled_reminder_registry.dart';
 import '../../services/storage/app_settings_storage.dart';
 import '../../utils/app_dialogs.dart';
 import '../../utils/app_platform.dart';
@@ -173,6 +175,12 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       await AppSettingsStorage.setTodoRecognizeNotificationEnabled(false);
       await AppSettingsStorage.setTodoLiveNotificationEnabled(false);
     }
+    if (!enabled) {
+      await NotificationService.cancelNotification();
+      await NotificationService.cancelQuizNotification();
+      await NotificationService.cancelTodoRecognizeNotification();
+    }
+    await _triggerReschedule();
   }
 
   Future<void> _toggleNormalMaster(bool? value) async {
@@ -181,6 +189,9 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       final granted = await _requestWebPermission();
       if (!granted) {
         await AppSettingsStorage.setNormalNotificationEnabled(false);
+        await _clearScheduledSource(ScheduledReminderSources.reminderSchedule);
+        await _clearScheduledSource(ScheduledReminderSources.pomodoro);
+        await _clearScheduledSource(ScheduledReminderSources.habit);
         if (!mounted) return;
         setState(() => _normalEnabled = false);
         return;
@@ -200,12 +211,14 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       await AppSettingsStorage.setPomodoroEndNotificationEnabled(true);
       await AppSettingsStorage.setReminderNotificationEnabled(true);
       await AppSettingsStorage.setFinanceBudgetAlertEnabled(true);
-      _triggerReschedule();
+      await _triggerReschedule();
     } else {
       await AppSettingsStorage.setPomodoroEndNotificationEnabled(false);
       await AppSettingsStorage.setReminderNotificationEnabled(false);
       await AppSettingsStorage.setFinanceBudgetAlertEnabled(false);
-      await NotificationService.scheduleReminders([], clearFirst: true);
+      await _clearScheduledSource(ScheduledReminderSources.reminderSchedule);
+      await _clearScheduledSource(ScheduledReminderSources.pomodoro);
+      await _clearScheduledSource(ScheduledReminderSources.habit);
     }
   }
 
@@ -213,13 +226,26 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       Function(bool) setStateCallback, Function(bool) storageCallback) async {
     await storageCallback(value);
     setState(() => setStateCallback(value));
-    if (key == 'reminder') {
-      if (value) {
-        _triggerReschedule();
-      } else {
-        await NotificationService.scheduleReminders([], clearFirst: true);
-      }
+    const schedulingKeys = {
+      'course',
+      'special_todo',
+      'todo_live',
+      'reminder',
+      'finance_budget',
+    };
+    if (schedulingKeys.contains(key)) {
+      await _triggerReschedule();
+    } else if (key == 'pomodoro_end' && !value) {
+      await _clearScheduledSource(ScheduledReminderSources.pomodoro);
     }
+  }
+
+  Future<void> _clearScheduledSource(String source) {
+    return NotificationService.scheduleReminders(
+      const [],
+      clearFirst: false,
+      replaceSource: source,
+    );
   }
 
   Future<void> _triggerReschedule() async {
@@ -227,7 +253,12 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     if (username == null) return;
     final todos = await StorageService.getTodos(username);
     final courses = await CourseService.getAllCourses(username);
-    await ReminderScheduleService.scheduleAll(todos: todos, courses: courses);
+    await ReminderScheduleService.scheduleAll(
+      todos: todos,
+      courses: courses,
+      force: true,
+    );
+    await HabitReminderService.rescheduleAll();
   }
 
   @override
