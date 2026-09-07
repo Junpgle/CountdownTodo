@@ -341,6 +341,7 @@ class FinanceLedgerPanel extends StatelessWidget {
   final Map<String, FinancePaymentMethod> paymentMethods;
   final String keyword;
   final FinanceTransactionType? filterType;
+  final ValueChanged<FinanceTransaction> onOpenDetail;
   final ValueChanged<String> onKeywordChanged;
   final ValueChanged<FinanceTransactionType?> onFilterChanged;
   final ValueChanged<FinanceTransaction> onEdit;
@@ -354,6 +355,7 @@ class FinanceLedgerPanel extends StatelessWidget {
     required this.paymentMethods,
     required this.keyword,
     required this.filterType,
+    required this.onOpenDetail,
     required this.onKeywordChanged,
     required this.onFilterChanged,
     required this.onEdit,
@@ -466,7 +468,7 @@ class FinanceLedgerPanel extends StatelessWidget {
         : colorScheme.primary;
     return Card(
       child: ListTile(
-        onTap: () => onEdit(transaction),
+        onTap: () => onOpenDetail(transaction),
         leading: CircleAvatar(
           backgroundColor: colorScheme.secondaryContainer,
           child: Text(

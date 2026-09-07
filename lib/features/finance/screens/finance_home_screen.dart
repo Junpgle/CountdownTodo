@@ -21,6 +21,7 @@ import 'finance_loan_screen.dart';
 import 'finance_settings_screen.dart';
 import 'finance_text_recognition_screen.dart';
 import 'finance_trash_screen.dart';
+import 'finance_transaction_detail_screen.dart';
 
 class FinanceHomeScreen extends StatefulWidget {
   final String username;
@@ -150,6 +151,19 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     final result = await Navigator.of(context).push<FinanceTransaction>(
       PageTransitions.material(
         builder: (_) => FinanceEntryScreen(originalTransaction: original),
+      ),
+    );
+    if (result != null && mounted) await _load();
+  }
+
+  Future<void> _openDetail(FinanceTransaction transaction) async {
+    final result = await Navigator.of(context).push<FinanceTransaction>(
+      PageTransitions.material(
+        builder: (_) => FinanceTransactionDetailScreen(
+          transaction: transaction,
+          category: _categoryMap[transaction.categoryUuid],
+          paymentMethod: _paymentMethodMap[transaction.paymentMethodUuid],
+        ),
       ),
     );
     if (result != null && mounted) await _load();
@@ -431,6 +445,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                             paymentMethods: _paymentMethodMap,
                             keyword: _keyword,
                             filterType: _filterType,
+                            onOpenDetail: _openDetail,
                             onKeywordChanged: (value) =>
                                 setState(() => _keyword = value),
                             onFilterChanged: (value) =>
