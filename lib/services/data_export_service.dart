@@ -12,6 +12,7 @@ import 'course_service.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
 import 'pomodoro_service.dart';
+import 'storage/habit_storage.dart';
 
 class DataExportService {
   static const int _exportVersion = 2;
@@ -27,6 +28,12 @@ class DataExportService {
     final courses = await CourseService.getAllCourses(username);
     final tags = await PomodoroService.getTags();
     final records = await PomodoroService.getRecords();
+    final habitGoals = await HabitStorage.getHabitGoals(includeDeleted: true);
+    final habitRules =
+        await HabitStorage.getRuleRevisions(includeDeleted: true);
+    final habitCheckIns = await HabitStorage.getCheckIns(includeDeleted: true);
+    final sleepPlans =
+        await HabitStorage.getSleepCoachingPlans(includeDeleted: true);
     final financeBundle = await FinanceStorage.getExportBundle();
     final financeTransactions =
         (financeBundle['transactions'] as List<dynamic>? ?? const [])
@@ -115,6 +122,16 @@ class DataExportService {
         icon: Icons.timer,
         count: records.where((r) => !r.isDeleted).length,
         description: '番茄钟专注记录',
+      ),
+      ExportTypeOption(
+        key: 'habits',
+        label: '习惯与睡眠训练',
+        icon: Icons.track_changes_outlined,
+        count: habitGoals.where((goal) => !goal.isDeleted).length +
+            habitRules.where((rule) => !rule.isDeleted).length +
+            habitCheckIns.where((checkIn) => !checkIn.isDeleted).length +
+            sleepPlans.where((plan) => !plan.isDeleted).length,
+        description: '习惯目标、规则、打卡记录和睡眠训练计划',
       ),
       ExportTypeOption(
         key: 'finance',
@@ -313,6 +330,49 @@ class DataExportService {
         }
         data['pomodoro_records'] = items.map((e) => e.toJson()).toList();
         totalItems += items.length;
+      }
+
+      if (selectedTypes.contains('habits')) {
+        final goals = await HabitStorage.getHabitGoals(includeDeleted: true);
+        final rules = await HabitStorage.getRuleRevisions(includeDeleted: true);
+        final checkIns = await HabitStorage.getCheckIns(includeDeleted: true);
+        final sleepPlans =
+            await HabitStorage.getSleepCoachingPlans(includeDeleted: true);
+
+        if (options.removeDeviceId) {
+          for (final goal in goals) {
+            goal.deviceId = null;
+          }
+          for (final rule in rules) {
+            rule.deviceId = null;
+          }
+          for (final checkIn in checkIns) {
+            checkIn.deviceId = null;
+          }
+          for (final plan in sleepPlans) {
+            plan.deviceId = null;
+          }
+        }
+        if (options.removeConflictData) {
+          for (final goal in goals) {
+            goal.hasConflict = false;
+            goal.conflictData = null;
+          }
+          for (final rule in rules) {
+            rule.hasConflict = false;
+            rule.conflictData = null;
+          }
+        }
+
+        data['habits'] = {
+          'goals': goals.map((goal) => goal.toJson()).toList(),
+          'rules': rules.map((rule) => rule.toJson()).toList(),
+          'check_ins': checkIns.map((checkIn) => checkIn.toJson()).toList(),
+          'sleep_coaching_plans':
+              sleepPlans.map((plan) => plan.toJson()).toList(),
+        };
+        totalItems +=
+            goals.length + rules.length + checkIns.length + sleepPlans.length;
       }
 
       if (selectedTypes.contains('finance')) {
