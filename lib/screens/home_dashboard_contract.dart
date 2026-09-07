@@ -265,7 +265,11 @@ mixin _HomeDashboardContract {
 
   String _wallpaperExtension(String url);
 
-  Widget _buildCustomBottomBar(bool isDarkMode, bool isLight);
+  Widget _buildCustomBottomBar(
+    bool isDarkMode,
+    bool isLight,
+    bool isWide,
+  );
 
   bool _isListEqual(List a, List b);
 

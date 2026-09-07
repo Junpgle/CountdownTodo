@@ -102,7 +102,6 @@ import '../widgets/global_search_overlay.dart';
 import '../widgets/personal_timeline_section.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../widgets/home_bottom_navigation_content.dart';
-import '../widgets/home_quick_action_button.dart';
 import '../widgets/app_status_toast.dart';
 import '../services/feature_tip_service.dart';
 import '../services/device_calendar_read_service.dart';
@@ -219,7 +218,6 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final GlobalKey _habitsCardKey = GlobalKey();
   final GlobalKey _focusBannerKey = GlobalKey();
   final GlobalKey _homePomodoroActionKey = GlobalKey();
-  final GlobalKey _homeFinanceActionKey = GlobalKey();
   final GlobalKey _financeCardKey = GlobalKey();
   final GlobalKey _homeAddActionKey = GlobalKey();
   final GlobalKey _courseButtonKey = GlobalKey();

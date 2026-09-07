@@ -104,6 +104,7 @@ class FloatingBottomNavigationContent extends StatefulWidget {
     required this.selectedBackgroundColor,
     required this.onTabSelected,
     this.onDragStretchChanged,
+    this.showSelectionLens = true,
     this.keyPrefix = 'floating-bottom',
     this.borderRadius = floatingBottomNavigationBorderRadius,
   })  : assert(items.length > 0, 'At least one bottom-bar item is required.'),
@@ -119,6 +120,10 @@ class FloatingBottomNavigationContent extends StatefulWidget {
   final Color selectedBackgroundColor;
   final ValueChanged<int> onTabSelected;
   final ValueChanged<double>? onDragStretchChanged;
+
+  /// Disables the tab-selection lens for action-only bars such as the wide
+  /// home layout, where home and focus are already shown together.
+  final bool showSelectionLens;
   final String keyPrefix;
   final double borderRadius;
 
@@ -567,6 +572,10 @@ class _FloatingBottomNavigationContentState
     BuildContext context,
     LiquidGlassEffectConfiguration configuration,
   ) {
+    if (!widget.showSelectionLens) {
+      return _buildActionOnlyNavigationContent(context);
+    }
+
     final quality = _qualityFor(configuration);
     final alignment = Alignment(_positionSpring.value, 0);
     final thickness = _interactionSpring.value.clamp(0.0, 1.0).toDouble();
@@ -712,6 +721,27 @@ class _FloatingBottomNavigationContentState
                   ),
                 ),
               ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildActionOnlyNavigationContent(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return GestureDetector(
+            key: ValueKey<String>(_keyName('navigation-gesture-layer')),
+            behavior: HitTestBehavior.translucent,
+            onTapUp: (details) => _handleBarTap(details, constraints.maxWidth),
+            child: SizedBox.expand(
+              child: _buildNavigationRow(
+                context,
+                selectedLayer: false,
+              ),
             ),
           );
         },

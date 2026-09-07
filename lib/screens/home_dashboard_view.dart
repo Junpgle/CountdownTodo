@@ -30,7 +30,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         isDarkMode ? Brightness.dark : Brightness.light;
 
     final mainScreen = Scaffold(
-      extendBody: !isTablet,
+      // 让宽屏底栏叠在页面背景上，壁纸不会被 Scaffold 的底栏槽位截断。
+      extendBody: true,
       resizeToAvoidBottomInset: !_isSearchOpen, // 🚀 关键：搜索时锁定背景，防止位移卡顿
       backgroundColor: (showWallpaper && !AppPlatform.isWindows)
           ? Colors.transparent
@@ -821,7 +822,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                           isTablet ? 32 : 16,
                                           headerExtent + 16,
                                           isTablet ? 32 : 16,
-                                          16 + bottomSystemInset,
+                                          16 +
+                                              bottomSystemInset +
+                                              (isTablet ? 100.0 : 0.0),
                                         ),
                                         child: Align(
                                           alignment: Alignment.topCenter,
@@ -894,60 +897,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
           ),
         ],
       ),
-      // Scaffold 的底部槽位负责悬浮层的布局，避免自绘 Positioned 把
-      // 底栏锁在内容 Stack 内并遮挡最后一张卡片。
-      bottomNavigationBar:
-          !isTablet ? _buildCustomBottomBar(isDarkMode, isLight) : null,
-      // 手机端的新增与番茄钟入口已收进底栏，避免首页右下角堆叠多个悬浮按钮。
-      // 平板保留原有快捷入口，因为平板布局不显示手机底栏。
-      floatingActionButton: isTablet
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                HomeQuickActionButton.compact(
-                  key: _homePomodoroActionKey,
-                  heroTag: 'fab_pomodoro',
-                  onPressed: () {
-                    _openHomePomodoro(sourceKey: _homePomodoroActionKey);
-                  },
-                  tooltip: '番茄钟',
-                  tint: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.primary,
-                  isDark: isDarkMode,
-                  child: const Text('🍅', style: TextStyle(fontSize: 18)),
-                ),
-                const SizedBox(height: 8),
-                HomeQuickActionButton.compact(
-                  key: _homeFinanceActionKey,
-                  heroTag: 'fab_finance',
-                  onPressed: () {
-                    _openHomeFinanceQuickEntry();
-                  },
-                  tooltip: '记一笔',
-                  tint: Theme.of(context).colorScheme.secondary,
-                  foregroundColor: Theme.of(context).colorScheme.secondary,
-                  isDark: isDarkMode,
-                  child: const Icon(Icons.add_card_outlined, size: 20),
-                ),
-                const SizedBox(height: 8),
-                HomeQuickActionButton.extended(
-                  key: _homeAddActionKey,
-                  heroTag: 'fab_todo',
-                  onPressed: () {
-                    _openHomeTodo(sourceKey: _homeAddActionKey);
-                  },
-                  tooltip: '记待办',
-                  tint: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.primary,
-                  isDark: isDarkMode,
-                  icon: const Icon(Icons.add_task),
-                  label: const Text("记待办"),
-                ),
-                const SizedBox(height: 100), // 避开平板页面的悬浮导航栏
-              ],
-            )
-          : null,
+      // Scaffold 的底部槽位负责底栏的布局，避免自绘 Positioned 把
+      // 底栏锁在内容 Stack 内并遮挡最后一张卡片。所有屏幕尺寸统一使用
+      // 底栏，宽屏不再额外堆叠番茄钟、记待办和记账悬浮按钮。
+      bottomNavigationBar: _buildCustomBottomBar(isDarkMode, isLight, isTablet),
+      floatingActionButton: null,
     );
 
     return ZoomDrawer(
@@ -1492,7 +1446,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     }
   }
 
-  Widget _buildCustomBottomBar(bool isDarkMode, bool isLight) {
+  Widget _buildCustomBottomBar(
+    bool isDarkMode,
+    bool isLight,
+    bool isWide,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     final Color primaryColor = homeBottomBarPrimaryColor(
       colorScheme: colorScheme,
@@ -1515,7 +1473,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         60.0 + (bottomPadding > 0 ? bottomPadding * 0.5 : 6.0);
     final margin = floatingBottomNavigationMarginFor(
       context,
-      itemCount: 5,
+      itemCount: isWide ? 3 : 5,
     );
 
     final glassTint = Color.alphaBlend(
@@ -1531,6 +1489,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       weeklyButtonKey: _courseCenterKey,
       addButtonKey: _homeAddActionKey,
       pomodoroButtonKey: _homePomodoroActionKey,
+      isWide: isWide,
       height: height,
       margin: margin,
       isDarkMode: isDarkMode,
@@ -1681,6 +1640,7 @@ class _HomeDashboardBottomBar extends StatelessWidget {
     required this.weeklyButtonKey,
     required this.addButtonKey,
     required this.pomodoroButtonKey,
+    required this.isWide,
     required this.onTabSelected,
     required this.onWeeklyPressed,
     required this.onAddPressed,
@@ -1698,6 +1658,7 @@ class _HomeDashboardBottomBar extends StatelessWidget {
   final Key weeklyButtonKey;
   final Key addButtonKey;
   final Key pomodoroButtonKey;
+  final bool isWide;
   final ValueChanged<int> onTabSelected;
   final VoidCallback onWeeklyPressed;
   final VoidCallback onAddPressed;
@@ -1709,53 +1670,73 @@ class _HomeDashboardBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FloatingBottomNavigationBar(
-      items: [
-        const FloatingBottomNavigationItem(
-          icon: Icons.dashboard_rounded,
-          label: '首页',
-        ),
-        FloatingBottomNavigationItem(
-          key: weeklyButtonKey,
-          label: '周视图',
-          icon: Icons.calendar_today_rounded,
-          selectable: false,
-          onPressed: onWeeklyPressed,
-          semanticsLabel: '周视图',
-        ),
-        FloatingBottomNavigationItem(
-          label: '新增',
-          selectable: false,
-          onPressed: onAddPressed,
-          builder: (context, selectedLayer, interactive) => Center(
-            child: HomeBottomNavigationActionButton(
-              buttonKey: selectedLayer ? null : addButtonKey,
-              primaryColor: primaryColor,
-              interactive: interactive,
-              onPressed: onAddPressed,
-              semanticsLabel: '新增',
-              child: Icon(
-                Icons.add_rounded,
-                color: Theme.of(context).colorScheme.onPrimary,
-                size: 28,
-              ),
+    FloatingBottomNavigationItem buildWeeklyItem() {
+      return FloatingBottomNavigationItem(
+        key: weeklyButtonKey,
+        label: '周视图',
+        icon: Icons.calendar_today_rounded,
+        selectable: false,
+        onPressed: onWeeklyPressed,
+        semanticsLabel: '周视图',
+      );
+    }
+
+    FloatingBottomNavigationItem buildAddItem() {
+      return FloatingBottomNavigationItem(
+        label: '新增',
+        selectable: false,
+        onPressed: onAddPressed,
+        builder: (context, selectedLayer, interactive) => Center(
+          child: HomeBottomNavigationActionButton(
+            buttonKey: selectedLayer ? null : addButtonKey,
+            primaryColor: primaryColor,
+            interactive: interactive,
+            onPressed: onAddPressed,
+            semanticsLabel: '新增',
+            child: Icon(
+              Icons.add_rounded,
+              color: Theme.of(context).colorScheme.onPrimary,
+              size: 28,
             ),
           ),
         ),
-        FloatingBottomNavigationItem(
-          key: pomodoroButtonKey,
-          label: '番茄钟',
-          iconWidget: const Text('🍅', style: TextStyle(fontSize: 20)),
-          selectable: false,
-          onPressed: onPomodoroPressed,
-          semanticsLabel: '番茄钟',
-        ),
-        const FloatingBottomNavigationItem(
-          icon: Icons.adjust_rounded,
-          label: '专注',
-        ),
-      ],
-      selectedIndex: selectedIndex,
+      );
+    }
+
+    FloatingBottomNavigationItem buildPomodoroItem() {
+      return FloatingBottomNavigationItem(
+        key: pomodoroButtonKey,
+        label: '番茄钟',
+        iconWidget: const Text('🍅', style: TextStyle(fontSize: 20)),
+        selectable: false,
+        onPressed: onPomodoroPressed,
+        semanticsLabel: '番茄钟',
+      );
+    }
+
+    final items = isWide
+        ? <FloatingBottomNavigationItem>[
+            buildWeeklyItem(),
+            buildAddItem(),
+            buildPomodoroItem(),
+          ]
+        : <FloatingBottomNavigationItem>[
+            const FloatingBottomNavigationItem(
+              icon: Icons.dashboard_rounded,
+              label: '首页',
+            ),
+            buildWeeklyItem(),
+            buildAddItem(),
+            buildPomodoroItem(),
+            const FloatingBottomNavigationItem(
+              icon: Icons.adjust_rounded,
+              label: '专注',
+            ),
+          ];
+
+    return FloatingBottomNavigationBar(
+      items: items,
+      selectedIndex: isWide ? 0 : selectedIndex,
       primaryColor: primaryColor,
       inactiveColor: inactiveColor,
       selectedBackgroundColor: selectedBackgroundColor,
@@ -1766,6 +1747,7 @@ class _HomeDashboardBottomBar extends StatelessWidget {
       haloColor: primaryColor,
       isDark: isDarkMode,
       mobilePortraitOnly: false,
+      showSelectionLens: !isWide,
       keyPrefix: 'home-bottom',
     );
   }
