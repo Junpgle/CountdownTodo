@@ -57,9 +57,9 @@ class CourseService {
     }
   }
 
-  static Future<void> _writeCoursesToSql(
-      DatabaseHelper dbHelper, List<CourseItem> courses) async {
-    final db = await dbHelper.database;
+  static Future<void> _writeCoursesToSql(DatabaseHelper dbHelper,
+      String username, List<CourseItem> courses) async {
+    final db = await dbHelper.databaseForUser(username);
     await DatabaseHelper.ensureCourseTableSchema(db);
     await _ensureCoursesColumnsForWrite(db);
     final uniqueCourses = <String, CourseItem>{};
@@ -99,14 +99,14 @@ class CourseService {
     // backups and migrations.  Semester-aware imports use the methods below.
     try {
       final dbHelper = DatabaseHelper.instance;
-      await _writeCoursesToSql(dbHelper, courses);
+      await _writeCoursesToSql(dbHelper, username, courses);
       // debugPrint("✅ [Course] SQL 保存成功: ${courses.length} 条");
     } catch (e) {
       // debugPrint("❌ [Course] SQL 保存失败: $e");
       final errorText = e.toString();
       if (errorText.contains('no column named is_deleted') ||
           errorText.contains('no such column: is_deleted')) {
-        await _writeCoursesToSql(DatabaseHelper.instance, courses);
+        await _writeCoursesToSql(DatabaseHelper.instance, username, courses);
         // debugPrint("✅ [Course] SQL 兜底重试成功: ${courses.length} 条");
       } else {
         rethrow;
@@ -559,7 +559,7 @@ class CourseService {
 
     // 1. 优先从 SQL 读取
     try {
-      final db = await DatabaseHelper.instance.database;
+      final db = await DatabaseHelper.instance.databaseForUser(username);
       final List<Map<String, dynamic>> maps = await db.query(
         'courses',
         where: 'IFNULL(is_deleted, 0) = 0',
@@ -574,7 +574,7 @@ class CourseService {
       if (_isDatabaseLocked(e)) {
         try {
           await Future.delayed(const Duration(milliseconds: 300));
-          final db = await DatabaseHelper.instance.database;
+          final db = await DatabaseHelper.instance.databaseForUser(username);
           final maps = await db.query(
             'courses',
             where: 'IFNULL(is_deleted, 0) = 0',
@@ -613,10 +613,6 @@ class CourseService {
     final keys = <String>[
       scopedKey,
       _keyCourseData,
-      ...prefs.getKeys().where((key) =>
-          key.startsWith('${_keyCourseData}_') &&
-          key != scopedKey &&
-          !key.endsWith('_migrated_v2')),
     ];
 
     for (final key in keys.toSet()) {
@@ -834,20 +830,34 @@ class CourseService {
     final courses =
         await getAllCourses(username, applyCalendarAdjustments: false);
 
-    // 按学期分组上传
+    // 按学期分组上传。即使本地没有某个学期的课程，也要发一个空集合，
+    // 这样“覆盖云端”才能真正清理远端残留数据。
     final coursesBySemester = <String, List<CourseItem>>{};
     for (final c in courses) {
       final semesterId = c.semesterId.isEmpty ? 'default' : c.semesterId;
       coursesBySemester.putIfAbsent(semesterId, () => []).add(c);
     }
 
+    // 远端配置过、但本地已经没有课程的学期同样需要清空。旧服务可能不
+    // 返回学期列表，因此这里保留 default 作为兼容兜底。
+    try {
+      final remoteSettings = await ApiService.fetchUserSettings();
+      for (final semesterId
+          in ApiService.semesterIdsFromSettings(remoteSettings)) {
+        coursesBySemester.putIfAbsent(semesterId, () => []);
+      }
+    } catch (_) {
+      // 课程上传本身仍可继续，远端设置接口失败不应阻断已知学期同步。
+    }
+    coursesBySemester.putIfAbsent('default', () => []);
+
     // 逐个学期上传
     bool allSuccess = true;
     String lastMessage = '';
+    bool isFirstRequest = true;
 
-    for (final entry in coursesBySemester.entries) {
-      final semesterId = entry.key;
-      final semesterCourses = entry.value;
+    for (final semesterId in coursesBySemester.keys.toList()..sort()) {
+      final semesterCourses = coursesBySemester[semesterId]!;
 
       // 转换为后端需要的结构
       final courseMaps = semesterCourses
@@ -868,11 +878,20 @@ class CourseService {
         userId: userId,
         courses: courseMaps,
         semester: semesterId,
+        replaceAll: isFirstRequest,
       );
+      isFirstRequest = false;
 
       if (result['success'] != true) {
         allSuccess = false;
         lastMessage = result['message'] ?? '上传失败';
+        if (result['isLimitExceeded'] == true) {
+          return {
+            'success': false,
+            'message': lastMessage,
+            'isLimitExceeded': true,
+          };
+        }
       }
     }
 

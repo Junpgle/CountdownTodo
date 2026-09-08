@@ -845,21 +845,26 @@ export default {
       if (url.pathname === "/api/courses" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
         const userId = parseInt(url.searchParams.get("user_id"), 10);
-        const semester = url.searchParams.get("semester") || "default";
+        const semester = url.searchParams.get("semester");
         if (authUserId !== userId) return errorResponse("越权", 403);
-        const { results } = await DB.prepare(`SELECT * FROM courses WHERE user_id = ? AND semester = ? AND is_deleted = 0 ORDER BY week_index, weekday, start_time`).bind(userId, semester).all();
+        const query = semester === "all"
+          ? DB.prepare(`SELECT * FROM courses WHERE user_id = ? AND is_deleted = 0 ORDER BY semester, week_index, weekday, start_time`).bind(userId)
+          : DB.prepare(`SELECT * FROM courses WHERE user_id = ? AND semester = ? AND is_deleted = 0 ORDER BY week_index, weekday, start_time`).bind(userId, semester || "default");
+        const { results } = await query.all();
         return jsonResponse(results);
       }
 
       if (url.pathname === "/api/courses" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
-        const { user_id, courses, semester = "default" } = await request.json();
+        const { user_id, courses, semester = "default", replace_all = false } = await request.json();
         if (authUserId !== parseInt(user_id, 10)) return errorResponse("越权", 403);
         const now = Date.now();
         const limitError = await enforceSyncLimit(user_id, DB, now);
         if (limitError && limitError !== 'IGNORE') return errorResponse(limitError, 429);
 
-        const batchStatements = [DB.prepare("DELETE FROM courses WHERE user_id = ? AND semester = ?").bind(user_id, semester)];
+        const batchStatements = [replace_all === true
+          ? DB.prepare("DELETE FROM courses WHERE user_id = ?").bind(user_id)
+          : DB.prepare("DELETE FROM courses WHERE user_id = ? AND semester = ?").bind(user_id, semester)];
         for (const c of courses) {
           batchStatements.push(DB.prepare(`INSERT INTO courses (user_id, semester, course_name, room_name, teacher_name, start_time, end_time, weekday, week_index, lesson_type, created_at, updated_at, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`).bind(user_id, semester, c.course_name, c.room_name, c.teacher_name, c.start_time, c.end_time, c.weekday, c.week_index, c.lesson_type, 0, now, now));
         }

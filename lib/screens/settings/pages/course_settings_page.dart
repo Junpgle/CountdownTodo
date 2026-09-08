@@ -165,17 +165,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
   }
 
   Future<void> _uploadCoursesToCloud() async {
-    if (_userId == null) {
+    if (_userId == null || _username.isEmpty) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('请先登录账号')));
-      return;
-    }
-
-    final allCourses = await CourseService.getAllCourses(_username);
-    if (!mounted) return;
-    if (allCourses.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('当前没有课表数据可上传')));
       return;
     }
 
@@ -217,10 +209,14 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       // 准备多学期数据
       final semestersData = _semesters.map((s) => s.toCloudJson()).toList();
 
-      await ApiService.uploadUserSettings(
+      final settingsUploaded = await ApiService.uploadUserSettings(
           semesterStartMs: startMs,
           semesterEndMs: endMs,
           semesters: semestersData);
+      if (!settingsUploaded) {
+        result['success'] = false;
+        result['message'] = '课表已上传，但学期设置同步失败';
+      }
     }
 
     if (!mounted) return;
@@ -248,13 +244,11 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     _showLoadingDialog(context, "正在获取云端数据...");
 
     try {
-      final userSettingsFuture = ApiService.fetchUserSettings();
-      final coursesFuture = ApiService.fetchCourses(_userId!);
-
-      final results = await Future.wait([userSettingsFuture, coursesFuture]);
-      final Map<String, dynamic>? userSettings =
-          results[0] as Map<String, dynamic>?;
-      final List<dynamic> data = results[1] as List<dynamic>;
+      final userSettings = await ApiService.fetchUserSettings();
+      final data = await ApiService.fetchCoursesForSemesters(
+        _userId!,
+        ApiService.semesterIdsFromSettings(userSettings),
+      );
 
       if (!mounted) return;
 

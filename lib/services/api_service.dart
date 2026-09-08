@@ -634,13 +634,16 @@ class ApiService {
   static Future<List<dynamic>> fetchCourses(int userId,
       {String? semester}) async {
     try {
-      final uri = semester != null
-          ? Uri.parse(
-              '$_effectiveBaseUrl/api/courses?user_id=$userId&semester=$semester')
-          : Uri.parse('$_effectiveBaseUrl/api/courses?user_id=$userId');
+      final uri = Uri.parse('$_effectiveBaseUrl/api/courses').replace(
+        queryParameters: {
+          'user_id': userId.toString(),
+          if (semester != null) 'semester': semester,
+        },
+      );
       final response = await _request('GET', uri.toString());
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final decoded = jsonDecode(response.body);
+        return decoded is List ? decoded : [];
       }
       return [];
     } catch (e) {
@@ -648,10 +651,93 @@ class ApiService {
     }
   }
 
+  /// Returns all courses known by the server, including configured semesters.
+  ///
+  /// New servers understand `semester=all`.  The per-semester requests remain
+  /// as a compatibility path for older deployments and also cover servers
+  /// that do not persist the semester list in user settings.
+  static Future<List<dynamic>> fetchCoursesForSemesters(
+    int userId,
+    Iterable<String> semesterIds, {
+    bool includeAll = true,
+  }) async {
+    final normalizedSemesters = <String>{
+      for (final id in semesterIds)
+        if (id.trim().isNotEmpty) id.trim(),
+      'default',
+    };
+
+    final requests = <Future<List<dynamic>>>[];
+    if (includeAll) {
+      requests.add(fetchCourses(userId, semester: 'all'));
+    }
+    requests.addAll(normalizedSemesters.map((semester) async {
+      final courses = await fetchCourses(userId, semester: semester);
+      return courses.map((course) {
+        if (course is! Map) return course;
+        final map = Map<String, dynamic>.from(course);
+        if (map['semester'] == null && map['semester_id'] == null) {
+          map['semester'] = semester;
+        }
+        return map;
+      }).toList();
+    }));
+
+    final responses = await Future.wait(requests);
+    final result = <dynamic>[];
+    final seen = <String>{};
+    for (final response in responses) {
+      for (final course in response) {
+        if (course is! Map) continue;
+        final map = Map<String, dynamic>.from(course);
+        final semester = (map['semester'] ??
+                map['semester_id'] ??
+                map['semesterId'] ??
+                'default')
+            .toString();
+        final stableId = (map['uuid'] ?? map['id'])?.toString();
+        final identity = stableId == null || stableId.isEmpty
+            ? <Object?>[
+                semester,
+                map['course_name'] ?? map['courseName'],
+                map['room_name'] ?? map['roomName'],
+                map['teacher_name'] ?? map['teacherName'],
+                map['start_time'] ?? map['startTime'],
+                map['end_time'] ?? map['endTime'],
+                map['weekday'],
+                map['week_index'] ?? map['weekIndex'],
+                map['date'],
+              ].join('|')
+            : '$semester|$stableId';
+        if (seen.add(identity)) result.add(map);
+      }
+    }
+    return result;
+  }
+
+  static List<String> semesterIdsFromSettings(Map<String, dynamic>? settings) {
+    final rawSemesters = settings?['semesters'];
+    if (rawSemesters is! List) return const [];
+    return rawSemesters
+        .whereType<Map>()
+        .map((semester) => semester['id']?.toString() ?? '')
+        .where((id) => id.trim().isNotEmpty)
+        .toList();
+  }
+
+  static Future<List<dynamic>> fetchAllCourses(int userId) async {
+    final settings = await fetchUserSettings();
+    return fetchCoursesForSemesters(
+      userId,
+      semesterIdsFromSettings(settings),
+    );
+  }
+
   static Future<Map<String, dynamic>> uploadCourses({
     required int userId,
     required List<Map<String, dynamic>> courses,
     String semester = "default",
+    bool replaceAll = false,
   }) async {
     try {
       final response = await _request(
@@ -660,6 +746,7 @@ class ApiService {
         body: {
           'user_id': userId,
           'semester': semester,
+          'replace_all': replaceAll,
           'courses': courses,
         },
       );

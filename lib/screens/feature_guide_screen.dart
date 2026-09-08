@@ -492,7 +492,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     }
 
     final results = await Future.wait([
-      ApiService.fetchCourses(userId),
+      ApiService.fetchAllCourses(userId),
       ApiService.fetchUserSettings(),
     ]).timeout(const Duration(seconds: 5), onTimeout: () => [null, null]);
 
