@@ -312,12 +312,13 @@ abstract class _StorageServiceBase {
   Future<void> ignoreLocalScheduleConflict(String username, TodoItem item);
   Future<Set<String>> _getIgnoredScheduleConflictKeys(String username);
   Future<void> _recordLocalAuditOptimized(
+      String username,
       String table,
       String uuid,
       Map<String, dynamic> afterData,
       String? teamUuid,
       Map<String, dynamic>? existingData);
-  Future<void> _recordLocalAudit(String table, String uuid,
+  Future<void> _recordLocalAudit(String username, String table, String uuid,
       Map<String, dynamic> afterData, String? teamUuid);
   Future<void> _syncTodosToBand(List<TodoItem> items);
   Future<void> updateSingleTodo(String username, TodoItem item,

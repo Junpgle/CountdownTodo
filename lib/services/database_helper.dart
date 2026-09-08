@@ -85,6 +85,45 @@ class DatabaseHelper {
     return _database!;
   }
 
+  /// Returns the database for the active account and rejects stale callers.
+  ///
+  /// The database file is selected from `current_login_user`, while most
+  /// storage APIs also receive a username argument.  Keeping the check here
+  /// prevents an async operation that started for one account from silently
+  /// reading or writing the database opened for another account.
+  Future<Database> databaseForUser(String username) async {
+    if (username.isEmpty) {
+      throw ArgumentError.value(username, 'username', '账户名不能为空');
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final activeUsername = prefs.getString('current_login_user');
+    final hasActiveUsername =
+        activeUsername != null && activeUsername.isNotEmpty;
+    if (hasActiveUsername && activeUsername != username) {
+      throw StateError(
+        '账户已切换，拒绝使用旧账户数据: expected=$activeUsername, requested=$username',
+      );
+    }
+
+    final db = await database;
+    final latestActiveUsername =
+        (await SharedPreferences.getInstance()).getString('current_login_user');
+    final latestHasActiveUsername =
+        latestActiveUsername != null && latestActiveUsername.isNotEmpty;
+    if (latestHasActiveUsername && latestActiveUsername != username) {
+      throw StateError(
+        '账户已切换，拒绝使用旧账户数据: expected=$latestActiveUsername, requested=$username',
+      );
+    }
+    if ((hasActiveUsername || latestHasActiveUsername) &&
+        _activeUsername != username) {
+      throw StateError(
+        '账户数据库已切换，拒绝使用旧账户数据: active=$_activeUsername, requested=$username',
+      );
+    }
+    return db;
+  }
+
   /// 🚀 Uni-Sync: 强制关闭并重置数据库连接（用于登出或切换用户）
   Future<void> closeDatabase() async {
     final opening = _openingDatabase;
@@ -1533,6 +1572,7 @@ class DatabaseHelper {
 
   /// 记录本地审计日志
   Future<void> insertLocalAuditLog({
+    Database? databaseOverride,
     String? teamUuid,
     required int userId,
     required String targetTable,
@@ -1542,7 +1582,7 @@ class DatabaseHelper {
     Map<String, dynamic>? afterData,
     String? operatorName,
   }) async {
-    final db = await database;
+    final db = databaseOverride ?? await database;
     await db.insert('local_audit_logs', {
       'team_uuid': teamUuid,
       'user_id': userId,

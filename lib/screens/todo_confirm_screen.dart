@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -99,7 +101,7 @@ class TodoConfirmScreen extends StatefulWidget {
   final List<Map<String, dynamic>> llmResults;
   final String? imagePath;
   final String? originalText;
-  final Function(List<Map<String, dynamic>>)? onConfirm;
+  final FutureOr<void> Function(List<Map<String, dynamic>>)? onConfirm;
   final Future<void> Function(FixedScheduleItem)? onFixedScheduleAdded;
   final VoidCallback? onSkip;
 
@@ -128,6 +130,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   int _fixedScheduleCount = 0;
   int _currentIndex = 0;
   bool _isRetrying = false;
+  bool _isSaving = false;
   String? _retryStatus;
   List<TodoGroup> _todoGroups = [];
   Map<String, int> _categoryReminderDefaults = {};
@@ -978,6 +981,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   }
 
   Future<void> _finishConfirm() async {
+    if (_isSaving) return;
     if (_confirmedTodos.isEmpty && _fixedScheduleCount == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('没有添加任何内容')),
@@ -987,32 +991,44 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       return;
     }
 
-    // 🚀 核心：移动图片到持久化目录
-    String? persistentImagePath;
-    if (_confirmedTodos.isNotEmpty && widget.imagePath != null) {
-      try {
-        persistentImagePath =
-            await persistImagePath(widget.imagePath!, 'analysis_images');
-        if (persistentImagePath != null) {
-          // debugPrint('📸 图片已持久化到: $persistentImagePath');
+    setState(() => _isSaving = true);
+
+    try {
+      // 🚀 核心：移动图片到持久化目录
+      String? persistentImagePath;
+      if (_confirmedTodos.isNotEmpty && widget.imagePath != null) {
+        try {
+          persistentImagePath =
+              await persistImagePath(widget.imagePath!, 'analysis_images');
+          if (persistentImagePath != null) {
+            // debugPrint('📸 图片已持久化到: $persistentImagePath');
+          }
+        } catch (e) {
+          // debugPrint('❌ 持久化图片失败: $e');
         }
-      } catch (e) {
-        // debugPrint('❌ 持久化图片失败: $e');
       }
-    }
 
-    // 将路径注入到所有待办中
-    if (persistentImagePath != null) {
-      for (var todo in _confirmedTodos) {
-        todo['imagePath'] = persistentImagePath;
+      // 将路径注入到所有待办中
+      if (persistentImagePath != null) {
+        for (var todo in _confirmedTodos) {
+          todo['imagePath'] = persistentImagePath;
+        }
       }
-    }
 
-    if (_confirmedTodos.isNotEmpty && widget.onConfirm != null) {
-      widget.onConfirm!(_confirmedTodos);
+      if (_confirmedTodos.isNotEmpty && widget.onConfirm != null) {
+        await widget.onConfirm!(_confirmedTodos);
+      }
+      if (!mounted) return;
+      Navigator.pop(context, _confirmedTodos);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存失败，请重试：$error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
-    if (!mounted) return;
-    Navigator.pop(context, _confirmedTodos);
   }
 
   @override
@@ -1387,7 +1403,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed: _isRetrying ? null : _confirmCurrentTodo,
+            onPressed: _isRetrying || _isSaving ? null : _confirmCurrentTodo,
             icon: const Icon(Icons.add),
             label: const Text('确认并添加'),
             style: FilledButton.styleFrom(
@@ -1401,7 +1417,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _isRetrying ? null : _skipCurrentTodo,
+                onPressed: _isRetrying || _isSaving ? null : _skipCurrentTodo,
                 icon: const Icon(Icons.skip_next),
                 label: const Text('跳过'),
                 style: OutlinedButton.styleFrom(
@@ -1412,7 +1428,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _isRetrying
+                onPressed: _isRetrying || _isSaving
                     ? null
                     : () async {
                         final remaining = _allTodos.sublist(_currentIndex);
@@ -1426,7 +1442,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                             _confirmedTodos.add(todo.toMap());
                           }
                         }
-                        _finishConfirm();
+                        await _finishConfirm();
                       },
                 icon: const Icon(Icons.done_all),
                 label: const Text('全部添加'),

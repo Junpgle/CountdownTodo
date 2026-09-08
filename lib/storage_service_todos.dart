@@ -104,7 +104,7 @@ mixin _StorageTodos on _StorageServiceBase {
     // 因此这里仅清理旧镜像，不再持续维护整份 prefs 缓存。
     unawaited(_clearTodoPrefsMirror(username));
 
-    final db = await DatabaseHelper.instance.database;
+    final db = await DatabaseHelper.instance.databaseForUser(username);
 
     // 🚀 核心优化：批量获取现有数据，用于审计对比，避免循环中重复查询 DB
     Map<String, Map<String, dynamic>> existingItemsMap = {};
@@ -230,7 +230,7 @@ mixin _StorageTodos on _StorageServiceBase {
         }
         // 记录审计日志 (传入已有的 oldData 避免再次查询)
         unawaited(_recordLocalAuditOptimized(
-            'todos', item.id, item.toJson(), item.teamUuid, oldData));
+            username, 'todos', item.id, item.toJson(), item.teamUuid, oldData));
 
         batch.insert('op_logs', {
           'op_type': 'UPSERT',
@@ -749,14 +749,17 @@ mixin _StorageTodos on _StorageServiceBase {
   }
 
   Future<void> _recordLocalAuditOptimized(
+      String username,
       String table,
       String uuid,
       Map<String, dynamic> afterData,
       String? teamUuid,
       Map<String, dynamic>? existingData) async {
     try {
+      final db = await DatabaseHelper.instance.databaseForUser(username);
       if (existingData == null) {
         await DatabaseHelper.instance.insertLocalAuditLog(
+          databaseOverride: db,
           userId: ApiService.currentUserId,
           targetTable: table,
           targetUuid: uuid,
@@ -771,6 +774,7 @@ mixin _StorageTodos on _StorageServiceBase {
 
       // 已经在外部做过实质性变更检测了，此处直接记录
       await DatabaseHelper.instance.insertLocalAuditLog(
+        databaseOverride: db,
         userId: ApiService.currentUserId,
         targetTable: table,
         targetUuid: uuid,
@@ -785,16 +789,17 @@ mixin _StorageTodos on _StorageServiceBase {
     }
   }
 
-  Future<void> _recordLocalAudit(String table, String uuid,
+  Future<void> _recordLocalAudit(String username, String table, String uuid,
       Map<String, dynamic> afterData, String? teamUuid) async {
     try {
-      final db = await DatabaseHelper.instance.database;
+      final db = await DatabaseHelper.instance.databaseForUser(username);
       // 1. 获取旧数据快照
       final List<Map<String, dynamic>> existing =
           await db.query(table, where: 'uuid = ?', whereArgs: [uuid]);
       if (existing.isEmpty) {
         // 新增操作，直接记录
         await DatabaseHelper.instance.insertLocalAuditLog(
+          databaseOverride: db,
           userId: ApiService.currentUserId,
           targetTable: table,
           targetUuid: uuid,
@@ -901,6 +906,7 @@ mixin _StorageTodos on _StorageServiceBase {
 
       // 2. 存入本地审计表
       await DatabaseHelper.instance.insertLocalAuditLog(
+        databaseOverride: db,
         userId: ApiService.currentUserId,
         targetTable: table,
         targetUuid: uuid,
@@ -938,9 +944,10 @@ mixin _StorageTodos on _StorageServiceBase {
       item.recurrenceSeriesId = item.id;
     }
     // 1. 记录本地审计日志 (必须在更新前，因为需要获取旧快照)
-    await _recordLocalAudit('todos', item.id, item.toJson(), item.teamUuid);
+    await _recordLocalAudit(
+        username, 'todos', item.id, item.toJson(), item.teamUuid);
 
-    final db = await DatabaseHelper.instance.database;
+    final db = await DatabaseHelper.instance.databaseForUser(username);
     final previousRows = await db.query(
       'todos',
       where: 'uuid = ?',
@@ -1041,7 +1048,7 @@ mixin _StorageTodos on _StorageServiceBase {
   }
 
   Future<void> permanentlyDeleteTodo(String username, String uuid) async {
-    final db = await DatabaseHelper.instance.database;
+    final db = await DatabaseHelper.instance.databaseForUser(username);
     final existingRows = await db.query(
       'todos',
       columns: const ['created_date', 'created_at', 'due_date', 'is_all_day'],
@@ -1076,7 +1083,7 @@ mixin _StorageTodos on _StorageServiceBase {
   }
 
   Future<void> clearTodoRecycleBin(String username) async {
-    final db = await DatabaseHelper.instance.database;
+    final db = await DatabaseHelper.instance.databaseForUser(username);
 
     // 1. 获取所有待删除的 UUID，用于记录 Oplog
     final List<Map<String, dynamic>> deletedItems = await db.query(
@@ -1150,7 +1157,7 @@ mixin _StorageTodos on _StorageServiceBase {
 
     if (historicalIds.isEmpty) return 0;
 
-    final db = await DatabaseHelper.instance.database;
+    final db = await DatabaseHelper.instance.databaseForUser(username);
     final now = DateTime.now().millisecondsSinceEpoch;
     final batch = db.batch();
     for (final uuid in historicalIds) {
@@ -1175,7 +1182,7 @@ mixin _StorageTodos on _StorageServiceBase {
   }
 
   Future<void> permanentlyDeleteCountdown(String username, String uuid) async {
-    final db = await DatabaseHelper.instance.database;
+    final db = await DatabaseHelper.instance.databaseForUser(username);
     await db.delete('countdowns', where: 'uuid = ?', whereArgs: [uuid]);
 
     // 同步清理 Prefs 缓存
@@ -1243,7 +1250,7 @@ mixin _StorageTodos on _StorageServiceBase {
     // 🚀 Uni-Sync 安全方案：双轨读取 + 逃生通道
     try {
       final dbHelper = DatabaseHelper.instance;
-      final db = await dbHelper.database;
+      final db = await dbHelper.databaseForUser(username);
       await _clearGhostConflictFlags(db);
 
       final migrationKey = "migration_marker_${username}_v4";
@@ -2619,7 +2626,7 @@ mixin _StorageTodos on _StorageServiceBase {
       }
     }
 
-    final db = await DatabaseHelper.instance.database;
+    final db = await DatabaseHelper.instance.databaseForUser(username);
     final existingRows = await db.query('todo_groups');
     final existingItemsMap = <String, Map<String, dynamic>>{
       for (final row in existingRows) row['uuid'].toString(): row,
@@ -2694,7 +2701,7 @@ mixin _StorageTodos on _StorageServiceBase {
       {bool includeDeleted = false}) async {
     try {
       final dbHelper = DatabaseHelper.instance;
-      final db = await dbHelper.database;
+      final db = await dbHelper.databaseForUser(username);
       await _clearGhostConflictFlags(db);
       final prefs = await SharedPreferences.getInstance();
 
