@@ -188,6 +188,7 @@ class PomodoroSyncService {
   Future<void>? _transportSuspendFuture;
   bool _connecting = false;
   String? _focusSourceDevice;
+  Set<String> _subscribedTeamUuids = <String>{};
   DateTime _lastMessageTime = DateTime.now(); // 记录最后一次收到消息的时间
   bool _isLocalFocusing = false; // 本地是否处于专注/休息计时中
   bool _isInBackground = false;
@@ -216,6 +217,7 @@ class PomodoroSyncService {
 
   String? get focusSourceDevice => _focusSourceDevice;
   bool get isFocusSource => isFromCurrentDevice(_focusSourceDevice);
+  Set<String> get subscribedTeamUuids => Set.unmodifiable(_subscribedTeamUuids);
 
   bool isFromCurrentDevice(String? sourceDevice) =>
       deviceIdsMatch(_deviceId, sourceDevice);
@@ -394,7 +396,7 @@ class PomodoroSyncService {
       );
 
       _startHeartbeat();
-      _subscribeToTeams();
+      unawaited(_subscribeToTeams());
 
       // 🚀 补擦除逻辑：连接成功后，如果本地不是专注发起者且处于空闲，主动上报一次空闲状态
       // 只有在 _isLocalFocusing 为 false 时才发送，避免干扰当前正在进行的计时
@@ -518,6 +520,7 @@ class PomodoroSyncService {
   void _onDisconnected() {
     _setConnState(SyncConnectionState.disconnected);
     _heartbeatTimer?.cancel();
+    _subscribedTeamUuids = <String>{};
     _connecting = false;
     _scheduleReconnect();
   }
@@ -775,15 +778,20 @@ class PomodoroSyncService {
     });
   }
 
-  void _subscribeToTeams() async {
+  Future<void> _subscribeToTeams() async {
     if (_connState != SyncConnectionState.connected) return;
     try {
       final teamsData = await ApiService.fetchTeams();
-      final teamUuids = teamsData.map((t) => t['uuid'].toString()).toList();
+      if (_connState != SyncConnectionState.connected) return;
+      final teamUuids = teamsData
+          .map((t) => t['uuid']?.toString() ?? '')
+          .where((uuid) => uuid.isNotEmpty)
+          .toSet();
+      _subscribedTeamUuids = teamUuids;
       if (teamUuids.isNotEmpty) {
         _send({
           'type': 'subscribe',
-          'teamUuids': teamUuids,
+          'teamUuids': teamUuids.toList(),
         });
       }
     } catch (e) {
@@ -813,6 +821,7 @@ class PomodoroSyncService {
     _channel = null;
     _userId = null;
     _deviceId = null;
+    _subscribedTeamUuids = <String>{};
     _connecting = false;
     _setConnState(SyncConnectionState.disconnected);
   }

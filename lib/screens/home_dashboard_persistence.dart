@@ -172,7 +172,10 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
           widget.username,
           syncTodos: syncTodos,
           syncCountdowns: syncCountdowns,
-          syncScreenTime: syncScreenTime,
+          // ScreenTimeService owns this endpoint and uploads it below.  Keep
+          // it out of the generic sync request so one refresh cannot submit
+          // the same day twice and consume two sync-limit entries.
+          syncScreenTime: false,
           syncTimeLogs: syncTimeLogs,
           syncPlanBlocks: syncPlanBlocks,
           syncPomodoro: syncPomodoro,
@@ -231,6 +234,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
         }
       }
 
+      // Screen-time has a single owner: the dedicated service.
       if (syncScreenTime) {
         await ScreenTimeService.syncScreenTime(userId);
         await _loadCachedScreenTime();

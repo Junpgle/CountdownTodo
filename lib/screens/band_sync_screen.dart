@@ -825,13 +825,13 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
 
   /// 处理手环发回的消息（todo状态变更等）
   Future<void> _handleBandMessage(Map<String, dynamic> data) async {
-    final type = data['type'] as String?;
+    final type = data['type']?.toString();
 
     if (type == 'band_info') {
-      final version = data['version'] as String? ?? '未知';
-      final versionCode = data['version_code'] as int? ?? 0;
+      final version = data['version']?.toString() ?? '未知';
+      final versionCode = (data['version_code'] as num?)?.toInt() ?? 0;
       _logs.add('手环版本: $version (v$versionCode)');
-      setState(() {});
+      if (mounted) setState(() {});
       return;
     }
 
@@ -851,21 +851,22 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     if (type == 'todo') {
       await _handleBandTodoUpdate(bandData, username);
     } else if (type == 'pomodoro') {
-      final action = bandData['action'] as String?;
+      final action = bandData is Map ? bandData['action']?.toString() : null;
       if (action == 'finish' || action == 'abandon') {
         _logs.add('手环${action == 'finish' ? '提前完成' : '放弃'}番茄钟');
       } else {
         _logs.add('收到番茄钟消息（无操作指令）');
       }
     } else if (type == 'debug') {
-      final message = bandData['message'] as String? ?? '';
+      final message =
+          bandData is Map ? bandData['message']?.toString() ?? '' : '';
       setState(() {
         _logs.add('[手环] $message');
       });
     } else if (type == 'countdown') {
-      _logs.add('收到倒计时同步（暂未处理）');
+      _logs.add('收到倒计时数据：手环端当前只支持查看，未修改本地数据');
     } else if (type == 'course') {
-      _logs.add('收到课程同步（暂未处理）');
+      _logs.add('收到课程数据：手环端当前只支持查看，未修改本地数据');
     } else {
       _logs.add('未知消息类型: $type');
     }
@@ -883,36 +884,47 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
       return;
     }
 
+    final allTodos =
+        await StorageService.getTodos(username, includeDeleted: true);
+    final todosById = <String, TodoItem>{
+      for (final todo in allTodos) todo.id: todo,
+    };
     int updatedCount = 0;
     for (final item in items) {
       if (item is! Map) continue;
 
-      final id = item['id'] as String?;
-      if (id == null) continue;
+      final id = (item['id'] ?? item['uuid'])?.toString();
+      if (id == null || id.isEmpty) continue;
 
       // 读取手环发回的状态
-      String? bandStatus = item['status'] as String?;
-      int? bandIsCompleted = item['is_completed'] as int?;
-      bool? bandIsCompletedBool = item['is_completed'] as bool?;
+      final bandStatus = item['status']?.toString();
+      final rawCompleted = item['is_completed'];
+      bool? completedFromPayload;
+      if (rawCompleted is bool) {
+        completedFromPayload = rawCompleted;
+      } else if (rawCompleted is num) {
+        completedFromPayload = rawCompleted != 0;
+      } else if (rawCompleted is String) {
+        completedFromPayload = switch (rawCompleted.toLowerCase()) {
+          '1' || 'true' || 'done' => true,
+          '0' || 'false' || 'undone' => false,
+          _ => null,
+        };
+      }
 
-      bool newIsDone = false;
+      bool? newIsDone;
       if (bandStatus == 'done') {
         newIsDone = true;
       } else if (bandStatus == 'undone') {
         newIsDone = false;
-      } else if (bandIsCompleted != null) {
-        newIsDone = bandIsCompleted == 1;
-      } else if (bandIsCompletedBool != null) {
-        newIsDone = bandIsCompletedBool;
+      } else if (completedFromPayload != null) {
+        newIsDone = completedFromPayload;
       } else {
         continue; // 没有状态信息，跳过
       }
 
-      // 从数据库读取该待办
-      final todos = await StorageService.getTodos(username);
-      final todo = todos.firstWhere((t) => t.id == id,
-          orElse: () => TodoItem(title: ''));
-      if (todo.title.isEmpty) {
+      final todo = todosById[id];
+      if (todo == null) {
         _logs.add('未找到待办: $id');
         continue;
       }
@@ -921,18 +933,13 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
       if (todo.isDone != newIsDone) {
         todo.isDone = newIsDone;
         todo.markAsChanged();
-        // 保存时读取全部待办，更新后写回
-        final allTodos = await StorageService.getTodos(username);
-        final idx = allTodos.indexWhere((t) => t.id == id);
-        if (idx != -1) {
-          allTodos[idx] = todo;
-        } else {
-          allTodos.add(todo);
-        }
-        await StorageService.saveTodos(username, allTodos);
         updatedCount++;
         _logs.add('更新待办状态: ${todo.title} -> ${newIsDone ? "已完成" : "未完成"}');
       }
+    }
+
+    if (updatedCount > 0) {
+      await StorageService.saveTodos(username, allTodos);
     }
 
     if (updatedCount == 0) {

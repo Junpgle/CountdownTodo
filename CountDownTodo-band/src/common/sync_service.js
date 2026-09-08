@@ -286,6 +286,25 @@ function requestSyncFromPhone(type, onResult) {
   })
 }
 
+// 将手环本地修改直接回传给手机 App。requestSyncFromPhone 只负责请求
+// 手机下发数据，不能复用来提交手环上的待办状态。
+function syncData(type, data, onResult) {
+  var conn = getConnect()
+  if (!conn || typeof conn.send !== 'function') {
+    if (onResult) onResult({ success: false, message: '未连接到手机App' })
+    return
+  }
+  conn.send({
+    data: { type: type, data: data, timestamp: Date.now() },
+    success: function() {
+      if (onResult) onResult({ success: true })
+    },
+    fail: function() {
+      if (onResult) onResult({ success: false, message: '发送失败' })
+    }
+  })
+}
+
 function init(opts) {
   if (opts && opts.onVersionReady) {
     onVersionReady = opts.onVersionReady
@@ -506,6 +525,7 @@ module.exports = {
   adaptItem: adaptItem,
   saveLocalData: saveLocalData,
   requestSyncFromPhone: requestSyncFromPhone,
+  syncData: syncData,
   syncAll: syncAll,
   sendVersionInfo: sendVersionInfo,
   sendDebugLog: sendDebugLog,

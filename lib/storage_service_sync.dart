@@ -487,7 +487,7 @@ mixin _StorageSync on _StorageServiceBase {
       }
 
       // 3. 🛡️ 核心修复：基于 op_logs 识别脏数据，并进行 UUID 去重处理（防止 1000+ 冗余同步）
-      final db = await DatabaseHelper.instance.database;
+      final db = await DatabaseHelper.instance.databaseForUser(username);
       List<Map<String, dynamic>> dirtyTodos = [];
       List<Map<String, dynamic>> dirtyGroups = [];
       List<Map<String, dynamic>> dirtyCountdowns = [];
@@ -1454,8 +1454,16 @@ mixin _StorageSync on _StorageServiceBase {
             }
           }
 
-          // 🚀 核心优化：如果发现同步返回的团队列表与本地认知不符，或者刚刚清理了孤立团队，则提示 WS 重新订阅新频道
-          if (teamChanged || currentTeams.length != localTeamRows.length) {
+          // 课程、待办等本地数据数量不能代表团队订阅数量：一个刚加入但
+          // 尚无本地数据的团队也必须订阅，反之有残留数据的已退出团队也
+          // 不应继续占用频道。只与 WebSocket 实际订阅集合比较。
+          final subscribedTeamUuids =
+              PomodoroSyncService.instance.subscribedTeamUuids;
+          final subscriptionsChanged =
+              currentTeams.length != subscribedTeamUuids.length ||
+                  !currentTeams.containsAll(subscribedTeamUuids) ||
+                  !subscribedTeamUuids.containsAll(currentTeams);
+          if (teamChanged || subscriptionsChanged) {
             debugPrint("👥 [协同] 团队列表发生变化，请求 WebSocket 刷新订阅...");
             // 利用 resumeSync 内部的逻辑可以触发重连与重新订阅
             Future.microtask(() => PomodoroSyncService.instance.resumeSync());

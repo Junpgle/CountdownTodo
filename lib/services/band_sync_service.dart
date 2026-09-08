@@ -384,7 +384,8 @@ class BandSyncService {
       final dataList = await provider(type);
       if (dataList.isEmpty) {
         _addLog('同步 $type: 无数据');
-        await sendData(type, dataList);
+        final success = await sendData(type, dataList);
+        _addLog(success ? '已同步 $type: 0 条' : '同步 $type 失败: 空数据发送失败');
         return;
       }
 
@@ -393,6 +394,8 @@ class BandSyncService {
       final totalBatches = (dataList.length / maxBatchSize).ceil();
       _addLog('同步 $type: 共 ${dataList.length} 条，分 $totalBatches 批');
 
+      int? failedBatch;
+      var sentItems = 0;
       for (int i = 0; i < totalBatches; i++) {
         final start = i * maxBatchSize;
         final end = (start + maxBatchSize < dataList.length)
@@ -403,12 +406,19 @@ class BandSyncService {
             batchNum: i + 1, totalBatches: totalBatches);
         if (!success) {
           _addLog('同步 $type: 第 ${i + 1} 批发送失败');
+          failedBatch = i + 1;
           break;
         }
+        sentItems += batch.length;
         // 每批之间间隔，避免 SDK 限流
         await Future.delayed(const Duration(milliseconds: 200));
       }
-      _addLog('已同步 $type: ${dataList.length} 条');
+      if (failedBatch == null) {
+        _addLog('已同步 $type: ${dataList.length} 条');
+      } else {
+        _addLog(
+            '同步 $type 未完成: 已发送 $sentItems/${dataList.length} 条，第 $failedBatch 批失败');
+      }
     } catch (e) {
       _addLog('同步 $type 异常: $e');
     }
@@ -540,6 +550,7 @@ class BandSyncService {
 
     final chunks = <List<Map<String, dynamic>>>[];
     var current = <Map<String, dynamic>>[];
+    var skippedItems = 0;
 
     for (final item in items) {
       final sanitizedItem =
@@ -548,12 +559,14 @@ class BandSyncService {
       if (_estimatePayloadBytes(type, candidate) > _maxPlatformMessageBytes) {
         if (current.isEmpty) {
           _addLog('同步 $type 失败: 单条数据过大，已跳过');
+          skippedItems++;
           continue;
         }
         chunks.add(current);
         if (_estimatePayloadBytes(type, [sanitizedItem]) >
             _maxPlatformMessageBytes) {
           _addLog('同步 $type 失败: 单条数据过大，已跳过');
+          skippedItems++;
           current = [];
         } else {
           current = [sanitizedItem];
@@ -566,7 +579,7 @@ class BandSyncService {
 
     if (chunks.isEmpty) return false;
 
-    var allSuccess = true;
+    var allSuccess = skippedItems == 0;
     for (var i = 0; i < chunks.length; i++) {
       final success = await sendData(type, chunks[i],
           batchNum: i + 1, totalBatches: chunks.length);
