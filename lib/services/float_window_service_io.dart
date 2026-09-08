@@ -212,14 +212,16 @@ class FloatWindowService {
           }
           final modifiedSecs =
               event['modifiedSecs'] ?? payload?['modifiedSecs'] ?? 0;
-          _handleAction('finish', (modifiedSecs is int) ? modifiedSecs : 0);
+          unawaited(
+            _handleAction('finish', (modifiedSecs is int) ? modifiedSecs : 0),
+          );
           break;
         case 'abandon':
           if (isWorkbenchMounted) {
             // debugPrint('[FloatWindow] abandon delegated to mounted workbench');
             return;
           }
-          _handleAction('abandon', 0);
+          unawaited(_handleAction('abandon', 0));
           break;
         case 'reminder_ok':
           final reminderData =
@@ -335,7 +337,7 @@ class FloatWindowService {
 
   // ── Action Processing ──────────────────────────────────────────────────
 
-  static void _handleAction(String action, int secs) async {
+  static Future<void> _handleAction(String action, int secs) async {
     if (_processingAction) {
       // debugPrint('[FloatWindow] action $action ignored: already processing');
       return;
@@ -343,89 +345,91 @@ class FloatWindowService {
     _processingAction = true;
     final int myVersion = ++_actionVersion;
 
-    // debugPrint('[FloatWindow] _handleAction: action=$action, secs=$secs');
+    try {
+      // debugPrint('[FloatWindow] _handleAction: action=$action, secs=$secs');
 
-    if (isWorkbenchMounted) {
-      try {
-        final isFocused = await windowManager.isFocused();
-        if (isFocused) {
-          // debugPrint('[FloatWindow] action $action skipped: workbench focused');
-          _processingAction = false;
-          return;
-        }
-      } catch (_) {}
-    }
-
-    final saved = await PomodoroService.loadRunState();
-    if (saved == null) {
-      if (action == 'abandon') {
-        await PomodoroService.clearRunState();
-        clearFocus();
-        await update(endMs: 0, isLocal: true);
+      if (isWorkbenchMounted) {
+        try {
+          final isFocused = await windowManager.isFocused();
+          if (isFocused) {
+            // debugPrint('[FloatWindow] action $action skipped: workbench focused');
+            return;
+          }
+        } catch (_) {}
       }
-      _processingAction = false;
-      return;
-    }
 
-    final now = DateTime.now().millisecondsSinceEpoch;
-
-    // Clear state and update island
-    await PomodoroService.clearRunState();
-    clearFocus();
-    await update(endMs: 0, isLocal: true);
-
-    // Check version for staleness
-    if (_actionVersion != myVersion) {
-      // debugPrint('[FloatWindow] action $action stale, skipping');
-      _processingAction = false;
-      return;
-    }
-
-    // Save record in background
-    if (action == 'finish') {
-      final isCountUp = saved.mode == TimerMode.countUp;
-      final actualSecs = isCountUp
-          ? secs
-          : PomodoroRunState.computeActualSeconds(
-              saved.sessionStartMs, saved.accumulatedMs,
-              endMs: now);
-
-      final record = PomodoroRecord.fromRunState(
-        state: saved,
-        status: PomodoroRecordStatus.completed,
-        endMs: now,
-        actualDuration: actualSecs,
-      );
-
-      await PomodoroService.addRecord(record);
-      PomodoroSyncService().sendStopSignal();
-
-      if (saved.todoUuid != null && saved.todoUuid!.isNotEmpty) {
-        final username = await StorageService.getLoginSession() ?? 'default';
-        final allTodos = await StorageService.getTodos(username);
-        final idx = allTodos.indexWhere((t) => t.id == saved.todoUuid);
-        if (idx != -1) {
-          allTodos[idx].isDone = true;
-          allTodos[idx].markAsChanged();
-          await StorageService.saveTodos(username, allTodos);
+      final saved = await PomodoroService.loadRunState();
+      if (saved == null) {
+        if (action == 'abandon') {
+          await PomodoroService.clearRunState();
+          clearFocus();
+          await update(endMs: 0, isLocal: true);
         }
+        return;
       }
-    } else if (action == 'abandon') {
-      final actualSecs = PomodoroRunState.computeActualSeconds(
-          saved.sessionStartMs, saved.accumulatedMs,
-          endMs: now);
-      if (actualSecs > 5) {
-        await PomodoroService.addRecord(PomodoroRecord.fromRunState(
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      // Clear state and update island
+      await PomodoroService.clearRunState();
+      clearFocus();
+      await update(endMs: 0, isLocal: true);
+
+      // Check version for staleness
+      if (_actionVersion != myVersion) {
+        // debugPrint('[FloatWindow] action $action stale, skipping');
+        return;
+      }
+
+      // Save record in background
+      if (action == 'finish') {
+        final isCountUp = saved.mode == TimerMode.countUp;
+        final actualSecs = isCountUp
+            ? secs
+            : PomodoroRunState.computeActualSeconds(
+                saved.sessionStartMs, saved.accumulatedMs,
+                endMs: now);
+
+        final record = PomodoroRecord.fromRunState(
           state: saved,
-          status: PomodoroRecordStatus.interrupted,
+          status: PomodoroRecordStatus.completed,
           endMs: now,
-        ));
-      }
-      PomodoroSyncService().sendStopSignal();
-    }
+          actualDuration: actualSecs,
+        );
 
-    // debugPrint('[FloatWindow] $action done');
-    _processingAction = false;
+        await PomodoroService.addRecord(record);
+        PomodoroSyncService().sendStopSignal();
+
+        if (saved.todoUuid != null && saved.todoUuid!.isNotEmpty) {
+          final username = await StorageService.getLoginSession() ?? 'default';
+          final allTodos = await StorageService.getTodos(username);
+          final idx = allTodos.indexWhere((t) => t.id == saved.todoUuid);
+          if (idx != -1) {
+            allTodos[idx].isDone = true;
+            allTodos[idx].markAsChanged();
+            await StorageService.saveTodos(username, allTodos);
+          }
+        }
+      } else if (action == 'abandon') {
+        final actualSecs = PomodoroRunState.computeActualSeconds(
+            saved.sessionStartMs, saved.accumulatedMs,
+            endMs: now);
+        if (actualSecs > 5) {
+          await PomodoroService.addRecord(PomodoroRecord.fromRunState(
+            state: saved,
+            status: PomodoroRecordStatus.interrupted,
+            endMs: now,
+          ));
+        }
+        PomodoroSyncService().sendStopSignal();
+      }
+
+      // debugPrint('[FloatWindow] $action done');
+    } catch (error, stackTrace) {
+      debugPrint('[FloatWindow] action $action failed: $error\n$stackTrace');
+    } finally {
+      _processingAction = false;
+    }
   }
 
   // ── Focus State Management ─────────────────────────────────────────────

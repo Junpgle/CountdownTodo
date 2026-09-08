@@ -32,6 +32,12 @@ class CourseImportHandler {
   final FutureOr<void> Function() onRescheduleReminders;
   final Function(String) showMessage;
 
+  bool _loadingDialogOpen = false;
+  Route<void>? _loadingDialogRoute;
+  Future<void>? _loadingDialogFuture;
+  Future<void>? _loadingDialogReady;
+  NavigatorState? _loadingDialogNavigator;
+
   CourseImportHandler({
     required this.context,
     required this.username,
@@ -375,7 +381,7 @@ class CourseImportHandler {
         case 'zf':
         case 'hl':
           sourceName = selectedSchool == 'zf' ? "正方教务系统" : "河南财经政法大学";
-          _closeLoadingDialog();
+          await _closeLoadingDialog();
           if (!context.mounted) return;
           Map<int, Map<String, int>>? userAdjustedTimes =
               await showDialog<Map<int, Map<String, int>>>(
@@ -414,24 +420,24 @@ class CourseImportHandler {
       );
 
       if (parsedCourses.isEmpty) {
-        _closeLoadingDialog();
+        await _closeLoadingDialog();
         showMessage('❌ 导入失败\n文件格式不匹配或解析错误');
         return;
       }
 
       final repairedCourses = await _repairMissingTimes(parsedCourses);
       if (repairedCourses == null) {
-        _closeLoadingDialog();
+        await _closeLoadingDialog();
         return;
       }
       parsedCourses = repairedCourses;
 
       // 第二步：关闭进度弹窗，选择导入模式
-      _closeLoadingDialog();
+      await _closeLoadingDialog();
 
       final mode = await _askImportMode(parsedCourses);
       if (mode == null) {
-        _closeLoadingDialog(); // 确保关闭所有 loading
+        await _closeLoadingDialog(); // 确保关闭所有 loading
         return; // 用户取消
       }
 
@@ -452,7 +458,7 @@ class CourseImportHandler {
         );
       }
 
-      _closeLoadingDialog();
+      await _closeLoadingDialog();
       showMessage('✅ $sourceName 导入成功！');
       try {
         await onRescheduleReminders();
@@ -462,7 +468,7 @@ class CourseImportHandler {
         debugPrint('⚠️ 课表导入后刷新提醒失败: $error');
       }
     } catch (e) {
-      _closeLoadingDialog();
+      await _closeLoadingDialog();
       showMessage('❌ 导入失败: $e');
     }
   }
@@ -633,7 +639,7 @@ class CourseImportHandler {
           htmlContent.contains('id="table1"') ||
           htmlContent.contains('kbgrid_table')) {
         sourceName = "正方教务系统";
-        _closeLoadingDialog();
+        await _closeLoadingDialog();
         if (!context.mounted) return;
 
         Map<int, Map<String, int>>? userAdjustedTimes =
@@ -661,7 +667,7 @@ class CourseImportHandler {
               htmlContent, targetSemester.startDate);
         } else if (normalizedUrl.contains('huel.edu.cn')) {
           sourceName = "河南财经政法大学";
-          _closeLoadingDialog();
+          await _closeLoadingDialog();
           if (!context.mounted) return;
 
           final userAdjustedTimes =
@@ -694,13 +700,13 @@ class CourseImportHandler {
 
       final repairedCourses = await _repairMissingTimes(parsedCourses);
       if (repairedCourses == null) {
-        _closeLoadingDialog();
+        await _closeLoadingDialog();
         return;
       }
       parsedCourses = repairedCourses;
 
       if (sourceName == "正方教务系统" || sourceName == "河南财经政法大学") {
-        _closeLoadingDialog();
+        await _closeLoadingDialog();
       }
 
       if (parsedCourses.isEmpty) {
@@ -727,17 +733,17 @@ class CourseImportHandler {
           }
         }
 
-        _closeLoadingDialog();
+        await _closeLoadingDialog();
         showMessage('❌ 导入失败\n$detail');
         return;
       }
 
       // 第二步：关闭进度弹窗，选择导入模式
-      _closeLoadingDialog();
+      await _closeLoadingDialog();
 
       final mode = await _askImportMode(parsedCourses);
       if (mode == null) {
-        _closeLoadingDialog(); // 确保关闭所有 loading
+        await _closeLoadingDialog(); // 确保关闭所有 loading
         return; // 用户取消
       }
 
@@ -759,7 +765,7 @@ class CourseImportHandler {
       }
 
       if (!context.mounted) return;
-      _closeLoadingDialog();
+      await _closeLoadingDialog();
       showMessage('✅ $sourceName 导入成功！');
       try {
         await onRescheduleReminders();
@@ -769,17 +775,18 @@ class CourseImportHandler {
         debugPrint('⚠️ 课表导入后刷新提醒失败: $error');
       }
     } catch (e) {
-      _closeLoadingDialog();
+      await _closeLoadingDialog();
       showMessage('❌ 导入异常: $e');
     }
   }
 
   void _showLoadingDialog(String message) {
-    if (!context.mounted) return;
-    showDialog(
+    if (!context.mounted || _loadingDialogOpen) return;
+
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final route = DialogRoute<void>(
       context: context,
       barrierDismissible: false,
-      useRootNavigator: true,
       builder: (ctx) => AlertDialog(
         content: Row(
           children: [
@@ -790,12 +797,58 @@ class CourseImportHandler {
         ),
       ),
     );
+
+    _loadingDialogOpen = true;
+    _loadingDialogRoute = route;
+    _loadingDialogNavigator = navigator;
+    _loadingDialogReady = Future<void>.delayed(Duration.zero);
+    final dialogFuture = navigator.push<void>(route);
+    _loadingDialogFuture = dialogFuture;
+    unawaited(_observeLoadingDialog(route, dialogFuture));
   }
 
-  void _closeLoadingDialog() {
-    if (!context.mounted) return;
-    if (Navigator.of(context, rootNavigator: true).canPop()) {
-      Navigator.of(context, rootNavigator: true).pop();
+  Future<void> _observeLoadingDialog(
+      Route<void> route, Future<void> dialogFuture) async {
+    try {
+      await dialogFuture;
+    } catch (error, stackTrace) {
+      debugPrint('⚠️ 课表导入进度弹窗异常结束: $error\n$stackTrace');
+    } finally {
+      if (identical(_loadingDialogRoute, route)) {
+        _loadingDialogOpen = false;
+        _loadingDialogRoute = null;
+        _loadingDialogFuture = null;
+        _loadingDialogReady = null;
+        _loadingDialogNavigator = null;
+      }
+    }
+  }
+
+  Future<void> _closeLoadingDialog() async {
+    if (!_loadingDialogOpen) return;
+
+    final route = _loadingDialogRoute;
+    final dialogFuture = _loadingDialogFuture;
+    final ready = _loadingDialogReady;
+    if (route == null) return;
+    if (ready != null) await ready;
+
+    // Remove only the route created by _showLoadingDialog. A concurrent
+    // share/import page or confirmation dialog must never be popped here.
+    final navigator = _loadingDialogNavigator;
+    if (identical(_loadingDialogRoute, route) &&
+        navigator != null &&
+        navigator.mounted &&
+        route.isActive) {
+      navigator.removeRoute(route);
+    }
+
+    if (dialogFuture != null) {
+      try {
+        await dialogFuture;
+      } catch (_) {
+        // The observer already records unexpected route failures.
+      }
     }
   }
 }
