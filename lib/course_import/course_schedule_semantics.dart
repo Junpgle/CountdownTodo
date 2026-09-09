@@ -74,6 +74,7 @@ abstract final class CourseScheduleSemantics {
     required String semesterId,
     required DateTime semesterStart,
   }) {
+    final canonicalSemester = canonicalSemesterId(semesterId);
     return courses.map((course) {
       final weekday =
           course.weekday.clamp(DateTime.monday, DateTime.sunday).toInt();
@@ -92,7 +93,7 @@ abstract final class CourseScheduleSemantics {
         weekIndex: weekIndex,
         roomName: course.roomName,
         lessonType: course.lessonType,
-        semesterId: semesterId,
+        semesterId: canonicalSemester,
         teamUuid: course.teamUuid,
         version: course.version,
         updatedAt: course.updatedAt,
@@ -108,6 +109,7 @@ abstract final class CourseScheduleSemantics {
     Iterable<CourseItem> courses, {
     required String semesterId,
   }) {
+    final canonicalSemester = canonicalSemesterId(semesterId);
     return courses
         .map((course) => CourseItem(
               courseName: course.courseName,
@@ -119,7 +121,7 @@ abstract final class CourseScheduleSemantics {
               weekIndex: course.weekIndex,
               roomName: course.roomName,
               lessonType: course.lessonType,
-              semesterId: semesterId,
+              semesterId: canonicalSemester,
               teamUuid: course.teamUuid,
               version: course.version,
               updatedAt: course.updatedAt,
@@ -133,8 +135,8 @@ abstract final class CourseScheduleSemantics {
   /// semester.  Relative week/day is used as a fallback for legacy rows that
   /// do not have a concrete date.
   static bool overlaps(CourseItem left, CourseItem right) {
-    if (_canonicalSemesterId(left.semesterId) !=
-        _canonicalSemesterId(right.semesterId)) {
+    if (canonicalSemesterId(left.semesterId) !=
+        canonicalSemesterId(right.semesterId)) {
       return false;
     }
 
@@ -180,21 +182,27 @@ abstract final class CourseScheduleSemantics {
     Iterable<CourseItem> incoming, {
     required String semesterId,
   }) {
-    final targetSemesterId = _canonicalSemesterId(semesterId);
+    final targetSemesterId = canonicalSemesterId(semesterId);
     final merged = <String, CourseItem>{};
     for (final course in existing) {
-      if (_canonicalSemesterId(course.semesterId) != targetSemesterId) {
+      if (canonicalSemesterId(course.semesterId) != targetSemesterId) {
         merged[course.uuid] = course;
       }
     }
     for (final course in incoming) {
-      merged[course.uuid] = course;
+      final normalizedCourse =
+          canonicalSemesterId(course.semesterId) == course.semesterId
+              ? course
+              : assignIdOnly([course], semesterId: targetSemesterId).single;
+      merged[normalizedCourse.uuid] = normalizedCourse;
     }
     return merged.values.toList();
   }
 
-  static String _canonicalSemesterId(String semesterId) =>
-      semesterId.isEmpty ? 'default' : semesterId;
+  static String canonicalSemesterId(String? semesterId) {
+    final normalized = semesterId?.trim() ?? '';
+    return normalized.isEmpty ? 'default' : normalized;
+  }
 
   static bool _isClockTime(int value) {
     if (value < 0) return false;

@@ -166,9 +166,17 @@ class CourseService {
     String semesterId,
     List<CourseItem> courses,
   ) async {
-    if (courses.any((course) => course.semesterId != semesterId)) {
+    final targetSemesterId =
+        CourseScheduleSemantics.canonicalSemesterId(semesterId);
+    if (courses.any((course) =>
+        CourseScheduleSemantics.canonicalSemesterId(course.semesterId) !=
+        targetSemesterId)) {
       throw ArgumentError('课程学期与导入目标不一致');
     }
+    final normalizedCourses = CourseScheduleSemantics.assignIdOnly(
+      courses,
+      semesterId: targetSemesterId,
+    );
     final existingCourses = await getAllCourses(
       username,
       applyCalendarAdjustments: false,
@@ -177,8 +185,8 @@ class CourseService {
       username,
       CourseScheduleSemantics.replaceSemester(
         existingCourses,
-        courses,
-        semesterId: semesterId,
+        normalizedCourses,
+        semesterId: targetSemesterId,
       ),
     );
   }
@@ -194,8 +202,8 @@ class CourseService {
     final incomingBySemester = <String, List<CourseItem>>{};
     for (final course in courses) {
       final semesterId =
-          course.semesterId.isEmpty ? 'default' : course.semesterId;
-      final normalizedCourse = course.semesterId == semesterId
+          CourseScheduleSemantics.canonicalSemesterId(course.semesterId);
+      final normalizedCourse = course.semesterId.trim() == semesterId
           ? course
           : CourseScheduleSemantics.assignIdOnly(
               [course],
@@ -228,10 +236,47 @@ class CourseService {
     String semesterId,
     List<CourseItem> courses,
   ) async {
-    if (courses.any((course) => course.semesterId != semesterId)) {
+    final targetSemesterId =
+        CourseScheduleSemantics.canonicalSemesterId(semesterId);
+    if (courses.any((course) =>
+        CourseScheduleSemantics.canonicalSemesterId(course.semesterId) !=
+        targetSemesterId)) {
       throw ArgumentError('课程学期与导入目标不一致');
     }
-    await mergeCoursesToSql(username, courses);
+    await mergeCoursesToSql(
+      username,
+      CourseScheduleSemantics.assignIdOnly(
+        courses,
+        semesterId: targetSemesterId,
+      ),
+    );
+  }
+
+  /// Deletes only the selected semester's courses and emits the same refresh
+  /// signal as every other course mutation.  Legacy rows with an empty
+  /// semester id belong to the default semester.
+  static Future<int> clearCoursesForSemester(
+    String username,
+    String semesterId,
+  ) async {
+    final targetSemesterId =
+        CourseScheduleSemantics.canonicalSemesterId(semesterId);
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final where = targetSemesterId == 'default'
+        ? 'semester_id = ? OR semester_id IS NULL OR semester_id = ?'
+        : 'semester_id = ?';
+    final whereArgs = targetSemesterId == 'default'
+        ? [targetSemesterId, '']
+        : [targetSemesterId];
+    final deleted = await db.delete(
+      'courses',
+      where: where,
+      whereArgs: whereArgs,
+    );
+    if (deleted > 0) {
+      StorageService.triggerRefresh(const {DataRefreshDomain.courses});
+    }
+    return deleted;
   }
 
   // ================= 导入与解析逻辑 =================
@@ -240,10 +285,12 @@ class CourseService {
       String semesterId, DateTime? explicitStart) async {
     if (explicitStart != null) return explicitStart;
 
+    final normalizedSemesterId =
+        CourseScheduleSemantics.canonicalSemesterId(semesterId);
     final configuredStart =
-        await StorageService.getSemesterStartById(semesterId);
+        await StorageService.getSemesterStartById(normalizedSemesterId);
     if (configuredStart != null) return configuredStart;
-    return semesterId == 'default'
+    return normalizedSemesterId == 'default'
         ? await StorageService.getSemesterStart()
         : null;
   }
@@ -256,15 +303,17 @@ class CourseService {
     required String semesterId,
     DateTime? semesterStart,
   }) async {
-    final effectiveStart =
-        await _resolveSemesterStartForImport(semesterId, semesterStart);
+    final canonicalSemesterId =
+        CourseScheduleSemantics.canonicalSemesterId(semesterId);
+    final effectiveStart = await _resolveSemesterStartForImport(
+        canonicalSemesterId, semesterStart);
     if (effectiveStart == null) {
       throw StateError('缺少学期开始日期，无法导入课表');
     }
 
     final prepared = CourseScheduleSemantics.assignToSemester(
       parsedCourses,
-      semesterId: semesterId,
+      semesterId: canonicalSemesterId,
       semesterStart: effectiveStart,
     );
 
@@ -693,6 +742,28 @@ class CourseService {
       DateTime todayNormalized = DateTime(now.year, now.month, now.day);
       String todayStr = DateFormat('yyyy-MM-dd').format(now);
       int currentHHMM = now.hour * 100 + now.minute;
+      final semesters = await StorageService.getSemesters();
+      final semesterMondays = <String, DateTime>{
+        for (final semester in semesters)
+          CourseScheduleSemantics.canonicalSemesterId(semester.id):
+              CourseScheduleSemantics.mondayOf(semester.startDate),
+      };
+      final globalSemesterStart = await StorageService.getSemesterStart();
+      if (globalSemesterStart != null) {
+        semesterMondays.putIfAbsent(
+          'default',
+          () => CourseScheduleSemantics.mondayOf(globalSemesterStart),
+        );
+      }
+
+      DateTime? semesterMondayFor(CourseItem course) {
+        return semesterMondays[CourseScheduleSemantics.canonicalSemesterId(
+                course.semesterId)] ??
+            (CourseScheduleSemantics.canonicalSemesterId(course.semesterId) ==
+                    'default'
+                ? semesterMondays['default']
+                : null);
+      }
 
       // 1. 尝试按日期精确筛选今天的课程
       List<CourseItem> todayCourses =
@@ -700,18 +771,13 @@ class CourseService {
 
       // 🚀 核心改进：如果没有按日期找到，尝试按“当前周次+星期”回退计算（支持动态修改开学日期的情况）
       if (todayCourses.isEmpty) {
-        final DateTime? semStart = await StorageService.getSemesterStart();
-        if (semStart != null) {
-          final DateTime semMonday =
-              DateTime(semStart.year, semStart.month, semStart.day)
-                  .subtract(Duration(days: semStart.weekday - 1));
-          int todayWeek = todayNormalized.difference(semMonday).inDays ~/ 7 + 1;
-          int todayWeekday = todayNormalized.weekday;
-          todayCourses = courses
-              .where(
-                  (c) => c.weekIndex == todayWeek && c.weekday == todayWeekday)
-              .toList();
-        }
+        final todayWeekday = todayNormalized.weekday;
+        todayCourses = courses.where((c) {
+          final monday = semesterMondayFor(c);
+          if (monday == null) return false;
+          final todayWeek = todayNormalized.difference(monday).inDays ~/ 7 + 1;
+          return c.weekIndex == todayWeek && c.weekday == todayWeekday;
+        }).toList();
       }
 
       // 如果今天有课，且“还没全部上完”，则展示今天的课程
@@ -733,19 +799,14 @@ class CourseService {
 
       // 🚀 明天也同样支持回退计算
       if (tomorrowCourses.isEmpty) {
-        final DateTime? semStart = await StorageService.getSemesterStart();
-        if (semStart != null) {
-          final DateTime semMonday =
-              DateTime(semStart.year, semStart.month, semStart.day)
-                  .subtract(Duration(days: semStart.weekday - 1));
-          int tomorrowWeek =
-              tomorrowNormalized.difference(semMonday).inDays ~/ 7 + 1;
-          int tomorrowWeekday = tomorrowNormalized.weekday;
-          tomorrowCourses = courses
-              .where((c) =>
-                  c.weekIndex == tomorrowWeek && c.weekday == tomorrowWeekday)
-              .toList();
-        }
+        final tomorrowWeekday = tomorrowNormalized.weekday;
+        tomorrowCourses = courses.where((c) {
+          final monday = semesterMondayFor(c);
+          if (monday == null) return false;
+          final tomorrowWeek =
+              tomorrowNormalized.difference(monday).inDays ~/ 7 + 1;
+          return c.weekIndex == tomorrowWeek && c.weekday == tomorrowWeekday;
+        }).toList();
       }
 
       if (tomorrowCourses.isNotEmpty) {
@@ -754,12 +815,6 @@ class CourseService {
       }
 
       final futureCourses = <MapEntry<DateTime, CourseItem>>[];
-      DateTime? semMonday;
-      final DateTime? semStart = await StorageService.getSemesterStart();
-      if (semStart != null) {
-        semMonday = DateTime(semStart.year, semStart.month, semStart.day)
-            .subtract(Duration(days: semStart.weekday - 1));
-      }
 
       for (final c in courses) {
         DateTime? courseDay;
@@ -770,6 +825,7 @@ class CourseService {
             courseDay = null;
           }
         }
+        final semMonday = semesterMondayFor(c);
         if (courseDay == null && semMonday != null && c.weekIndex > 0) {
           courseDay = semMonday.add(
             Duration(days: (c.weekIndex - 1) * 7 + c.weekday - 1),
@@ -834,7 +890,8 @@ class CourseService {
     // 这样“覆盖云端”才能真正清理远端残留数据。
     final coursesBySemester = <String, List<CourseItem>>{};
     for (final c in courses) {
-      final semesterId = c.semesterId.isEmpty ? 'default' : c.semesterId;
+      final semesterId =
+          CourseScheduleSemantics.canonicalSemesterId(c.semesterId);
       coursesBySemester.putIfAbsent(semesterId, () => []).add(c);
     }
 

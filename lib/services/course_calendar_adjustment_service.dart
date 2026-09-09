@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../course_import/course_schedule_semantics.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import 'storage/storage_key_scope.dart';
 
 class CourseDayTransfer {
   final String fromDate;
@@ -248,7 +249,7 @@ class CourseCalendarAdjustmentService {
 
   static Future<CourseCalendarAdjustment> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_prefsKey);
+    final raw = await _readScopedValue(_prefsKey, prefs);
     if (raw == null || raw.isEmpty) return CourseCalendarAdjustment.empty();
 
     try {
@@ -263,7 +264,10 @@ class CourseCalendarAdjustmentService {
 
   static Future<void> save(CourseCalendarAdjustment adjustment) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefsKey, jsonEncode(adjustment.toJson()));
+    await prefs.setString(
+      _scopedKey(_prefsKey, prefs),
+      jsonEncode(adjustment.toJson()),
+    );
     StorageService.triggerRefresh(const {
       DataRefreshDomain.courses,
       DataRefreshDomain.fixedSchedules,
@@ -314,7 +318,7 @@ class CourseCalendarAdjustmentService {
     if (key.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-      _officialHolidaySnoozeTodayKey,
+      _scopedKey(_officialHolidaySnoozeTodayKey, prefs),
       _officialHolidaySnoozeValue(key),
     );
   }
@@ -324,8 +328,34 @@ class CourseCalendarAdjustmentService {
     DateTime now,
   ) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_officialHolidaySnoozeTodayKey) ==
-        _officialHolidaySnoozeValue(key, now);
+    final stored =
+        await _readScopedValue(_officialHolidaySnoozeTodayKey, prefs);
+    return stored == _officialHolidaySnoozeValue(key, now);
+  }
+
+  static String _scopedKey(String baseKey, SharedPreferences prefs) {
+    return StorageKeyScope.scoped(
+      baseKey,
+      prefs.getString(StorageService.keyCurrentUser)?.trim(),
+    );
+  }
+
+  /// Migrates the pre-account-isolation value once to the active account.
+  /// Anonymous use continues to read the legacy key for compatibility.
+  static Future<String?> _readScopedValue(
+    String baseKey,
+    SharedPreferences prefs,
+  ) async {
+    final scopedKey = _scopedKey(baseKey, prefs);
+    var value = prefs.getString(scopedKey);
+    if (value == null && scopedKey != baseKey) {
+      value = prefs.getString(baseKey);
+      if (value != null) {
+        await prefs.setString(scopedKey, value);
+        await prefs.remove(baseKey);
+      }
+    }
+    return value;
   }
 
   static String _officialHolidaySnoozeValue(String key, [DateTime? now]) =>

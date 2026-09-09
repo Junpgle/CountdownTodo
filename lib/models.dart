@@ -1174,16 +1174,17 @@ class CourseItem {
     required this.weekIndex,
     required this.roomName,
     this.lessonType,
-    this.semesterId = 'default',
+    String semesterId = 'default',
     this.teamUuid,
     this.version = 1,
     int? updatedAt,
     int? createdAt,
     this.isDeleted = false,
-  })  : uuid = uuid ??
+  })  : semesterId = _canonicalSemesterId(semesterId),
+        uuid = uuid ??
             generateDeterministicUuid(
                 courseName, weekday, startTime, endTime, weekIndex, roomName,
-                semesterId: semesterId),
+                semesterId: _canonicalSemesterId(semesterId)),
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
@@ -1192,8 +1193,14 @@ class CourseItem {
       {String semesterId = 'default'}) {
     const namespace =
         '6ba7b810-9dad-11d1-80b4-00c04fd430c8'; // Namespace URL as seed
-    final input = "$semesterId|$name|$day|$start|$end|$week|$room";
+    final input =
+        "${_canonicalSemesterId(semesterId)}|$name|$day|$start|$end|$week|$room";
     return const Uuid().v5(namespace, input);
+  }
+
+  static String _canonicalSemesterId(String? value) {
+    final normalized = value?.trim() ?? '';
+    return normalized.isEmpty ? 'default' : normalized;
   }
 
   String get formattedStartTime =>

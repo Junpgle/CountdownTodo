@@ -202,7 +202,7 @@ class CourseImportPreflight {
                             lastDate: DateTime(2100),
                             helpText: '选择开学日期',
                           );
-                          if (picked != null) {
+                          if (picked != null && dialogContext.mounted) {
                             setState(() {
                               startDate =
                                   CourseScheduleSemantics.mondayOf(picked);
@@ -232,7 +232,7 @@ class CourseImportPreflight {
                             lastDate: DateTime(2100),
                             helpText: '选择放假日期',
                           );
-                          if (picked != null) {
+                          if (picked != null && dialogContext.mounted) {
                             setState(() => endDate = picked);
                           }
                         },

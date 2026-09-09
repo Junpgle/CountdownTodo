@@ -142,7 +142,8 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
         _semesterMonday = firstCourseDate
             .subtract(Duration(days: firstCourse.weekday - 1))
             .subtract(Duration(
-                days: (firstCourse.weekIndex > 0 ? firstCourse.weekIndex : 0) *
+                days: ((firstCourse.weekIndex > 0 ? firstCourse.weekIndex : 1) -
+                        1) *
                     7));
       }
     }
@@ -223,7 +224,9 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     // 过滤课程：只显示当前学期当前相对周次的课程
     _weekCourses = _allCourses
         .where((c) =>
-            c.semesterId == targetSemesterId && c.weekIndex == relativeWeek)
+            CourseScheduleSemantics.canonicalSemesterId(c.semesterId) ==
+                CourseScheduleSemantics.canonicalSemesterId(targetSemesterId) &&
+            c.weekIndex == relativeWeek)
         .toList();
   }
 
@@ -460,13 +463,25 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
 
     final df = DateFormat('yyyy-MM-dd');
 
+    final semesterMondays = <String, DateTime>{
+      for (final semester in _semesters)
+        CourseScheduleSemantics.canonicalSemesterId(semester.id):
+            CourseScheduleSemantics.mondayOf(semester.startDate),
+    };
+    if (_semesterMonday != null) {
+      semesterMondays.putIfAbsent('default', () => _semesterMonday!);
+    }
+
     // 1. 课程分组
     for (var c in _allCourses) {
       if (c.date.isNotEmpty) {
         _monthCourseMap.putIfAbsent(c.date, () => []).add(c);
-      } else if (_semesterMonday != null && c.weekIndex > 0) {
-        final date = _semesterMonday!
-            .add(Duration(days: (c.weekIndex - 1) * 7 + (c.weekday - 1)));
+      } else if (c.weekIndex > 0) {
+        final monday = semesterMondays[
+            CourseScheduleSemantics.canonicalSemesterId(c.semesterId)];
+        if (monday == null) continue;
+        final date =
+            monday.add(Duration(days: (c.weekIndex - 1) * 7 + (c.weekday - 1)));
         _monthCourseMap.putIfAbsent(df.format(date), () => []).add(c);
       }
     }
