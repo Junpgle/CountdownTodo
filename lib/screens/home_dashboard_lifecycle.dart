@@ -3,6 +3,7 @@ part of 'home_dashboard.dart';
 
 mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
   bool _didEnterBackground = false;
+  bool _isCompletingTodoFromNotification = false;
 
   @override
   void initState() {
@@ -29,6 +30,10 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     MacPomodoroStatusBarService.init(deferOngoingActivityRestore: true);
     _macIslandCommandSub =
         MacPomodoroStatusBarService.onCommand.listen(_handleMacIslandCommand);
+    if (AppPlatform.isMacOS) {
+      _macIslandActionSub =
+          MacPomodoroStatusBarService.onAction.listen(_handleMacIslandAction);
+    }
     _configureBackgroundNotificationPoll();
     _initCrossDevicePomodoro(); // 首页也连接 WS
     _initLocalPomodoroMonitoring(); // 🚀 修改：使用 Stream 监测本地专注状态
@@ -261,6 +266,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     _remotePomodoroSub?.cancel();
     _localPomodoroSub?.cancel();
     _macIslandCommandSub?.cancel();
+    _macIslandActionSub?.cancel();
     _remotePomodoroTicker?.cancel();
     _localPomodoroTicker?.cancel();
     ExternalShareHandler.dispose();
@@ -289,6 +295,17 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     MacPomodoroStatusBarService.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// 专注工作台未挂载时，灵动岛按钮动作不能只依赖工作台自身的订阅。
+  /// 复用通知动作的导航通道，把动作安全地交给新建的工作台执行。
+  void _handleMacIslandAction(MacPomodoroAction action) {
+    if (!mounted || FloatWindowService.isWorkbenchMounted) return;
+    final routeAction = switch (action) {
+      MacPomodoroAction.togglePause => 'macTogglePause',
+      MacPomodoroAction.stopFocus => 'macStopFocus',
+    };
+    _navigateToPomodoro(notificationAction: routeAction);
   }
 
   void _onAiRecognitionChatChanged() {
@@ -848,93 +865,105 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     }
   }
 
-  void _markCurrentTodoDone({int? notifId}) async {
+  Future<void> _markCurrentTodoDone({int? notifId}) async {
     // debugPrint(
     //     "📱 _markCurrentTodoDone 被调用: notifId=$notifId, todos数量=${_todos.length}");
+    if (!mounted || _isCompletingTodoFromNotification) return;
+    _isCompletingTodoFromNotification = true;
 
-    DateTime now = DateTime.now();
-    DateTime today = DateTime(now.year, now.month, now.day);
+    try {
+      DateTime now = DateTime.now();
+      DateTime today = DateTime(now.year, now.month, now.day);
 
-    List<TodoItem> activeTodos = _todos.where((t) {
-      if (t.dueDate == null) return true;
-      DateTime d = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
-      return !d.isAfter(today);
-    }).toList();
+      List<TodoItem> activeTodos = _todos.where((t) {
+        if (t.dueDate == null) return true;
+        DateTime d =
+            DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day);
+        return !d.isAfter(today);
+      }).toList();
 
-    // debugPrint("📱 activeTodos数量=${activeTodos.length}");
+      // debugPrint("📱 activeTodos数量=${activeTodos.length}");
 
-    // 普通待办通知的 ID 是 12345，特殊待办通知的 ID 是 todo.id.hashCode
-    const int normalTodoNotifId = 12345;
+      // 普通待办通知的 ID 是 12345，特殊待办通知的 ID 是 todo.id.hashCode
+      const int normalTodoNotifId = 12345;
 
-    // 检测是否为特殊待办
-    bool isSpecialTodo(String title) =>
-        ItemSemanticsService.specialTodoTypeForTitle(title) != 'default';
+      // 检测是否为特殊待办
+      bool isSpecialTodo(String title) =>
+          ItemSemanticsService.specialTodoTypeForTitle(title) != 'default';
 
-    TodoItem? currentTodo;
+      TodoItem? currentTodo;
 
-    if (notifId == null || notifId == normalTodoNotifId) {
-      // 普通待办通知：完成第一个未完成的**普通**待办（跳过特殊待办）
-      for (var t in activeTodos) {
-        if (!t.isDone && !isSpecialTodo(t.title)) {
-          currentTodo = t;
-          break;
+      if (notifId == null || notifId == normalTodoNotifId) {
+        // 普通待办通知：完成第一个未完成的**普通**待办（跳过特殊待办）
+        for (var t in activeTodos) {
+          if (!t.isDone && !isSpecialTodo(t.title)) {
+            currentTodo = t;
+            break;
+          }
         }
+        // debugPrint("📱 普通待办通知，完成第一个未完成的普通待办: ${currentTodo?.title}");
+      } else {
+        // 特殊待办通知：通过 notifId 找到对应的待办
+        currentTodo = activeTodos
+            .where((t) => t.id.hashCode == notifId && !t.isDone)
+            .firstOrNull;
+        // debugPrint("📱 特殊待办通知，找到待办: ${currentTodo?.title}");
       }
-      // debugPrint("📱 普通待办通知，完成第一个未完成的普通待办: ${currentTodo?.title}");
-    } else {
-      // 特殊待办通知：通过 notifId 找到对应的待办
-      currentTodo = activeTodos
-          .where((t) => t.id.hashCode == notifId && !t.isDone)
-          .firstOrNull;
-      // debugPrint("📱 特殊待办通知，找到待办: ${currentTodo?.title}");
-    }
 
-    // 找不到待办，不执行任何操作
-    if (currentTodo == null) {
-      // debugPrint("找不到对应的待办: notifId=$notifId");
-      return;
-    }
+      // 找不到待办，不执行任何操作
+      final todoToComplete = currentTodo;
+      if (todoToComplete == null) {
+        // debugPrint("找不到对应的待办: notifId=$notifId");
+        return;
+      }
 
-    // debugPrint("📱 准备完成待办: ${currentTodo.title}");
+      // debugPrint("📱 准备完成待办: ${todoToComplete.title}");
 
-    // 取消特殊待办的通知
-    await NotificationService.cancelSpecialTodoNotification(
-        currentTodo.id.hashCode);
+      // 取消特殊待办的通知
+      await NotificationService.cancelSpecialTodoNotification(
+          todoToComplete.id.hashCode);
 
-    setState(() {
-      currentTodo!.isDone = true;
-      currentTodo.markAsChanged();
-      _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
-    });
+      todoToComplete.isDone = true;
+      todoToComplete.markAsChanged();
+      if (mounted) {
+        setState(() {
+          _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
+        });
+      }
 
-    // 🚀 跨端联动：完成待办的同时，告知云端停止对应的番茄钟（如果有设备在观察的话）
-    PomodoroSyncService().sendStopSignal(
-      todoUuid: currentTodo.id,
-      sessionUuid: _localPomodoro?.sessionUuid,
-    );
-
-    // 🚀 Uni-Sync 4.0 优化：改用单条原子化更新，性能提升显著
-    await StorageService.updateSingleTodo(widget.username, currentTodo);
-
-    // 注意：共享文件的更新逻辑可保持异步，不阻塞主线程交互
-    Future.microtask(() async {
-      final allTodos = await StorageService.getTodos(widget.username);
-      await _saveTodosToSharedFile(allTodos);
-    });
-
-    // 通知 Island 检查提醒并刷新槽位缓存
-    FloatWindowService.triggerReminderCheck();
-    FloatWindowService.invalidateSlotCache();
-
-    _syncTodoNotification();
-    await WidgetService.updateTodoWidget(_todos);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('已完成: ${currentTodo.title}'),
-            duration: const Duration(seconds: 1)),
+      // 🚀 跨端联动：完成待办的同时，告知云端停止对应的番茄钟（如果有设备在观察的话）
+      PomodoroSyncService().sendStopSignal(
+        todoUuid: todoToComplete.id,
+        sessionUuid: _localPomodoro?.sessionUuid,
       );
+
+      // 🚀 Uni-Sync 4.0 优化：改用单条原子化更新，性能提升显著
+      await StorageService.updateSingleTodo(widget.username, todoToComplete);
+
+      // 注意：共享文件的更新逻辑可保持异步，不阻塞主线程交互
+      unawaited(() async {
+        final allTodos = await StorageService.getTodos(widget.username);
+        await _saveTodosToSharedFile(allTodos);
+      }());
+
+      if (!mounted) return;
+
+      // 通知 Island 检查提醒并刷新槽位缓存
+      FloatWindowService.triggerReminderCheck();
+      FloatWindowService.invalidateSlotCache();
+
+      _syncTodoNotification();
+      await WidgetService.updateTodoWidget(_todos);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('已完成: ${todoToComplete.title}'),
+              duration: const Duration(seconds: 1)),
+        );
+      }
+    } finally {
+      _isCompletingTodoFromNotification = false;
     }
   }
 }

@@ -4,6 +4,7 @@ import '../login_screen.dart';
 import '../../utils/page_transitions.dart';
 import '../../services/minor_mode_policy.dart';
 import '../../services/minor_mode_service.dart';
+import '../../services/reminder_schedule_service.dart';
 import '../../widgets/floating_glass_control.dart';
 
 class ServerChoicePage extends StatefulWidget {
@@ -331,6 +332,7 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
         return;
       }
       await StorageService.saveServerChoice(_selectedServer);
+      await ReminderScheduleService.clearScheduledReminders();
       await StorageService.clearLoginSession();
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(

@@ -6,6 +6,7 @@ import 'course_service.dart';
 import 'item_semantics_service.dart';
 import 'notification_service.dart';
 import 'scheduled_reminder_registry.dart';
+import 'storage/user_session_storage.dart';
 
 /// 保活提醒调度服务
 ///
@@ -50,30 +51,48 @@ class ReminderScheduleService {
   }
 
   static int _lastScheduleTime = 0;
+  static String? _lastScheduleAccountKey;
   static const int _debounceMs = 2000;
 
   /// 根据最新的待办 + 课程列表，重新调度所有未来提醒。
   static Future<void> scheduleAll({
     required List<TodoItem> todos,
     required List<CourseItem> courses,
+    String? expectedUsername,
     bool force = false,
   }) async {
+    // The debounce belongs to an account, not to the process.  Otherwise a
+    // logout/login within two seconds can leave the new account without its
+    // own course and todo alarms.
+    final prefs = await SharedPreferences.getInstance();
+    final username =
+        prefs.getString(StorageService.keyCurrentUser)?.trim() ?? '';
+    if (expectedUsername != null && username != expectedUsername.trim()) {
+      return;
+    }
+    final accountKey = '$username|${prefs.getInt('current_user_id') ?? 0}';
+    final session = username.isEmpty
+        ? null
+        : await UserSessionStorage.captureSession(username);
+    if (username.isNotEmpty && session == null) return;
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    if (!force && (nowMs - _lastScheduleTime < _debounceMs)) {
+    if (!force &&
+        _lastScheduleAccountKey == accountKey &&
+        (nowMs - _lastScheduleTime < _debounceMs)) {
       return;
     }
     _lastScheduleTime = nowMs;
+    _lastScheduleAccountKey = accountKey;
 
     final now = DateTime.now();
     final limit = now.add(const Duration(days: 7));
     final reminders = <Map<String, dynamic>>[];
 
     // ── 获取当前用户 ────────────────────────────────────────────────
-    final prefs = await SharedPreferences.getInstance();
-    final username =
-        prefs.getString(StorageService.keyCurrentUser) ?? 'default';
+    final effectiveUsername = username.isEmpty ? 'default' : username;
 
-    final fixedSchedules = await StorageService.getFixedSchedules(username);
+    final fixedSchedules =
+        await StorageService.getFixedSchedules(effectiveUsername);
 
     // ── 记账自动化 ──────────────────────────────────────────────────
     // 自动生成当前已到期周期账单，并把未来 7 天的账单加入同一套系统提醒。
@@ -227,7 +246,7 @@ class ReminderScheduleService {
     ));
 
     // ── 规划块提醒 ──────────────────────────────────────────────────
-    final planBlocks = await StorageService.getPlanBlocks(username);
+    final planBlocks = await StorageService.getPlanBlocks(effectiveUsername);
     final remindedBlocks = <TodoPlanBlock>[];
     for (int i = 0; i < planBlocks.length && i < 999; i++) {
       final pb = planBlocks[i];
@@ -278,9 +297,15 @@ class ReminderScheduleService {
     }
 
     if (remindedBlocks.isNotEmpty) {
-      await StorageService.savePlanBlocks(username, remindedBlocks);
+      if (session != null) {
+        await UserSessionStorage.ensureCurrentSession(session);
+      }
+      await StorageService.savePlanBlocks(effectiveUsername, remindedBlocks);
     }
 
+    if (session != null) {
+      await UserSessionStorage.ensureCurrentSession(session);
+    }
     final ownedReminders = reminders
         .map((reminder) => ScheduledReminderRegistry.withSource(
               reminder,
@@ -306,6 +331,7 @@ class ReminderScheduleService {
     await scheduleAll(
       todos: results[0] as List<TodoItem>,
       courses: results[1] as List<CourseItem>,
+      expectedUsername: username,
       force: force,
     );
   }
@@ -315,6 +341,19 @@ class ReminderScheduleService {
     final username = await StorageService.getLoginSession();
     if (username == null || username.isEmpty) return;
     await scheduleFromStorage(username, force: force);
+  }
+
+  /// Removes alarms owned by the logged-out account without touching
+  /// pomodoro or habit alarms that may belong to another active workflow.
+  static Future<void> clearScheduledReminders() {
+    _lastScheduleTime = 0;
+    _lastScheduleAccountKey = null;
+    return NotificationService.scheduleReminders(
+      const [],
+      clearFirst: false,
+      replaceSource: ScheduledReminderSources.reminderSchedule,
+      forceReschedule: true,
+    );
   }
 
   static List<Map<String, dynamic>> buildFixedScheduleReminders({

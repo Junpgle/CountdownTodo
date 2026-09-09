@@ -146,18 +146,20 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   Future<void> _toggleLiveActivityMaster(bool? value) async {
     final enabled = value ?? false;
     await AppSettingsStorage.setLiveActivityNotificationEnabled(enabled);
-    setState(() {
-      _liveActivityEnabled = enabled;
-      if (!enabled) {
-        _courseEnabled = false;
-        _quizEnabled = false;
-        _todoSummaryEnabled = false;
-        _specialTodoEnabled = false;
-        _pomodoroEnabled = false;
-        _todoRecognizeEnabled = false;
-        _todoLiveEnabled = false;
-      }
-    });
+    if (mounted) {
+      setState(() {
+        _liveActivityEnabled = enabled;
+        if (!enabled) {
+          _courseEnabled = false;
+          _quizEnabled = false;
+          _todoSummaryEnabled = false;
+          _specialTodoEnabled = false;
+          _pomodoroEnabled = false;
+          _todoRecognizeEnabled = false;
+          _todoLiveEnabled = false;
+        }
+      });
+    }
     if (enabled) {
       await AppSettingsStorage.setCourseNotificationEnabled(true);
       await AppSettingsStorage.setQuizNotificationEnabled(true);
@@ -199,14 +201,16 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     }
 
     await AppSettingsStorage.setNormalNotificationEnabled(enabled);
-    setState(() {
-      _normalEnabled = enabled;
-      if (!enabled) {
-        _pomodoroEndEnabled = false;
-        _reminderEnabled = false;
-        _financeBudgetEnabled = false;
-      }
-    });
+    if (mounted) {
+      setState(() {
+        _normalEnabled = enabled;
+        if (!enabled) {
+          _pomodoroEndEnabled = false;
+          _reminderEnabled = false;
+          _financeBudgetEnabled = false;
+        }
+      });
+    }
     if (enabled) {
       await AppSettingsStorage.setPomodoroEndNotificationEnabled(true);
       await AppSettingsStorage.setReminderNotificationEnabled(true);
@@ -225,7 +229,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   Future<void> _toggleSubNotification(String key, bool value,
       Function(bool) setStateCallback, Function(bool) storageCallback) async {
     await storageCallback(value);
-    setState(() => setStateCallback(value));
+    if (mounted) setState(() => setStateCallback(value));
     const schedulingKeys = {
       'course',
       'special_todo',
@@ -256,6 +260,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     await ReminderScheduleService.scheduleAll(
       todos: todos,
       courses: courses,
+      expectedUsername: username,
       force: true,
     );
     await HabitReminderService.rescheduleAll();

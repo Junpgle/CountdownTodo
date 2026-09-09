@@ -25,8 +25,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadSettings();
   }
 
-  void _loadSettings() async {
-    var settings = await StorageService.getSettings();
+  Future<void> _loadSettings() async {
+    final settings = await StorageService.getSettings();
+    if (!mounted) return;
     setState(() {
       selectedOps = List<String>.from(settings['operators']);
       _minN1Ctrl.text = settings['min_num1'].toString();

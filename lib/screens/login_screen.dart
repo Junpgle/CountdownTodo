@@ -752,16 +752,14 @@ class _LoginScreenState extends State<LoginScreen>
   void _checkLocalLegacyAccount() async {
     final prefs = await SharedPreferences.getInstance();
     final legacyUser = prefs.getString('login_session');
-    if (legacyUser != null && legacyUser.isNotEmpty) {
+    if (legacyUser != null && legacyUser.isNotEmpty && mounted) {
       setState(() {
         _legacyLocalUser = legacyUser;
         _userCtrl.text = legacyUser;
         _isRegisterMode = true;
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('检测到本地存档，注册后自动同步数据')));
-      }
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('检测到本地存档，注册后自动同步数据')));
     }
   }
 

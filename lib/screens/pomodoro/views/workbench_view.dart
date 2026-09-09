@@ -231,13 +231,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         if (!mounted) return;
         switch (action) {
           case MacPomodoroAction.togglePause:
-            if (_isPaused) {
-              _resumeFocus();
-            } else {
-              _pauseFocus();
-            }
+            handleTogglePause();
           case MacPomodoroAction.stopFocus:
-            _finishEarly();
+            handleStopFocus();
         }
       });
     }
@@ -2233,6 +2229,21 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _finishEarly(finishWholeSession: true);
   }
 
+  /// 供 macOS 灵动岛在工作台通过导航创建后执行暂停/继续。
+  void handleTogglePause() {
+    if (_phase != PomodoroPhase.focusing) return;
+    if (_isPaused) {
+      unawaited(_resumeFocus());
+    } else {
+      _pauseFocus();
+    }
+  }
+
+  /// 保持灵动岛原有“结束当前专注轮次”的语义。
+  void handleStopFocus() {
+    _finishEarly();
+  }
+
   @visibleForTesting
   static bool shouldStartBreakAfterCompletion({
     required bool isCountUp,
@@ -2284,6 +2295,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                   mode: _settings.mode,
                   strictFreeFocus: _settings.strictFreeFocus);
               await PomodoroService.saveSettings(ns);
+              if (!mounted) {
+                if (ctx.mounted) Navigator.pop(ctx);
+                return;
+              }
               setState(() {
                 _settings = ns;
                 if (_phase == PomodoroPhase.idle) {
@@ -2346,9 +2361,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
               onPressed: () async {
+                if (!mounted) {
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  return;
+                }
                 setState(() => _currentNote = ctrl.text);
-                Navigator.pop(ctx);
+                if (ctx.mounted) Navigator.pop(ctx);
                 await _saveCurrentRunState();
+                if (!mounted) return;
                 if (_phase == PomodoroPhase.focusing ||
                     _phase == PomodoroPhase.remoteWatching) {
                   _syncService.sendUpdateNoteSignal(
@@ -2386,6 +2406,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             showArchive: true,
             onChanged: (tags, selected) async {
               await PomodoroService.saveTags(tags);
+              if (!mounted) return;
               PomodoroService.syncTagsToCloud().catchError((_) => null);
               setState(() {
                 _allTags = tags;

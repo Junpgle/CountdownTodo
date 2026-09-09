@@ -277,6 +277,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
           FilledButton(
             onPressed: () async {
               // 使用统一会话清理入口，避免遗漏真实的用户名、Token 和数据库状态。
+              await ReminderScheduleService.clearScheduledReminders();
               await StorageService.clearLoginSession();
 
               if (!mounted || !ctx.mounted) return;
@@ -850,6 +851,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
     await ReminderScheduleService.scheduleAll(
       todos: _todos,
       courses: courses,
+      expectedUsername: widget.username,
     );
   }
 
@@ -914,7 +916,11 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
       if (!mounted) return;
       CourseService.getAllCourses(widget.username).then((allCourses) {
         if (!mounted) return;
-        ReminderScheduleService.scheduleAll(todos: _todos, courses: allCourses);
+        ReminderScheduleService.scheduleAll(
+          todos: _todos,
+          courses: allCourses,
+          expectedUsername: widget.username,
+        );
       });
     });
   }

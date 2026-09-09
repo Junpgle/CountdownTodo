@@ -290,14 +290,17 @@ class _SettingsPageState extends State<SettingsPage> {
   void _loadAllData() {
     _loadSettings().then((_) async {
       await Future.delayed(const Duration(milliseconds: 200));
-      if (mounted) setState(() => _isInitialLoading = false);
-      _fetchAccountStatus();
+      if (!mounted) return;
+      setState(() => _isInitialLoading = false);
+      if (!mounted) return;
+      await _fetchAccountStatus();
     });
     _loadSettingsAnnouncements();
   }
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       _username = prefs.getString(StorageService.keyCurrentUser) ?? "未登录";
       _userId = prefs.getInt('current_user_id');
@@ -560,7 +563,11 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final todos = await StorageService.getTodos(_username);
       final courses = await CourseService.getAllCourses(_username);
-      await ReminderScheduleService.scheduleAll(todos: todos, courses: courses);
+      await ReminderScheduleService.scheduleAll(
+        todos: todos,
+        courses: courses,
+        expectedUsername: _username,
+      );
     } catch (e) {
       // Reminder rescheduling should not block the settings page.
     }
@@ -662,6 +669,7 @@ class _SettingsPageState extends State<SettingsPage> {
         }
         return;
       }
+      await ReminderScheduleService.clearScheduledReminders();
       await StorageService.clearLoginSession();
       if (mounted) {
         Navigator.pushAndRemoveUntil(

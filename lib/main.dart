@@ -29,6 +29,7 @@ import 'services/float_window_service.dart';
 import 'services/window_service.dart';
 import 'services/band_sync_service.dart';
 import 'services/notification_service.dart';
+import 'services/reminder_schedule_service.dart';
 import 'services/android_window_rendering_policy.dart';
 import 'services/pomodoro_service.dart';
 import 'widgets/macos_menu_bar.dart';
@@ -580,6 +581,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           Navigator.pop(dialogContext, true);
         },
         onDisagree: () async {
+          await ReminderScheduleService.clearScheduledReminders();
           await StorageService.clearLoginSession();
           final prefs = await SharedPreferences.getInstance();
           await prefs.clear();
@@ -598,6 +600,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     );
     if (result == false) {
       // 用户不同意更新后的隐私协议，退出登录并清除数据
+      await ReminderScheduleService.clearScheduledReminders();
       await StorageService.clearLoginSession();
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
