@@ -1196,6 +1196,8 @@ class PomodoroService {
 
       final recordsRaw = await ApiService.fetchPomodoroSessions(
         fromMs: effectiveFromMs,
+        includeDeleted: true,
+        useUpdatedAt: true,
       );
 
       final remoteRecords = recordsRaw

@@ -987,19 +987,32 @@ export default {
           const version = parseInt(r.version ?? 1, 10);
           const createdAt = normalizeToMs(r.created_at ?? r.createdAt) || now;
           const updatedAt = normalizeToMs(r.updated_at ?? r.updatedAt) || now;
-          const tagUuidsArr = Array.isArray(r.tag_uuids) ? r.tag_uuids.map(String) : [];
+          const hasTagUuids = Array.isArray(r.tag_uuids) || Array.isArray(r.tagUuids);
+          const tagUuidsArr = Array.isArray(r.tag_uuids)
+            ? r.tag_uuids.map(String)
+            : (Array.isArray(r.tagUuids) ? r.tagUuids.map(String) : []);
 
           const existing = await DB.prepare("SELECT version, updated_at FROM pomodoro_records WHERE uuid = ? AND user_id = ?").bind(uuid, authUserId).first();
+          let shouldApplyRecord = false;
           if (!existing) {
             batch.push(DB.prepare(`INSERT INTO pomodoro_records (uuid, user_id, todo_uuid, start_time, end_time, planned_duration, actual_duration, status, device_id, is_deleted, version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(uuid, authUserId, todoUuid, startTime, endTime, plannedDuration, actualDuration, status, deviceId, isDeleted, version, createdAt, updatedAt));
+            shouldApplyRecord = true;
           } else if (version > (existing.version || 0) || updatedAt > normalizeToMs(existing.updated_at)) {
             batch.push(DB.prepare(`UPDATE pomodoro_records SET todo_uuid=?, start_time=?, end_time=?, planned_duration=?, actual_duration=?, status=?, device_id=?, is_deleted=?, version=?, updated_at=? WHERE uuid=? AND user_id=?`).bind(todoUuid, startTime, endTime, plannedDuration, actualDuration, status, deviceId, isDeleted, version, updatedAt, uuid, authUserId));
+            shouldApplyRecord = true;
           }
 
-          if (tagUuidsArr.length > 0) {
+          // The record payload is the complete tag set.  Tombstone the old
+          // associations first, then upsert the current set in the same D1
+          // batch.  Only do this when the record itself wins LWW, and only
+          // when the client actually sent tag_uuids, so old clients do not
+          // accidentally erase newer tag data.
+          if (shouldApplyRecord && hasTagUuids) {
             const tagsKey = todoUuid || uuid;
+            const associationTime = updatedAt || now;
+            batch.push(DB.prepare("UPDATE todo_tags SET is_deleted=1, updated_at=? WHERE todo_uuid=? AND COALESCE(updated_at, 0) < ?").bind(associationTime, tagsKey, associationTime));
             for (const tagUuid of tagUuidsArr) {
-              batch.push(DB.prepare("INSERT OR REPLACE INTO todo_tags (todo_uuid, tag_uuid, is_deleted, updated_at) VALUES (?,?,0,?)").bind(tagsKey, tagUuid, now));
+              batch.push(DB.prepare("INSERT INTO todo_tags (todo_uuid, tag_uuid, is_deleted, updated_at) VALUES (?,?,0,?) ON CONFLICT(todo_uuid, tag_uuid) DO UPDATE SET is_deleted=0, updated_at=excluded.updated_at WHERE excluded.updated_at >= todo_tags.updated_at").bind(tagsKey, tagUuid, associationTime));
             }
           }
         }
@@ -1011,11 +1024,18 @@ export default {
         if (!authUserId) return errorResponse("未授权", 401);
         const fromMs = parseInt(url.searchParams.get("from") || "0", 10);
         const toMs = parseInt(url.searchParams.get("to") || String(Date.now()), 10);
+        const includeDeleted = url.searchParams.get("include_deleted") === "1";
+        const updatedSince = url.searchParams.get("updated_since");
+        const rangeStart = updatedSince == null
+          ? fromMs
+          : parseInt(updatedSince || "0", 10);
+        const rangeColumn = updatedSince == null ? "r.start_time" : "r.updated_at";
+        const deletionClause = includeDeleted ? "" : " AND r.is_deleted = 0";
         const { results } = await DB.prepare(`
           SELECT r.*, t.content AS todo_title, GROUP_CONCAT(tt.tag_uuid) AS tag_uuids_concat
           FROM pomodoro_records r LEFT JOIN todos t ON r.todo_uuid = t.uuid LEFT JOIN todo_tags tt ON COALESCE(r.todo_uuid, r.uuid) = tt.todo_uuid AND tt.is_deleted = 0
-          WHERE r.user_id = ? AND r.is_deleted = 0 AND r.start_time >= ? AND r.start_time <= ? GROUP BY r.uuid ORDER BY r.start_time DESC
-        `).bind(authUserId, fromMs, toMs).all();
+          WHERE r.user_id = ?${deletionClause} AND ${rangeColumn} >= ? AND ${rangeColumn} <= ? GROUP BY r.uuid ORDER BY r.start_time DESC
+        `).bind(authUserId, rangeStart, toMs).all();
 
         const enriched = results.map(r => ({
           ...r, tag_uuids: r.tag_uuids_concat ? r.tag_uuids_concat.split(',').filter(Boolean) : [], tag_uuids_concat: undefined,

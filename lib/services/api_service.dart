@@ -973,12 +973,20 @@ class ApiService {
 
   /// 拉取专注记录（按时间范围）
   static Future<List<dynamic>> fetchPomodoroRecords(
-      [int? userId, int? fromMs, int? toMs]) async {
+      [int? userId,
+      int? fromMs,
+      int? toMs,
+      bool includeDeleted = false,
+      bool useUpdatedAt = false]) async {
     try {
       final params = <String, String>{};
       if (userId != null) params['user_id'] = userId.toString();
       if (fromMs != null) params['from'] = fromMs.toString();
       if (toMs != null) params['to'] = toMs.toString();
+      if (includeDeleted) params['include_deleted'] = '1';
+      if (useUpdatedAt && fromMs != null) {
+        params['updated_since'] = fromMs.toString();
+      }
       final uri = Uri.parse('$_effectiveBaseUrl/api/pomodoro/records')
           .replace(queryParameters: params.isEmpty ? null : params);
       final response = await _request('GET', uri.toString());
@@ -1079,8 +1087,17 @@ class ApiService {
           List<Map<String, dynamic>> sessions) =>
       uploadPomodoroRecords(sessions);
   static Future<List<dynamic>> fetchPomodoroSessions(
-          {int? fromMs, int? toMs}) =>
-      fetchPomodoroRecords(null, fromMs, toMs);
+          {int? fromMs,
+          int? toMs,
+          bool includeDeleted = false,
+          bool useUpdatedAt = false}) =>
+      fetchPomodoroRecords(
+        null,
+        fromMs,
+        toMs,
+        includeDeleted,
+        useUpdatedAt,
+      );
 
   // ==========================================
   // 👥 10. 团队与协作 (Teams)
