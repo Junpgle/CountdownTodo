@@ -2,16 +2,24 @@ part of 'storage_service.dart';
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _StorageSettings on _StorageServiceBase {
-  Future<bool> syncScreenTimeAlone(String username, String deviceName) async {
+  Future<bool> syncScreenTimeAlone(
+    String username,
+    String deviceName, {
+    int? expectedUserId,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
-    int? userId = prefs.getInt('current_user_id');
-    if (userId == null) {
-      debugPrint("syncScreenTimeAlone: user not logged in");
+    final session = await UserSessionStorage.captureSession(username);
+    if (session == null ||
+        (expectedUserId != null && session.userId != expectedUserId)) {
+      debugPrint("syncScreenTimeAlone: active session changed");
       return false;
     }
+    final userId = session.userId;
 
     try {
-      final localPackage = await getLocalScreenTimeMap();
+      await UserSessionStorage.ensureCurrentSession(session);
+      final localPackage =
+          await getLocalScreenTimeMap(username: session.username);
       final apps = localPackage['apps'] as List<dynamic>?;
       final date = localPackage['date'] as String?;
 
@@ -36,6 +44,7 @@ mixin _StorageSettings on _StorageServiceBase {
       );
 
       if (success) {
+        await UserSessionStorage.ensureCurrentSession(session);
         await prefs.remove(_scopedKey(keyLocalScreenTime, username));
         return true;
       } else {
@@ -162,6 +171,7 @@ mixin _StorageSettings on _StorageServiceBase {
     if (scoped == null) {
       final bool global = prefs.getBool(keySemesterProgressEnabled) ?? false;
       await prefs.setBool("${keySemesterProgressEnabled}_$username", global);
+      await prefs.remove(keySemesterProgressEnabled);
       return global;
     }
     return scoped;
@@ -182,6 +192,7 @@ mixin _StorageSettings on _StorageServiceBase {
       s = prefs.getString(keySemesterStart);
       if (s != null) {
         await prefs.setString("${keySemesterStart}_$username", s);
+        await prefs.remove(keySemesterStart);
       }
     }
 
@@ -201,6 +212,7 @@ mixin _StorageSettings on _StorageServiceBase {
       s = prefs.getString(keySemesterEnd);
       if (s != null) {
         await prefs.setString("${keySemesterEnd}_$username", s);
+        await prefs.remove(keySemesterEnd);
       }
     }
     return s != null ? DateTime.tryParse(s) : null;
@@ -264,6 +276,10 @@ mixin _StorageSettings on _StorageServiceBase {
                 ? "${keySemesterEnd}_$username"
                 : keySemesterEnd,
             current.first.endDate!.toIso8601String());
+      } else {
+        await prefs.remove(username != null && username.isNotEmpty
+            ? "${keySemesterEnd}_$username"
+            : keySemesterEnd);
       }
     }
   }
@@ -275,7 +291,7 @@ mixin _StorageSettings on _StorageServiceBase {
         ? "${keyActiveSemester}_$username"
         : keyActiveSemester;
 
-    return prefs.getString(key) ?? 'default';
+    return _canonicalSemesterId(prefs.getString(key));
   }
 
   Future<void> setActiveSemesterId(String semesterId) async {
@@ -285,17 +301,26 @@ mixin _StorageSettings on _StorageServiceBase {
         ? "${keyActiveSemester}_$username"
         : keyActiveSemester;
 
-    await prefs.setString(key, semesterId);
+    await prefs.setString(key, _canonicalSemesterId(semesterId));
   }
 
   Future<DateTime?> getSemesterStartById(String semesterId) async {
     final semesters = await getSemesters();
     try {
-      final semester = semesters.firstWhere((s) => s.id == semesterId);
+      final normalizedId = _canonicalSemesterId(semesterId);
+      final semester = semesters.firstWhere(
+        (s) => _canonicalSemesterId(s.id) == normalizedId,
+      );
+      if (semester.startDate.millisecondsSinceEpoch == 0) return null;
       return semester.startDate;
     } catch (_) {
       return null;
     }
+  }
+
+  String _canonicalSemesterId(String? semesterId) {
+    final normalized = semesterId?.trim() ?? '';
+    return normalized.isEmpty ? 'default' : normalized;
   }
 
   Future<SemesterInfo?> getSemesterByDate(DateTime date) async {

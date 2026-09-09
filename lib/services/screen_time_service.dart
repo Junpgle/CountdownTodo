@@ -74,8 +74,11 @@ class ScreenTimeService {
     if (kIsWeb) return;
 
     try {
-      String? username = await UserSessionStorage.getLoginSession();
+      final username = await UserSessionStorage.getLoginSession();
       if (username == null) return;
+      final session = await UserSessionStorage.captureSession(username);
+      if (session == null || session.userId != userId) return;
+      await UserSessionStorage.ensureCurrentSession(session);
 
       bool hasScreenTimeData = false;
 
@@ -92,13 +95,18 @@ class ScreenTimeService {
           if (stats is Map &&
               stats['apps'] is List &&
               (stats['apps'] as List).isNotEmpty) {
-            await StorageService.saveLocalScreenTime(stats);
+            await StorageService.saveLocalScreenTime(
+              stats,
+              username: session.username,
+            );
             hasScreenTimeData = true;
           } else if (stats is List && stats.isNotEmpty) {
             // 向后兼容旧格式
             String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
             await StorageService.saveLocalScreenTime(
-                {'date': today, 'apps': stats});
+              {'date': today, 'apps': stats},
+              username: session.username,
+            );
             hasScreenTimeData = true;
           }
         }
@@ -108,12 +116,17 @@ class ScreenTimeService {
         if (apps.isNotEmpty) {
           String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
           await StorageService.saveLocalScreenTime(
-              {'date': today, 'apps': apps});
+            {'date': today, 'apps': apps},
+            username: session.username,
+          );
           hasScreenTimeData = true;
         }
       }
 
-      final pendingPackage = await StorageService.getLocalScreenTimePackage();
+      await UserSessionStorage.ensureCurrentSession(session);
+      final pendingPackage = await StorageService.getLocalScreenTimePackage(
+        username: session.username,
+      );
       final hasPendingScreenTimeData = pendingPackage?['apps'] is List &&
           (pendingPackage?['apps'] as List).isNotEmpty;
 
@@ -121,27 +134,34 @@ class ScreenTimeService {
       // 🚀 优先使用独立的 /api/screen_time 接口上传屏幕时间数据
       if (hasScreenTimeData || hasPendingScreenTimeData) {
         String deviceName = await UserSessionStorage.getDeviceFriendlyName();
-        final uploaded =
-            await StorageService.syncScreenTimeAlone(username, deviceName);
+        final uploaded = await StorageService.syncScreenTimeAlone(
+          session.username,
+          deviceName,
+          expectedUserId: session.userId,
+        );
         if (!uploaded) return;
       }
 
       // 3. 仅拉取多端聚合后的屏幕时间总表。该任务不应每两分钟再带起
       // 待办、倒计时、习惯等整套业务同步。
       String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      List<dynamic> cloudStats = await ApiService.fetchScreenTime(
-        userId,
+      await UserSessionStorage.ensureCurrentSession(session);
+      final cloudStats = await ApiService.fetchScreenTime(
+        session.userId,
         today,
         throwOnError: true,
       );
 
       if (cloudStats.isNotEmpty) {
         // 4. 用云端总表覆盖【UI显示缓存】
-        await StorageService.saveScreenTimeCache(cloudStats);
+        await StorageService.saveScreenTimeCache(
+          cloudStats,
+          username: session.username,
+        );
       }
 
       // 拉取完成后再推进水位线；上传失败时保留待上传数据并尽快重试。
-      await StorageService.updateLastScreenTimeSync();
+      await StorageService.updateLastScreenTimeSync(username: session.username);
     } catch (e) {
       // debugPrint("屏幕时间后台同步失败: $e");
     }

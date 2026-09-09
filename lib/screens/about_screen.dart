@@ -98,7 +98,8 @@ class _AboutScreenState extends State<AboutScreen> {
 
   void _startMigration() async {
     final prefs = await SharedPreferences.getInstance();
-    final username = prefs.getString('current_user') ?? '';
+    final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
+    if (!mounted) return;
 
     setState(() {
       _isMigrating = true;
@@ -711,7 +712,9 @@ class _AboutScreenState extends State<AboutScreen> {
                 TextButton(
                   onPressed: () async {
                     final prefs = await SharedPreferences.getInstance();
-                    final username = prefs.getString('current_user') ?? '';
+                    final username =
+                        prefs.getString(StorageService.keyCurrentUser) ?? '';
+                    if (!context.mounted || username.trim().isEmpty) return;
                     await StorageService.syncData(username,
                         forceFullSync: true);
                     _loadSyncFailures();

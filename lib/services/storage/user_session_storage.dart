@@ -13,6 +13,23 @@ import '../database_helper.dart';
 import '../../utils/app_platform.dart';
 import 'storage_key_scope.dart';
 
+/// Immutable identity captured by an asynchronous operation.
+///
+/// A username alone is not enough: the same account can be logged out and
+/// back in while an older request is still in flight.  The revision and user
+/// id let callers reject that stale operation before it reads or writes data.
+class UserSessionSnapshot {
+  const UserSessionSnapshot({
+    required this.username,
+    required this.userId,
+    required this.revision,
+  });
+
+  final String username;
+  final int userId;
+  final int revision;
+}
+
 class UserSessionStorage {
   const UserSessionStorage._();
 
@@ -24,6 +41,7 @@ class UserSessionStorage {
   static const String _screenTimeCache = "screen_time_cache";
   static const String _screenTimeHistory = "screen_time_history";
   static const String _localScreenTime = "local_screen_time_pending_upload";
+  static int _sessionRevision = 0;
 
   static Future<SharedPreferences> get _prefs =>
       SharedPreferences.getInstance();
@@ -53,6 +71,7 @@ class UserSessionStorage {
   }
 
   static Future<void> saveLoginSession(String username, {String? token}) async {
+    _sessionRevision++;
     final prefs = await _prefs;
     await prefs.setString(_currentUser, username);
     if (token != null && token.isNotEmpty) {
@@ -79,6 +98,7 @@ class UserSessionStorage {
   }
 
   static Future<void> clearLoginSession() async {
+    _sessionRevision++;
     final prefs = await _prefs;
     final username = prefs.getString(_currentUser);
     await prefs.remove(_currentUser);
@@ -90,8 +110,55 @@ class UserSessionStorage {
     await prefs.remove(_authToken);
     ApiService.setToken('');
     ApiService.currentUserId = 0;
-    unawaited(BackgroundNotificationService.stopNotificationPoll());
+    unawaited(
+      BackgroundNotificationService.stopNotificationPoll().catchError((_) {}),
+    );
     await DatabaseHelper.instance.closeDatabase();
+  }
+
+  /// Captures the currently authenticated account for a long-running task.
+  /// Returns null when the requested account is no longer the active account.
+  static Future<UserSessionSnapshot?> captureSession(String username) async {
+    final normalizedUsername = username.trim();
+    if (normalizedUsername.isEmpty) return null;
+
+    final prefs = await _prefs;
+    final currentUsername = prefs.getString(_currentUser)?.trim();
+    final userId = prefs.getInt('current_user_id');
+    if (currentUsername != normalizedUsername ||
+        userId == null ||
+        userId <= 0) {
+      return null;
+    }
+    return UserSessionSnapshot(
+      username: normalizedUsername,
+      userId: userId,
+      revision: _sessionRevision,
+    );
+  }
+
+  static Future<bool> isCurrentSession(UserSessionSnapshot snapshot) async {
+    if (_sessionRevision != snapshot.revision) return false;
+    final prefs = await _prefs;
+    return prefs.getString(_currentUser)?.trim() == snapshot.username &&
+        prefs.getInt('current_user_id') == snapshot.userId;
+  }
+
+  static Future<void> ensureCurrentSession(
+    UserSessionSnapshot snapshot,
+  ) async {
+    if (!await isCurrentSession(snapshot)) {
+      throw StateError('账户已切换，已取消旧账户异步操作');
+    }
+  }
+
+  static Future<void> ensureCurrentUsername(String username) async {
+    final normalizedUsername = username.trim();
+    final prefs = await _prefs;
+    if (normalizedUsername.isEmpty ||
+        prefs.getString(_currentUser)?.trim() != normalizedUsername) {
+      throw StateError('账户已切换，已取消旧账户数据操作');
+    }
   }
 
   static Future<String> getDeviceId() async {

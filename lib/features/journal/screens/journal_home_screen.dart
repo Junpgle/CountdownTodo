@@ -110,7 +110,10 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
   }
 
   Future<void> _openEntry(JournalEntry entry) async {
-    final fullEntry = await _storage.loadEntry(entry.id);
+    final fullEntry = await _storage.loadEntry(
+      entry.id,
+      accountId: widget.username,
+    );
     if (!mounted || fullEntry == null) return;
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -216,6 +219,7 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
                           entries: entries,
                           isWide: isWide,
                           controller: _scrollController,
+                          accountId: widget.username,
                           onTap: _openEntry,
                         )
                       : _Timeline(
@@ -223,6 +227,7 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
                           isWide: isWide,
                           controller: _scrollController,
                           isLoadingMore: _isLoadingMore,
+                          accountId: widget.username,
                           onTap: _openEntry,
                         ),
                 ),
@@ -312,7 +317,10 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
 
     JournalEntry? entry;
     if (recovered.context.isEditing) {
-      entry = await _storage.loadEntry(recovered.context.entryId);
+      entry = await _storage.loadEntry(
+        recovered.context.entryId,
+        accountId: widget.username,
+      );
       if (!mounted || entry == null) {
         await clearPendingJournalPick();
         _showMessage('未找到待恢复的日记，图片未导入');
@@ -340,6 +348,7 @@ class _Timeline extends StatelessWidget {
   final bool isWide;
   final ScrollController controller;
   final bool isLoadingMore;
+  final String accountId;
   final ValueChanged<JournalEntry> onTap;
 
   const _Timeline({
@@ -347,6 +356,7 @@ class _Timeline extends StatelessWidget {
     required this.isWide,
     required this.controller,
     required this.isLoadingMore,
+    required this.accountId,
     required this.onTap,
   });
 
@@ -395,12 +405,17 @@ class _Timeline extends StatelessWidget {
               ),
               itemBuilder: (_, index) => _JournalCard(
                 entry: group.value[index],
+                accountId: accountId,
                 onTap: () => onTap(group.value[index]),
               ),
             )
           else
             for (final entry in group.value) ...[
-              _JournalCard(entry: entry, onTap: () => onTap(entry)),
+              _JournalCard(
+                entry: entry,
+                accountId: accountId,
+                onTap: () => onTap(entry),
+              ),
               const SizedBox(height: 14),
             ],
         ],
@@ -418,12 +433,14 @@ class _PhotoWall extends StatelessWidget {
   final List<JournalEntry> entries;
   final bool isWide;
   final ScrollController controller;
+  final String accountId;
   final ValueChanged<JournalEntry> onTap;
 
   const _PhotoWall({
     required this.entries,
     required this.isWide,
     required this.controller,
+    required this.accountId,
     required this.onTap,
   });
 
@@ -443,6 +460,7 @@ class _PhotoWall extends StatelessWidget {
       ),
       itemBuilder: (_, index) => _PhotoWallCard(
         entry: entries[index],
+        accountId: accountId,
         onTap: () => onTap(entries[index]),
       ),
     );
@@ -451,9 +469,14 @@ class _PhotoWall extends StatelessWidget {
 
 class _JournalCard extends StatelessWidget {
   final JournalEntry entry;
+  final String accountId;
   final VoidCallback onTap;
 
-  const _JournalCard({required this.entry, required this.onTap});
+  const _JournalCard({
+    required this.entry,
+    required this.accountId,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -473,6 +496,7 @@ class _JournalCard extends StatelessWidget {
                 child: _JournalImage(
                   attachment: entry.attachments.first,
                   fit: BoxFit.cover,
+                  accountId: accountId,
                 ),
               ),
             Expanded(
@@ -543,9 +567,14 @@ class _JournalCard extends StatelessWidget {
 
 class _PhotoWallCard extends StatelessWidget {
   final JournalEntry entry;
+  final String accountId;
   final VoidCallback onTap;
 
-  const _PhotoWallCard({required this.entry, required this.onTap});
+  const _PhotoWallCard({
+    required this.entry,
+    required this.accountId,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -569,6 +598,7 @@ class _PhotoWallCard extends StatelessWidget {
                   : _JournalImage(
                       attachment: entry.attachments.first,
                       fit: BoxFit.cover,
+                      accountId: accountId,
                     ),
             ),
             Padding(
@@ -609,8 +639,13 @@ class _PhotoWallCard extends StatelessWidget {
 class _JournalImage extends StatefulWidget {
   final JournalAttachment attachment;
   final BoxFit fit;
+  final String? accountId;
 
-  const _JournalImage({required this.attachment, required this.fit});
+  const _JournalImage({
+    required this.attachment,
+    required this.fit,
+    this.accountId,
+  });
 
   @override
   State<_JournalImage> createState() => _JournalImageState();
@@ -636,7 +671,10 @@ class _JournalImageState extends State<_JournalImage> {
   void _resolveAttachment() {
     _attachmentFuture =
         JournalMediaService.instance.provider(widget.attachment) == null
-            ? JournalStorage.instance.loadAttachment(widget.attachment.id)
+            ? JournalStorage.instance.loadAttachment(
+                widget.attachment.id,
+                accountId: widget.accountId,
+              )
             : null;
   }
 

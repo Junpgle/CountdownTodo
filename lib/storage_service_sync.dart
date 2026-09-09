@@ -29,49 +29,76 @@ mixin _StorageSync on _StorageServiceBase {
     return true;
   }
 
-  Future<void> saveLocalScreenTime(Map<dynamic, dynamic> stats) async {
+  Future<void> saveLocalScreenTime(
+    Map<dynamic, dynamic> stats, {
+    String? username,
+  }) async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(keyCurrentUser);
-    final key = _scopedKey(keyLocalScreenTime, username);
+    final requestedUsername = username?.trim();
+    final effectiveUsername = requestedUsername?.isNotEmpty == true
+        ? requestedUsername
+        : prefs.getString(keyCurrentUser);
+    if (requestedUsername != null) {
+      await UserSessionStorage.ensureCurrentUsername(requestedUsername);
+    }
+    final key = _scopedKey(keyLocalScreenTime, effectiveUsername);
     await prefs.setString(key, jsonEncode(stats));
   }
 
-  Future<Map<String, dynamic>?> getLocalScreenTimePackage() async {
+  Future<Map<String, dynamic>?> getLocalScreenTimePackage({
+    String? username,
+  }) async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(keyCurrentUser);
-    final key = _scopedKey(keyLocalScreenTime, username);
+    final requestedUsername = username?.trim();
+    final effectiveUsername = requestedUsername?.isNotEmpty == true
+        ? requestedUsername
+        : prefs.getString(keyCurrentUser);
+    if (requestedUsername != null) {
+      await UserSessionStorage.ensureCurrentUsername(requestedUsername);
+    }
+    final key = _scopedKey(keyLocalScreenTime, effectiveUsername);
     String? s = prefs.getString(key);
     // 仅在未登录的旧版流程中读取全局 key。登录后禁止回退到可能属于
     // 其他账号的缓存，避免账号切换时串出屏幕时间数据。
-    if (s == null && (username == null || username.isEmpty)) {
+    if (s == null && (effectiveUsername == null || effectiveUsername.isEmpty)) {
       s = prefs.getString(keyLocalScreenTime);
     }
     return s != null ? jsonDecode(s) as Map<String, dynamic> : null;
   }
 
-  Future<Map<String, dynamic>> getLocalScreenTimeMap() async {
-    return await getLocalScreenTimePackage() ?? {};
+  Future<Map<String, dynamic>> getLocalScreenTimeMap({String? username}) async {
+    return await getLocalScreenTimePackage(username: username) ?? {};
   }
 
-  Future<List<dynamic>> getLocalScreenTime() async {
-    final map = await getLocalScreenTimeMap();
+  Future<List<dynamic>> getLocalScreenTime({String? username}) async {
+    final map = await getLocalScreenTimeMap(username: username);
     return map['apps'] as List<dynamic>? ?? [];
   }
 
-  Future<void> saveScreenTimeCache(List<dynamic> stats) async {
+  Future<void> saveScreenTimeCache(
+    List<dynamic> stats, {
+    String? username,
+  }) async {
     if (stats.isEmpty) return;
 
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(keyCurrentUser);
-    final historyKey = _scopedKey(keyScreenTimeHistory, username);
-    final cacheKey = _scopedKey(keyScreenTimeCache, username);
-    final syncKey = _scopedKey(keyLastScreenTimeSync, username);
+    final requestedUsername = username?.trim();
+    final effectiveUsername = requestedUsername?.isNotEmpty == true
+        ? requestedUsername
+        : prefs.getString(keyCurrentUser);
+    if (requestedUsername != null) {
+      await UserSessionStorage.ensureCurrentUsername(requestedUsername);
+    }
+    final historyKey = _scopedKey(keyScreenTimeHistory, effectiveUsername);
+    final cacheKey = _scopedKey(keyScreenTimeCache, effectiveUsername);
+    final syncKey = _scopedKey(keyLastScreenTimeSync, effectiveUsername);
     final now = DateTime.now();
     final String today = DateFormat('yyyy-MM-dd').format(now);
 
     // 1. 获取已有的历史记录
     String? histStr = prefs.getString(historyKey);
-    if (histStr == null && (username == null || username.isEmpty)) {
+    if (histStr == null &&
+        (effectiveUsername == null || effectiveUsername.isEmpty)) {
       histStr = prefs.getString(keyScreenTimeHistory);
     }
     Map<String, dynamic> history = {};
@@ -99,7 +126,11 @@ mixin _StorageSync on _StorageServiceBase {
     // 4. 原子化写入本地存储
     // 🚀 核心优化：逐步弃用 Prefs 存储历史记录，迁移至 SQL
     try {
-      await saveScreenTimeHistoryToSql(today, stats);
+      await saveScreenTimeHistoryToSql(
+        today,
+        stats,
+        username: effectiveUsername,
+      );
       // 如果写入 SQL 成功，可以尝试清理一下 Prefs 里的旧数据（如果它太大了）
       if (histStr != null && histStr.length > 1024 * 500) {
         // > 500KB
@@ -121,9 +152,17 @@ mixin _StorageSync on _StorageServiceBase {
   }
 
   Future<void> saveScreenTimeHistoryToSql(
-      String date, List<dynamic> stats) async {
+    String date,
+    List<dynamic> stats, {
+    String? username,
+  }) async {
     final dbHelper = DatabaseHelper.instance;
-    final db = await dbHelper.database;
+    if (username != null) {
+      await UserSessionStorage.ensureCurrentUsername(username);
+    }
+    final db = username == null
+        ? await dbHelper.database
+        : await dbHelper.databaseForUser(username);
     final batch = db.batch();
 
     // 覆盖写：先删除该日期的旧记录
@@ -184,18 +223,29 @@ mixin _StorageSync on _StorageServiceBase {
     return [];
   }
 
-  Future<Map<String, List<dynamic>>> getScreenTimeHistory() async {
+  Future<Map<String, List<dynamic>>> getScreenTimeHistory({
+    String? username,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
-    final String? username = prefs.getString(keyCurrentUser);
-    final String historyKey = _scopedKey(keyScreenTimeHistory, username);
+    final requestedUsername = username?.trim();
+    final effectiveUsername = requestedUsername?.isNotEmpty == true
+        ? requestedUsername
+        : prefs.getString(keyCurrentUser);
+    if (requestedUsername != null) {
+      await UserSessionStorage.ensureCurrentUsername(requestedUsername);
+    }
+    final String historyKey =
+        _scopedKey(keyScreenTimeHistory, effectiveUsername);
     final dbHelper = DatabaseHelper.instance;
 
     try {
       // 1. 迁移检查 (一次性从 Prefs 搬运到 SQL)
-      final String migrationKey = "migrated_screentime_$username";
+      final migrationKey =
+          'migrated_screentime_${effectiveUsername ?? 'anonymous'}';
       if (!(prefs.getBool(migrationKey) ?? false)) {
         String? jsonStr = prefs.getString(historyKey);
-        if (jsonStr == null && (username == null || username.isEmpty)) {
+        if (jsonStr == null &&
+            (effectiveUsername == null || effectiveUsername.isEmpty)) {
           jsonStr = prefs.getString(keyScreenTimeHistory);
         }
         if (jsonStr != null && jsonStr.isNotEmpty) {
@@ -205,7 +255,10 @@ mixin _StorageSync on _StorageServiceBase {
             for (var entry in history.entries) {
               if (entry.value is List) {
                 await saveScreenTimeHistoryToSql(
-                    entry.key, entry.value as List);
+                  entry.key,
+                  entry.value as List,
+                  username: effectiveUsername,
+                );
               }
             }
             await prefs.remove(historyKey);
@@ -218,7 +271,9 @@ mixin _StorageSync on _StorageServiceBase {
         await prefs.setBool(migrationKey, true);
       }
 
-      final db = await dbHelper.database;
+      final db = effectiveUsername == null || effectiveUsername.isEmpty
+          ? await dbHelper.database
+          : await dbHelper.databaseForUser(effectiveUsername);
       // 2. 从 SQL 读取所有记录并按日期分组
       final List<Map<String, dynamic>> maps = await db.query(
         'screen_time',
@@ -252,7 +307,11 @@ mixin _StorageSync on _StorageServiceBase {
           try {
             final cloudStats = await ApiService.fetchScreenTime(userId, date);
             if (cloudStats.isNotEmpty) {
-              await saveScreenTimeHistoryToSql(date, cloudStats);
+              await saveScreenTimeHistoryToSql(
+                date,
+                cloudStats,
+                username: effectiveUsername,
+              );
               result[date] = cloudStats;
             }
           } catch (e) {
@@ -264,7 +323,8 @@ mixin _StorageSync on _StorageServiceBase {
     } catch (e) {
       debugPrint("⚠️ ScreenTime History SQL 异常: $e");
       String? jsonStr = prefs.getString(historyKey);
-      if (jsonStr == null && (username == null || username.isEmpty)) {
+      if (jsonStr == null &&
+          (effectiveUsername == null || effectiveUsername.isEmpty)) {
         jsonStr = prefs.getString(keyScreenTimeHistory);
       }
       if (jsonStr != null && jsonStr.isNotEmpty) {
@@ -278,10 +338,16 @@ mixin _StorageSync on _StorageServiceBase {
     return {};
   }
 
-  Future<void> updateLastScreenTimeSync() async {
+  Future<void> updateLastScreenTimeSync({String? username}) async {
     final prefs = await SharedPreferences.getInstance();
-    final String? username = prefs.getString(keyCurrentUser);
-    await prefs.setInt(_scopedKey(keyLastScreenTimeSync, username),
+    final requestedUsername = username?.trim();
+    final effectiveUsername = requestedUsername?.isNotEmpty == true
+        ? requestedUsername
+        : prefs.getString(keyCurrentUser);
+    if (requestedUsername != null) {
+      await UserSessionStorage.ensureCurrentUsername(requestedUsername);
+    }
+    await prefs.setInt(_scopedKey(keyLastScreenTimeSync, effectiveUsername),
         DateTime.now().millisecondsSinceEpoch);
   }
 
@@ -387,6 +453,23 @@ mixin _StorageSync on _StorageServiceBase {
     bool syncFinance = true,
     bool financeSyncExplicitlyAuthorized = false,
   }) async {
+    username = username.trim();
+    if (username.isEmpty) {
+      return {
+        'success': false,
+        'hasChanges': false,
+        'error': '账户未登录，无法同步',
+      };
+    }
+    final session = await UserSessionStorage.captureSession(username);
+    if (session == null) {
+      return {
+        'success': false,
+        'hasChanges': false,
+        'error': '账户已切换，已取消旧账户同步',
+      };
+    }
+
     if (syncFinance &&
         !financeSyncExplicitlyAuthorized &&
         !await AppSettingsStorage.isFinanceCloudSyncEnabled(username)) {
@@ -435,9 +518,9 @@ mixin _StorageSync on _StorageServiceBase {
     final autoResolvedHabitConflictIds = <String>{};
 
     try {
+      await UserSessionStorage.ensureCurrentSession(session);
       final prefs = await SharedPreferences.getInstance();
-      int? userId = prefs.getInt('current_user_id');
-      if (userId == null) throw Exception("用户未登录");
+      final userId = session.userId;
 
       // 2. 环境信息准备
       final String deviceId =
@@ -487,6 +570,7 @@ mixin _StorageSync on _StorageServiceBase {
       }
 
       // 3. 🛡️ 核心修复：基于 op_logs 识别脏数据，并进行 UUID 去重处理（防止 1000+ 冗余同步）
+      await UserSessionStorage.ensureCurrentSession(session);
       final db = await DatabaseHelper.instance.databaseForUser(username);
       List<Map<String, dynamic>> dirtyTodos = [];
       List<Map<String, dynamic>> dirtyGroups = [];
@@ -938,7 +1022,7 @@ mixin _StorageSync on _StorageServiceBase {
       // 4. 读取本机待同步屏幕时间 (改为 Map 结构)。局部同步关闭该域时，
       // 不能把待上传缓存偷偷带入通用 delta 请求。
       final localPackage = syncScreenTime
-          ? await getLocalScreenTimeMap()
+          ? await getLocalScreenTimeMap(username: session.username)
           : const <String, dynamic>{};
       List<dynamic> localScreenStats = localPackage['apps'] ?? [];
       String? recordDate = localPackage['date']; // 🚀 从缓存中拿原始日期
@@ -983,6 +1067,7 @@ mixin _StorageSync on _StorageServiceBase {
       }
 
       Future<Map<String, dynamic>> sendSyncRequest() async {
+        await UserSessionStorage.ensureCurrentSession(session);
         // Re-check immediately before every network attempt. This closes the
         // window between preparing the finance snapshot and the user turning
         // cloud sync off; explicit one-time manual sync remains authorized.
@@ -991,7 +1076,7 @@ mixin _StorageSync on _StorageServiceBase {
             !await AppSettingsStorage.isFinanceCloudSyncEnabled(username)) {
           syncFinance = false;
         }
-        return ApiService.postDeltaSync(
+        final syncResponse = await ApiService.postDeltaSync(
           userId: userId,
           lastSyncTime: lastSyncTime,
           deviceId: deviceId,
@@ -1040,9 +1125,12 @@ mixin _StorageSync on _StorageServiceBase {
           screenTime: syncScreenTime ? screenPayload : null,
           forceFullSync: forceFullSync,
         );
+        await UserSessionStorage.ensureCurrentSession(session);
+        return syncResponse;
       }
 
       Map<String, dynamic> response = await sendSyncRequest();
+      await UserSessionStorage.ensureCurrentSession(session);
       bool hasPendingCoreUpload() =>
           dirtyTodos.isNotEmpty ||
           dirtyGroups.isNotEmpty ||
@@ -1135,7 +1223,9 @@ mixin _StorageSync on _StorageServiceBase {
       if (isDebounceIgnored(response)) {
         debugPrint('⏳ [同步] 命中服务端防抖空响应，3.2s 后自动重试一次');
         await Future.delayed(const Duration(milliseconds: 3200));
+        await UserSessionStorage.ensureCurrentSession(session);
         response = await sendSyncRequest();
+        await UserSessionStorage.ensureCurrentSession(session);
         final financeProtocolAvailable = syncFinance &&
             SyncCapabilityService.supportsFinance(
               response['sync_capabilities'],
@@ -1152,6 +1242,7 @@ mixin _StorageSync on _StorageServiceBase {
       // /api/sync 是待办、习惯和记账共用的请求。用户在请求期间关闭
       // 记账同步时，只忽略本轮记账 ACK/快照，不取消整个请求，以免误伤
       // 其他数据域。未确认的记账修改保持 pending，不会前移记账游标。
+      await UserSessionStorage.ensureCurrentSession(session);
       if (syncFinance &&
           !financeSyncExplicitlyAuthorized &&
           !await AppSettingsStorage.isFinanceCloudSyncEnabled(username)) {
@@ -2316,6 +2407,7 @@ mixin _StorageSync on _StorageServiceBase {
       }
 
       if (hasChanges) {
+        await UserSessionStorage.ensureCurrentSession(session);
         if (syncTodos) {
           await saveTodos(username, allLocalTodos,
               sync: false, isSyncSource: true);
@@ -2434,7 +2526,11 @@ mixin _StorageSync on _StorageServiceBase {
 
       // 如果屏幕时间同步成功，可以在这里刷新 UI 用的 Cache 数据（如果后端有返回最新的聚合数据）
       if (syncScreenTime && response['screen_time_results'] != null) {
-        await saveScreenTimeCache(response['screen_time_results']);
+        await UserSessionStorage.ensureCurrentSession(session);
+        await saveScreenTimeCache(
+          response['screen_time_results'],
+          username: session.username,
+        );
       }
 
       // 9. 只通知实际参与本轮同步的数据域，避免时间日志、习惯等局部同步
@@ -2480,6 +2576,7 @@ mixin _StorageSync on _StorageServiceBase {
             '🛡️ [MemoryShield] Remaining locked items in memory shield: $recentlyResolvedUuids');
       }
 
+      await UserSessionStorage.ensureCurrentSession(session);
       return {
         'success': true,
         'hasChanges': hasChanges,

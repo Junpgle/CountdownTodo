@@ -431,15 +431,17 @@ abstract class _StorageServiceBase {
       {bool sync = true});
   Future<List<TimeLogItem>> getTimeLogs(String username, {int? limit});
   Future<bool> deleteTimeLogGlobally(String username, String idToDelete);
-  Future<void> saveLocalScreenTime(Map<dynamic, dynamic> stats);
-  Future<Map<String, dynamic>?> getLocalScreenTimePackage();
-  Future<Map<String, dynamic>> getLocalScreenTimeMap();
-  Future<List<dynamic>> getLocalScreenTime();
-  Future<void> saveScreenTimeCache(List<dynamic> stats);
-  Future<void> saveScreenTimeHistoryToSql(String date, List<dynamic> stats);
+  Future<void> saveLocalScreenTime(Map<dynamic, dynamic> stats,
+      {String? username});
+  Future<Map<String, dynamic>?> getLocalScreenTimePackage({String? username});
+  Future<Map<String, dynamic>> getLocalScreenTimeMap({String? username});
+  Future<List<dynamic>> getLocalScreenTime({String? username});
+  Future<void> saveScreenTimeCache(List<dynamic> stats, {String? username});
+  Future<void> saveScreenTimeHistoryToSql(String date, List<dynamic> stats,
+      {String? username});
   Future<List<dynamic>> getScreenTimeCache();
-  Future<Map<String, List<dynamic>>> getScreenTimeHistory();
-  Future<void> updateLastScreenTimeSync();
+  Future<Map<String, List<dynamic>>> getScreenTimeHistory({String? username});
+  Future<void> updateLastScreenTimeSync({String? username});
   Future<DateTime?> getLastScreenTimeSync();
   Future<void> syncAppMappings();
   Future<Map<String, String>> getAppMappings();
@@ -534,7 +536,8 @@ abstract class _StorageServiceBase {
   String _classifyScheduleRelation(
       TodoItem current, List<Map<String, dynamic>> peers);
   String _localDayKey(int ms);
-  Future<bool> syncScreenTimeAlone(String username, String deviceName);
+  Future<bool> syncScreenTimeAlone(String username, String deviceName,
+      {int? expectedUserId});
   Future<void> saveAppSetting(String key, dynamic value);
   Future<int> getSyncInterval();
   Future<bool> getConflictDetectionEnabled();

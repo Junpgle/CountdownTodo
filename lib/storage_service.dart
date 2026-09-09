@@ -585,33 +585,48 @@ class StorageService {
           String username, String idToDelete) =>
       _storage.deleteTimeLogGlobally(username, idToDelete);
 
-  static Future<void> saveLocalScreenTime(Map<dynamic, dynamic> stats) =>
-      _storage.saveLocalScreenTime(stats);
+  static Future<void> saveLocalScreenTime(
+    Map<dynamic, dynamic> stats, {
+    String? username,
+  }) =>
+      _storage.saveLocalScreenTime(stats, username: username);
 
-  static Future<Map<String, dynamic>?> getLocalScreenTimePackage() =>
-      _storage.getLocalScreenTimePackage();
+  static Future<Map<String, dynamic>?> getLocalScreenTimePackage({
+    String? username,
+  }) =>
+      _storage.getLocalScreenTimePackage(username: username);
 
-  static Future<Map<String, dynamic>> getLocalScreenTimeMap() =>
-      _storage.getLocalScreenTimeMap();
+  static Future<Map<String, dynamic>> getLocalScreenTimeMap({
+    String? username,
+  }) =>
+      _storage.getLocalScreenTimeMap(username: username);
 
-  static Future<List<dynamic>> getLocalScreenTime() =>
-      _storage.getLocalScreenTime();
+  static Future<List<dynamic>> getLocalScreenTime({String? username}) =>
+      _storage.getLocalScreenTime(username: username);
 
-  static Future<void> saveScreenTimeCache(List<dynamic> stats) =>
-      _storage.saveScreenTimeCache(stats);
+  static Future<void> saveScreenTimeCache(
+    List<dynamic> stats, {
+    String? username,
+  }) =>
+      _storage.saveScreenTimeCache(stats, username: username);
 
   static Future<void> saveScreenTimeHistoryToSql(
-          String date, List<dynamic> stats) =>
-      _storage.saveScreenTimeHistoryToSql(date, stats);
+    String date,
+    List<dynamic> stats, {
+    String? username,
+  }) =>
+      _storage.saveScreenTimeHistoryToSql(date, stats, username: username);
 
   static Future<List<dynamic>> getScreenTimeCache() =>
       _storage.getScreenTimeCache();
 
-  static Future<Map<String, List<dynamic>>> getScreenTimeHistory() =>
-      _storage.getScreenTimeHistory();
+  static Future<Map<String, List<dynamic>>> getScreenTimeHistory({
+    String? username,
+  }) =>
+      _storage.getScreenTimeHistory(username: username);
 
-  static Future<void> updateLastScreenTimeSync() =>
-      _storage.updateLastScreenTimeSync();
+  static Future<void> updateLastScreenTimeSync({String? username}) =>
+      _storage.updateLastScreenTimeSync(username: username);
 
   static Future<DateTime?> getLastScreenTimeSync() =>
       _storage.getLastScreenTimeSync();
@@ -678,8 +693,16 @@ class StorageService {
       _storage.repairLocalRecurrenceSeriesAliasesFromHistoryForTest(
           todos, historicalSeriesByTodoId);
 
-  static Future<bool> syncScreenTimeAlone(String username, String deviceName) =>
-      _storage.syncScreenTimeAlone(username, deviceName);
+  static Future<bool> syncScreenTimeAlone(
+    String username,
+    String deviceName, {
+    int? expectedUserId,
+  }) =>
+      _storage.syncScreenTimeAlone(
+        username,
+        deviceName,
+        expectedUserId: expectedUserId,
+      );
 
   static Future<void> saveAppSetting(String key, dynamic value) =>
       _storage.saveAppSetting(key, value);

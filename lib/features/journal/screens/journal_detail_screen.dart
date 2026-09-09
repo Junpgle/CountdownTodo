@@ -40,7 +40,10 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
       ),
     );
     if (changed != true || !mounted) return;
-    final refreshed = await JournalStorage.instance.loadEntry(_entry.id);
+    final refreshed = await JournalStorage.instance.loadEntry(
+      _entry.id,
+      accountId: widget.accountId,
+    );
     if (refreshed == null || !mounted) return;
     setState(() => _entry = refreshed);
   }
@@ -64,7 +67,10 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
     );
     if (confirmed != true) return;
     try {
-      final deleted = await JournalStorage.instance.deleteEntry(_entry.id);
+      final deleted = await JournalStorage.instance.deleteEntry(
+        _entry.id,
+        accountId: widget.accountId,
+      );
       for (final attachment in deleted) {
         try {
           await JournalMediaService.instance.delete(attachment);

@@ -236,7 +236,11 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
         attachments: _attachments,
       );
       final savedAttachments = mediaCommit.attachments;
-      await JournalStorage.instance.saveEntry(entry, savedAttachments);
+      await JournalStorage.instance.saveEntry(
+        entry,
+        savedAttachments,
+        accountId: widget.accountId,
+      );
       savedToDatabase = true;
       final currentIds = savedAttachments.map((item) => item.id).toSet();
       for (final attachment
