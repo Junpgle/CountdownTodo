@@ -19,7 +19,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
         onTap: () async {
           await Navigator.of(context, rootNavigator: true).push(
             PageTransitions.slideHorizontal(
-              const ThirtyDayChallengeScreen(),
+              const ChallengeCenterScreen(),
             ),
           );
           if (mounted) {

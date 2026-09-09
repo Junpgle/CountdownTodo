@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
-import '../../../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
+import '../../../features/thirty_day_challenge/screens/challenge_center_screen.dart';
 import '../../../models.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../services/feature_tip_service.dart';
@@ -84,7 +84,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
   Future<void> _openChallengePromotion() async {
     await Navigator.of(context).push(
       PageTransitions.material(
-        builder: (_) => const ThirtyDayChallengeScreen(),
+        builder: (_) => const ChallengeCenterScreen(),
       ),
     );
     if (mounted) _loadChallengePromotion();

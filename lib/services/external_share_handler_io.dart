@@ -49,6 +49,7 @@ class _ExternalShareRequest {
 class ExternalShareHandler {
   static StreamSubscription? _intentDataStreamSubscription;
   static bool _isProcessing = false;
+  static bool _isRetryingTodoRecognition = false;
   static final List<String> _processedFileKeys = [];
   static final Set<String> _processingFileKeys = <String>{};
   static final List<_ExternalShareRequest> _queuedRequests = [];
@@ -1365,6 +1366,23 @@ class ExternalShareHandler {
   /// 重试图片识别
   /// [onTodoRecognized] 事项识别成功回调（名称为旧接口兼容保留）
   static Future<void> retryTodoRecognition({
+    Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
+    FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
+        onFinanceRecognized,
+  }) async {
+    if (_isRetryingTodoRecognition) return;
+    _isRetryingTodoRecognition = true;
+    try {
+      await _retryTodoRecognition(
+        onTodoRecognized: onTodoRecognized,
+        onFinanceRecognized: onFinanceRecognized,
+      );
+    } finally {
+      _isRetryingTodoRecognition = false;
+    }
+  }
+
+  static Future<void> _retryTodoRecognition({
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
     FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
         onFinanceRecognized,

@@ -28,7 +28,7 @@ import '../models/minor_mode_state.dart';
 import '../models.dart';
 import '../features/finance/screens/finance_home_screen.dart';
 import '../features/habits/screens/habit_center_screen.dart';
-import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
+import '../features/thirty_day_challenge/screens/challenge_center_screen.dart';
 import '../widgets/app_settings_widgets.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
@@ -134,7 +134,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           scheme.primary,
           '30天找到全新自我',
           '设置->帮助与反馈->30天找到全新自我',
-          destinationBuilder: () => const ThirtyDayChallengeScreen(),
+          destinationBuilder: () => const ChallengeCenterScreen(),
         ),
         _RecentFeature(
           Icons.track_changes_rounded,
@@ -204,7 +204,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         scheme.primary,
         '30天找到全新自我',
         '设置->帮助与反馈->30天找到全新自我',
-        destinationBuilder: () => const ThirtyDayChallengeScreen(),
+        destinationBuilder: () => const ChallengeCenterScreen(),
       ),
       _RecentFeature(
         Icons.track_changes_rounded,
@@ -2031,9 +2031,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                       allowedExtensions: ['db'],
                       dialogTitle: '选择 Tai 的 data.db 文件',
                     );
+                    if (!mounted) return;
                     if (result != null && result.files.single.path != null) {
                       String path = result.files.single.path!;
                       bool isValid = await TaiService.validateDb(path);
+                      if (!mounted) return;
                       if (isValid) {
                         await TaiService.saveDbPath(path);
                         setState(() => _taiDbPath = path);
@@ -2054,10 +2056,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                   label: const Text('尝试自动检测默认安装路径'),
                   onPressed: () async {
                     final path = await TaiService.detectDefaultPath();
+                    if (!mounted) return;
                     if (path != null) {
                       await TaiService.saveDbPath(path);
-                      setState(() => _taiDbPath = path);
                       if (!mounted) return;
+                      setState(() => _taiDbPath = path);
                       ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('✅ 自动检测并绑定成功！')));
                     } else {
