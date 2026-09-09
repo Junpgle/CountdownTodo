@@ -367,9 +367,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         if (cloudEnd != null) importedEnd = cloudEnd;
 
         final rawSemesters = userSettings['semesters'];
-        if (rawSemesters is List && rawSemesters.isNotEmpty) {
+        if (rawSemesters is List) {
           final cloudSemesters = <SemesterInfo>[];
-          final semesterIds = <String>{};
           for (final rawSemester in rawSemesters) {
             if (rawSemester is! Map) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -380,19 +379,27 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
             final semester = SemesterInfo.fromCloudJson(
               Map<String, dynamic>.from(rawSemester),
             );
-            final semesterId =
-                CourseScheduleSemantics.canonicalSemesterId(semester.id);
-            if (!CourseImportPreflight.hasUsableSemester(semester) ||
-                !semesterIds.add(semesterId)) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('❌ 云端存在无效或重复的学期设置，请修正后再导入')),
-              );
-              return;
-            }
             cloudSemesters.add(semester);
           }
           importedSemesters = cloudSemesters;
           hasCloudSemesterList = true;
+        }
+      }
+
+      // Validate both the cloud list and the local fallback list. A cloud
+      // `semesters: []` is an explicit configuration, not a reason to reuse
+      // stale local semesters; duplicate IDs would otherwise collapse in the
+      // startsBySemester map and leave ambiguous course ownership.
+      final importedSemesterIds = <String>{};
+      for (final semester in importedSemesters) {
+        final semesterId =
+            CourseScheduleSemantics.canonicalSemesterId(semester.id);
+        if (!CourseImportPreflight.hasUsableSemester(semester) ||
+            !importedSemesterIds.add(semesterId)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('❌ 存在无效或重复的学期设置，请修正后再导入')),
+          );
+          return;
         }
       }
 
