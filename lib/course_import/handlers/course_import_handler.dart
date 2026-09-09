@@ -505,7 +505,8 @@ class CourseImportHandler {
       '河南财经政法大学': 'https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html',
     };
 
-    final String? selectedUrl = await showAppModalBottomSheet<String>(
+    const manualInputSelection = '__manual_course_import_url__';
+    var selectedUrl = await showAppModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {
@@ -564,7 +565,7 @@ class CourseImportHandler {
                     leading:
                         const Icon(Icons.input_rounded, color: Colors.grey),
                     title: const Text('手动输入'),
-                    onTap: () => Navigator.pop(context, 'https://www.bing.com'),
+                    onTap: () => Navigator.pop(context, manualInputSelection),
                   ),
                   const SizedBox(height: 20),
                 ],
@@ -575,7 +576,11 @@ class CourseImportHandler {
       },
     );
 
+    if (selectedUrl == manualInputSelection) {
+      selectedUrl = await _askManualImportUrl(lastUrl);
+    }
     if (selectedUrl == null) return;
+    final resolvedUrl = selectedUrl;
 
     if (!context.mounted) return;
 
@@ -588,12 +593,12 @@ class CourseImportHandler {
     final Route<String> route = isDesktop
         ? PageRouteBuilder(
             pageBuilder: (context, animation, secondaryAnimation) =>
-                CourseWebViewScreen(initialUrl: selectedUrl),
+                CourseWebViewScreen(initialUrl: resolvedUrl),
             transitionDuration: Duration.zero,
             reverseTransitionDuration: Duration.zero,
           )
         : PageTransitions.slideHorizontal(
-            CourseWebViewScreen(initialUrl: selectedUrl));
+            CourseWebViewScreen(initialUrl: resolvedUrl));
 
     final String? htmlContent = await Navigator.push<String>(
       context,
@@ -610,7 +615,7 @@ class CourseImportHandler {
 
       String sourceName = "网页导入";
       List<CourseItem> parsedCourses = [];
-      final normalizedUrl = selectedUrl.toLowerCase();
+      final normalizedUrl = resolvedUrl.toLowerCase();
 
       // 🚀 核心改进：优先尝试作为 JSON 识别（适配合工大等前后端分离系统）
       String? jsonCandidate;
@@ -777,6 +782,63 @@ class CourseImportHandler {
     } catch (e) {
       await _closeLoadingDialog();
       showMessage('❌ 导入异常: $e');
+    }
+  }
+
+  Future<String?> _askManualImportUrl(String? initialUrl) async {
+    if (!context.mounted) return null;
+    final controller = TextEditingController(text: initialUrl ?? '');
+    String? errorText;
+
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              void submit() {
+                final value = controller.text.trim();
+                final uri = Uri.tryParse(value);
+                final valid = uri != null &&
+                    (uri.scheme == 'http' || uri.scheme == 'https') &&
+                    uri.host.isNotEmpty;
+                if (!valid) {
+                  setDialogState(() => errorText = '请输入有效的 http(s) 教务系统网址');
+                  return;
+                }
+                Navigator.pop(dialogContext, value);
+              }
+
+              return AlertDialog(
+                title: const Text('输入教务系统网址'),
+                content: TextField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType: TextInputType.url,
+                  textInputAction: TextInputAction.go,
+                  onSubmitted: (_) => submit(),
+                  decoration: InputDecoration(
+                    hintText: 'https://jw.example.edu.cn',
+                    errorText: errorText,
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: submit,
+                    child: const Text('打开'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      controller.dispose();
     }
   }
 

@@ -12,6 +12,7 @@ import '../../../course_import/handlers/course_import_handler.dart';
 import '../../../course_import/course_import_preflight.dart';
 import '../../../course_import/course_schedule_semantics.dart';
 import '../../../course_import/widgets/course_adaptation_screen.dart';
+import '../../../course_import/widgets/course_time_repair_dialog.dart';
 import '../../course_calendar_adjustment_screen.dart';
 import '../../../models.dart';
 import '../../../utils/app_platform.dart';
@@ -368,6 +369,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         final rawSemesters = userSettings['semesters'];
         if (rawSemesters is List && rawSemesters.isNotEmpty) {
           final cloudSemesters = <SemesterInfo>[];
+          final semesterIds = <String>{};
           for (final rawSemester in rawSemesters) {
             if (rawSemester is! Map) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -378,9 +380,12 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
             final semester = SemesterInfo.fromCloudJson(
               Map<String, dynamic>.from(rawSemester),
             );
-            if (!CourseImportPreflight.hasUsableSemester(semester)) {
+            final semesterId =
+                CourseScheduleSemantics.canonicalSemesterId(semester.id);
+            if (!CourseImportPreflight.hasUsableSemester(semester) ||
+                !semesterIds.add(semesterId)) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('❌ 云端存在无效学期设置，请修正后再导入')),
+                const SnackBar(content: Text('❌ 云端存在无效或重复的学期设置，请修正后再导入')),
               );
               return;
             }
@@ -409,7 +414,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       }
 
       int skippedCourses = 0;
-      final courses = <CourseItem>[];
+      var courses = <CourseItem>[];
       for (final rawCourse in data) {
         if (rawCourse is! Map) {
           skippedCourses++;
@@ -445,21 +450,20 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         final semesterStartForCourse = startsBySemester[semesterId];
         final cloudDate = (course['date']?.toString() ?? '').trim();
 
-        // Relative week/day cannot be converted without its own学期开学日。
-        // 不再借用另一个学期的日期；无法确定的行全部在写入前拦截。
-        if (semesterStartForCourse == null &&
-            (cloudDate.isEmpty || DateTime.tryParse(cloudDate) == null)) {
+        // A course must reference a configured semester. Accepting an unknown
+        // semester merely because it has a concrete date creates an orphan
+        // row which the semester-based UI cannot select later.
+        if (semesterStartForCourse == null ||
+            (cloudDate.isNotEmpty && DateTime.tryParse(cloudDate) == null)) {
           skippedCourses++;
           continue;
         }
 
-        final date = semesterStartForCourse == null
-            ? cloudDate
-            : CourseScheduleSemantics.dateFor(
-                semesterStart: semesterStartForCourse,
-                weekIndex: weekIndex,
-                weekday: weekday,
-              );
+        final date = CourseScheduleSemantics.dateFor(
+          semesterStart: semesterStartForCourse,
+          weekIndex: weekIndex,
+          weekday: weekday,
+        );
         courses.add(
           CourseItem(
             uuid: (course['uuid'] ?? course['id'])?.toString(),
@@ -501,6 +505,21 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('❌ 云端课表没有可导入的课程')));
         return;
+      }
+
+      if (courses
+          .any((course) => !CourseScheduleSemantics.hasUsableTime(course))) {
+        await _closeLoadingDialog();
+        if (!mounted) return;
+        final repaired = await CourseTimeRepairDialog.show(context, courses);
+        if (repaired == null || !mounted) return;
+        courses = repaired;
+        if (courses
+            .any((course) => !CourseScheduleSemantics.hasUsableTime(course))) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('❌ 仍有课程缺少有效时间，已取消导入')));
+          return;
+        }
       }
 
       await _closeLoadingDialog();

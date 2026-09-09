@@ -21,6 +21,11 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
 
   // 多学期支持
   List<SemesterInfo> _semesters = [];
+  String _activeSemesterId = 'default';
+
+  SemesterInfo? _semesterForDate(DateTime date);
+
+  int _relativeWeekForDate(DateTime date, SemesterInfo semester);
 
   List<TimeLogItem> _allTimeLogs = [];
   List<PomodoroRecord> _allPomodoroRecords = [];

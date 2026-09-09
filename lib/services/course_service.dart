@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
@@ -33,6 +34,29 @@ typedef CourseImportModeSelector = Future<bool?> Function(
 
 class CourseService {
   static const String _keyCourseData = 'course_schedule_json';
+  static Future<void> _courseWriteTail = Future<void>.value();
+
+  /// Serializes every course read-modify-write operation in this process.
+  ///
+  /// Semester merge/replace first reads the complete table and then writes a
+  /// complete snapshot. Without one shared queue, two imports can both read
+  /// the same old snapshot and the later write silently discard the first one.
+  static Future<T> _withCourseWriteLock<T>(
+    Future<T> Function() operation,
+  ) {
+    final previous = _courseWriteTail;
+    final release = Completer<void>();
+    _courseWriteTail = release.future;
+
+    return () async {
+      await previous;
+      try {
+        return await operation();
+      } finally {
+        if (!release.isCompleted) release.complete();
+      }
+    }();
+  }
 
   static Future<void> _ensureCoursesColumnsForWrite(dynamic db) async {
     final info = await db.rawQuery("PRAGMA table_info(courses)");
@@ -95,6 +119,13 @@ class CourseService {
   // --- 内部辅助：统一将解析后的实体类集合保存到本地 ---
   static Future<void> saveCourses(
       String username, List<CourseItem> courses) async {
+    await _withCourseWriteLock(
+      () => _saveCoursesUnlocked(username, courses),
+    );
+  }
+
+  static Future<void> _saveCoursesUnlocked(
+      String username, List<CourseItem> courses) async {
     // This method is the explicit full-table replacement primitive used by
     // backups and migrations.  Semester-aware imports use the methods below.
     try {
@@ -149,13 +180,17 @@ class CourseService {
   /// 策略：同一学期同一时间段的新课程替换旧课程，其余课程保留。
   static Future<void> mergeCoursesToSql(
       String username, List<CourseItem> newCourses) async {
-    final existingCourses = await getAllCourses(
-      username,
-      applyCalendarAdjustments: false,
-    );
-    await saveCourses(
-      username,
-      CourseScheduleSemantics.mergeBySlot(existingCourses, newCourses),
+    await _withCourseWriteLock(
+      () async {
+        final existingCourses = await getAllCourses(
+          username,
+          applyCalendarAdjustments: false,
+        );
+        await _saveCoursesUnlocked(
+          username,
+          CourseScheduleSemantics.mergeBySlot(existingCourses, newCourses),
+        );
+      },
     );
   }
 
@@ -177,17 +212,21 @@ class CourseService {
       courses,
       semesterId: targetSemesterId,
     );
-    final existingCourses = await getAllCourses(
-      username,
-      applyCalendarAdjustments: false,
-    );
-    await saveCourses(
-      username,
-      CourseScheduleSemantics.replaceSemester(
-        existingCourses,
-        normalizedCourses,
-        semesterId: targetSemesterId,
-      ),
+    await _withCourseWriteLock(
+      () async {
+        final existingCourses = await getAllCourses(
+          username,
+          applyCalendarAdjustments: false,
+        );
+        await _saveCoursesUnlocked(
+          username,
+          CourseScheduleSemantics.replaceSemester(
+            existingCourses,
+            normalizedCourses,
+            semesterId: targetSemesterId,
+          ),
+        );
+      },
     );
   }
 
@@ -215,19 +254,23 @@ class CourseService {
     }
     if (incomingBySemester.isEmpty) return;
 
-    final existingCourses = await getAllCourses(
-      username,
-      applyCalendarAdjustments: false,
+    await _withCourseWriteLock(
+      () async {
+        final existingCourses = await getAllCourses(
+          username,
+          applyCalendarAdjustments: false,
+        );
+        var replaced = existingCourses;
+        for (final entry in incomingBySemester.entries) {
+          replaced = CourseScheduleSemantics.replaceSemester(
+            replaced,
+            entry.value,
+            semesterId: entry.key,
+          );
+        }
+        await _saveCoursesUnlocked(username, replaced);
+      },
     );
-    var replaced = existingCourses;
-    for (final entry in incomingBySemester.entries) {
-      replaced = CourseScheduleSemantics.replaceSemester(
-        replaced,
-        entry.value,
-        semesterId: entry.key,
-      );
-    }
-    await saveCourses(username, replaced);
   }
 
   /// Merges imported courses by semester and time slot.
@@ -259,24 +302,28 @@ class CourseService {
     String username,
     String semesterId,
   ) async {
-    final targetSemesterId =
-        CourseScheduleSemantics.canonicalSemesterId(semesterId);
-    final db = await DatabaseHelper.instance.databaseForUser(username);
-    final where = targetSemesterId == 'default'
-        ? 'semester_id = ? OR semester_id IS NULL OR semester_id = ?'
-        : 'semester_id = ?';
-    final whereArgs = targetSemesterId == 'default'
-        ? [targetSemesterId, '']
-        : [targetSemesterId];
-    final deleted = await db.delete(
-      'courses',
-      where: where,
-      whereArgs: whereArgs,
+    return _withCourseWriteLock(
+      () async {
+        final targetSemesterId =
+            CourseScheduleSemantics.canonicalSemesterId(semesterId);
+        final db = await DatabaseHelper.instance.databaseForUser(username);
+        final where = targetSemesterId == 'default'
+            ? 'semester_id = ? OR semester_id IS NULL OR semester_id = ?'
+            : 'semester_id = ?';
+        final whereArgs = targetSemesterId == 'default'
+            ? [targetSemesterId, '']
+            : [targetSemesterId];
+        final deleted = await db.delete(
+          'courses',
+          where: where,
+          whereArgs: whereArgs,
+        );
+        if (deleted > 0) {
+          StorageService.triggerRefresh(const {DataRefreshDomain.courses});
+        }
+        return deleted;
+      },
     );
-    if (deleted > 0) {
-      StorageService.triggerRefresh(const {DataRefreshDomain.courses});
-    }
-    return deleted;
   }
 
   // ================= 导入与解析逻辑 =================
@@ -674,7 +721,10 @@ class CourseService {
 
         // debugPrint(
         //     "🚀 [Course] 正在从 SharedPreferences($key) 迁移 ${courses.length} 条数据至 SQL...");
-        await saveCourses(username, courses);
+        // getAllCourses can call this migration while a higher-level
+        // read-modify-write operation already owns the course lock.  Use the
+        // unlocked primitive here to avoid a non-reentrant lock deadlock.
+        await _saveCoursesUnlocked(username, courses);
         await prefs.remove(key);
         await prefs.setBool("${_keyCourseData}_${username}_migrated_v2", true);
         return courses;
@@ -726,7 +776,9 @@ class CourseService {
       String username) async {
     final courses = await recoverLegacyCoursesFromSql(username);
     if (courses.isNotEmpty) {
-      await saveCourses(username, courses);
+      // See the migration note in _recoverCoursesFromPrefs: this path can be
+      // reached from getAllCourses while the course write lock is held.
+      await _saveCoursesUnlocked(username, courses);
     }
     return courses;
   }
@@ -886,76 +938,38 @@ class CourseService {
     final courses =
         await getAllCourses(username, applyCalendarAdjustments: false);
 
-    // 按学期分组上传。即使本地没有某个学期的课程，也要发一个空集合，
-    // 这样“覆盖云端”才能真正清理远端残留数据。
-    final coursesBySemester = <String, List<CourseItem>>{};
-    for (final c in courses) {
-      final semesterId =
-          CourseScheduleSemantics.canonicalSemesterId(c.semesterId);
-      coursesBySemester.putIfAbsent(semesterId, () => []).add(c);
+    // Multi-semester replacement must be one server-side transaction.  Do not
+    // fall back to the old loop: it can delete the old table and then leave a
+    // half-written remote schedule when a later request fails.
+    if (!await ApiService.supportsAtomicCourseUpload()) {
+      return {
+        'success': false,
+        'message': '当前服务端不支持安全的多学期课表同步，请先更新服务端',
+      };
     }
 
-    // 远端配置过、但本地已经没有课程的学期同样需要清空。旧服务可能不
-    // 返回学期列表，因此这里保留 default 作为兼容兜底。
-    try {
-      final remoteSettings = await ApiService.fetchUserSettings();
-      for (final semesterId
-          in ApiService.semesterIdsFromSettings(remoteSettings)) {
-        coursesBySemester.putIfAbsent(semesterId, () => []);
-      }
-    } catch (_) {
-      // 课程上传本身仍可继续，远端设置接口失败不应阻断已知学期同步。
-    }
-    coursesBySemester.putIfAbsent('default', () => []);
+    final courseMaps = courses
+        .map((c) => {
+              'semester':
+                  CourseScheduleSemantics.canonicalSemesterId(c.semesterId),
+              'course_name': c.courseName,
+              'room_name': c.roomName,
+              'teacher_name': c.teacherName,
+              'start_time': c.startTime,
+              'end_time': c.endTime,
+              'weekday': c.weekday,
+              'week_index': c.weekIndex,
+              'lesson_type': c.lessonType ?? '',
+              'date': c.date,
+            })
+        .toList();
 
-    // 逐个学期上传
-    bool allSuccess = true;
-    String lastMessage = '';
-    bool isFirstRequest = true;
-
-    for (final semesterId in coursesBySemester.keys.toList()..sort()) {
-      final semesterCourses = coursesBySemester[semesterId]!;
-
-      // 转换为后端需要的结构
-      final courseMaps = semesterCourses
-          .map((c) => {
-                'course_name': c.courseName,
-                'room_name': c.roomName,
-                'teacher_name': c.teacherName,
-                'start_time': c.startTime,
-                'end_time': c.endTime,
-                'weekday': c.weekday,
-                'week_index': c.weekIndex,
-                'lesson_type': c.lessonType ?? '',
-                'date': c.date,
-              })
-          .toList();
-
-      final result = await ApiService.uploadCourses(
-        userId: userId,
-        courses: courseMaps,
-        semester: semesterId,
-        replaceAll: isFirstRequest,
-      );
-      isFirstRequest = false;
-
-      if (result['success'] != true) {
-        allSuccess = false;
-        lastMessage = result['message'] ?? '上传失败';
-        if (result['isLimitExceeded'] == true) {
-          return {
-            'success': false,
-            'message': lastMessage,
-            'isLimitExceeded': true,
-          };
-        }
-      }
-    }
-
-    if (allSuccess) {
-      return {'success': true, 'message': '课表同步成功'};
-    } else {
-      return {'success': false, 'message': lastMessage};
-    }
+    return ApiService.uploadCourses(
+      userId: userId,
+      courses: courseMaps,
+      semester: 'all',
+      replaceAll: true,
+      atomicAllSemesters: true,
+    );
   }
 }

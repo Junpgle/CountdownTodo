@@ -854,10 +854,33 @@ export default {
         return jsonResponse(results);
       }
 
+      if (url.pathname === "/api/capabilities" && request.method === "GET") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        return jsonResponse({
+          success: true,
+          capabilities: {
+            atomic_course_upload: true,
+          },
+        });
+      }
+
       if (url.pathname === "/api/courses" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
-        const { user_id, courses, semester = "default", replace_all = false } = await request.json();
+        const {
+          user_id,
+          courses,
+          semester = "default",
+          replace_all = false,
+          atomic_all_semesters = false,
+        } = await request.json();
         if (authUserId !== parseInt(user_id, 10)) return errorResponse("越权", 403);
+        if (!Array.isArray(courses)) return errorResponse("courses 格式错误", 400);
+        if (atomic_all_semesters === true && semester !== "all") {
+          return errorResponse("原子多学期上传必须使用 semester=all", 400);
+        }
+        if (atomic_all_semesters === true && replace_all !== true) {
+          return errorResponse("原子多学期上传必须替换完整课表", 400);
+        }
         const now = Date.now();
         const limitError = await enforceSyncLimit(user_id, DB, now);
         if (limitError && limitError !== 'IGNORE') return errorResponse(limitError, 429);
@@ -866,10 +889,19 @@ export default {
           ? DB.prepare("DELETE FROM courses WHERE user_id = ?").bind(user_id)
           : DB.prepare("DELETE FROM courses WHERE user_id = ? AND semester = ?").bind(user_id, semester)];
         for (const c of courses) {
-          batchStatements.push(DB.prepare(`INSERT INTO courses (user_id, semester, course_name, room_name, teacher_name, start_time, end_time, weekday, week_index, lesson_type, created_at, updated_at, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`).bind(user_id, semester, c.course_name, c.room_name, c.teacher_name, c.start_time, c.end_time, c.weekday, c.week_index, c.lesson_type, 0, now, now));
+          const courseSemester = atomic_all_semesters === true
+            ? String(c.semester ?? c.semester_id ?? "default").trim() || "default"
+            : semester;
+          if (courseSemester === "all") {
+            return errorResponse("课程学期 ID 无效", 400);
+          }
+          batchStatements.push(DB.prepare(`INSERT INTO courses (user_id, semester, course_name, room_name, teacher_name, start_time, end_time, weekday, week_index, lesson_type, created_at, updated_at, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`).bind(user_id, courseSemester, c.course_name, c.room_name, c.teacher_name, c.start_time, c.end_time, c.weekday, c.week_index, c.lesson_type, 0, now, now));
         }
         if (batchStatements.length > 0) await DB.batch(batchStatements);
-        return jsonResponse({ success: true });
+        return jsonResponse({
+          success: true,
+          atomic_course_upload: atomic_all_semesters === true,
+        });
       }
 
       if (url.pathname === "/api/settings" && request.method === "GET") {

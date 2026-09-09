@@ -75,43 +75,17 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       return '第 $_currentWeek 周';
     }
 
-    // 计算当前周次对应的周一日期
-    DateTime currentWeekMonday =
+    final currentWeekMonday =
         _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
-
-    // 找到这个日期属于哪个学期，并计算在该学期中的相对周次
-    String? targetSemesterName;
-    int relativeWeek = _currentWeek;
-
-    for (final semester in _semesters) {
-      final semesterStart = DateTime(semester.startDate.year,
-          semester.startDate.month, semester.startDate.day);
-      final semesterEnd = semester.endDate != null
-          ? DateTime(semester.endDate!.year, semester.endDate!.month,
-              semester.endDate!.day)
-          : semesterStart.add(const Duration(days: 120));
-
-      // 检查当前周的周一是否在这个学期的范围内
-      if (!currentWeekMonday.isBefore(semesterStart) &&
-          !currentWeekMonday.isAfter(semesterEnd)) {
-        targetSemesterName = semester.name;
-        // 计算在该学期中的相对周次
-        final semesterMonday =
-            semesterStart.subtract(Duration(days: semesterStart.weekday - 1));
-        relativeWeek =
-            (currentWeekMonday.difference(semesterMonday).inDays ~/ 7) + 1;
-        break;
-      }
+    final targetSemester = _semesterForDate(currentWeekMonday);
+    if (targetSemester != null) {
+      final relativeWeek =
+          _relativeWeekForDate(currentWeekMonday, targetSemester);
+      return '${targetSemester.name} 第 $relativeWeek 周';
     }
 
-    // 显示周次标签
-    if (targetSemesterName != null && relativeWeek >= 1) {
-      return '$targetSemesterName 第 $relativeWeek 周';
-    } else {
-      // 如果没有找到对应的学期，显示日期范围
-      DateTime sunday = currentWeekMonday.add(const Duration(days: 6));
-      return '${DateFormat('M/d').format(currentWeekMonday)}-${DateFormat('M/d').format(sunday)}';
-    }
+    final sunday = currentWeekMonday.add(const Duration(days: 6));
+    return '${DateFormat('M/d').format(currentWeekMonday)}-${DateFormat('M/d').format(sunday)}';
   }
 
   String _getBiWeekLabel() {
@@ -126,21 +100,10 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
 
     // 找到这两个日期属于哪个学期
     String getSemesterWeekLabel(DateTime date) {
-      for (final semester in _semesters) {
-        final semesterStart = DateTime(semester.startDate.year,
-            semester.startDate.month, semester.startDate.day);
-        final semesterEnd = semester.endDate != null
-            ? DateTime(semester.endDate!.year, semester.endDate!.month,
-                semester.endDate!.day)
-            : semesterStart.add(const Duration(days: 120));
-
-        if (!date.isBefore(semesterStart) && !date.isAfter(semesterEnd)) {
-          final semesterMonday =
-              semesterStart.subtract(Duration(days: semesterStart.weekday - 1));
-          final relativeWeek =
-              (date.difference(semesterMonday).inDays ~/ 7) + 1;
-          return '${semester.name} 第$relativeWeek周';
-        }
+      final semester = _semesterForDate(date);
+      if (semester != null) {
+        final relativeWeek = _relativeWeekForDate(date, semester);
+        return '${semester.name} 第$relativeWeek周';
       }
       return DateFormat('M/d').format(date);
     }

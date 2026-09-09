@@ -733,11 +733,32 @@ class ApiService {
     );
   }
 
+  /// The multi-semester course replacement must be performed by one server
+  /// transaction.  Older servers only understand the per-semester endpoint,
+  /// so callers must verify this capability before sending the new payload.
+  static Future<bool> supportsAtomicCourseUpload() async {
+    try {
+      final response = await _request(
+        'GET',
+        '/api/capabilities',
+        timeout: const Duration(seconds: 5),
+      );
+      if (response.statusCode != 200) return false;
+      final data = jsonDecode(response.body);
+      return data is Map &&
+          (data['capabilities'] is Map) &&
+          (data['capabilities']['atomic_course_upload'] == true);
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<Map<String, dynamic>> uploadCourses({
     required int userId,
     required List<Map<String, dynamic>> courses,
     String semester = "default",
     bool replaceAll = false,
+    bool atomicAllSemesters = false,
   }) async {
     try {
       final response = await _request(
@@ -747,6 +768,7 @@ class ApiService {
           'user_id': userId,
           'semester': semester,
           'replace_all': replaceAll,
+          if (atomicAllSemesters) 'atomic_all_semesters': true,
           'courses': courses,
         },
       );
