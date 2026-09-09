@@ -27,11 +27,31 @@ import '../course_import/handlers/course_import_handler.dart';
 import '../course_import/widgets/course_time_repair_dialog.dart';
 import '../course_import/widgets/zf_time_config_dialog.dart';
 
+class _ExternalShareRequest {
+  const _ExternalShareRequest({
+    required this.context,
+    required this.files,
+    required this.onSuccess,
+    this.onTodoRecognized,
+    this.onFinanceRecognized,
+    this.fromInitial = false,
+  });
+
+  final BuildContext context;
+  final List<SharedMediaFile> files;
+  final Function onSuccess;
+  final Function(List<Map<String, dynamic>>, String?)? onTodoRecognized;
+  final FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
+      onFinanceRecognized;
+  final bool fromInitial;
+}
+
 class ExternalShareHandler {
   static StreamSubscription? _intentDataStreamSubscription;
   static bool _isProcessing = false;
   static final List<String> _processedFileKeys = [];
   static final Set<String> _processingFileKeys = <String>{};
+  static final List<_ExternalShareRequest> _queuedRequests = [];
   static const int _maxProcessedKeys = 50;
   static final String _recognitionSessionId =
       'recognition_${DateTime.now().microsecondsSinceEpoch}';
@@ -74,7 +94,37 @@ class ExternalShareHandler {
             onFinanceRecognized: onFinanceRecognized,
             fromInitial: true);
       },
+      onError: (Object error, StackTrace stack) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('无法接收分享内容，请重试: $error')),
+          );
+        }
+      },
     );
+  }
+
+  static void _drainQueuedRequests() {
+    if (_isProcessing || _queuedRequests.isEmpty) return;
+    final request = _queuedRequests.removeAt(0);
+    if (!request.context.mounted) {
+      _drainQueuedRequests();
+      return;
+    }
+    _processSharedFiles(
+      request.context,
+      request.files,
+      request.onSuccess,
+      onTodoRecognized: request.onTodoRecognized,
+      onFinanceRecognized: request.onFinanceRecognized,
+      fromInitial: request.fromInitial,
+    );
+  }
+
+  static void _finishCurrentRequest() {
+    ReceiveSharingIntent.instance.reset();
+    _isProcessing = false;
+    scheduleMicrotask(_drainQueuedRequests);
   }
 
   static void _processSharedFiles(
@@ -87,13 +137,40 @@ class ExternalShareHandler {
     bool fromInitial = false,
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
-    if (files.isEmpty || _isProcessing) return;
+    if (files.isEmpty) return;
+    final request = _ExternalShareRequest(
+      context: context,
+      files: List<SharedMediaFile>.unmodifiable(files),
+      onSuccess: onSuccess,
+      onTodoRecognized: onTodoRecognized,
+      onFinanceRecognized: onFinanceRecognized,
+      fromInitial: fromInitial,
+    );
+    if (_isProcessing) {
+      _queuedRequests.add(request);
+      return;
+    }
     _isProcessing = true;
+
+    // ACTION_SEND_MULTIPLE is delivered as one list. Process every item in
+    // order so additional files are not silently discarded. Keeping each
+    // item as a request also lets every course file show its own import-mode
+    // dialog without overlapping navigation routes.
+    for (final additionalFile in files.skip(1)) {
+      _queuedRequests.add(_ExternalShareRequest(
+        context: context,
+        files: [additionalFile],
+        onSuccess: onSuccess,
+        onTodoRecognized: onTodoRecognized,
+        onFinanceRecognized: onFinanceRecognized,
+        fromInitial: fromInitial,
+      ));
+    }
 
     await Future.delayed(const Duration(milliseconds: 500));
 
     final media = files.first;
-    final firstPath = media.path.trim();
+    final firstPath = _normalizeSharedFilePath(media.path.trim());
     final requestedMode = ExternalSharePayloadClassifier.modeFor(media);
     bool isInlineText;
     try {
@@ -105,8 +182,7 @@ class ExternalShareHandler {
           SnackBar(content: Text('无法读取分享内容，请重试: $error')),
         );
       }
-      ReceiveSharingIntent.instance.reset();
-      _isProcessing = false;
+      _finishCurrentRequest();
       return;
     }
     final isSharedText = requestedMode == ExternalShareMode.financeImport
@@ -129,8 +205,7 @@ class ExternalShareHandler {
           );
         }
       } finally {
-        ReceiveSharingIntent.instance.reset();
-        _isProcessing = false;
+        _finishCurrentRequest();
       }
       return;
     }
@@ -144,13 +219,12 @@ class ExternalShareHandler {
         !firstPath.startsWith('countdowntodo://');
     if (!isValidFile) {
       // debugPrint('ExternalShareHandler: skip non-file intent: $firstPath');
-      ReceiveSharingIntent.instance.reset();
-      _isProcessing = false;
+      _finishCurrentRequest();
       return;
     }
 
     if (!context.mounted) {
-      _isProcessing = false;
+      _finishCurrentRequest();
       return;
     }
 
@@ -185,21 +259,20 @@ class ExternalShareHandler {
       try {
         courseUsername = await StorageService.getLoginSession();
         if (!context.mounted) {
-          _isProcessing = false;
+          _finishCurrentRequest();
           return;
         }
         if (courseUsername == null || courseUsername.trim().isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('请先登录账号，再导入课表')),
           );
-          ReceiveSharingIntent.instance.reset();
-          _isProcessing = false;
+          _finishCurrentRequest();
           return;
         }
         targetSemester =
             await CourseImportPreflight.selectTargetSemester(context);
         if (!context.mounted) {
-          _isProcessing = false;
+          _finishCurrentRequest();
           return;
         }
       } catch (e) {
@@ -208,18 +281,16 @@ class ExternalShareHandler {
             SnackBar(content: Text('导入准备失败，请先检查登录和学期设置: $e')),
           );
         }
-        ReceiveSharingIntent.instance.reset();
-        _isProcessing = false;
+        _finishCurrentRequest();
         return;
       }
       if (targetSemester == null) {
-        ReceiveSharingIntent.instance.reset();
-        _isProcessing = false;
+        _finishCurrentRequest();
         return;
       }
     }
     if (!context.mounted) {
-      _isProcessing = false;
+      _finishCurrentRequest();
       return;
     }
 
@@ -278,9 +349,8 @@ class ExternalShareHandler {
         },
       ));
     } catch (error) {
-      ReceiveSharingIntent.instance.reset();
-      _isProcessing = false;
       statusNotifier.dispose();
+      _finishCurrentRequest();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('无法打开分享处理窗口: $error')),
@@ -314,16 +384,12 @@ class ExternalShareHandler {
         statusNotifier.value = "分享内容已经处理过";
         await Future.delayed(const Duration(milliseconds: 600));
         closeDialogSafely();
-        ReceiveSharingIntent.instance.reset();
-        _isProcessing = false;
         return;
       }
       if (!_processingFileKeys.add(fileKey)) {
         statusNotifier.value = "分享内容正在处理中";
         await Future.delayed(const Duration(milliseconds: 600));
         closeDialogSafely();
-        ReceiveSharingIntent.instance.reset();
-        _isProcessing = false;
         return;
       }
       claimedFileKey = fileKey;
@@ -679,12 +745,11 @@ class ExternalShareHandler {
       await Future.delayed(const Duration(seconds: 2));
       closeDialogSafely();
     } finally {
-      ReceiveSharingIntent.instance.reset();
       if (claimedFileKey != null) {
         _processingFileKeys.remove(claimedFileKey);
       }
-      _isProcessing = false;
       statusNotifier.dispose();
+      _finishCurrentRequest();
     }
   }
 
@@ -861,7 +926,12 @@ class ExternalShareHandler {
   /// 等待分享扩展完成文件复制。部分来源会先发送 intent，再异步写入
   /// 缓存文件；直接 File.length/readAsBytes 会把这类正常分享误判成失败。
   static Future<File> _waitForReadableFile(String path) async {
-    final file = File(path);
+    final normalizedPath = _normalizeSharedFilePath(path);
+    final uri = Uri.tryParse(normalizedPath);
+    if (uri?.scheme.toLowerCase() == 'content') {
+      throw Exception('Android 分享文件仍是 content URI，暂时无法读取，请重新分享');
+    }
+    final file = File(normalizedPath);
     int? previousSize;
     var stableReads = 0;
     Object? lastError;
@@ -905,6 +975,17 @@ class ExternalShareHandler {
     return sourcePath;
   }
 
+  /// receive_sharing_intent normally copies Android content URIs to its cache
+  /// directory before they reach Dart.  Some iOS/share-extension versions can
+  /// still return a file URI, which File(path) does not understand.
+  static String _normalizeSharedFilePath(String path) {
+    final uri = Uri.tryParse(path);
+    if (uri?.scheme.toLowerCase() == 'file') {
+      return File.fromUri(uri!).path;
+    }
+    return path;
+  }
+
   static Future<String> _safeReadFile(File file) async {
     try {
       return await file.readAsString();
@@ -921,7 +1002,8 @@ class ExternalShareHandler {
   /// getInitialMedia/getMediaStream 两条回调稳定去重。
   static Future<String> _generateFileKey(String filePath) async {
     try {
-      final file = File(filePath);
+      final normalizedPath = _normalizeSharedFilePath(filePath);
+      final file = File(normalizedPath);
       if (!await file.exists()) return 'path:$filePath';
       // Stream the digest instead of loading a potentially large MHTML/file
       // share into memory. A full read here used to leave the UI on the
