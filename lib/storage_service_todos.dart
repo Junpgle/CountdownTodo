@@ -114,6 +114,7 @@ mixin _StorageTodos on _StorageServiceBase {
         includeDeleted: true,
         uuids: dedupeList.map((e) => e.id).toList(),
         includeConflictData: true,
+        databaseOverride: db,
       );
       for (var row in existing) {
         existingItemsMap[row['uuid']] = row;
@@ -127,6 +128,7 @@ mixin _StorageTodos on _StorageServiceBase {
       final existing = await DatabaseHelper.instance.getTodoMaps(
         includeDeleted: true,
         uuids: dedupeList.map((item) => item.id).toList(),
+        databaseOverride: db,
       );
       existingScheduleItemsMap = {
         for (final row in existing) row['uuid'].toString(): row,
@@ -192,6 +194,13 @@ mixin _StorageTodos on _StorageServiceBase {
           //  '🧪 [SyncDiag][saveTodos-sync] preserving ${existingCompletionMap.length} protected completions (force-flush=${_forceFlushProtectedUuids.length}, pending-oplog=${_pendingSyncOplogUuids.length})');
         }
       }
+    }
+
+    // databaseForUser() rejects an account switch before the handle is
+    // captured. Re-check before committing after the reads above so a stale
+    // save fails closed instead of writing after a logout/login transition.
+    if (username.trim() != 'default') {
+      await UserSessionStorage.ensureCurrentUsername(username);
     }
 
     // 🚀 Batch 极速批量写入

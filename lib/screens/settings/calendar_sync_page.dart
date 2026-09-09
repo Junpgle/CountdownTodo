@@ -43,6 +43,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     if (AppPlatform.isWeb) {
       setState(() {
         _loading = true;
@@ -52,6 +53,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
       try {
         final username = await StorageService.getCurrentUsername();
         if (username == null || username.isEmpty) {
+          if (!mounted) return;
           setState(() {
             _loading = false;
             _error = '请先登录后再导出日历';
@@ -60,6 +62,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
         }
 
         final entries = await CalendarSyncService.loadEntries(username);
+        if (!mounted) return;
         setState(() {
           _username = username;
           _entries = entries;
@@ -71,6 +74,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
           _loading = false;
         });
       } catch (e) {
+        if (!mounted) return;
         setState(() {
           _loading = false;
           _error = '加载失败：$e';
@@ -100,6 +104,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
         granted = result.granted;
       }
       if (!granted) {
+        if (!mounted) return;
         setState(() {
           _loading = false;
           _error = '需要日历读写权限后才能同步';
@@ -109,6 +114,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
 
       final username = await StorageService.getCurrentUsername();
       if (username == null || username.isEmpty) {
+        if (!mounted) return;
         setState(() {
           _loading = false;
           _error = '请先登录后再同步日历';
@@ -123,6 +129,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
       final entries = results[0] as List<CalendarSyncEntry>;
       final calendars = results[1] as List<Map<String, dynamic>>;
 
+      if (!mounted) return;
       setState(() {
         _username = username;
         _entries = entries;
@@ -136,6 +143,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _loading = false;
         _error = '加载失败：$e';

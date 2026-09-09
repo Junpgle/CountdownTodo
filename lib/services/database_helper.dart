@@ -2527,8 +2527,12 @@ class DatabaseHelper {
     int? limit,
     bool inlineTextColumns = false,
     bool includeConflictData = false,
+    Database? databaseOverride,
   }) async {
-    final db = await instance.database;
+    // Callers that already captured a user-scoped database must keep using
+    // that handle.  Re-opening the current database here creates a window in
+    // which an account switch can make the read come from another user.
+    final db = databaseOverride ?? await instance.database;
     final prefs = await SharedPreferences.getInstance();
     final int userId = prefs.getInt('current_user_id') ?? 0;
 

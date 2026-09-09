@@ -54,6 +54,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   }
 
   Future<void> _loadSettings() async {
+    if (!mounted) return;
     final liveEnabled =
         await AppSettingsStorage.isLiveActivityNotificationEnabled();
     final normalEnabled =
@@ -79,6 +80,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         await AppSettingsStorage.isFinanceBudgetAlertEnabled();
     final reminderMinutes = await AppSettingsStorage.getCourseReminderMinutes();
 
+    if (!mounted) return;
     setState(() {
       _liveActivityEnabled = liveEnabled;
       _normalEnabled = normalEnabled;
@@ -95,11 +97,13 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       _courseReminderMinutes = reminderMinutes;
     });
 
+    if (!mounted) return;
     final username = await StorageService.getLoginSession();
     if (username != null) {
       final groups = await StorageService.getTodoGroups(username);
       final catReminders =
           await AppSettingsStorage.getCategoryReminderMinutes(username);
+      if (!mounted) return;
       setState(() {
         _username = username;
         _todoGroups = groups.where((g) => !g.isDeleted).toList();
@@ -107,7 +111,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       });
     }
 
-    if (AppPlatform.isWeb) {
+    if (mounted && AppPlatform.isWeb) {
       await _refreshWebPermission();
     }
   }

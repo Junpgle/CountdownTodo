@@ -116,9 +116,16 @@ class ReminderScheduleService {
       final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
       final isSpecialTodo = todoType != 'default';
 
-      // 确定参考时间点（优先开始时间，其次截止时间）
+      // 日期待办没有“开始时刻”。旧数据会把它表示为当天 00:00 到
+      // 23:59（或次日 00:00），不能直接拿 createdDate 做提前提醒，
+      // 否则默认提前几分钟会在前一天晚上触发。
       DateTime? refTime;
-      if (t.createdDate != null && t.createdDate! > 0) {
+      DateTime? dateOnlyDayStart;
+      if (t.isDateOnly) {
+        final date = t.effectiveStartTime;
+        dateOnlyDayStart = DateTime(date.year, date.month, date.day);
+        refTime = DateTime(date.year, date.month, date.day, 23, 59);
+      } else if (t.createdDate != null && t.createdDate! > 0) {
         refTime =
             DateTime.fromMillisecondsSinceEpoch(t.createdDate!, isUtc: true)
                 .toLocal();
@@ -130,7 +137,11 @@ class ReminderScheduleService {
 
       // 提醒提前量
       final advance = t.reminderMinutes ?? _todoAdvanceMinutes;
-      final triggerAt = refTime.subtract(Duration(minutes: advance));
+      final requestedTriggerAt = refTime.subtract(Duration(minutes: advance));
+      final triggerAt = dateOnlyDayStart != null &&
+              requestedTriggerAt.isBefore(dateOnlyDayStart)
+          ? dateOnlyDayStart
+          : requestedTriggerAt;
 
       // 检查是否在调度窗口内 (未来 7 天)
       if (shouldSchedulePreStart(

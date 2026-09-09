@@ -286,6 +286,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
 
   Future<void> _loadConfig() async {
     final config = await StorageService.getHomeTextConfig();
+    if (!mounted) return;
     setState(() {
       _usernameFormatController.text =
           config['usernameFormat'] as String? ?? '{name}';

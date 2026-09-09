@@ -488,7 +488,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         StorageService.initTheme(),
         EnvironmentService.init(),
         StorageService.getLoginSession(),
-        StorageService.isPrivacyPolicyUpToDate(),
+        // A policy refresh must finish before deciding that the stored
+        // agreement is current.  If the network is unavailable, fail closed
+        // and show the policy instead of silently continuing with stale data.
+        StorageService.isPrivacyPolicyUpToDate().timeout(
+          const Duration(seconds: 4),
+          onTimeout: () => false,
+        ),
         StorageService.isPrivacyPolicyAgreed(),
         FeatureGuideScreen.shouldShow()
             .timeout(const Duration(seconds: 2), onTimeout: () => false),

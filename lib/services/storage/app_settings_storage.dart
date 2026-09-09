@@ -225,15 +225,16 @@ class AppSettingsStorage {
     final cacheTime = prefs.getInt(_privacyCacheTime) ?? 0;
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    if (cachedVersion == null ||
-        now - cacheTime >= _privacyCacheDuration.inMilliseconds) {
-      _getPrivacyPolicyCurrentVersion();
-    }
+    final String currentVersion = cachedVersion != null &&
+            now - cacheTime < _privacyCacheDuration.inMilliseconds
+        ? cachedVersion
+        : await _getPrivacyPolicyCurrentVersion();
 
-    if (cachedVersion != null) {
-      return _compareDates(storedDate, cachedVersion) >= 0;
-    }
-    return true;
+    // Always compare against the version returned by the refresh.  The old
+    // implementation started the refresh without awaiting it and then
+    // compared the stale local variable, allowing one full app launch to
+    // bypass a newly published policy.
+    return _compareDates(storedDate, currentVersion) >= 0;
   }
 
   static Future<String> _getPrivacyPolicyCurrentVersion() async {

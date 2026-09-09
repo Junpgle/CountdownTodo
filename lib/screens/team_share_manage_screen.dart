@@ -26,14 +26,17 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
   }
 
   Future<void> _loadShares() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final sharesData = await ApiService.fetchTeamShares(widget.team.uuid);
+      if (!mounted) return;
       setState(() {
         _shares = sharesData.map((s) => TeamShare.fromJson(s)).toList();
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }
