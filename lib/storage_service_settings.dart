@@ -128,13 +128,16 @@ mixin _StorageSettings on _StorageServiceBase {
 
   Future<void> saveServerChoice(String choice) async {
     final prefs = await StorageService.prefs;
-    await prefs.setString(keyServerChoice, choice);
-    ApiService.setServerChoice(choice);
+    final normalizedChoice = ApiService.normalizeServerChoice(choice);
+    await prefs.setString(keyServerChoice, normalizedChoice);
+    ApiService.setServerChoice(normalizedChoice);
   }
 
   Future<String> getServerChoice() async {
     final prefs = await StorageService.prefs;
-    return prefs.getString(keyServerChoice) ?? 'aliyun';
+    return ApiService.normalizeServerChoice(
+      prefs.getString(keyServerChoice),
+    );
   }
 
   Future<void> saveHomeTextConfig(Map<String, dynamic> config) async {

@@ -56,8 +56,10 @@ class EnvironmentService {
     if (_turnstileVerifyPageUrl.isNotEmpty) return _turnstileVerifyPageUrl;
     // 根据环境选择正确的后端地址（Express 服务器，不是 CF Worker）
     if (_isTest) return '${ApiService.aliyunTestUrl}/turnstile';
-    // 生产环境：统一走 Cloudflare Zero Trust（HTTPS），避免原生平台 HTTP 被 ATS 拦截
-    return 'https://api-cdt.junpgle.me/turnstile';
+    // 生产环境跟随当前线路。选择直连时，原生平台允许访问阿里云 HTTP
+    // 地址；选择中转时使用 HTTPS，避免在不可信网络中明文传输验证页面。
+    final base = ApiService.effectiveBaseUrl.replaceFirst(RegExp(r'/$'), '');
+    return '$base/turnstile';
   }
 
   /// 启动时初始化

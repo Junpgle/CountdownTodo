@@ -7,15 +7,33 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String cloudflareUrl = 'https://mathquiz.junpgle.me';
-  static const String webAliyunProxyUrl = 'https://api-cdt.junpgle.me';
+  /// Persisted values for the production API route selector.
+  ///
+  /// Keep these values stable because older releases store them in
+  /// SharedPreferences.
+  static const String serverChoiceAliyunDirect = 'aliyun';
+  static const String serverChoiceCloudflare = 'cloudflare';
+
+  /// Current Aliyun production API endpoints.
+  static const String aliyunCloudflareUrl = 'https://api-cdt.junpgle.me';
   static const String aliyunProdUrl = 'http://101.200.13.100:8082';
   static const String aliyunTestUrl = 'http://101.200.13.100:8084';
+
+  /// The retired Cloudflare Worker is kept only for the historical migration
+  /// flow. It must not be selected as the current app API endpoint.
+  static const String legacyCloudflareUrl = 'https://mathquiz.junpgle.me';
+
+  /// Backwards-compatible name used by the legacy migration code and tests.
+  static const String cloudflareUrl = legacyCloudflareUrl;
+
+  /// Web must use the HTTPS Zero Trust route because browsers cannot safely
+  /// call the HTTP origin from an HTTPS page.
+  static const String webAliyunProxyUrl = aliyunCloudflareUrl;
 
   // Web must never start against the retired Cloudflare Worker. Share pages
   // intentionally skip the normal app initialization sequence, so the
   // default must already be the current API proxy before the first request.
-  static String baseUrl = kIsWeb ? webAliyunProxyUrl : cloudflareUrl;
+  static String baseUrl = kIsWeb ? aliyunCloudflareUrl : aliyunProdUrl;
   static String? _baseUrlOverride;
 
   // 🛡️ 全局使用的、跳过 SSL 证书验证的 HTTP 客户端
@@ -46,20 +64,24 @@ class ApiService {
     _isLocked = true;
   }
 
+  static String normalizeServerChoice(String? choice) {
+    return choice == serverChoiceCloudflare
+        ? serverChoiceCloudflare
+        : serverChoiceAliyunDirect;
+  }
+
   // 初始化设置
   static void setServerChoice(String choice) {
     if (_isLocked) return; // 🛡️ 如果环境已锁定（如测试版），禁止通过设置更改地址
 
     if (kIsWeb) {
-      baseUrl = webAliyunProxyUrl;
+      baseUrl = aliyunCloudflareUrl;
       return;
     }
 
-    if (choice == 'aliyun') {
-      baseUrl = aliyunProdUrl;
-    } else {
-      baseUrl = cloudflareUrl;
-    }
+    baseUrl = normalizeServerChoice(choice) == serverChoiceCloudflare
+        ? aliyunCloudflareUrl
+        : aliyunProdUrl;
   }
 
   // --- Migration Tool Support ---
@@ -77,15 +99,18 @@ class ApiService {
       kIsWeb ? webAliyunProxyUrl : (_baseUrlOverride ?? baseUrl);
   static String get effectiveBaseUrl => _effectiveBaseUrl;
 
-  /// Stable namespace for sync watermarks. Test/custom endpoints must not
-  /// share the production or Cloudflare watermark.
+  /// Stable namespace for sync watermarks. The current direct and Cloudflare
+  /// routes share the Aliyun production namespace; test, legacy, and custom
+  /// endpoints remain isolated.
   static String get syncServerKey {
     final normalized = _effectiveBaseUrl.replaceFirst(RegExp(r'/$'), '');
-    if (normalized == aliyunProdUrl) return 'aliyun';
-    if (normalized == aliyunTestUrl) return 'aliyun_test';
-    if (normalized == cloudflareUrl || normalized == webAliyunProxyUrl) {
-      return 'cf';
+    // Direct HTTP and Cloudflare HTTPS both reach the same Aliyun production
+    // database, so switching routes must not create a second sync cursor.
+    if (normalized == aliyunProdUrl || normalized == aliyunCloudflareUrl) {
+      return 'aliyun';
     }
+    if (normalized == aliyunTestUrl) return 'aliyun_test';
+    if (normalized == legacyCloudflareUrl) return 'cf';
     return 'custom_${base64Url.encode(utf8.encode(normalized)).replaceAll('=', '')}';
   }
 
