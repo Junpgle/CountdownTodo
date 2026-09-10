@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../services/api_service.dart';
 import '../../../storage_service.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/page_transitions.dart';
@@ -31,7 +32,7 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
   bool _isLoading = true;
   int _syncInterval = 0;
   bool _conflictDetectionEnabled = false;
-  String _serverChoice = 'aliyun';
+  String _serverChoice = ApiService.serverChoiceAliyunDirect;
   int _llmRetryCount = 3;
 
   @override
@@ -151,7 +152,7 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
                       Icon(Icons.cloud_queue, color: colorScheme.secondary),
                   title: const Text('云端数据接口线路'),
                   subtitle: const Text(
-                    '网页版固定通过 Cloudflare Zero Trust 代理访问 API',
+                    '网页版固定通过 Cloudflare HTTPS 中转访问 API',
                     style: TextStyle(fontSize: 12),
                   ),
                 )
@@ -160,9 +161,9 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
                       Icon(Icons.cloud_queue, color: colorScheme.secondary),
                   title: const Text('云端数据接口线路'),
                   subtitle: Text(
-                    _serverChoice == 'cloudflare'
-                        ? '当前: Cloudflare'
-                        : '当前: 阿里云ECS (更快)',
+                    _serverChoice == ApiService.serverChoiceCloudflare
+                        ? '当前：Cloudflare 中转（HTTPS）'
+                        : '当前：阿里云直连（HTTP）',
                     style: const TextStyle(fontSize: 12),
                   ),
                   trailing: const Icon(Icons.chevron_right),

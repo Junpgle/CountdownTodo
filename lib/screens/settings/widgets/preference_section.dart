@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../services/api_service.dart';
 import '../../../services/llm_service.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/page_transitions.dart';
@@ -123,9 +124,9 @@ class PreferenceSection extends StatelessWidget {
             leading: const Icon(Icons.cloud_queue),
             title: const Text('云端数据接口线路'),
             subtitle: Text(
-              serverChoice == 'cloudflare'
-                  ? '当前: Cloudflare (2026/06/01 即将禁用)'
-                  : '当前: 阿里云ECS (更快)',
+              serverChoice == ApiService.serverChoiceCloudflare
+                  ? '当前：Cloudflare 中转（HTTPS）'
+                  : '当前：阿里云直连（HTTP）',
               style: const TextStyle(fontSize: 12),
             ),
             trailing: const Icon(Icons.chevron_right),

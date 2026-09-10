@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -386,26 +387,36 @@ class _ServerSelector extends StatelessWidget {
         ),
         const SizedBox(width: 7),
         Text('服务器：', style: TextStyle(fontSize: 12, color: t.textHint)),
-        DropdownButton<String>(
-          value: value,
-          underline: const SizedBox(),
-          dropdownColor: t.dropdownBg,
-          icon: Icon(Icons.keyboard_arrow_down_rounded,
-              size: 16, color: t.textHint),
-          style: TextStyle(
-              color: t.primaryLt, fontSize: 12, fontWeight: FontWeight.w500),
-          items: [
-            DropdownMenuItem(
-                value: 'cloudflare',
-                child: Text('Cloudflare（即将禁用）',
-                    style:
-                        TextStyle(color: t.textHint.withValues(alpha: 0.55)))),
-            DropdownMenuItem(
-                value: 'aliyun',
-                child: Text('阿里云 ECS', style: TextStyle(color: t.textSec))),
-          ],
-          onChanged: onChanged,
-        ),
+        if (kIsWeb)
+          Text(
+            'Cloudflare 中转（HTTPS）',
+            style: TextStyle(
+              color: t.textSec,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          )
+        else
+          DropdownButton<String>(
+            value: value,
+            underline: const SizedBox(),
+            dropdownColor: t.dropdownBg,
+            icon: Icon(Icons.keyboard_arrow_down_rounded,
+                size: 16, color: t.textHint),
+            style: TextStyle(
+                color: t.primaryLt, fontSize: 12, fontWeight: FontWeight.w500),
+            items: [
+              DropdownMenuItem(
+                  value: ApiService.serverChoiceCloudflare,
+                  child: Text('Cloudflare 中转（HTTPS）',
+                      style: TextStyle(color: t.textSec))),
+              DropdownMenuItem(
+                  value: ApiService.serverChoiceAliyunDirect,
+                  child:
+                      Text('阿里云直连（HTTP）', style: TextStyle(color: t.textSec))),
+            ],
+            onChanged: onChanged,
+          ),
       ],
     );
   }
@@ -664,16 +675,13 @@ class _LoginScreenState extends State<LoginScreen>
   bool _isRegisterMode = false;
   bool _awaitingVerification = false;
   String? _legacyLocalUser;
-  String _serverChoice = 'aliyun';
+  String _serverChoice = ApiService.serverChoiceAliyunDirect;
   bool _privacyAgreed = false;
   int _forgotPasswordStep = 0;
   final _resetEmailCtrl = TextEditingController();
   final _resetCodeCtrl = TextEditingController();
   final _newPassCtrl = TextEditingController();
   final _confirmPassCtrl = TextEditingController();
-  static final DateTime _cloudflareDisableDate = DateTime(2026, 6, 1);
-  static const String _cloudflareDisabledMessage =
-      '该服务器将于2026/06/01禁用，请及时迁移到阿里云服务器';
   int _resetCodeCooldown = 0;
   Timer? _cooldownTimer;
 
@@ -725,28 +733,17 @@ class _LoginScreenState extends State<LoginScreen>
   // ── Persistence helpers ──────────────────────
 
   void _loadServerChoice() async {
-    final choice = await StorageService.getServerChoice();
-    if (choice == 'cloudflare' &&
-        !DateTime.now().isBefore(_cloudflareDisableDate)) {
-      ApiService.setServerChoice('aliyun');
-      await StorageService.saveServerChoice('aliyun');
-      if (mounted) setState(() => _serverChoice = 'aliyun');
-      return;
-    }
+    final choice = ApiService.normalizeServerChoice(
+      await StorageService.getServerChoice(),
+    );
     if (mounted) setState(() => _serverChoice = choice);
   }
 
   void _onServerChoiceChanged(String? val) async {
     if (val == null) return;
-    if (val == 'cloudflare') {
-      _snack(_cloudflareDisabledMessage);
-      if (!DateTime.now().isBefore(_cloudflareDisableDate)) {
-        return;
-      }
-    }
-    setState(() => _serverChoice = val);
-    ApiService.setServerChoice(val);
-    await StorageService.saveServerChoice(val);
+    final choice = ApiService.normalizeServerChoice(val);
+    setState(() => _serverChoice = choice);
+    await StorageService.saveServerChoice(choice);
   }
 
   void _checkLocalLegacyAccount() async {

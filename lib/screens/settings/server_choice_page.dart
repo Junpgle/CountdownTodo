@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import '../../storage_service.dart';
-import '../login_screen.dart';
-import '../../utils/page_transitions.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/api_service.dart';
+import '../../services/background_notification_service.dart';
 import '../../services/minor_mode_policy.dart';
 import '../../services/minor_mode_service.dart';
-import '../../services/reminder_schedule_service.dart';
+import '../../services/pomodoro_sync_service.dart';
+import '../../storage_service.dart';
 import '../../widgets/floating_glass_control.dart';
 
 class ServerChoicePage extends StatefulWidget {
@@ -23,21 +27,18 @@ class ServerChoicePage extends StatefulWidget {
 
 class _ServerChoicePageState extends State<ServerChoicePage> {
   late String _selectedServer;
-  static final DateTime _cloudflareDisableDate = DateTime(2026, 6, 1);
-  static const String _cloudflareDisabledMessage =
-      '该服务器将于2026/06/01禁用，请及时迁移到阿里云服务器';
-
-  bool get _isCloudflareDisabled =>
-      !DateTime.now().isBefore(_cloudflareDisableDate);
 
   @override
   void initState() {
     super.initState();
-    _selectedServer = widget.initialServerChoice;
+    _selectedServer = ApiService.normalizeServerChoice(
+      widget.initialServerChoice,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
@@ -52,7 +53,7 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
         child: ListView(
           padding: EdgeInsets.fromLTRB(
             16,
-            floatingGlassSettingsContentTopInset(context, extra: 16),
+            floatingGlassSettingsContentTopInset(context),
             16,
             16,
           ),
@@ -60,7 +61,8 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
             Card(
               elevation: 2,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -68,62 +70,41 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.cloud_queue,
-                            size: 20,
-                            color: Theme.of(context).colorScheme.primary),
+                        Icon(
+                          Icons.cloud_queue,
+                          size: 20,
+                          color: colorScheme.primary,
+                        ),
                         const SizedBox(width: 8),
                         Text(
-                          '选择服务器',
+                          '选择接口线路',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.primary,
+                            color: colorScheme.primary,
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.orange[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange[200]!),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.info_outline,
-                              size: 18, color: Colors.orange[700]),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '切换服务器后需要重新登录，且不同服务器的登录状态不互通',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.orange[800],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    _buildRouteNotice(),
                     const SizedBox(height: 16),
                     _buildServerOption(
-                      value: 'cloudflare',
-                      title: 'Cloudflare（即将禁用）',
-                      subtitle: _isCloudflareDisabled
-                          ? '已禁用，请使用阿里云ECS'
-                          : '2026/06/01 前仍可登录使用',
-                      icon: Icons.shield_outlined,
+                      value: ApiService.serverChoiceAliyunDirect,
+                      title: '阿里云直连（HTTP）',
+                      endpoint: ApiService.aliyunProdUrl,
+                      description: '优点：链路更短，通常延迟更低；不依赖 Cloudflare 中转。\n'
+                          '注意：客户端到服务器之间不是加密连接，不建议在公共 Wi-Fi 等不可信网络下使用。',
+                      icon: Icons.speed_outlined,
                     ),
                     const SizedBox(height: 10),
-                    _buildCloudflareWarning(),
-                    const SizedBox(height: 8),
                     _buildServerOption(
-                      value: 'aliyun',
-                      title: '阿里云ECS',
-                      subtitle: '更快',
-                      icon: Icons.speed_outlined,
+                      value: ApiService.serverChoiceCloudflare,
+                      title: 'Cloudflare 中转（HTTPS）',
+                      endpoint: ApiService.aliyunCloudflareUrl,
+                      description: '优点：客户端到中转入口使用 HTTPS，兼容性和公共网络安全性更好。\n'
+                          '不足：多经过一层中转，可能增加少量延迟，并依赖 Cloudflare 线路与代理配置。',
+                      icon: Icons.shield_outlined,
                     ),
                   ],
                 ),
@@ -134,7 +115,7 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
               width: double.infinity,
               height: 48,
               child: FilledButton.icon(
-                onPressed: () => _handleServerChange(),
+                onPressed: _handleServerChange,
                 icon: const Icon(Icons.save),
                 label: const Text('保存设置'),
               ),
@@ -145,54 +126,34 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
     );
   }
 
-  Widget _buildCloudflareWarning() {
+  Widget _buildRouteNotice() {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.red.shade300, width: 1.2),
+        color: colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: colorScheme.outline.withValues(alpha: 0.45),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.warning_amber_rounded,
-              color: Colors.red.shade700, size: 24),
-          const SizedBox(width: 10),
+          Icon(
+            Icons.info_outline,
+            size: 18,
+            color: colorScheme.onSecondaryContainer,
+          ),
+          const SizedBox(width: 8),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Cloudflare 服务器将于 2026/06/01 禁用',
-                  style: TextStyle(
-                    color: Colors.red.shade800,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '由于开发精力有限，后续将不再同时维护 Cloudflare 与阿里云两套 API 服务。当前及未来的新功能都会优先基于阿里云服务器开发与适配，因此 Cloudflare 线路可能出现不稳定、功能缺失或无法正常使用的情况。',
-                  style: TextStyle(
-                    color: colorScheme.onSurface.withValues(alpha: 0.78),
-                    fontSize: 12,
-                    height: 1.35,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '为保证应用体验和代码维护质量，后续版本将逐步移除 App 中与 Cloudflare 服务器相关的旧逻辑。建议尽快迁移并使用阿里云服务器。',
-                  style: TextStyle(
-                    color: Colors.red.shade800,
-                    fontSize: 12,
-                    height: 1.35,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+            child: Text(
+              '两条线路指向同一套阿里云生产数据。切换不会迁移或删除数据，当前登录状态保持不变；实时同步通道会在保存后自动重连。',
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onSecondaryContainer,
+                height: 1.35,
+              ),
             ),
           ),
         ],
@@ -203,53 +164,49 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
   Widget _buildServerOption({
     required String value,
     required String title,
-    required String subtitle,
+    required String endpoint,
+    required String description,
     required IconData icon,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     final isSelected = _selectedServer == value;
-    final isCloudflare = value == 'cloudflare';
-    final isDisabled = isCloudflare && _isCloudflareDisabled;
-    final baseColor = isDisabled ? Colors.grey[400] : Colors.grey[600];
+    final titleColor = isSelected ? colorScheme.primary : colorScheme.onSurface;
+    final iconColor =
+        isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant;
+
     return InkWell(
-      onTap: () {
-        if (isCloudflare) {
-          _showCloudflareNotice();
-          if (isDisabled) return;
-        }
-        setState(() => _selectedServer = value);
-      },
+      onTap: () => setState(() => _selectedServer = value),
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           border: Border.all(
-            color: isSelected
-                ? Theme.of(context).colorScheme.primary
-                : Colors.grey[300]!,
+            color:
+                isSelected ? colorScheme.primary : colorScheme.outlineVariant,
             width: isSelected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(12),
           color: isSelected
-              ? Theme.of(context)
-                  .colorScheme
-                  .primaryContainer
-                  .withValues(alpha: 0.3)
-              : null,
+              ? colorScheme.primaryContainer.withValues(alpha: 0.3)
+              : colorScheme.surface,
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-              color: isSelected
-                  ? Theme.of(context).colorScheme.primary
-                  : baseColor,
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Icon(
+                isSelected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_off,
+                color: iconColor,
+              ),
             ),
             const SizedBox(width: 12),
-            Icon(icon,
-                size: 24,
-                color: isSelected
-                    ? Theme.of(context).colorScheme.primary
-                    : baseColor),
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Icon(icon, size: 24, color: iconColor),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -260,24 +217,34 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
-                      color: isSelected
-                          ? Theme.of(context).colorScheme.primary
-                          : (isCloudflare ? Colors.grey[600] : Colors.black87),
+                      color: titleColor,
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  SelectableText(
+                    endpoint,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: colorScheme.onSurfaceVariant,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Text(
-                    subtitle,
+                    description,
                     style: TextStyle(
                       fontSize: 12,
-                      color: isCloudflare ? Colors.grey[500] : Colors.grey[600],
+                      height: 1.4,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
               ),
             ),
-            if (isSelected)
-              Icon(Icons.check_circle,
-                  color: Theme.of(context).colorScheme.primary),
+            if (isSelected) ...[
+              const SizedBox(width: 8),
+              Icon(Icons.check_circle, color: colorScheme.primary),
+            ],
           ],
         ),
       ),
@@ -285,67 +252,90 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
   }
 
   Future<void> _handleServerChange() async {
-    if (_selectedServer == 'cloudflare') {
-      _showCloudflareNotice();
-      if (_isCloudflareDisabled) return;
-    }
-
-    if (_selectedServer == widget.initialServerChoice) {
-      if (mounted) {
-        Navigator.pop(context);
-      }
+    final currentChoice = ApiService.normalizeServerChoice(
+      widget.initialServerChoice,
+    );
+    if (_selectedServer == currentChoice) {
+      if (mounted) Navigator.pop(context);
       return;
     }
 
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('切换服务器'),
-        content: const Text('不同服务器的登录凭证不互通，切换后需要重新登录。\n\n确定要切换吗？'),
+        title: const Text('切换接口线路'),
+        content: const Text(
+          '两条线路使用同一套阿里云账户和数据。确定切换吗？保存后当前请求会使用新线路，实时同步会自动重连。',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('切换并重新登录')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('切换线路'),
+          ),
         ],
       ),
     );
 
-    if (confirm == true && mounted) {
-      final authorized = await MinorModeService.instance.authorizeAction(
-        MinorModeAction.sensitive,
-      );
-      if (!authorized) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                MinorModeService.instance.authorizationFailureMessage(
-                  MinorModeAction.sensitive,
-                ),
+    if (confirm != true || !mounted) return;
+
+    final authorized = await MinorModeService.instance.authorizeAction(
+      MinorModeAction.sensitive,
+    );
+    if (!authorized) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              MinorModeService.instance.authorizationFailureMessage(
+                MinorModeAction.sensitive,
               ),
             ),
-          );
-        }
-        return;
-      }
-      await StorageService.saveServerChoice(_selectedServer);
-      await ReminderScheduleService.clearScheduledReminders();
-      await StorageService.clearLoginSession();
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          PageTransitions.fadeThrough(const LoginScreen()),
-          (route) => false,
+          ),
         );
       }
+      return;
+    }
+
+    await StorageService.saveServerChoice(_selectedServer);
+    unawaited(PomodoroSyncService.instance.manualReconnect());
+    unawaited(_refreshBackgroundNotificationPoll());
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已切换到 $_selectedRouteTitle')),
+      );
+      Navigator.pop(context);
     }
   }
 
-  void _showCloudflareNotice() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text(_cloudflareDisabledMessage)),
-    );
+  String get _selectedRouteTitle =>
+      _selectedServer == ApiService.serverChoiceCloudflare
+          ? 'Cloudflare HTTPS 中转'
+          : '阿里云 HTTP 直连';
+
+  Future<void> _refreshBackgroundNotificationPoll() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getInt('current_user_id');
+      var token = ApiService.getToken();
+      if (token == null || token.isEmpty) {
+        token = await StorageService.getAuthToken();
+      }
+      if (userId == null || userId <= 0 || token == null || token.isEmpty) {
+        return;
+      }
+      await BackgroundNotificationService.configureNotificationPoll(
+        userId: userId,
+        token: token,
+        apiBaseUrl: ApiService.effectiveBaseUrl,
+      );
+    } catch (_) {
+      // The in-app route is already updated; retry background setup later on
+      // the next login/dashboard lifecycle if the native channel is unavailable.
+    }
   }
 }

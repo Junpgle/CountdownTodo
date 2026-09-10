@@ -100,8 +100,8 @@ class SearchService {
     ),
     SearchResult(
       id: 'setting_server_choice',
-      title: '云端线路选择 (阿里云/Cloudflare)',
-      subtitle: '切换数据同步服务器',
+      title: '云端线路选择（阿里云直连/Cloudflare 中转）',
+      subtitle: '切换阿里云 HTTP 直连或 HTTPS 中转线路',
       icon: Icons.cloud_queue,
       type: SearchResultType.setting,
       breadcrumb: '设置 > 账号',
