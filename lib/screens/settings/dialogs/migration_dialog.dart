@@ -111,7 +111,8 @@ class _MigrationDialogState extends State<MigrationDialog> {
                       if (!context.mounted) return;
                       await MigrationService.runMigration(
                           context: context,
-                          oldUrl: ApiService.cloudflareUrl, // D1 URL
+                          oldUrl:
+                              ApiService.legacyCloudflareUrl, // retired D1 URL
                           newUrl: ApiService.aliyunProdUrl, // ECS URL
                           email: emailCtrl.text,
                           password: passCtrl.text,
