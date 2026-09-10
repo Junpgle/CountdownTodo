@@ -24,6 +24,8 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     _syncPowerSavePulse();
     _pageController = PageController(initialPage: 0);
     DeviceCalendarReadService.revision.addListener(_reloadDeviceCalendar);
+    StorageService.scopedDataRefreshNotifier
+        .addListener(_reloadFixedSchedulesOnRefresh);
     _loadData();
   }
 
@@ -34,6 +36,8 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     _courseExpandCtrl.dispose();
     _pageController.dispose();
     DeviceCalendarReadService.revision.removeListener(_reloadDeviceCalendar);
+    StorageService.scopedDataRefreshNotifier
+        .removeListener(_reloadFixedSchedulesOnRefresh);
     super.dispose();
   }
 
@@ -75,6 +79,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
       StorageService.getSemesterStart(),
       StorageService.getSemesters(), // 加载学期列表
       StorageService.getActiveSemesterId(),
+      StorageService.getFixedSchedules(widget.username),
     ]);
 
     // 🚀 核心优化：等待 300ms 让进入页面的过渡动画彻底完成
@@ -130,6 +135,10 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     // 使用当前日期所在的学期，最后才回退到最近的学期。
     _allPlanBlocks =
         (results[5] as List<TodoPlanBlock>).where((p) => !p.isDeleted).toList();
+    _allFixedSchedules = (results[9] as List<FixedScheduleItem>)
+        .where((item) =>
+            !item.isDeleted && item.status != FixedScheduleStatus.cancelled)
+        .toList();
 
     if (_semesters.isNotEmpty) {
       SemesterInfo? anchorSemester;
@@ -186,6 +195,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     }
     _updateWeekTodos();
     _updateWeekTimeLogsPomodorosAndPlans();
+    _updateWeekFixedSchedules();
     await _loadDeviceCalendarEventsForCurrentView();
     _checkCollapsedSlots();
 
@@ -199,6 +209,27 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
         _checkCoachMarks();
       });
     }
+  }
+
+  void _reloadFixedSchedulesOnRefresh() {
+    final signal = StorageService.scopedDataRefreshNotifier.value;
+    if (!signal.affects(DataRefreshDomain.fixedSchedules)) return;
+    unawaited(_reloadFixedSchedules());
+  }
+
+  Future<void> _reloadFixedSchedules() async {
+    final schedules = await StorageService.getFixedSchedules(widget.username);
+    if (!mounted) return;
+
+    setState(() {
+      _allFixedSchedules = schedules
+          .where((item) =>
+              !item.isDeleted && item.status != FixedScheduleStatus.cancelled)
+          .toList();
+      _updateWeekFixedSchedules();
+      if (_monthDataPrepared) _groupDataForMonthView();
+    });
+    _checkCollapsedSlots();
   }
 
   /// 根据当前周次找到对应的学期，然后过滤课程
@@ -223,6 +254,44 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
                 CourseScheduleSemantics.canonicalSemesterId(targetSemesterId) &&
             c.weekIndex == relativeWeek)
         .toList();
+  }
+
+  void _updateWeekFixedSchedules() {
+    _fixedSchedulesPerDay = {
+      1: [],
+      2: [],
+      3: [],
+      4: [],
+      5: [],
+      6: [],
+      7: [],
+    };
+    if (_semesterMonday == null) return;
+
+    final weekStart = DateTime(
+      _semesterMonday!.year,
+      _semesterMonday!.month,
+      _semesterMonday!.day + (_currentWeek - 1) * 7,
+    );
+    for (final item in _allFixedSchedules) {
+      final date = _fixedScheduleDate(item);
+      if (date == null) continue;
+      final weekday = date.difference(weekStart).inDays + 1;
+      if (weekday < 1 || weekday > 7) continue;
+      _fixedSchedulesPerDay[weekday]!.add(item);
+    }
+
+    for (final schedules in _fixedSchedulesPerDay.values) {
+      schedules.sort((a, b) {
+        if (a.startTime == null && b.startTime == null) {
+          return a.title.compareTo(b.title);
+        }
+        if (a.startTime == null) return -1;
+        if (b.startTime == null) return 1;
+        final timeOrder = a.startTime!.compareTo(b.startTime!);
+        return timeOrder != 0 ? timeOrder : a.title.compareTo(b.title);
+      });
+    }
   }
 
   SemesterInfo? _semesterForDate(DateTime date) {
@@ -502,6 +571,7 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
     _monthLogMap = {};
     _monthPomMap = {};
     _monthPlanMap = {};
+    _monthFixedScheduleMap = {};
     _monthDeviceCalendarMap = {};
 
     final df = DateFormat('yyyy-MM-dd');
@@ -606,6 +676,14 @@ mixin _WeeklyCourseLifecycle on _WeeklyCourseScreenStateBase {
           _monthPlanMap.putIfAbsent(df.format(cursor), () => []).add(plan);
         },
       );
+    }
+
+    for (final schedule in _allFixedSchedules) {
+      final date = _fixedScheduleDate(schedule);
+      if (date == null) continue;
+      _monthFixedScheduleMap
+          .putIfAbsent(df.format(date), () => [])
+          .add(schedule);
     }
 
     _updateMonthDeviceCalendarEvents();

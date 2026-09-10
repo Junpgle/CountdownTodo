@@ -31,11 +31,14 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   List<PomodoroRecord> _allPomodoroRecords = [];
   List<PomodoroTag> _pomodoroTags = [];
   List<TodoPlanBlock> _allPlanBlocks = [];
+  List<FixedScheduleItem> _allFixedSchedules = [];
   Map<int, List<TimeLogItem>> _timeLogsPerDay = {};
   Map<int, List<PomodoroRecord>> _pomodorosPerDay = {};
   Map<int, List<TodoPlanBlock>> _planBlocksPerDay = {};
+  Map<int, List<FixedScheduleItem>> _fixedSchedulesPerDay = {};
   final Set<String> _activeDataViews = {
     'courses',
+    'fixedSchedules',
     'todos',
     'plans',
     'timeLogs',
@@ -130,12 +133,44 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   Map<String, List<TimeLogItem>> _monthLogMap = {};
   Map<String, List<PomodoroRecord>> _monthPomMap = {};
   Map<String, List<TodoPlanBlock>> _monthPlanMap = {};
+  Map<String, List<FixedScheduleItem>> _monthFixedScheduleMap = {};
   Map<String, List<DeviceCalendarEvent>> _monthDeviceCalendarMap = {};
   bool _monthDataPrepared = false;
   final int _maxExpandedSpanDays = 366;
   void initState();
   void dispose();
   Future<void> _loadData();
+  Future<void> _reloadFixedSchedules();
+  void _reloadFixedSchedulesOnRefresh();
+
+  DateTime? _fixedScheduleDate(FixedScheduleItem item) {
+    final parsed = DateTime.tryParse(item.date);
+    if (parsed == null) return null;
+    return DateTime(parsed.year, parsed.month, parsed.day);
+  }
+
+  String _fixedScheduleTimeLabel(FixedScheduleItem item) {
+    if (item.startTime == null) return '时间待定';
+    final start = DateTime.fromMillisecondsSinceEpoch(item.startTime!);
+    if (item.endTime == null) {
+      return '${DateFormat('HH:mm').format(start)} · 结束待定';
+    }
+    final end = DateTime.fromMillisecondsSinceEpoch(item.endTime!);
+    return '${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)}';
+  }
+
+  Future<void> _openFixedScheduleEditor(FixedScheduleItem item) async {
+    await Navigator.of(context).push(
+      PageTransitions.material(
+        builder: (_) => FixedScheduleEditorScreen(
+          username: widget.username,
+          item: item,
+        ),
+      ),
+    );
+    if (mounted) await _reloadFixedSchedules();
+  }
+
   Future<void> _loadDeviceCalendarEventsForCurrentWeek();
   Future<void> _loadDeviceCalendarEventsForCurrentView();
   void _updateWeekCourses();
@@ -153,6 +188,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   void _updateWeekDeviceCalendarEvents();
   void _updateMonthDeviceCalendarEvents();
   void _updateWeekTimeLogsPomodorosAndPlans();
+  void _updateWeekFixedSchedules();
   void _changeWeek(int delta);
   void _jumpToWeek(int newWeek);
   void _toggleViewMode(int mode);
