@@ -119,6 +119,14 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
     return _fixedScheduleCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
+  GlobalKey _getFixedScheduleSidebarKey(
+    String scheduleId,
+    String? sourceDate,
+  ) {
+    final keyStr = 'sidebar_${scheduleId}_${sourceDate ?? 'schedule'}';
+    return _fixedScheduleCardKeys.putIfAbsent(keyStr, () => GlobalKey());
+  }
+
   // 时间轴参数配置
   final double timeColumnWidth = 45.0;
   final int startHour = 6;

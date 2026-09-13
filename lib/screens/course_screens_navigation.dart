@@ -529,7 +529,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     } else if (item is FixedScheduleItem) {
       final colorScheme = Theme.of(context).colorScheme;
       final color = colorScheme.primary;
+      final sourceKey = _getFixedScheduleSidebarKey(item.id, sourceDate);
       return ListTile(
+        key: sourceKey,
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -543,7 +545,12 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
           _fixedScheduleTimeLabel(item),
           style: const TextStyle(fontSize: 12),
         ),
-        onTap: () => _openFixedScheduleDetail(item),
+        onTap: () => _openFixedScheduleDetail(
+          item,
+          sourceKey: sourceKey,
+          sourceColor: color.withValues(alpha: 0.12),
+          sourceBorderRadius: const BorderRadius.all(Radius.circular(12)),
+        ),
       );
     } else if (item is DeviceCalendarEvent) {
       final colorScheme = Theme.of(context).colorScheme;
