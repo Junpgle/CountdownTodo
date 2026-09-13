@@ -67,6 +67,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   final Map<String, GlobalKey> _timeLogCardKeys = {};
   final Map<String, GlobalKey> _pomodoroCardKeys = {};
   final Map<String, GlobalKey> _deviceCalendarCardKeys = {};
+  final Map<String, GlobalKey> _fixedScheduleCardKeys = {};
 
   final GlobalKey _filterKey = GlobalKey();
   final GlobalKey _viewModeKey = GlobalKey();
@@ -111,6 +112,11 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
         : 'm${_selectedMonth.year}_${_selectedMonth.month}_mode$_viewMode';
     final keyStr = '${surface}_${periodKey}_${eventId}_$dateKey';
     return _deviceCalendarCardKeys.putIfAbsent(keyStr, () => GlobalKey());
+  }
+
+  GlobalKey _getFixedScheduleCardKey(String scheduleId, int weekday) {
+    final keyStr = 'w${_currentWeek}_${scheduleId}_d$weekday';
+    return _fixedScheduleCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
   // 时间轴参数配置
@@ -159,16 +165,30 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
     return '${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)}';
   }
 
-  Future<void> _openFixedScheduleEditor(FixedScheduleItem item) async {
-    await Navigator.of(context).push(
-      PageTransitions.material(
-        builder: (_) => FixedScheduleEditorScreen(
-          username: widget.username,
-          item: item,
-        ),
-      ),
+  Future<void> _openFixedScheduleDetail(
+    FixedScheduleItem item, {
+    GlobalKey? sourceKey,
+    Color? sourceColor,
+    BorderRadius? sourceBorderRadius,
+  }) async {
+    final page = FixedScheduleDetailScreen(
+      username: widget.username,
+      item: item,
     );
-    if (mounted) await _reloadFixedSchedules();
+    final result = sourceKey == null
+        ? await Navigator.of(context).push<FixedScheduleItem>(
+            PageTransitions.material(builder: (_) => page),
+          )
+        : await PageTransitions.pushFromRect<FixedScheduleItem>(
+            context: context,
+            page: page,
+            sourceKey: sourceKey,
+            sourceColor: sourceColor,
+            sourceBorderRadius: sourceBorderRadius ??
+                const BorderRadius.all(Radius.circular(4)),
+            placeholderIcon: Icons.event_available_rounded,
+          );
+    if (mounted && result != null) await _reloadFixedSchedules();
   }
 
   Future<void> _loadDeviceCalendarEventsForCurrentWeek();

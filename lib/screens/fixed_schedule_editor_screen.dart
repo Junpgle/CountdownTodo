@@ -497,6 +497,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
           if (_editing)
             IconButton(
               onPressed: _saving || _loadingContext ? null : _delete,
+              style: floatingGlassPlainIconButtonStyle(),
               icon: const Icon(Icons.delete_outline_rounded),
               tooltip: '删除固定日程',
             ),

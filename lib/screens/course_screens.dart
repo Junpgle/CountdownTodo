@@ -15,7 +15,7 @@ import '../utils/local_image_provider.dart';
 import '../utils/page_transitions.dart';
 import 'time_log_screen.dart';
 import 'course_month_view.dart';
-import 'fixed_schedule_editor_screen.dart';
+import 'fixed_schedule_detail_screen.dart';
 import '../widgets/app_detail_widgets.dart';
 import '../utils/theme_color_tokens.dart';
 import '../utils/todo_recurrence_calendar_index.dart';

@@ -393,6 +393,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
               _buildFilterMenuDivider(),
               _buildFilterSectionLabel('显示内容'),
               _buildCheckableMenuItem('courses', '课表'),
+              _buildCheckableMenuItem('fixedSchedules', '固定日程'),
               _buildCheckableMenuItem('todos', '待办'),
               _buildCheckableMenuItem('timeLogs', '时间日志'),
               _buildCheckableMenuItem('plans', '今日规划'),
@@ -419,7 +420,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
             builder: (context, controller, child) {
               final colorScheme = Theme.of(context).colorScheme;
               final selectedCount = _selectedFilterCount;
-              final hasFilterChanges = selectedCount != 6 ||
+              final hasFilterChanges = selectedCount != 7 ||
                   _activeDataViews.contains('hideCrossDay') ||
                   !_collapseFreeTime;
               return IconButton(
@@ -576,6 +577,7 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
                                       crossDayTodoMap: _monthCrossDayTodoMap,
                                       logMap: _monthLogMap,
                                       pomMap: _monthPomMap,
+                                      fixedScheduleMap: _monthFixedScheduleMap,
                                       deviceCalendarMap:
                                           _monthDeviceCalendarMap,
                                       pomodoroTags: _pomodoroTags,

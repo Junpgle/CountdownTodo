@@ -22,6 +22,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     _updateWeekCourses();
     _updateWeekTodos();
     _updateWeekTimeLogsPomodorosAndPlans();
+    _updateWeekFixedSchedules();
     await _loadDeviceCalendarEventsForCurrentView();
     if (!mounted || _currentWeek != newWeek) return;
     _checkCollapsedSlots();
@@ -225,6 +226,16 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       items.addAll(_monthCourseMap[dStr] ?? []);
     }
 
+    if (_activeDataViews.contains('fixedSchedules')) {
+      final fixedSchedules = _monthFixedScheduleMap[dStr] ??
+          _allFixedSchedules
+              .where((item) =>
+                  _fixedScheduleDate(item) ==
+                  DateTime(day.year, day.month, day.day))
+              .toList();
+      items.addAll(fixedSchedules);
+    }
+
     if (_activeDataViews.contains('todos')) {
       items.addAll(_monthTodoMap[dStr] ?? []);
       if (!_activeDataViews.contains('hideCrossDay')) {
@@ -279,6 +290,11 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         if (item is DeviceCalendarEvent) {
           return item.start.hour * 100 + item.start.minute;
         }
+        if (item is FixedScheduleItem) {
+          if (item.startTime == null) return 0;
+          final start = DateTime.fromMillisecondsSinceEpoch(item.startTime!);
+          return start.hour * 100 + start.minute;
+        }
         return 9999;
       }
 
@@ -295,6 +311,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         if (item is TodoPlanBlock) return 3;
         if (item is PomodoroRecord) return 4;
         if (item is DeviceCalendarEvent) return 5;
+        if (item is FixedScheduleItem) return 1;
         return 5;
       }
 
@@ -509,6 +526,25 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         subtitle: Text('时长: ${item.effectiveDuration ~/ 60} 分钟',
             style: const TextStyle(fontSize: 12)),
       );
+    } else if (item is FixedScheduleItem) {
+      final colorScheme = Theme.of(context).colorScheme;
+      final color = colorScheme.primary;
+      return ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.event_available, color: color, size: 20),
+        ),
+        title: Text(item.title, style: const TextStyle(fontSize: 15)),
+        subtitle: Text(
+          _fixedScheduleTimeLabel(item),
+          style: const TextStyle(fontSize: 12),
+        ),
+        onTap: () => _openFixedScheduleDetail(item),
+      );
     } else if (item is DeviceCalendarEvent) {
       final colorScheme = Theme.of(context).colorScheme;
       final color = item.colorValue == null
@@ -555,6 +591,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       } else if (value == 'selectAll') {
         _activeDataViews.addAll({
           'courses',
+          'fixedSchedules',
           'todos',
           'plans',
           'timeLogs',
@@ -585,6 +622,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
 
   int get _selectedFilterCount => const {
         'courses',
+        'fixedSchedules',
         'todos',
         'timeLogs',
         'plans',
@@ -596,6 +634,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     switch (key) {
       case 'courses':
         return Icons.calendar_today_rounded;
+      case 'fixedSchedules':
+        return Icons.event_available_rounded;
       case 'todos':
         return Icons.checklist_rounded;
       case 'timeLogs':
@@ -620,6 +660,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       case 'courses':
       case 'hideCrossDay':
         return colorScheme.primary;
+      case 'fixedSchedules':
+        return colorScheme.primary;
       case 'todos':
       case 'disableFreeTimeCollapse':
         return colorScheme.secondary;
@@ -637,9 +679,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     final colorScheme = Theme.of(context).colorScheme;
     final selectedCount = _selectedFilterCount;
     final width = _filterMenuWidth(context);
-    final statusLabel = selectedCount == 6
+    final statusLabel = selectedCount == 7
         ? '全部'
-        : (selectedCount == 0 ? '未选择' : '$selectedCount/6');
+        : (selectedCount == 0 ? '未选择' : '$selectedCount/7');
 
     return SizedBox(
       width: width,
@@ -676,7 +718,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '$selectedCount/6 项内容显示',
+                    '$selectedCount/7 项内容显示',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -899,6 +941,30 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         double cs = (course.startTime ~/ 100) * 60.0 + (course.startTime % 100);
         double ce = (course.endTime ~/ 100) * 60.0 + (course.endTime % 100);
         updateBounds(cs, ce);
+      }
+    }
+
+    // 固定日程是硬约束，也要参与空闲时间折叠计算，避免日程被折叠区间遮住。
+    if (_activeDataViews.contains('fixedSchedules')) {
+      for (final schedules in _fixedSchedulesPerDay.values) {
+        for (final schedule in schedules) {
+          if (schedule.startTime == null) continue;
+          final start =
+              DateTime.fromMillisecondsSinceEpoch(schedule.startTime!);
+          final end = schedule.endTime == null
+              ? start.add(const Duration(hours: 1))
+              : DateTime.fromMillisecondsSinceEpoch(schedule.endTime!);
+          final dayEnd = DateTime(start.year, start.month, start.day + 1);
+          final visibleEnd = end.isAfter(dayEnd) ? dayEnd : end;
+          if (visibleEnd.isAfter(start)) {
+            updateBounds(
+              start.hour * 60.0 + start.minute,
+              visibleEnd == dayEnd
+                  ? 1440.0
+                  : visibleEnd.hour * 60.0 + visibleEnd.minute,
+            );
+          }
+        }
       }
     }
 

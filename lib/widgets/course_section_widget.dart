@@ -6,7 +6,7 @@ import 'home_sections.dart';
 
 import '../screens/add_todo_screen.dart';
 import '../screens/course_screens.dart';
-import '../screens/fixed_schedule_editor_screen.dart';
+import '../screens/fixed_schedule_detail_screen.dart';
 import '../screens/todo_plan_screen.dart';
 import '../services/course_service.dart';
 import '../services/device_calendar_read_service.dart';
@@ -258,8 +258,14 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
   List<CourseItem> _tomorrowCourses = [];
   List<DeviceCalendarEvent> _todayDeviceCalendarEvents = [];
   List<DeviceCalendarEvent> _tomorrowDeviceCalendarEvents = [];
+  final Map<String, GlobalKey> _fixedScheduleCardKeys = {};
   bool _loading = true;
   bool _showEnded = false;
+
+  GlobalKey _getFixedScheduleCardKey(FixedScheduleItem item) {
+    final keyId = '${item.id}_${item.date}';
+    return _fixedScheduleCardKeys.putIfAbsent(keyId, () => GlobalKey());
+  }
 
   @override
   void initState() {
@@ -549,19 +555,25 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     }
     final fixedSchedule = item.fixedSchedule;
     if (fixedSchedule != null) {
+      final fixedScheduleCardKey = _getFixedScheduleCardKey(fixedSchedule);
       return _FixedScheduleCompactCard(
         item: fixedSchedule,
         isLight: widget.isLight,
-        onTap: () async {
-          await Navigator.of(context).push(
-            PageTransitions.material(
-              builder: (_) => FixedScheduleEditorScreen(
-                username: widget.username,
-                item: fixedSchedule,
-              ),
+        cardKey: fixedScheduleCardKey,
+        onTap: (cardKey) async {
+          final result = await PageTransitions.pushFromRect<FixedScheduleItem>(
+            context: context,
+            page: FixedScheduleDetailScreen(
+              username: widget.username,
+              item: fixedSchedule,
             ),
+            sourceKey: cardKey,
+            sourceColor:
+                Theme.of(context).colorScheme.primary.withValues(alpha: 0.16),
+            sourceBorderRadius: const BorderRadius.all(Radius.circular(14)),
+            placeholderIcon: Icons.event_available_rounded,
           );
-          if (mounted) await _loadBlocks();
+          if (mounted && result != null) await _loadBlocks();
         },
       );
     }
@@ -853,12 +865,14 @@ class _FixedScheduleCompactCard extends StatelessWidget {
   const _FixedScheduleCompactCard({
     required this.item,
     required this.isLight,
+    required this.cardKey,
     required this.onTap,
   });
 
   final FixedScheduleItem item;
   final bool isLight;
-  final VoidCallback onTap;
+  final GlobalKey cardKey;
+  final void Function(GlobalKey cardKey) onTap;
 
   String _timeLabel() {
     if (item.startTime == null) return '时间待定';
@@ -891,6 +905,7 @@ class _FixedScheduleCompactCard extends StatelessWidget {
       if (item.remark?.trim().isNotEmpty == true) item.remark!.trim(),
     ].join(' · ');
     return OptionalLiquidGlassCard(
+      key: cardKey,
       margin: const EdgeInsets.only(bottom: 6),
       borderRadius: 14,
       tint: colors.primary.withValues(alpha: 0.16),
@@ -906,7 +921,7 @@ class _FixedScheduleCompactCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          onTap: onTap,
+          onTap: () => onTap(cardKey),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
