@@ -488,12 +488,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         StorageService.initTheme(),
         EnvironmentService.init(),
         StorageService.getLoginSession(),
-        // A policy refresh must finish before deciding that the stored
-        // agreement is current.  If the network is unavailable, fail closed
-        // and show the policy instead of silently continuing with stale data.
+        // A policy refresh should finish when possible. If it times out,
+        // retain an existing versioned agreement and retry on a later launch.
         StorageService.isPrivacyPolicyUpToDate().timeout(
           const Duration(seconds: 4),
-          onTimeout: () => false,
+          onTimeout: () => true,
         ),
         StorageService.isPrivacyPolicyAgreed(),
         FeatureGuideScreen.shouldShow()
@@ -503,7 +502,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
       // 解析并发结果
       final String? user = results[2] as String?;
-      final bool privacyNeedsUpdate = results[3] as bool;
+      final bool privacyPolicyUpToDate = results[3] as bool;
       final bool wasAgreed = results[4] as bool;
       final bool needGuide = results[5] as bool;
 
@@ -514,9 +513,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
       final wasLoggedIn = user != null && user.isNotEmpty;
 
-      // 3. 判断是否需要弹窗：已登录但未同意过，或版本已过期
+      // 3. 判断是否需要弹窗：已登录但未同意过，或版本已变化
       final shouldShowPrivacyDialog =
-          wasLoggedIn && (!wasAgreed || !privacyNeedsUpdate);
+          wasLoggedIn && (!wasAgreed || !privacyPolicyUpToDate);
 
       if (mounted) {
         setState(() {
@@ -582,9 +581,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       barrierDismissible: false,
       builder: (dialogContext) => PrivacyPolicyDialog(
         isUpdate: true,
-        onAgree: () {
-          StorageService.setPrivacyPolicyAgreed(true);
-          Navigator.pop(dialogContext, true);
+        onAgree: () async {
+          await StorageService.setPrivacyPolicyAgreed(true);
+          if (dialogContext.mounted) {
+            Navigator.pop(dialogContext, true);
+          }
         },
         onDisagree: () async {
           await ReminderScheduleService.clearScheduledReminders();

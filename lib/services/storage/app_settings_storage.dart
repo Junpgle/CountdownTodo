@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../github_resource_service.dart';
+import '../privacy_policy_version.dart';
 
 class AppSettingsStorage {
   const AppSettingsStorage._();
@@ -28,6 +28,7 @@ class AppSettingsStorage {
 
   static const String _privacyAgreed = "privacy_policy_agreed";
   static const String _privacyDate = "privacy_policy_date";
+  static const String _privacyVersionUnknown = "__privacy_version_unknown__";
   static const String _privacyCachedVersion = "privacy_policy_cached_version";
   static const String _privacyCacheTime = "privacy_policy_cache_time";
   static const String _privacyRawUrl =
@@ -212,7 +213,10 @@ class AppSettingsStorage {
     await prefs.setBool(_privacyAgreed, agreed);
     if (agreed) {
       final versionDate = date ?? await _getPrivacyPolicyCurrentVersion();
-      await prefs.setString(_privacyDate, versionDate);
+      await prefs.setString(
+        _privacyDate,
+        versionDate ?? _privacyVersionUnknown,
+      );
     }
   }
 
@@ -225,19 +229,19 @@ class AppSettingsStorage {
     final cacheTime = prefs.getInt(_privacyCacheTime) ?? 0;
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    final String currentVersion = cachedVersion != null &&
+    final currentVersion = cachedVersion != null &&
             now - cacheTime < _privacyCacheDuration.inMilliseconds
         ? cachedVersion
         : await _getPrivacyPolicyCurrentVersion();
 
-    // Always compare against the version returned by the refresh.  The old
-    // implementation started the refresh without awaiting it and then
-    // compared the stale local variable, allowing one full app launch to
-    // bypass a newly published policy.
-    return _compareDates(storedDate, currentVersion) >= 0;
+    // A temporary network failure must not turn an existing consent into a
+    // new prompt on every launch. A successful refresh will compare the
+    // stored marker exactly and still prompt once the policy really changes.
+    if (currentVersion == null) return true;
+    return storedDate == currentVersion;
   }
 
-  static Future<String> _getPrivacyPolicyCurrentVersion() async {
+  static Future<String?> _getPrivacyPolicyCurrentVersion() async {
     final prefs = await _prefs;
     final cachedVersion = prefs.getString(_privacyCachedVersion);
     final cacheTime = prefs.getInt(_privacyCacheTime) ?? 0;
@@ -255,51 +259,17 @@ class AppSettingsStorage {
           .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final version = _extractPrivacyVersionDate(response.body);
-        if (version.isNotEmpty) {
+        final version = PrivacyPolicyVersion.extract(response.body);
+        if (version != null) {
           await prefs.setString(_privacyCachedVersion, version);
           await prefs.setInt(_privacyCacheTime, now);
-//           debugPrint('[Privacy] Updated version: $version');
           return version;
         }
       }
     } catch (_) {}
 
     if (cachedVersion != null) return cachedVersion;
-    return DateFormat('yyyy-MM-dd').format(DateTime.now());
-  }
-
-  static String _extractPrivacyVersionDate(String content) {
-    try {
-      final pattern1 = RegExp(r'版本日期[：:]?\s*(\d{4})年(\d{1,2})月(\d{1,2})日');
-      final match1 = pattern1.firstMatch(content);
-      if (match1 != null) {
-        final year = match1.group(1)!;
-        final month = match1.group(2)!.padLeft(2, '0');
-        final day = match1.group(3)!.padLeft(2, '0');
-        return '$year-$month-$day';
-      }
-
-      final pattern2 = RegExp(r'版本日期[：:]?\s*(\d{4}-\d{2}-\d{2})');
-      final match2 = pattern2.firstMatch(content);
-      if (match2 != null) return match2.group(1)!;
-
-//       debugPrint('[Privacy] Could not extract version date from content');
-      return '';
-    } catch (e) {
-//       debugPrint('[Privacy] Error extracting version date: $e');
-      return '';
-    }
-  }
-
-  static int _compareDates(String a, String b) {
-    try {
-      final dateA = DateTime.parse(a);
-      final dateB = DateTime.parse(b);
-      return dateA.compareTo(dateB);
-    } catch (_) {
-      return a.compareTo(b);
-    }
+    return null;
   }
 
   static Future<void> withdrawPrivacyAgreement() async {
