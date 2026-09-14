@@ -13,6 +13,7 @@ import '../widgets/habit_format.dart';
 
 /// 习惯中心「日历」标签页：月历 + 选中日习惯明细。
 class HabitCalendarTab extends StatefulWidget {
+  final double topPadding;
   final String username;
 
   /// 数据变化后自增，触发重新加载。
@@ -20,6 +21,7 @@ class HabitCalendarTab extends StatefulWidget {
 
   const HabitCalendarTab({
     super.key,
+    this.topPadding = 0,
     required this.username,
     this.reloadTick = 0,
   });
@@ -180,7 +182,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                 child: RefreshIndicator(
                   onRefresh: _loadData,
                   child: ListView(
-                    padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding),
+                    padding: EdgeInsets.fromLTRB(
+                        16, widget.topPadding + 12, 16, bottomPadding),
                     children: [
                       _buildMonthHeader(),
                       const SizedBox(height: 12),
@@ -198,7 +201,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
               Expanded(
                 flex: 4,
                 child: ListView(
-                  padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding),
+                  padding: EdgeInsets.fromLTRB(
+                      16, widget.topPadding + 12, 16, bottomPadding),
                   children: [
                     _buildSelectedDayDetail(),
                   ],
@@ -211,7 +215,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
         return RefreshIndicator(
           onRefresh: _loadData,
           child: ListView(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding),
+            padding: EdgeInsets.fromLTRB(
+                16, widget.topPadding + 12, 16, bottomPadding),
             children: [
               _buildMonthHeader(),
               const SizedBox(height: 12),

@@ -611,6 +611,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 600;
+        final topBarHeight = floatingGlassTopBarHeight(context);
 
         final actions = [
           IconButton(
@@ -629,6 +630,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
 
         final bodyTabs = [
           HabitTodayTab(
+            topPadding: topBarHeight,
             username: widget.username,
             coachTargetKey: _todayContentKey,
             reloadTick: _reloadTick,
@@ -636,10 +638,12 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
             onChanged: () => setState(() => _reloadTick++),
           ),
           HabitCalendarTab(
+            topPadding: topBarHeight,
             username: widget.username,
             reloadTick: _reloadTick,
           ),
           HabitAnalysisTab(
+            topPadding: topBarHeight,
             username: widget.username,
             reloadTick: _reloadTick,
           ),
@@ -668,6 +672,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
 
         return Scaffold(
           extendBody: true,
+          extendBodyBehindAppBar: true,
           appBar: FloatingGlassAppBar(
             flexibleSpace: const FloatingGlassTopBarBackground(),
             title: const Text('习惯中心'),
@@ -689,9 +694,12 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
               SizedBox(height: isWide ? 100 : 8),
             ],
           ),
-          body: TabBarView(
-            controller: _tabController,
-            children: bodyTabs,
+          body: FloatingGlassTopBarContentFade(
+            topBarHeight: topBarHeight,
+            child: TabBarView(
+              controller: _tabController,
+              children: bodyTabs,
+            ),
           ),
         );
       },

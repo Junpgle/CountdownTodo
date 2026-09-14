@@ -18,6 +18,7 @@ import 'habit_edit_screen.dart';
 
 /// 习惯中心「今日」标签页：今日概览 + 全部习惯卡片。
 class HabitTodayTab extends StatefulWidget {
+  final double topPadding;
   final String username;
 
   /// 教程要高亮的第一张习惯卡片。
@@ -34,6 +35,7 @@ class HabitTodayTab extends StatefulWidget {
 
   const HabitTodayTab({
     super.key,
+    this.topPadding = 0,
     required this.username,
     this.coachTargetKey,
     this.reloadTick = 0,
@@ -181,7 +183,8 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 840),
               child: ListView(
-                padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding),
+                padding: EdgeInsets.fromLTRB(
+                    16, widget.topPadding + 12, 16, bottomPadding),
                 children: [
                   _buildSummaryCard(snapshot),
                   const SizedBox(height: 16),

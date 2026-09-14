@@ -375,8 +375,10 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final topBarHeight = floatingGlassTopBarHeight(context);
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(_goal.name),
@@ -408,11 +410,14 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
           ),
         ],
       ),
-      body: _buildBody(colorScheme),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _buildBody(colorScheme, topBarHeight),
+      ),
     );
   }
 
-  Widget _buildBody(ColorScheme colorScheme) {
+  Widget _buildBody(ColorScheme colorScheme, double topPadding) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -429,7 +434,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
             child: ListView(
               padding: EdgeInsets.fromLTRB(
                 horizontalPadding,
-                16,
+                topPadding + 16,
                 horizontalPadding,
                 32,
               ),

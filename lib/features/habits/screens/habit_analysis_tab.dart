@@ -15,6 +15,7 @@ import 'habit_detail_screen.dart';
 
 /// 习惯中心「分析」标签页：各习惯的连续与完成率统计。
 class HabitAnalysisTab extends StatefulWidget {
+  final double topPadding;
   final String username;
 
   /// 数据变化后自增，触发重新加载。
@@ -22,6 +23,7 @@ class HabitAnalysisTab extends StatefulWidget {
 
   const HabitAnalysisTab({
     super.key,
+    this.topPadding = 0,
     required this.username,
     this.reloadTick = 0,
   });
@@ -209,7 +211,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
           child: ListView(
             padding: EdgeInsets.fromLTRB(
               16,
-              12,
+              widget.topPadding + 12,
               16,
               floatingBottomNavigationContentPaddingFor(context),
             ),
