@@ -22,6 +22,9 @@ private let islandCollapseAnimation = Animation.timingCurve(
 )
 private let islandExpansionDuration: TimeInterval = 0.50
 private let islandCollapseDuration: TimeInterval = 0.36
+private let macCompactLyricsHeight: CGFloat = 24
+private let macCompactMediaRotationPeriod: TimeInterval = 9
+private let macCompactMediaRotationDuration: TimeInterval = 3
 
 private struct MacLyricLine: Identifiable, Equatable {
     let timestamp: Double
@@ -29,6 +32,98 @@ private struct MacLyricLine: Identifiable, Equatable {
 
     var id: String {
         "\(Int(timestamp * 1000)):\(text)"
+    }
+}
+
+private struct MacMarqueeText: View {
+    let text: String
+    let fontSize: CGFloat
+    let foregroundColor: Color
+    let scrollProgress: CGFloat?
+
+    private let gap: CGFloat = 28
+    private let scrollSpeed: CGFloat = 26
+    @State private var isScrolling = false
+
+    init(
+        text: String,
+        fontSize: CGFloat,
+        foregroundColor: Color,
+        scrollProgress: CGFloat? = nil
+    ) {
+        self.text = text
+        self.fontSize = fontSize
+        self.foregroundColor = foregroundColor
+        self.scrollProgress = scrollProgress
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let availableWidth = max(geometry.size.width, 0)
+            let contentWidth = measuredTextWidth
+            let needsScrolling = contentWidth > availableWidth + 0.5
+
+            ZStack(alignment: .leading) {
+                if needsScrolling {
+                    if let scrollProgress = scrollProgress {
+                        label
+                            .offset(
+                                x: -max(contentWidth - availableWidth, 0)
+                                    * min(max(scrollProgress, 0), 1)
+                            )
+                        .animation(.linear(duration: 0.5), value: scrollProgress)
+                    } else {
+                        marqueeContent(
+                            offset: isScrolling ? -(contentWidth + gap) : 0
+                        )
+                            .animation(
+                                .linear(
+                                    duration: max(
+                                        2.0,
+                                        Double(contentWidth + gap) / Double(scrollSpeed)
+                                    )
+                                )
+                                .repeatForever(autoreverses: false),
+                                value: isScrolling
+                            )
+                    }
+                } else {
+                    label
+                }
+            }
+            .frame(width: availableWidth, alignment: .leading)
+            .clipped()
+            .onAppear {
+                isScrolling = needsScrolling
+            }
+            .onChange(of: needsScrolling) { value in
+                isScrolling = value
+            }
+        }
+        .frame(height: fontSize + 4)
+    }
+
+    private func marqueeContent(offset: CGFloat) -> some View {
+        HStack(spacing: gap) {
+            label
+            label
+        }
+        .offset(x: offset)
+    }
+
+    private var label: some View {
+        Text(text)
+            .font(.system(size: fontSize, weight: .medium))
+            .foregroundColor(foregroundColor)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var measuredTextWidth: CGFloat {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: fontSize, weight: .medium)
+        ]
+        return ceil((text as NSString).size(withAttributes: attributes).width)
     }
 }
 
@@ -353,9 +448,21 @@ private final class MacNowPlayingMonitor {
             }
             let audioState = self.isProducingAudio(processIdentifier: processIdentifier)
             let recordAge = Date().timeIntervalSince(record.playedAt)
-            let detectedPlaying = matchingSystemPlayback.map { $0.playbackRate > 0 }
-                ?? audioState
-                ?? (recordAge >= 0 && recordAge < 10 * 60)
+            // 网易云的系统媒体状态偶尔会在仍有声音输出时短暂返回
+            // playbackRate = 0。只要该进程仍被 CoreAudio 识别为输出，
+            // 就不能把这一次瞬时的系统状态当成暂停，否则歌词会冻结/隐藏，
+            // 直到用户重新打开网易云才重新发布播放状态。
+            let detectedPlaying: Bool
+            let systemReportsPlaying = (matchingSystemPlayback?.playbackRate ?? 0) > 0
+            if audioState == true || systemReportsPlaying {
+                detectedPlaying = true
+            } else if let audioState {
+                detectedPlaying = audioState
+            } else if let matchingSystemPlayback {
+                detectedPlaying = matchingSystemPlayback.playbackRate > 0
+            } else {
+                detectedPlaying = recordAge >= 0 && recordAge < 10 * 60
+            }
             let isPlaying: Bool
             if let optimisticState = optimisticState,
                optimisticState.trackIdentifier == record.track.id,
@@ -1567,6 +1674,7 @@ struct BottomRoundedRectangle: Shape {
 struct MacIslandSwiftUIView: View {
     @ObservedObject var model: IslandStateModel
     @Namespace private var focusTimerNamespace
+    @State private var compactMediaRotationStart = Date()
     
     var body: some View {
         ZStack(alignment: .top) {
@@ -1601,9 +1709,14 @@ struct MacIslandSwiftUIView: View {
 
             Group {
                 if model.hasNotch && !model.expanded {
-                    if !model.isIdle {
-                        compactNotchView
-                            .frame(height: max(model.topInset, 28))
+                    if showsCompactContent {
+                        VStack(spacing: 0) {
+                            compactNotchView
+                                .frame(height: max(model.topInset, 28))
+                            if showsCompactLyrics {
+                                compactLyricsView
+                            }
+                        }
                             .padding(.horizontal, 8)
                             .onTapGesture { expandFromCompact() }
                     }
@@ -1643,11 +1756,21 @@ struct MacIslandSwiftUIView: View {
                                 }
                             } else {
                                 if model.isFocusActive {
-                                    compactFocusView
-                                        .onTapGesture { expandFromCompact() }
+                                    VStack(spacing: 0) {
+                                        compactFocusView
+                                            .onTapGesture { expandFromCompact() }
+                                        if showsCompactLyrics {
+                                            compactLyricsView
+                                        }
+                                    }
                                 } else {
-                                    compactActivityView
-                                        .onTapGesture { expandFromCompact() }
+                                    VStack(spacing: 0) {
+                                        compactActivityView
+                                            .onTapGesture { expandFromCompact() }
+                                        if showsCompactLyrics {
+                                            compactLyricsView
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1671,6 +1794,11 @@ struct MacIslandSwiftUIView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .ignoresSafeArea()
         .colorScheme(.dark)
+        .onChange(of: shouldRotateCompactMedia) { isRotating in
+            if isRotating {
+                compactMediaRotationStart = Date()
+            }
+        }
     }
 
     private func expandFromCompact() {
@@ -1693,14 +1821,40 @@ struct MacIslandSwiftUIView: View {
         model.onExpansionChanged?(true, nextDetailed)
     }
     
+    @ViewBuilder
     var compactNotchView: some View {
-        HStack(spacing: 0) {
+        if shouldRotateCompactMedia {
+            if #available(macOS 12.0, *) {
+                TimelineView(.periodic(from: .now, by: 0.5)) { timeline in
+                    compactNotchContent(
+                        showingMedia: shouldShowCompactMedia(at: timeline.date)
+                    )
+                }
+            } else {
+                compactNotchContent(showingMedia: false)
+            }
+        } else {
+            compactNotchContent(
+                showingMedia: compactHasMedia && !hasCompactPriorityActivity
+            )
+        }
+    }
+
+    private func compactNotchContent(showingMedia: Bool) -> some View {
+        let contextTitle = showingMedia ? model.nowPlayingTitle : compactContextTitle
+        let contextDetail = showingMedia ? nowPlayingSubtitle : compactContextDetail
+        let leadingIconName = showingMedia ? "music.note" : compactLeadingIconName
+        let leadingIconColor: Color = showingMedia ? .purple : compactLeadingIconColor
+        let rightTopText = showingMedia
+            ? (model.nowPlayingIsPlaying ? "播放中" : "已暂停")
+            : compactRightTopText
+        let rightBottomText = showingMedia ? "音乐" : compactRightBottomText
+
+        return HStack(spacing: 0) {
             HStack(spacing: 7) {
-                Image(systemName: model.isFocusActive
-                      ? (model.phase == "breaking" ? "cup.and.saucer.fill" : "hourglass.tophalf.filled")
-                      : "checklist")
+                Image(systemName: leadingIconName)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(model.phase == "breaking" ? .blue : .orange)
+                    .foregroundColor(leadingIconColor)
 
                 VStack(alignment: .leading, spacing: 1) {
                     if model.isFocusActive {
@@ -1716,10 +1870,13 @@ struct MacIslandSwiftUIView: View {
                             )
                             .zIndex(9)
                     } else {
-                        Text(compactContextTitle)
-                            .font(.system(size: 10.5, weight: .semibold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
+                        MacMarqueeText(
+                            text: contextTitle,
+                            fontSize: 10.5,
+                            foregroundColor: .white
+                        )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id("compact-title-\(contextTitle)")
                     }
                     if model.isFocusActive && !focusTagSummary.isEmpty {
                         Text(focusTagSummary)
@@ -1734,10 +1891,13 @@ struct MacIslandSwiftUIView: View {
                             )
                             .zIndex(8)
                     } else {
-                        Text(compactContextDetail)
-                            .font(.system(size: 8.5, weight: .medium))
-                            .foregroundColor(model.isFocusActive ? .purple : .white.opacity(0.48))
-                            .lineLimit(1)
+                        MacMarqueeText(
+                            text: contextDetail,
+                            fontSize: 8.5,
+                            foregroundColor: model.isFocusActive ? .purple : .white.opacity(0.48)
+                        )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id("compact-detail-\(contextDetail)")
                     }
                 }
             }
@@ -1760,12 +1920,12 @@ struct MacIslandSwiftUIView: View {
                         )
                         .zIndex(10)
                 } else {
-                    Text("进行中")
+                    Text(rightTopText)
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundColor(.white)
                         .lineLimit(1)
                 }
-                Text(compactStatusText)
+                Text(rightBottomText)
                     .font(.system(size: 8.5, weight: .medium))
                     .foregroundColor(.white.opacity(0.5))
                     .lineLimit(1)
@@ -1774,11 +1934,75 @@ struct MacIslandSwiftUIView: View {
         }
     }
 
+    private var shouldRotateCompactMedia: Bool {
+        !model.isFocusActive && hasCompactPriorityActivity && compactHasMedia
+    }
+
+    private func shouldShowCompactMedia(at date: Date) -> Bool {
+        guard shouldRotateCompactMedia else {
+            return compactHasMedia && !hasCompactPriorityActivity
+        }
+
+        let elapsed = max(0, date.timeIntervalSince(compactMediaRotationStart))
+        let phase = elapsed.truncatingRemainder(dividingBy: macCompactMediaRotationPeriod)
+        return phase >= macCompactMediaRotationPeriod - macCompactMediaRotationDuration
+    }
+
+    private var compactLeadingIconName: String {
+        if model.isFocusActive {
+            return model.phase == "breaking"
+                ? "cup.and.saucer.fill"
+                : "hourglass.tophalf.filled"
+        }
+        if hasCompactPriorityActivity {
+            return activityIconName(compactPriorityActivityKind)
+        }
+        if compactHasMedia {
+            return "music.note"
+        }
+        return "checklist"
+    }
+
+    private var compactLeadingIconColor: Color {
+        if model.isFocusActive {
+            return model.phase == "breaking" ? .blue : .orange
+        }
+        return hasCompactPriorityActivity ? .orange : .purple
+    }
+
+    private var compactRightTopText: String {
+        if hasCompactPriorityActivity {
+            return model.activityActive ? "进行中" : "下一项"
+        }
+        if compactHasMedia {
+            return model.nowPlayingIsPlaying ? "播放中" : "已暂停"
+        }
+        return "进行中"
+    }
+
+    private var compactRightBottomText: String {
+        if model.isFocusActive {
+            return compactStatusText
+        }
+        if hasCompactPriorityActivity {
+            return compactPriorityActivityKind == "todo"
+                ? (model.activityActive ? "待办" : "待处理")
+                : activityKindLabel(compactPriorityActivityKind)
+        }
+        return compactHasMedia ? "音乐" : compactStatusText
+    }
+
     private var compactContextTitle: String {
         if model.isFocusActive {
             return model.todoTitle.isEmpty ? "自由专注" : model.todoTitle
         }
-        return model.activityTitle.isEmpty ? "CountDownTodo" : model.activityTitle
+        if hasCompactPriorityActivity {
+            return compactPriorityActivityTitle
+        }
+        if compactHasMedia {
+            return model.nowPlayingTitle
+        }
+        return "CountDownTodo"
     }
 
     private var compactContextDetail: String {
@@ -1787,9 +2011,71 @@ struct MacIslandSwiftUIView: View {
                 ? (model.phase == "breaking" ? "休息阶段" : "未设置标签")
                 : focusTagSummary
         }
-        if !model.activityGroupName.isEmpty { return model.activityGroupName }
-        if !model.activitySubtitle.isEmpty { return model.activitySubtitle }
+        if hasCompactPriorityActivity {
+            return compactPriorityActivityDetail
+        }
+        if compactHasMedia {
+            return nowPlayingSubtitle
+        }
         return "当前事项"
+    }
+
+    private var compactHasMedia: Bool {
+        model.nowPlayingActive
+            && !model.nowPlayingTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var compactPriorityActivityTitle: String {
+        if model.activityActive,
+           !model.activityTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return model.activityTitle
+        }
+        if !model.nextActivityTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return model.nextActivityTitle
+        }
+        return model.todayTodos.first?.title ?? ""
+    }
+
+    private var compactPriorityActivityKind: String {
+        if model.activityActive,
+           !model.activityTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return model.activityKind
+        }
+        if !model.nextActivityTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return model.nextActivityKind
+        }
+        return "todo"
+    }
+
+    private var hasCompactPriorityActivity: Bool {
+        !compactPriorityActivityTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var compactPriorityActivityDetail: String {
+        if model.activityActive,
+           !model.activityTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let group = model.activityGroupName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !group.isEmpty { return group }
+            let subtitle = model.activitySubtitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !subtitle.isEmpty { return subtitle }
+            return activityKindLabel(model.activityKind)
+        }
+        if !model.nextActivityTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "下一项 · " + activityKindLabel(model.nextActivityKind)
+        }
+        let group = model.todayTodos.first?.groupName.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return group.isEmpty ? "待处理" : "待办 · " + group
+    }
+
+    private var showsCompactContent: Bool {
+        // 刘海两侧只在确实有音乐播放时占用空间；专注、待办和暂停后的
+        // 媒体快照仍可在展开态展示，但不再污染收起态的刘海两侧。
+        guard compactMediaIsPlaying else { return false }
+        return !model.isIdle
+            || model.isFocusActive
+            || hasCompactPriorityActivity
+            || compactHasMedia
+            || showsCompactLyrics
     }
 
     private var focusTagSummary: String {
@@ -1797,10 +2083,111 @@ struct MacIslandSwiftUIView: View {
     }
 
     private var compactStatusText: String {
-        if model.isPaused { return "已暂停" }
-        if model.phase == "breaking" { return "休息中" }
+        if model.isFocusActive {
+            if model.isPaused { return "已暂停" }
+            if model.phase == "breaking" { return "休息中" }
+            if model.isRemote { return "其他设备" }
+            return "专注中"
+        }
+        if hasCompactPriorityActivity {
+            return model.activityActive ? "进行中" : "待处理"
+        }
+        if compactHasMedia {
+            return model.nowPlayingIsPlaying ? "播放中" : "已暂停"
+        }
         if model.isRemote { return "其他设备" }
-        return model.isFocusActive ? "专注中" : "正在发生"
+        return "正在发生"
+    }
+
+    private var showsCompactLyrics: Bool {
+        compactMediaIsPlaying && !model.nowPlayingLyrics.isEmpty
+    }
+
+    private var compactMediaIsPlaying: Bool {
+        compactHasMedia && model.nowPlayingIsPlaying
+    }
+
+    @ViewBuilder
+    private var compactLyricsView: some View {
+        if #available(macOS 12.0, *) {
+            TimelineView(.periodic(from: .now, by: 0.5)) { timeline in
+                compactLyricRow(at: timeline.date)
+            }
+        } else {
+            compactLyricRow(at: Date())
+        }
+    }
+
+    private func compactLyricRow(at date: Date) -> some View {
+        let elapsed = nowPlayingElapsed(at: date)
+        let lines = model.nowPlayingLyrics
+        let currentIndex = lines.lastIndex { $0.timestamp <= elapsed }
+        let currentLine = currentIndex.map { lines[$0] } ?? lines.first
+        let nextIndex = currentIndex.map { $0 + 1 } ?? 1
+        let nextLine = nextIndex < lines.count ? lines[nextIndex] : nil
+        let transitionIdentifier = currentLine?.id ?? "compact-lyrics-waiting"
+
+        return HStack(spacing: 6) {
+            Image(systemName: "quote.bubble.fill")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(.white.opacity(0.42))
+                .frame(width: 13)
+
+            MacMarqueeText(
+                text: currentLine?.text ?? "即将播放歌词",
+                fontSize: 11,
+                foregroundColor: .white.opacity(currentLine == nil ? 0.52 : 0.9),
+                scrollProgress: compactLyricScrollProgress(
+                    currentLine: currentLine,
+                    nextLine: nextLine,
+                    elapsed: elapsed
+                )
+            )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .id(transitionIdentifier)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                    removal: .move(edge: .top).combined(with: .opacity)
+                ))
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity)
+        .frame(height: macCompactLyricsHeight)
+        .clipped()
+        .animation(.easeInOut(duration: 0.28), value: transitionIdentifier)
+    }
+
+    private func compactLyricScrollProgress(
+        currentLine: MacLyricLine?,
+        nextLine: MacLyricLine?,
+        elapsed: Double
+    ) -> CGFloat? {
+        guard let currentLine else { return nil }
+
+        let endTimestamp: Double
+        if let nextLine, nextLine.timestamp > currentLine.timestamp {
+            endTimestamp = nextLine.timestamp
+        } else if model.nowPlayingDuration > currentLine.timestamp {
+            endTimestamp = model.nowPlayingDuration
+        } else {
+            endTimestamp = currentLine.timestamp + 5
+        }
+
+        let duration = max(0.25, endTimestamp - currentLine.timestamp)
+        let rawProgress = min(
+            max((elapsed - currentLine.timestamp) / duration, 0),
+            1
+        )
+        // 给每句歌词留出开头约四分之一的时间，先完整看见句首；
+        // 中段加速，末尾减速并在下一句开始前到达句尾。
+        let holdFraction = duration >= 2.5 ? 0.22 : 0.10
+        let scrollProgress = min(
+            max((rawProgress - holdFraction) / (1 - holdFraction), 0),
+            1
+        )
+        let easedProgress = scrollProgress * scrollProgress
+            * (3 - 2 * scrollProgress)
+        return CGFloat(easedProgress)
     }
 
     
@@ -2116,26 +2503,57 @@ struct MacIslandSwiftUIView: View {
         .frame(height: 34)
     }
     
+    @ViewBuilder
     var compactActivityView: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checklist")
-                .foregroundColor(.orange)
+        if shouldRotateCompactMedia {
+            if #available(macOS 12.0, *) {
+                TimelineView(.periodic(from: .now, by: 0.5)) { timeline in
+                    compactActivityContent(
+                        showingMedia: shouldShowCompactMedia(at: timeline.date)
+                    )
+                }
+            } else {
+                compactActivityContent(showingMedia: false)
+            }
+        } else {
+            compactActivityContent(
+                showingMedia: compactHasMedia && !hasCompactPriorityActivity
+            )
+        }
+    }
+
+    private func compactActivityContent(showingMedia: Bool) -> some View {
+        let contextTitle = showingMedia ? model.nowPlayingTitle : compactContextTitle
+        let contextDetail = showingMedia ? nowPlayingSubtitle : compactContextDetail
+        let leadingIconName = showingMedia ? "music.note" : compactLeadingIconName
+        let leadingIconColor: Color = showingMedia ? .purple : compactLeadingIconColor
+        let statusText = showingMedia
+            ? (model.nowPlayingIsPlaying ? "播放中" : "已暂停")
+            : compactStatusText
+
+        return HStack(spacing: 8) {
+            Image(systemName: leadingIconName)
+                .foregroundColor(leadingIconColor)
                 .font(.system(size: 12))
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(compactContextTitle)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                Text(compactContextDetail)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(.white.opacity(0.48))
-                    .lineLimit(1)
+                MacMarqueeText(
+                    text: contextTitle,
+                    fontSize: 11,
+                    foregroundColor: .white
+                )
+                    .id("compact-title-\(contextTitle)")
+                MacMarqueeText(
+                    text: contextDetail,
+                    fontSize: 9,
+                    foregroundColor: .white.opacity(0.48)
+                )
+                    .id("compact-detail-\(contextDetail)")
             }
 
             Spacer()
 
-            Text("进行中")
+            Text(statusText)
                 .font(.system(size: 9, weight: .medium))
                 .foregroundColor(.white.opacity(0.5))
         }
@@ -2344,12 +2762,6 @@ struct MacIslandSwiftUIView: View {
                         Spacer()
                     }
 
-                    // 空闲态没有第二级详情；鼠标移入展开后直接展示媒体，
-                    // 不要求用户再点击“当前暂无进行中的事项”。
-                    if model.nowPlayingActive {
-                        nowPlayingCard
-                    }
-
                     if !model.nextActivityTitle.isEmpty {
                         Button(action: {
                             if model.nextActivityId.isEmpty {
@@ -2395,6 +2807,11 @@ struct MacIslandSwiftUIView: View {
                     }
 
                     todayTodosCard
+
+                    // 有下一项安排或待办时优先展示这些内容，媒体卡片放在后面。
+                    if model.nowPlayingActive {
+                        nowPlayingCard
+                    }
 
                     overviewCards
 
@@ -2766,6 +3183,16 @@ struct MacIslandSwiftUIView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
                 Spacer()
+                Button(action: { model.onAcknowledgeReminder?() }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.72))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("关闭提醒")
+                .accessibilityLabel("关闭提醒")
             }
             
             Text(model.reminderBody)
@@ -2850,6 +3277,17 @@ struct MacIslandSwiftUIView: View {
             HStack {
                 Image(systemName: "bell.fill").foregroundColor(.orange)
                 Text(model.reminderTitle).font(.system(size: 12, weight: .semibold))
+                Spacer(minLength: 8)
+                Button(action: { model.onAcknowledgeReminder?() }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.72))
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("关闭提醒")
+                .accessibilityLabel("关闭提醒")
             }
         }
         .padding(12)
@@ -3434,6 +3872,17 @@ class MacPomodoroStatusBarController {
         let hasClipboardLink = clipboardLinksEnabled && clipboardURL != nil
         let hasNowPlaying = nowPlayingSnapshot.isAvailable
         let hasLiveContent = isPomodoroActive || hasReminder || hasActivity || hasClipboardLink
+        let hasPlayingMedia = hasNowPlaying && nowPlayingSnapshot.isPlaying
+        let hasUpcomingActivity = !nextActivityTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !todayTodos.isEmpty
+        let hasDisplayContent = hasLiveContent || hasUpcomingActivity || hasNowPlaying
+        // Upcoming items and paused media remain available in the expanded
+        // overview, but they must not grow the collapsed notch into two black
+        // side wings. Only live content (or actively playing media) gets the
+        // wider compact frame; an idle notched Mac keeps the physical notch
+        // width so it can still expand on hover.
+        let hasCompactContent = hasLiveContent || hasPlayingMedia
+        let hasCompactLyrics = hasPlayingMedia && !nowPlayingSnapshot.lyrics.isEmpty
         guard islandEnabled, !isShortcutHidden else {
             hideIsland()
             return
@@ -3449,15 +3898,15 @@ class MacPomodoroStatusBarController {
             hideIsland()
             return
         }
-        // 普通屏幕没有可供空闲态收纳的物理刘海；没有实时内容时仍然隐藏。
-        guard hasLiveContent || geometry.hasNotch else {
+        // 普通屏幕没有可供空闲态收纳的物理刘海；没有媒体、待办或实时内容时隐藏。
+        guard hasDisplayContent || geometry.hasNotch else {
             hideIsland()
             return
         }
 
         // 实时内容刚结束时不能沿用之前的点击/提醒展开状态。空闲态只在
         // 指针位于刘海交互区域内时展开，移出后一定完全缩回刘海。
-        if !hasLiveContent {
+        if !hasCompactContent {
             isPinnedExpanded = false
             isExpanded = isPointerInsideIsland
         }
@@ -3476,7 +3925,7 @@ class MacPomodoroStatusBarController {
         view.hasNotch = geometry.hasNotch
         view.topInset = geometry.topInset
         view.notchWidth = geometry.notchWidth
-        view.isIdle = !hasLiveContent
+        view.isIdle = !hasCompactContent
         view.focusCurrentCycle = max(1, focusCurrentCycle)
         view.focusTotalCycles = max(1, focusTotalCycles)
         view.focusPlannedSeconds = focusPlannedSeconds
@@ -3568,11 +4017,13 @@ class MacPomodoroStatusBarController {
         // Android Studio 等菜单项较多的应用，且远宽于实际刘海区域。
         let liveCompactWidth = max(320, collapsedNotchWidth + 160)
         let compactWidth: CGFloat = geometry.hasNotch
-            ? (hasLiveContent ? liveCompactWidth : collapsedNotchWidth)
-            : (hasActivity || isPomodoroActive ? 320 : 280)
-        let compactHeight: CGFloat = geometry.hasNotch
-            ? (hasLiveContent ? max(geometry.topInset, 28) + 4 : max(geometry.topInset, 28))
+            ? (hasCompactContent ? liveCompactWidth : collapsedNotchWidth)
+            : (hasDisplayContent ? 320 : 280)
+        let compactBaseHeight: CGFloat = geometry.hasNotch
+            ? (hasCompactContent ? max(geometry.topInset, 28) + 4 : max(geometry.topInset, 28))
             : 68
+        let compactHeight = compactBaseHeight
+            + (hasCompactLyrics ? macCompactLyricsHeight : 0)
         let focusWithActivity = isPomodoroActive && hasActivity
         let focusWithReminder = isPomodoroActive && hasReminder
         let expandedWidthFloor: CGFloat = geometry.hasNotch
@@ -3606,9 +4057,10 @@ class MacPomodoroStatusBarController {
                 // 备注可能换行，最终高度由 SwiftUI 实际布局回传；这里不再
                 // 预留猜测值，避免不可见/空白备注把首次展开窗口撑高。
 
-                // reminderCard/activityCard 是单行内容加 12pt 内边距，实际约 39pt。
+                // reminderCard 的关闭按钮使单行卡片实际高度约为 48pt；activityCard
+                // 仍为单行内容加 12pt 内边距，实际约 39pt。
                 if hasReminder && !view.reminderTitle.isEmpty {
-                    contentHeight += 12 + 39
+                    contentHeight += 12 + 48
                 } else if hasClipboardLink {
                     // clipboardLinkCard includes the browser selector and a
                     // little extra room for accessibility/font metric changes.
@@ -3617,7 +4069,9 @@ class MacPomodoroStatusBarController {
                     contentHeight += 12 + 39
                 }
             } else if hasReminder {
-                contentHeight = 104
+                // 标题行包含关闭按钮，预留其 28pt 点击区域，避免提醒正文或
+                // 操作按钮被展开窗口的 reveal mask 截断。
+                contentHeight = 116
             } else if hasClipboardLink {
                 // The expanded clipboard card now has four rows: title, URL,
                 // browser selector, and actions. Keep a safety margin so the
@@ -3892,10 +4346,18 @@ class MacPomodoroStatusBarController {
         nowPlayingMonitor.start { [weak self] snapshot in
             DispatchQueue.main.async {
                 guard let self = self else { return }
+                let hadNowPlaying = self.nowPlayingSnapshot.isAvailable
                 self.nowPlayingSnapshot = snapshot
-                // 收起时只缓存状态；展开后再参与布局，避免后台媒体切歌
-                // 导致不可见的岛反复调整窗口尺寸。
-                if self.isExpanded || self.isPointerInsideIsland {
+                // 收起态也显示媒体信息和当前歌词；切歌、停止或歌词异步加载
+                // 后都要立即更新窗口高度和内容。
+                if self.isExpanded
+                    || self.isPointerInsideIsland
+                    || self.isPomodoroActive
+                    || self.isOngoingActivityActive
+                    || self.currentReminder != nil
+                    || self.clipboardURL != nil
+                    || snapshot.isAvailable
+                    || hadNowPlaying {
                     self.refreshDisplay()
                 }
             }
