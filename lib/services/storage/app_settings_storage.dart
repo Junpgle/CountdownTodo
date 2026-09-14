@@ -225,14 +225,7 @@ class AppSettingsStorage {
     final storedDate = prefs.getString(_privacyDate);
     if (storedDate == null) return false;
 
-    final cachedVersion = prefs.getString(_privacyCachedVersion);
-    final cacheTime = prefs.getInt(_privacyCacheTime) ?? 0;
-    final now = DateTime.now().millisecondsSinceEpoch;
-
-    final currentVersion = cachedVersion != null &&
-            now - cacheTime < _privacyCacheDuration.inMilliseconds
-        ? cachedVersion
-        : await _getPrivacyPolicyCurrentVersion();
+    final currentVersion = await _getPrivacyPolicyCurrentVersion();
 
     // A temporary network failure must not turn an existing consent into a
     // new prompt on every launch. A successful refresh will compare the
@@ -247,7 +240,7 @@ class AppSettingsStorage {
     final cacheTime = prefs.getInt(_privacyCacheTime) ?? 0;
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    if (cachedVersion != null &&
+    if (cacheTime > 0 &&
         now - cacheTime < _privacyCacheDuration.inMilliseconds) {
 //       debugPrint('[Privacy] Using cached version: $cachedVersion');
       return cachedVersion;
@@ -268,6 +261,8 @@ class AppSettingsStorage {
       }
     } catch (_) {}
 
+    // 记录失败或无法解析的检查时间，避免每次启动都重复发起同一个请求。
+    await prefs.setInt(_privacyCacheTime, now);
     if (cachedVersion != null) return cachedVersion;
     return null;
   }

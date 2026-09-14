@@ -270,7 +270,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Map<String, dynamic>? _splashContent;
   bool _showDefaultSplash = true;
   bool _showHolidaySplash = false;
-  bool _showPrivacyUpdate = false;
+  bool _privacyDialogShowing = false;
+  bool _privacyCheckScheduled = false;
   bool _defaultSplashCompleted = false;
   bool _splashSequenceReady = false;
   bool _windowReadyForSplashTransition = true;
@@ -488,12 +489,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         StorageService.initTheme(),
         EnvironmentService.init(),
         StorageService.getLoginSession(),
-        // A policy refresh should finish when possible. If it times out,
-        // retain an existing versioned agreement and retry on a later launch.
-        StorageService.isPrivacyPolicyUpToDate().timeout(
-          const Duration(seconds: 4),
-          onTimeout: () => true,
-        ),
         StorageService.isPrivacyPolicyAgreed(),
         FeatureGuideScreen.shouldShow()
             .timeout(const Duration(seconds: 2), onTimeout: () => false),
@@ -502,9 +497,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
       // 解析并发结果
       final String? user = results[2] as String?;
-      final bool privacyPolicyUpToDate = results[3] as bool;
-      final bool wasAgreed = results[4] as bool;
-      final bool needGuide = results[5] as bool;
+      final bool wasAgreed = results[3] as bool;
+      final bool needGuide = results[4] as bool;
 
       // 0.6 初始化壁纸(从manifest获取)，延后到首帧后避免占用启动关键路径
       SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -513,23 +507,24 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
       final wasLoggedIn = user != null && user.isNotEmpty;
 
-      // 3. 判断是否需要弹窗：已登录但未同意过，或版本已变化
-      final shouldShowPrivacyDialog =
-          wasLoggedIn && (!wasAgreed || !privacyPolicyUpToDate);
+      // 本地同意状态只负责首屏决定是否需要首次同意，远程版本检查放到
+      // 首帧之后，避免网络请求阻塞进入应用。
+      final shouldShowPrivacyDialog = wasLoggedIn && !wasAgreed;
 
       if (mounted) {
         setState(() {
           _loggedInUser = user;
           _showFeatureGuide = needGuide;
           _isChecking = false;
-          _showPrivacyUpdate = shouldShowPrivacyDialog;
         });
 
-        // 4. 如果需要弹窗，在界面渲染后弹出
-        if (_showPrivacyUpdate) {
+        // 4. 未同意过的用户立即显示首次同意弹窗；已同意用户在后台检查版本。
+        if (shouldShowPrivacyDialog) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            _showPrivacyUpdateDialog();
+            unawaited(_showPrivacyUpdateDialog());
           });
+        } else if (wasLoggedIn && wasAgreed) {
+          _schedulePrivacyPolicyBackgroundCheck();
         }
         _scheduleDeepLinkConsumption();
       }
@@ -554,6 +549,29 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     });
   }
 
+  void _schedulePrivacyPolicyBackgroundCheck() {
+    if (_privacyCheckScheduled) return;
+    _privacyCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_checkPrivacyPolicyInBackground());
+    });
+  }
+
+  Future<void> _checkPrivacyPolicyInBackground() async {
+    final user = _loggedInUser;
+    if (!mounted || user == null || user.isEmpty) return;
+
+    try {
+      final policyUpToDate = await StorageService.isPrivacyPolicyUpToDate();
+      if (!mounted || _loggedInUser != user || policyUpToDate) return;
+      if (!await StorageService.isPrivacyPolicyAgreed()) return;
+      if (!mounted || _loggedInUser != user) return;
+      await _showPrivacyUpdateDialog();
+    } catch (_) {
+      // 后台检查失败不影响当前使用，下次启动或缓存过期后再重试。
+    }
+  }
+
   void _scheduleSplashReadinessFallback() {
     if (AppPlatform.isWeb ||
         !AppPlatform.isDesktop ||
@@ -574,50 +592,57 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   Future<void> _showPrivacyUpdateDialog() async {
+    if (!mounted || _privacyDialogShowing) return;
     final navContext = appNavigatorKey.currentContext;
-    if (navContext == null) return;
-    final result = await showDialog<bool>(
-      context: navContext,
-      barrierDismissible: false,
-      builder: (dialogContext) => PrivacyPolicyDialog(
-        isUpdate: true,
-        onAgree: () async {
-          await StorageService.setPrivacyPolicyAgreed(true);
-          if (dialogContext.mounted) {
-            Navigator.pop(dialogContext, true);
-          }
-        },
-        onDisagree: () async {
-          await ReminderScheduleService.clearScheduledReminders();
-          await StorageService.clearLoginSession();
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.clear();
-          if (dialogContext.mounted) {
-            Navigator.pop(dialogContext, false);
-          }
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              setState(() {
-                _loggedInUser = null;
-              });
+    if (navContext == null || !navContext.mounted) return;
+
+    _privacyDialogShowing = true;
+    try {
+      final result = await showDialog<bool>(
+        context: navContext,
+        barrierDismissible: false,
+        builder: (dialogContext) => PrivacyPolicyDialog(
+          isUpdate: true,
+          onAgree: () async {
+            await StorageService.setPrivacyPolicyAgreed(true);
+            if (dialogContext.mounted) {
+              Navigator.pop(dialogContext, true);
             }
-          });
-        },
-      ),
-    );
-    if (result == false) {
-      // 用户不同意更新后的隐私协议，退出登录并清除数据
-      await ReminderScheduleService.clearScheduledReminders();
-      await StorageService.clearLoginSession();
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.clear();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() {
-            _loggedInUser = null;
-          });
-        }
-      });
+          },
+          onDisagree: () async {
+            await ReminderScheduleService.clearScheduledReminders();
+            await StorageService.clearLoginSession();
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.clear();
+            if (dialogContext.mounted) {
+              Navigator.pop(dialogContext, false);
+            }
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _loggedInUser = null;
+                });
+              }
+            });
+          },
+        ),
+      );
+      if (result == false) {
+        // 用户不同意更新后的隐私协议，退出登录并清除数据
+        await ReminderScheduleService.clearScheduledReminders();
+        await StorageService.clearLoginSession();
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.clear();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _loggedInUser = null;
+            });
+          }
+        });
+      }
+    } finally {
+      _privacyDialogShowing = false;
     }
   }
 

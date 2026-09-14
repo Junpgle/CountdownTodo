@@ -1,5 +1,7 @@
 import 'package:countdown_todo/services/privacy_policy_version.dart';
+import 'package:countdown_todo/services/storage/app_settings_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('PrivacyPolicyVersion.extract', () {
@@ -22,6 +24,27 @@ void main() {
 
     test('does not invent a version when no supported marker exists', () {
       expect(PrivacyPolicyVersion.extract('# Privacy policy'), isNull);
+    });
+  });
+
+  group('AppSettingsStorage privacy version cache', () {
+    test('reuses a recent check without requiring a cached version', () async {
+      SharedPreferences.setMockInitialValues({
+        'privacy_policy_date': '2026-07-20',
+        'privacy_policy_cache_time': DateTime.now().millisecondsSinceEpoch,
+      });
+
+      expect(await AppSettingsStorage.isPrivacyPolicyUpToDate(), isTrue);
+    });
+
+    test('does not treat a future stored marker as current', () async {
+      SharedPreferences.setMockInitialValues({
+        'privacy_policy_date': '2026-09-14',
+        'privacy_policy_cached_version': '2026-07-20',
+        'privacy_policy_cache_time': DateTime.now().millisecondsSinceEpoch,
+      });
+
+      expect(await AppSettingsStorage.isPrivacyPolicyUpToDate(), isFalse);
     });
   });
 }
