@@ -78,16 +78,21 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
             (type == FinanceCategoryType.expense ? '📦' : '💰'),
         categoryType: category?.type ?? type,
         isEditing: category != null,
+        availableParents: _categories,
+        initialParentUuid: category?.parentUuid,
+        editingCategoryUuid: category?.uuid,
         onSave: (draft) async {
           final updated = category == null
               ? FinanceCategory(
                   name: draft.name,
                   type: draft.type!,
+                  parentUuid: draft.parentUuid,
                   sortOrder: _categories.length * 10)
               : FinanceCategory.fromMap(category.toMap());
           updated
             ..name = draft.name
-            ..icon = draft.icon;
+            ..icon = draft.icon
+            ..parentUuid = draft.parentUuid;
           if (category != null) updated.markAsChanged();
           await FinanceRepository.saveCategory(updated);
           savedCategory = updated;
@@ -98,6 +103,43 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
     await _load();
     _showMessage(category == null ? '分类已添加' : '分类已保存');
     return savedCategory;
+  }
+
+  int _nextSubcategorySortOrder(FinanceCategory parent) {
+    var maxSortOrder = parent.sortOrder;
+    for (final category in _categories) {
+      if (category.parentUuid?.trim() == parent.uuid &&
+          category.sortOrder > maxSortOrder) {
+        maxSortOrder = category.sortOrder;
+      }
+    }
+    return maxSortOrder + 1;
+  }
+
+  Future<void> _addSubcategory(FinanceCategory parent) async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => FinanceCatalogEditor(
+        initialIcon: parent.icon,
+        categoryType: parent.type,
+        availableParents: _categories,
+        initialParentUuid: parent.uuid,
+        lockParent: true,
+        isSubcategory: true,
+        onSave: (draft) async {
+          await FinanceRepository.saveCategory(FinanceCategory(
+            name: draft.name,
+            type: draft.type!,
+            icon: draft.icon,
+            parentUuid: draft.parentUuid,
+            sortOrder: _nextSubcategorySortOrder(parent),
+          ));
+        },
+      ),
+    );
+    if (saved != true || !mounted) return;
+    await _load();
+    _showMessage('细分类已添加到“${parent.name}”');
   }
 
   Future<void> _archiveCategory(FinanceCategory category) async {
@@ -198,70 +240,76 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: const FloatingGlassAppBar(
         flexibleSpace: FloatingGlassTopBarBackground(),
         title: Text('记账设置'),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _loadError != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.cloud_off_outlined, size: 36),
-                      const SizedBox(height: 12),
-                      Text(_loadError!),
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                          onPressed: _load,
-                          icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('重新加载')),
-                    ],
-                  ),
-                )
-              : SafeArea(
-                  top: false,
-                  child: LayoutBuilder(
-                    builder: (context, constraints) => RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView(
-                        padding: EdgeInsets.fromLTRB(
-                          math.max(16, (constraints.maxWidth - 1000) / 2),
-                          20,
-                          math.max(16, (constraints.maxWidth - 1000) / 2),
-                          32,
-                        ),
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        children: [
-                          FinanceCatalogManager(
-                            categories: _categories,
-                            paymentMethods: _paymentMethods,
-                            onAddCategory: (type) =>
-                                _showCategoryEditor(type: type),
-                            onEditCategory: (category) async {
-                              await _showCategoryEditor(
-                                  type: category.type, category: category);
-                            },
-                            onArchiveCategory: _archiveCategory,
-                            onRestoreCategory: _unarchiveCategory,
-                            onAddPaymentMethod: () => _showPaymentEditor(),
-                            onEditPaymentMethod: (method) async {
-                              await _showPaymentEditor(method: method);
-                            },
-                            onArchivePaymentMethod: _archivePaymentMethod,
-                            onRestorePaymentMethod: _unarchivePaymentMethod,
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.cloud_off_outlined, size: 36),
+                        const SizedBox(height: 12),
+                        Text(_loadError!),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                            onPressed: _load,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('重新加载')),
+                      ],
+                    ),
+                  )
+                : SafeArea(
+                    top: false,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => RefreshIndicator(
+                        onRefresh: _load,
+                        child: ListView(
+                          padding: EdgeInsets.fromLTRB(
+                            math.max(16, (constraints.maxWidth - 1000) / 2),
+                            topBarHeight + 20,
+                            math.max(16, (constraints.maxWidth - 1000) / 2),
+                            32,
                           ),
-                          const SizedBox(height: 28),
-                          _buildPreferences(context),
-                        ],
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.onDrag,
+                          children: [
+                            FinanceCatalogManager(
+                              categories: _categories,
+                              paymentMethods: _paymentMethods,
+                              onAddCategory: (type) =>
+                                  _showCategoryEditor(type: type),
+                              onAddSubcategory: _addSubcategory,
+                              onEditCategory: (category) async {
+                                await _showCategoryEditor(
+                                    type: category.type, category: category);
+                              },
+                              onArchiveCategory: _archiveCategory,
+                              onRestoreCategory: _unarchiveCategory,
+                              onAddPaymentMethod: () => _showPaymentEditor(),
+                              onEditPaymentMethod: (method) async {
+                                await _showPaymentEditor(method: method);
+                              },
+                              onArchivePaymentMethod: _archivePaymentMethod,
+                              onRestorePaymentMethod: _unarchivePaymentMethod,
+                            ),
+                            const SizedBox(height: 28),
+                            _buildPreferences(context),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
+      ),
     );
   }
 

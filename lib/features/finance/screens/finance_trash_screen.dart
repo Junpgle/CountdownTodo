@@ -174,7 +174,12 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
           kind: FinanceTrashKind.transaction,
           title: item.merchant?.trim().isNotEmpty == true
               ? item.merchant!
-              : categories[item.categoryUuid]?.name ?? item.type.label,
+              : categories[item.categoryUuid] == null
+                  ? item.type.label
+                  : financeCategoryDisplayName(
+                      categories[item.categoryUuid]!,
+                      _categories,
+                    ),
           details: [
             item.transactionDate,
             if (item.isInstallment)
@@ -191,7 +196,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
           kind: FinanceTrashKind.budget,
           title: item.isOverall
               ? '全部支出预算'
-              : '${categories[item.categoryUuid]?.name ?? '已归档或未知分类'}预算',
+              : '${categories[item.categoryUuid] == null ? '已归档或未知分类' : financeCategoryDisplayName(categories[item.categoryUuid]!, _categories)}预算',
           details: [
             item.monthKey,
             if (item.note?.isNotEmpty == true) item.note!
@@ -242,7 +247,9 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('记账回收站'),
@@ -251,22 +258,28 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
               tooltip: '刷新', onPressed: _load, icon: const Icon(Icons.refresh)),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _loadError != null
-              ? FinancePageList(children: [
-                  FinanceEmptyState(
-                    icon: Icons.error_outline_rounded,
-                    title: '回收站加载失败',
-                    description: '请重新加载后再恢复记录。',
-                    actionLabel: '重新加载',
-                    onAction: _load,
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+                ? FinancePageList(topPadding: topBarHeight, children: [
+                    FinanceEmptyState(
+                      icon: Icons.error_outline_rounded,
+                      title: '回收站加载失败',
+                      description: '请重新加载后再恢复记录。',
+                      actionLabel: '重新加载',
+                      onAction: _load,
+                    ),
+                  ])
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: FinanceTrashManager(
+                      topPadding: topBarHeight,
+                      entries: _entries,
+                    ),
                   ),
-                ])
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: FinanceTrashManager(entries: _entries),
-                ),
+      ),
     );
   }
 }

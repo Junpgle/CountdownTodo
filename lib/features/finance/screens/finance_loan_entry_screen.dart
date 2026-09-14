@@ -237,191 +237,203 @@ class _FinanceLoanEntryScreenState extends State<FinanceLoanEntryScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return PopScope(
       canPop: !_isSaving,
       child: Scaffold(
+        extendBodyBehindAppBar: true,
         appBar: FloatingGlassAppBar(
           flexibleSpace: const FloatingGlassTopBarBackground(),
           title: Text(_isEditing ? '编辑贷款' : '新增贷款'),
         ),
-        body: Column(children: [
-          Expanded(
-            child: AbsorbPointer(
-              absorbing: _isSaving,
-              child: Form(
-                key: _formKey,
-                child: FinancePageList(maxWidth: 720, children: [
-                  FinanceSectionCard(
-                    title: '借款信息',
-                    icon: Icons.account_balance_outlined,
-                    child: Column(children: [
-                      TextFormField(
-                        key: const ValueKey('finance-loan-name'),
-                        controller: _nameController,
-                        maxLength: 60,
-                        textInputAction: TextInputAction.next,
-                        decoration: financeFieldDecoration(context,
-                                label: '贷款名称', hint: '例如：房贷、消费贷')
-                            .copyWith(counterText: ''),
-                        validator: (value) =>
-                            value == null || value.trim().isEmpty
-                                ? '请输入贷款名称'
-                                : null,
-                      ),
-                      const SizedBox(height: 16),
-                      FinanceAmountField(
-                        key: const ValueKey('finance-loan-principal'),
-                        controller: _principalController,
-                        label: '借款本金',
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ]),
-                  ),
-                  const SizedBox(height: 16),
-                  FinanceSectionCard(
-                    title: '还款设置',
-                    icon: Icons.event_repeat_outlined,
-                    child: Column(children: [
-                      FinanceAdaptiveFields(minChildWidth: 150, children: [
-                        TextFormField(
-                          key: const ValueKey('finance-loan-rate'),
-                          controller: _rateController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                                RegExp(r'[0-9.,%]'))
-                          ],
-                          decoration: financeFieldDecoration(context,
-                              label: '年利率', suffix: '%', hint: '0.00'),
-                          validator: (value) =>
-                              parseFinanceInterestRate(value ?? '') == null
-                                  ? '请输入 0–100%'
-                                  : null,
-                          onChanged: (_) => setState(() {}),
-                        ),
-                        TextFormField(
-                          key: const ValueKey('finance-loan-term'),
-                          controller: _termController,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly
-                          ],
-                          decoration: financeFieldDecoration(context,
-                              label: '贷款期限', suffix: '个月'),
-                          validator: (value) {
-                            final term = int.tryParse(value?.trim() ?? '');
-                            return term == null ||
-                                    term <
-                                        FinanceLoanCalculator.minTermMonths ||
-                                    term > FinanceLoanCalculator.maxTermMonths
-                                ? '请输入 1–360 个月'
-                                : null;
-                          },
-                          onChanged: (_) => setState(() {}),
-                        ),
-                      ]),
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<FinanceLoanRepaymentMethod>(
-                        key: const ValueKey('finance-loan-method'),
-                        initialValue: _repaymentMethod,
-                        isExpanded: true,
-                        decoration:
-                            financeFieldDecoration(context, label: '还款方式'),
-                        items: [
-                          for (final method
-                              in FinanceLoanRepaymentMethod.values)
-                            DropdownMenuItem(
-                                value: method, child: Text(method.label))
-                        ],
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() => _repaymentMethod = value);
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      FinanceAdaptiveFields(children: [
-                        InkWell(
-                          key: const ValueKey('finance-loan-start'),
-                          borderRadius: BorderRadius.circular(14),
-                          onTap: _pickDate,
-                          child: InputDecorator(
+        body: FloatingGlassTopBarContentFade(
+          topBarHeight: topBarHeight,
+          child: Column(children: [
+            Expanded(
+              child: AbsorbPointer(
+                absorbing: _isSaving,
+                child: Form(
+                  key: _formKey,
+                  child: FinancePageList(
+                    topPadding: topBarHeight,
+                    maxWidth: 720,
+                    children: [
+                      FinanceSectionCard(
+                        title: '借款信息',
+                        icon: Icons.account_balance_outlined,
+                        child: Column(children: [
+                          TextFormField(
+                            key: const ValueKey('finance-loan-name'),
+                            controller: _nameController,
+                            maxLength: 60,
+                            textInputAction: TextInputAction.next,
                             decoration: financeFieldDecoration(context,
-                                label: '借款日期',
-                                icon: Icons.calendar_today_outlined),
-                            child: Text(dateKey(_startDate)),
+                                    label: '贷款名称', hint: '例如：房贷、消费贷')
+                                .copyWith(counterText: ''),
+                            validator: (value) =>
+                                value == null || value.trim().isEmpty
+                                    ? '请输入贷款名称'
+                                    : null,
                           ),
-                        ),
-                        DropdownButtonFormField<int>(
-                          key: ValueKey(
-                              'finance-loan-repayment-day-$_repaymentDay'),
-                          initialValue: _repaymentDay,
-                          isExpanded: true,
-                          decoration: financeFieldDecoration(context,
-                              label: '每月还款日', helper: '当月没有该日期时，按月末还款。'),
-                          items: [
-                            for (var day = 1; day <= 31; day++)
-                              DropdownMenuItem(
-                                  value: day, child: Text('$day 日'))
+                          const SizedBox(height: 16),
+                          FinanceAmountField(
+                            key: const ValueKey('finance-loan-principal'),
+                            controller: _principalController,
+                            label: '借款本金',
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ]),
+                      ),
+                      const SizedBox(height: 16),
+                      FinanceSectionCard(
+                        title: '还款设置',
+                        icon: Icons.event_repeat_outlined,
+                        child: Column(children: [
+                          FinanceAdaptiveFields(minChildWidth: 150, children: [
+                            TextFormField(
+                              key: const ValueKey('finance-loan-rate'),
+                              controller: _rateController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                    RegExp(r'[0-9.,%]'))
+                              ],
+                              decoration: financeFieldDecoration(context,
+                                  label: '年利率', suffix: '%', hint: '0.00'),
+                              validator: (value) =>
+                                  parseFinanceInterestRate(value ?? '') == null
+                                      ? '请输入 0–100%'
+                                      : null,
+                              onChanged: (_) => setState(() {}),
+                            ),
+                            TextFormField(
+                              key: const ValueKey('finance-loan-term'),
+                              controller: _termController,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly
+                              ],
+                              decoration: financeFieldDecoration(context,
+                                  label: '贷款期限', suffix: '个月'),
+                              validator: (value) {
+                                final term = int.tryParse(value?.trim() ?? '');
+                                return term == null ||
+                                        term <
+                                            FinanceLoanCalculator
+                                                .minTermMonths ||
+                                        term >
+                                            FinanceLoanCalculator.maxTermMonths
+                                    ? '请输入 1–360 个月'
+                                    : null;
+                              },
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ]),
+                          const SizedBox(height: 16),
+                          DropdownButtonFormField<FinanceLoanRepaymentMethod>(
+                            key: const ValueKey('finance-loan-method'),
+                            initialValue: _repaymentMethod,
+                            isExpanded: true,
+                            decoration:
+                                financeFieldDecoration(context, label: '还款方式'),
+                            items: [
+                              for (final method
+                                  in FinanceLoanRepaymentMethod.values)
+                                DropdownMenuItem(
+                                    value: method, child: Text(method.label))
+                            ],
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() => _repaymentMethod = value);
+                              }
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          FinanceAdaptiveFields(children: [
+                            InkWell(
+                              key: const ValueKey('finance-loan-start'),
+                              borderRadius: BorderRadius.circular(14),
+                              onTap: _pickDate,
+                              child: InputDecorator(
+                                decoration: financeFieldDecoration(context,
+                                    label: '借款日期',
+                                    icon: Icons.calendar_today_outlined),
+                                child: Text(dateKey(_startDate)),
+                              ),
+                            ),
+                            DropdownButtonFormField<int>(
+                              key: ValueKey(
+                                  'finance-loan-repayment-day-$_repaymentDay'),
+                              initialValue: _repaymentDay,
+                              isExpanded: true,
+                              decoration: financeFieldDecoration(context,
+                                  label: '每月还款日', helper: '当月没有该日期时，按月末还款。'),
+                              items: [
+                                for (var day = 1; day <= 31; day++)
+                                  DropdownMenuItem(
+                                      value: day, child: Text('$day 日'))
+                              ],
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setState(() => _repaymentDay = value);
+                                }
+                              },
+                            ),
+                          ]),
+                        ]),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildPreview(),
+                      const SizedBox(height: 16),
+                      FinanceSectionCard(
+                        child: ExpansionTile(
+                          tilePadding: EdgeInsets.zero,
+                          childrenPadding: const EdgeInsets.only(top: 14),
+                          shape: const Border(),
+                          collapsedShape: const Border(),
+                          initiallyExpanded:
+                              _lenderController.text.isNotEmpty ||
+                                  _noteController.text.isNotEmpty,
+                          title: const Text('补充信息'),
+                          subtitle: const Text('出借方、备注 · 可选'),
+                          children: [
+                            TextFormField(
+                              controller: _lenderController,
+                              maxLength: 60,
+                              decoration: financeFieldDecoration(context,
+                                  label: '出借方',
+                                  icon: Icons.business_outlined,
+                                  hint: '例如：某银行'),
+                            ),
+                            const SizedBox(height: 14),
+                            TextFormField(
+                              controller: _noteController,
+                              maxLength: 300,
+                              minLines: 2,
+                              maxLines: 4,
+                              decoration: financeFieldDecoration(context,
+                                  label: '备注', icon: Icons.notes_outlined),
+                            ),
                           ],
-                          onChanged: (value) {
-                            if (value != null) {
-                              setState(() => _repaymentDay = value);
-                            }
-                          },
                         ),
-                      ]),
-                    ]),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        '借款本金不会计入收入。标记某期已还后，利息会作为支出记录，本金只用于减少剩余负债。',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: colors.onSurfaceVariant, height: 1.5),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  _buildPreview(),
-                  const SizedBox(height: 16),
-                  FinanceSectionCard(
-                    child: ExpansionTile(
-                      tilePadding: EdgeInsets.zero,
-                      childrenPadding: const EdgeInsets.only(top: 14),
-                      shape: const Border(),
-                      collapsedShape: const Border(),
-                      initiallyExpanded: _lenderController.text.isNotEmpty ||
-                          _noteController.text.isNotEmpty,
-                      title: const Text('补充信息'),
-                      subtitle: const Text('出借方、备注 · 可选'),
-                      children: [
-                        TextFormField(
-                          controller: _lenderController,
-                          maxLength: 60,
-                          decoration: financeFieldDecoration(context,
-                              label: '出借方',
-                              icon: Icons.business_outlined,
-                              hint: '例如：某银行'),
-                        ),
-                        const SizedBox(height: 14),
-                        TextFormField(
-                          controller: _noteController,
-                          maxLength: 300,
-                          minLines: 2,
-                          maxLines: 4,
-                          decoration: financeFieldDecoration(context,
-                              label: '备注', icon: Icons.notes_outlined),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '借款本金不会计入收入。标记某期已还后，利息会作为支出记录，本金只用于减少剩余负债。',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: colors.onSurfaceVariant, height: 1.5),
-                  ),
-                ]),
+                ),
               ),
             ),
-          ),
-          FinanceFormActions(isSaving: _isSaving, onSave: _save, label: '保存贷款'),
-        ]),
+            FinanceFormActions(
+                isSaving: _isSaving, onSave: _save, label: '保存贷款'),
+          ]),
+        ),
       ),
     );
   }

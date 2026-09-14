@@ -264,7 +264,10 @@ abstract final class FinanceAiContextService {
 
     String categoryName(String? uuid) {
       if (uuid == null || uuid.isEmpty) return '未分类';
-      return categoryMap[uuid]?.name ?? '未分类';
+      final category = categoryMap[uuid];
+      return category == null
+          ? '未分类'
+          : financeCategoryDisplayName(category, categories);
     }
 
     String paymentName(String? uuid) {
@@ -377,8 +380,10 @@ abstract final class FinanceAiContextService {
     if (visibleCategories.isNotEmpty) {
       lines.add('分类:');
       for (final category in visibleCategories) {
+        final displayName = financeCategoryDisplayName(category, categories);
         lines.add(
-          '- categoryUuid=${category.uuid} | categoryName=${category.name} | type=${category.type.name}',
+          '- categoryUuid=${category.uuid} | categoryName=${category.name} | '
+          'categoryPath=$displayName | type=${category.type.name}',
         );
       }
     }

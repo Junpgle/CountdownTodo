@@ -642,7 +642,12 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
         : FinanceCategoryType.expense;
     return categories
         .where((item) => item.type == categoryType && !item.isDeleted)
-        .where((item) => _normalizeFinanceOption(item.name) == wanted)
+        .where((item) =>
+            _normalizeFinanceOption(item.name) == wanted ||
+            _normalizeFinanceOption(
+                  financeCategoryDisplayName(item, categories),
+                ) ==
+                wanted)
         .map((item) => item.uuid)
         .firstOrNull;
   }

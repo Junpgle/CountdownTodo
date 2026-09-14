@@ -6,11 +6,13 @@ class FinanceCatalogDraft {
   final String name;
   final String icon;
   final FinanceCategoryType? type;
+  final String? parentUuid;
 
   const FinanceCatalogDraft({
     required this.name,
     required this.icon,
     required this.type,
+    this.parentUuid,
   });
 }
 
@@ -20,6 +22,11 @@ class FinanceCatalogEditor extends StatefulWidget {
   final String initialIcon;
   final FinanceCategoryType? categoryType;
   final bool isEditing;
+  final List<FinanceCategory> availableParents;
+  final String? initialParentUuid;
+  final String? editingCategoryUuid;
+  final bool lockParent;
+  final bool isSubcategory;
   final Future<void> Function(FinanceCatalogDraft draft) onSave;
 
   const FinanceCatalogEditor({
@@ -28,6 +35,11 @@ class FinanceCatalogEditor extends StatefulWidget {
     required this.initialIcon,
     this.categoryType,
     this.isEditing = false,
+    this.availableParents = const [],
+    this.initialParentUuid,
+    this.editingCategoryUuid,
+    this.lockParent = false,
+    this.isSubcategory = false,
     required this.onSave,
   });
 
@@ -36,18 +48,55 @@ class FinanceCatalogEditor extends StatefulWidget {
 }
 
 class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
+  static const _noParentValue = '__finance_no_parent__';
+
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _iconController;
   late FinanceCategoryType? _type;
+  String? _parentUuid;
   bool _isSaving = false;
   String? _saveError;
 
   bool get _isPayment => widget.categoryType == null;
-  String get _label => _isPayment ? '付款方式' : '分类';
+  String get _label => _isPayment
+      ? '付款方式'
+      : widget.isSubcategory
+          ? '细分类'
+          : '分类';
   String get _icon => _iconController.text.trim().isEmpty
       ? (_isPayment ? '💼' : '📦')
       : _iconController.text.trim();
+
+  List<FinanceCategory> get _parentCandidates {
+    if (_isPayment || _type == null) return const [];
+    return widget.availableParents.where((category) {
+      final parentUuid = category.parentUuid?.trim();
+      return category.type == _type &&
+          category.uuid != widget.editingCategoryUuid &&
+          !category.isDeleted &&
+          (parentUuid == null || parentUuid.isEmpty) &&
+          (!category.isArchived || category.uuid == _parentUuid);
+    }).toList();
+  }
+
+  FinanceCategory? get _selectedParent {
+    final parentUuid = _parentUuid?.trim();
+    if (parentUuid == null || parentUuid.isEmpty) return null;
+    for (final category in widget.availableParents) {
+      if (category.uuid == parentUuid) return category;
+    }
+    return null;
+  }
+
+  String get _parentFieldValue {
+    final parentUuid = _parentUuid?.trim();
+    if (parentUuid != null &&
+        _parentCandidates.any((category) => category.uuid == parentUuid)) {
+      return parentUuid;
+    }
+    return _noParentValue;
+  }
 
   List<String> get _suggestedIcons => _isPayment
       ? const [
@@ -112,6 +161,8 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
     _nameController = TextEditingController(text: widget.initialName);
     _iconController = TextEditingController(text: widget.initialIcon);
     _type = widget.categoryType;
+    final parentUuid = widget.initialParentUuid?.trim();
+    _parentUuid = parentUuid == null || parentUuid.isEmpty ? null : parentUuid;
   }
 
   @override
@@ -133,6 +184,7 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
         name: _nameController.text.trim(),
         icon: _icon,
         type: _type,
+        parentUuid: _parentUuid,
       ));
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
@@ -182,7 +234,9 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                             Text(
                               _nameController.text.trim().isEmpty
                                   ? '你的$_label'
-                                  : _nameController.text.trim(),
+                                  : _selectedParent == null
+                                      ? _nameController.text.trim()
+                                      : '${_selectedParent!.name} - ${_nameController.text.trim()}',
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.titleMedium?.copyWith(
@@ -238,7 +292,13 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                           selected: type == _type,
                           onSelected: _isSaving || widget.isEditing
                               ? null
-                              : (_) => setState(() => _type = type),
+                              : (_) => setState(() {
+                                    _type = type;
+                                    if (!_parentCandidates.any((category) =>
+                                        category.uuid == _parentUuid)) {
+                                      _parentUuid = null;
+                                    }
+                                  }),
                         ),
                     ],
                   ),
@@ -251,6 +311,40 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                             ?.copyWith(color: colors.onSurfaceVariant),
                       ),
                     ),
+                  const SizedBox(height: 16),
+                ],
+                if (!_isPayment &&
+                    (_parentCandidates.isNotEmpty || _parentUuid != null)) ...[
+                  DropdownButtonFormField<String>(
+                    key: const ValueKey('finance-catalog-parent'),
+                    initialValue: _parentFieldValue,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: '上级大类（可选）',
+                      helperText: widget.lockParent && _selectedParent != null
+                          ? '已选择“${_selectedParent!.name}”，这是该大类下的细分类'
+                          : '不选择上级时，会创建为一级分类',
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: _noParentValue,
+                        child: Text('一级分类'),
+                      ),
+                      for (final parent in _parentCandidates)
+                        DropdownMenuItem<String>(
+                          value: parent.uuid,
+                          child: Text('${parent.icon} ${parent.name}'),
+                        ),
+                    ],
+                    onChanged: _isSaving || widget.lockParent
+                        ? null
+                        : (value) => setState(() {
+                              _parentUuid =
+                                  value == _noParentValue ? null : value;
+                            }),
+                  ),
                   const SizedBox(height: 16),
                 ],
                 Text('选择图标', style: theme.textTheme.titleSmall),

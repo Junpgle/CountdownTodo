@@ -266,7 +266,8 @@ abstract final class FinanceAutomationService {
       includeArchived: true,
     );
     final categoryNames = {
-      for (final category in categories) category.uuid: category.name,
+      for (final category in categories)
+        category.uuid: financeCategoryDisplayName(category, categories),
     };
     final prefs = await SharedPreferences.getInstance();
     final accountKey =

@@ -14,6 +14,7 @@ class FinanceCatalogManager extends StatefulWidget {
   final List<FinancePaymentMethod> paymentMethods;
   final Future<FinanceCategory?> Function(FinanceCategoryType type)
       onAddCategory;
+  final Future<void> Function(FinanceCategory parent)? onAddSubcategory;
   final Future<bool> Function() onAddPaymentMethod;
   final Future<void> Function(FinanceCategory category) onEditCategory;
   final Future<void> Function(FinanceCategory category) onArchiveCategory;
@@ -29,6 +30,7 @@ class FinanceCatalogManager extends StatefulWidget {
     required this.categories,
     required this.paymentMethods,
     required this.onAddCategory,
+    this.onAddSubcategory,
     required this.onAddPaymentMethod,
     required this.onEditCategory,
     required this.onArchiveCategory,
@@ -81,13 +83,19 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                         : FinanceCategoryType.income))
               _CatalogEntry(
                 uuid: category.uuid,
-                name: category.name,
+                name: financeCategoryDisplayName(category, widget.categories),
                 icon: category.icon,
                 isSystem: category.isSystem,
                 isArchived: category.isArchived,
                 onEdit: () => widget.onEditCategory(category),
                 onArchive: () => widget.onArchiveCategory(category),
                 onRestore: () => widget.onRestoreCategory(category),
+                onAddSubcategory:
+                    category.parentUuid?.trim().isNotEmpty == true ||
+                            category.isArchived ||
+                            widget.onAddSubcategory == null
+                        ? null
+                        : () => widget.onAddSubcategory!(category),
               ),
         ];
 
@@ -448,11 +456,29 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                         width: 24,
                         height: 24,
                         child: CircularProgressIndicator(strokeWidth: 2))
-                  else if (entry.isSystem)
+                  else if (entry.isSystem && entry.onAddSubcategory == null)
                     Tooltip(
                         message: '系统预设$_itemLabel不可编辑或归档',
                         child: Icon(Icons.lock_outline_rounded,
                             size: 16, color: colors.onSurfaceVariant))
+                  else if (entry.isSystem)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Tooltip(
+                          message: '系统预设$_itemLabel不可编辑或归档',
+                          child: Icon(Icons.lock_outline_rounded,
+                              size: 16, color: colors.onSurfaceVariant),
+                        ),
+                        const SizedBox(width: 2),
+                        IconButton(
+                          tooltip: '新增${entry.name}下的小类',
+                          onPressed: () =>
+                              _runAction(entry, entry.onAddSubcategory!),
+                          icon: const Icon(Icons.add_rounded, size: 20),
+                        ),
+                      ],
+                    )
                   else if (entry.isArchived)
                     IconButton(
                       tooltip: '恢复${entry.name}',
@@ -460,25 +486,40 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                       icon: const Icon(Icons.unarchive_outlined, size: 20),
                     )
                   else
-                    PopupMenuButton<String>(
-                      tooltip: '管理${entry.name}',
-                      icon: Icon(Icons.more_horiz_rounded,
-                          color: colors.onSurfaceVariant),
-                      onSelected: (action) => _runAction(entry,
-                          action == 'edit' ? entry.onEdit : entry.onArchive),
-                      itemBuilder: (_) => [
-                        const PopupMenuItem(
-                            value: 'edit',
-                            child: ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                leading: Icon(Icons.edit_outlined),
-                                title: Text('编辑'))),
-                        const PopupMenuItem(
-                            value: 'archive',
-                            child: ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                leading: Icon(Icons.archive_outlined),
-                                title: Text('归档'))),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (entry.onAddSubcategory != null)
+                          IconButton(
+                            tooltip: '新增${entry.name}下的小类',
+                            onPressed: () =>
+                                _runAction(entry, entry.onAddSubcategory!),
+                            icon: const Icon(Icons.add_rounded, size: 20),
+                          ),
+                        PopupMenuButton<String>(
+                          tooltip: '管理${entry.name}',
+                          icon: Icon(Icons.more_horiz_rounded,
+                              color: colors.onSurfaceVariant),
+                          onSelected: (action) => _runAction(
+                              entry,
+                              action == 'edit'
+                                  ? entry.onEdit
+                                  : entry.onArchive),
+                          itemBuilder: (_) => [
+                            const PopupMenuItem(
+                                value: 'edit',
+                                child: ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: Icon(Icons.edit_outlined),
+                                    title: Text('编辑'))),
+                            const PopupMenuItem(
+                                value: 'archive',
+                                child: ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: Icon(Icons.archive_outlined),
+                                    title: Text('归档'))),
+                          ],
+                        ),
                       ],
                     ),
                 ],
@@ -590,6 +631,7 @@ class _CatalogEntry {
   final Future<void> Function() onEdit;
   final Future<void> Function() onArchive;
   final Future<void> Function() onRestore;
+  final Future<void> Function()? onAddSubcategory;
 
   const _CatalogEntry({
     required this.uuid,
@@ -600,5 +642,6 @@ class _CatalogEntry {
     required this.onEdit,
     required this.onArchive,
     required this.onRestore,
+    this.onAddSubcategory,
   });
 }

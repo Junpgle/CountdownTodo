@@ -8,6 +8,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 List<FinanceCategory> _categories() => [
       FinanceCategory(uuid: 'food', name: '餐饮', icon: '🍜', isSystem: true),
+      FinanceCategory(
+        uuid: 'milk-tea',
+        name: '奶茶',
+        icon: '🧋',
+        parentUuid: 'food',
+        isSystem: true,
+      ),
       FinanceCategory(uuid: 'coffee', name: '咖啡', icon: '☕'),
       FinanceCategory(uuid: 'archived', name: '旧分类', isArchived: true),
       FinanceCategory(uuid: 'deleted', name: '已删除分类', isDeleted: true),
@@ -29,6 +36,7 @@ Future<void> _pumpCatalog(
   Brightness brightness = Brightness.light,
   List<FinanceCategory>? categories,
   Future<FinanceCategory?> Function(FinanceCategoryType)? onAdd,
+  Future<void> Function(FinanceCategory)? onAddSubcategory,
   Future<void> Function(FinanceCategory)? onEdit,
   Future<void> Function(FinanceCategory)? onArchive,
   Future<void> Function(FinanceCategory)? onRestore,
@@ -57,6 +65,7 @@ Future<void> _pumpCatalog(
             FinancePaymentMethod(uuid: 'card', name: '日常银行卡', icon: '💳'),
           ],
           onAddCategory: onAdd ?? (_) async => null,
+          onAddSubcategory: onAddSubcategory,
           onAddPaymentMethod: () async => false,
           onEditCategory: onEdit ?? (_) async {},
           onArchiveCategory: onArchive ?? (_) async {},
@@ -77,6 +86,9 @@ Future<void> _openEditor(
   FinanceCategoryType? type = FinanceCategoryType.expense,
   bool editing = false,
   String name = '',
+  List<FinanceCategory> availableParents = const [],
+  String? initialParentUuid,
+  bool lockParent = false,
   Size size = const Size(390, 844),
   double textScale = 1,
 }) async {
@@ -101,6 +113,9 @@ Future<void> _openEditor(
                     initialIcon: '📦',
                     categoryType: type,
                     isEditing: editing,
+                    availableParents: availableParents,
+                    initialParentUuid: initialParentUuid,
+                    lockParent: lockParent,
                     onSave: onSave,
                   ),
                 ),
@@ -113,6 +128,11 @@ Future<void> _openEditor(
 }
 
 void main() {
+  testWidgets('细分类显示完整的父子路径', (tester) async {
+    await _pumpCatalog(tester);
+    expect(find.text('餐饮 - 奶茶'), findsOneWidget);
+  });
+
   testWidgets('分类按收支分开，搜索与归档筛选不会显示已删除项目', (tester) async {
     String? restored;
     await _pumpCatalog(tester,
@@ -173,6 +193,18 @@ void main() {
     await tester.tap(find.text('归档'));
     await tester.pumpAndSettle();
     expect(archived, 'coffee');
+  });
+
+  testWidgets('自定义大类可以直接新增自己的细分类', (tester) async {
+    String? parentUuid;
+    await _pumpCatalog(
+      tester,
+      onAddSubcategory: (parent) async => parentUuid = parent.uuid,
+    );
+    await tester.tap(find.byTooltip('新增咖啡下的小类'));
+    await tester.pumpAndSettle();
+    expect(parentUuid, 'coffee');
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('新增默认使用当前分类类型，保存后自动显示新增项目', (tester) async {
@@ -239,6 +271,32 @@ void main() {
     await tester.pumpAndSettle();
     expect(attempts, 2);
     expect(find.byType(FinanceCatalogEditor), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('自定义分类可以挂到大类下，并在编辑器中锁定已选上级', (tester) async {
+    FinanceCatalogDraft? saved;
+    final parents = _categories();
+    await _openEditor(
+      tester,
+      availableParents: parents,
+      initialParentUuid: 'food',
+      lockParent: true,
+      onSave: (draft) async => saved = draft,
+    );
+    expect(
+        find.byKey(const ValueKey('finance-catalog-parent')), findsOneWidget);
+    final parentField = tester.widget<DropdownButtonFormField<String>>(
+      find.byKey(const ValueKey('finance-catalog-parent')),
+    );
+    expect(parentField.onChanged, isNull);
+    expect(find.textContaining('这是该大类下的细分类'), findsOneWidget);
+
+    await tester.enterText(find.byKey(_nameKey), '夜宵');
+    await tester.tap(find.byKey(_saveKey));
+    await tester.pumpAndSettle();
+    expect(saved?.name, '夜宵');
+    expect(saved?.parentUuid, 'food');
     expect(tester.takeException(), isNull);
   });
 

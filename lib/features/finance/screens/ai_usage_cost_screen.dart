@@ -270,7 +270,9 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('AI 调用费用'),
@@ -280,141 +282,147 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
         icon: const Icon(Icons.add),
         label: const Text('添加单价'),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                children: [
-                  Card(
-                    color: colorScheme.primaryContainer,
-                    child: Padding(
-                      padding: const EdgeInsets.all(18),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('本月 API 费用',
-                              style: Theme.of(context).textTheme.titleMedium),
-                          const SizedBox(height: 6),
-                          Text(
-                            AiUsageCostService.formatMicros(
-                                _summary.costMicros),
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineMedium
-                                ?.copyWith(
-                                  color: colorScheme.onPrimaryContainer,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                              '$_summary.calls 次调用 · ${_summary.totalTokens} Token'
-                              '${_summary.unpricedCalls == 0 ? '' : ' · ${_summary.unpricedCalls} 次待定价'}'),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SwitchListTile.adaptive(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                    title: const Text('自动写入记账'),
-                    subtitle: const Text('同一天、同一服务商与模型的费用会汇总成一笔“AI 服务”支出'),
-                    value: _autoLedger,
-                    onChanged: _toggleAutoLedger,
-                  ),
-                  const SizedBox(height: 20),
-                  Text('按服务商与模型',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  if (_summary.breakdowns.isEmpty)
-                    const Card(
-                        child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Text('本月尚未收到带用量信息的 AI 调用。'),
-                    ))
-                  else
-                    ..._summary.breakdowns.map(
-                      (item) => Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.auto_awesome_outlined),
-                          title: Text('${item.provider} · ${item.model}'),
-                          subtitle: Text(
-                            '${item.calls} 次 · ${item.totalTokens} Token'
-                            '${item.cachedPromptTokens == 0 ? '' : ' · 缓存 ${item.cachedPromptTokens}'}'
-                            '${item.imageTokens == 0 ? '' : ' · 图片 ${item.imageTokens}'}'
-                            '${item.unpricedCalls == 0 ? '' : ' · ${item.unpricedCalls} 次待定价'}',
-                          ),
-                          trailing: Text(
-                              AiUsageCostService.formatMicros(item.costMicros)),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(16, topBarHeight + 16, 16, 100),
+                  children: [
+                    Card(
+                      color: colorScheme.primaryContainer,
+                      child: Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('本月 API 费用',
+                                style: Theme.of(context).textTheme.titleMedium),
+                            const SizedBox(height: 6),
+                            Text(
+                              AiUsageCostService.formatMicros(
+                                  _summary.costMicros),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineMedium
+                                  ?.copyWith(
+                                    color: colorScheme.onPrimaryContainer,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                                '$_summary.calls 次调用 · ${_summary.totalTokens} Token'
+                                '${_summary.unpricedCalls == 0 ? '' : ' · ${_summary.unpricedCalls} 次待定价'}'),
+                          ],
                         ),
                       ),
                     ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                          child: Text('模型单价',
-                              style: Theme.of(context).textTheme.titleMedium)),
-                      TextButton.icon(
-                        onPressed: () => _editPricing(),
-                        icon: const Icon(Icons.edit_outlined, size: 16),
-                        label: const Text('管理'),
-                      ),
-                    ],
-                  ),
-                  const Text(
-                    '内置精确价目：智谱支持上下文/输出分段，DeepSeek 支持北京时间高峰与闲时；NVIDIA NIM 和自定义模型需按实际账户价格配置。没有返回 usage 的调用会保留为待定价。',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_pricing.isEmpty)
-                    const Text('尚未配置单价；费用统计会显示为待定价。')
-                  else
-                    ..._pricing.map(
-                      (item) => Card(
-                        child: ListTile(
-                          title: Text(
-                            '${item.provider} · ${item.model}'
-                            '${AiUsageCostService.isBuiltInPricing(item) ? ' · 内置' : ''}',
-                          ),
-                          subtitle: Text(
-                            _pricingSubtitle(item),
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.edit_outlined),
-                            onPressed: () => _editPricing(item),
-                          ),
-                          onLongPress: () async {
-                            await AiUsageCostService.deletePricing(item.id);
-                            await _load();
-                          },
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 20),
-                  Text('最近调用', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  ..._records.map(
-                    (item) => ListTile(
+                    const SizedBox(height: 12),
+                    SwitchListTile.adaptive(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                      title: Text('${item.provider} · ${item.model}'),
-                      subtitle: Text(
-                        '${item.operation} · ${item.totalTokens} Token'
-                        '${item.cachedPromptTokens == 0 ? '' : ' · 缓存 ${item.cachedPromptTokens}'}'
-                        '${item.imageTokens == 0 ? '' : ' · 图片 ${item.imageTokens}'}'
-                        '${item.audioSeconds == 0 ? '' : ' · 音频 ${item.audioSeconds}s'}',
-                      ),
-                      trailing: Text(item.isPriced
-                          ? AiUsageCostService.formatMicros(
-                              item.costMicros ?? 0)
-                          : '待定价'),
+                      title: const Text('自动写入记账'),
+                      subtitle: const Text('同一天、同一服务商与模型的费用会汇总成一笔“AI 服务”支出'),
+                      value: _autoLedger,
+                      onChanged: _toggleAutoLedger,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 20),
+                    Text('按服务商与模型',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    if (_summary.breakdowns.isEmpty)
+                      const Card(
+                          child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text('本月尚未收到带用量信息的 AI 调用。'),
+                      ))
+                    else
+                      ..._summary.breakdowns.map(
+                        (item) => Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.auto_awesome_outlined),
+                            title: Text('${item.provider} · ${item.model}'),
+                            subtitle: Text(
+                              '${item.calls} 次 · ${item.totalTokens} Token'
+                              '${item.cachedPromptTokens == 0 ? '' : ' · 缓存 ${item.cachedPromptTokens}'}'
+                              '${item.imageTokens == 0 ? '' : ' · 图片 ${item.imageTokens}'}'
+                              '${item.unpricedCalls == 0 ? '' : ' · ${item.unpricedCalls} 次待定价'}',
+                            ),
+                            trailing: Text(AiUsageCostService.formatMicros(
+                                item.costMicros)),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                            child: Text('模型单价',
+                                style:
+                                    Theme.of(context).textTheme.titleMedium)),
+                        TextButton.icon(
+                          onPressed: () => _editPricing(),
+                          icon: const Icon(Icons.edit_outlined, size: 16),
+                          label: const Text('管理'),
+                        ),
+                      ],
+                    ),
+                    const Text(
+                      '内置精确价目：智谱支持上下文/输出分段，DeepSeek 支持北京时间高峰与闲时；NVIDIA NIM 和自定义模型需按实际账户价格配置。没有返回 usage 的调用会保留为待定价。',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    const SizedBox(height: 8),
+                    if (_pricing.isEmpty)
+                      const Text('尚未配置单价；费用统计会显示为待定价。')
+                    else
+                      ..._pricing.map(
+                        (item) => Card(
+                          child: ListTile(
+                            title: Text(
+                              '${item.provider} · ${item.model}'
+                              '${AiUsageCostService.isBuiltInPricing(item) ? ' · 内置' : ''}',
+                            ),
+                            subtitle: Text(
+                              _pricingSubtitle(item),
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.edit_outlined),
+                              onPressed: () => _editPricing(item),
+                            ),
+                            onLongPress: () async {
+                              await AiUsageCostService.deletePricing(item.id);
+                              await _load();
+                            },
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 20),
+                    Text('最近调用',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    ..._records.map(
+                      (item) => ListTile(
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 4),
+                        title: Text('${item.provider} · ${item.model}'),
+                        subtitle: Text(
+                          '${item.operation} · ${item.totalTokens} Token'
+                          '${item.cachedPromptTokens == 0 ? '' : ' · 缓存 ${item.cachedPromptTokens}'}'
+                          '${item.imageTokens == 0 ? '' : ' · 图片 ${item.imageTokens}'}'
+                          '${item.audioSeconds == 0 ? '' : ' · 音频 ${item.audioSeconds}s'}',
+                        ),
+                        trailing: Text(item.isPriced
+                            ? AiUsageCostService.formatMicros(
+                                item.costMicros ?? 0)
+                            : '待定价'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+      ),
     );
   }
 

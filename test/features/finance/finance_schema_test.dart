@@ -188,6 +188,84 @@ void main() {
     );
   });
 
+  test('默认细分类写入数据库时保留父分类关系', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-category-hierarchy-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    await FinanceStorage.ensureReady();
+    final rows = await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: ['finance-system-category-food-milk-tea'],
+    );
+
+    expect(rows, hasLength(1));
+    expect(rows.single['parent_uuid'], 'finance-system-category-food');
+    expect(rows.single['is_system'], 1);
+  });
+
+  test('自定义小类校验父分类类型，并随大类归档恢复', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-custom-category-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final parent = FinanceCategory(
+      uuid: 'custom-food',
+      name: '自定义餐饮',
+      sortOrder: 1000,
+    );
+    final child = FinanceCategory(
+      uuid: 'custom-late-night',
+      name: '夜宵',
+      parentUuid: parent.uuid,
+      sortOrder: 1001,
+    );
+    await FinanceStorage.saveCategory(parent);
+    await FinanceStorage.saveCategory(child);
+    expect(
+      (await db.query('finance_categories',
+              where: 'uuid = ?', whereArgs: [child.uuid]))
+          .single['parent_uuid'],
+      parent.uuid,
+    );
+
+    await expectLater(
+      FinanceStorage.saveCategory(FinanceCategory(
+        uuid: 'wrong-type-child',
+        name: '收入夜宵',
+        type: FinanceCategoryType.income,
+        parentUuid: parent.uuid,
+      )),
+      throwsArgumentError,
+    );
+
+    await FinanceStorage.archiveCategory(parent.uuid);
+    var childRow = (await db.query('finance_categories',
+            where: 'uuid = ?', whereArgs: [child.uuid]))
+        .single;
+    expect(childRow['is_archived'], 1);
+    await FinanceStorage.unarchiveCategory(parent.uuid);
+    childRow = (await db.query('finance_categories',
+            where: 'uuid = ?', whereArgs: [child.uuid]))
+        .single;
+    expect(childRow['is_archived'], 0);
+  });
+
   test('同一预算范围使用稳定 UUID，远端重复范围只保留较新记录', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'budget-scope-test',

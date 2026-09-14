@@ -36,6 +36,7 @@ void main() {
   testWidgets('账单列表点击打开详情而不是直接编辑', (tester) async {
     var opened = false;
     var edited = false;
+    GlobalKey? sourceKey;
     final transaction = _transaction();
 
     await _pump(
@@ -57,7 +58,10 @@ void main() {
             },
             keyword: '',
             filterType: null,
-            onOpenDetail: (_) => opened = true,
+            onOpenDetail: (_, key) {
+              opened = true;
+              sourceKey = key;
+            },
             onKeywordChanged: (_) {},
             onFilterChanged: (_) {},
             onEdit: (_) => edited = true,
@@ -71,6 +75,117 @@ void main() {
     await tester.tap(find.text('午餐'));
     expect(opened, isTrue);
     expect(edited, isFalse);
+    expect(sourceKey?.currentContext, isNotNull);
+  });
+
+  testWidgets('账单列表按日期归类并显示每天的净支出', (tester) async {
+    final sameDay = FinanceTransaction(
+      uuid: 'transaction-same-day',
+      amountMinor: 1200,
+      transactionDate: '2026-09-07',
+      occurredAt: DateTime(2026, 9, 7, 8).millisecondsSinceEpoch,
+      merchant: '咖啡',
+      categoryUuid: 'food',
+    );
+    final previousDay = FinanceTransaction(
+      uuid: 'transaction-previous-day',
+      amountMinor: 1800,
+      transactionDate: '2026-09-06',
+      occurredAt: DateTime(2026, 9, 6, 8).millisecondsSinceEpoch,
+      merchant: '早餐',
+      categoryUuid: 'food',
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: SizedBox(
+          height: 720,
+          child: FinanceLedgerPanel(
+            // 故意打乱输入顺序，确保分组组件自身负责日期和组内排序。
+            transactions: [previousDay, _transaction(), sameDay],
+            categories: {
+              'food': FinanceCategory(uuid: 'food', name: '餐饮', icon: '🍜'),
+            },
+            paymentMethods: const {},
+            keyword: '',
+            filterType: null,
+            onOpenDetail: (_, __) {},
+            onKeywordChanged: (_) {},
+            onFilterChanged: (_) {},
+            onEdit: (_) {},
+            onDelete: (_) {},
+            onRefund: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('9月7日 周一'), findsOneWidget);
+    expect(find.text('净支出 ¥40.50'), findsOneWidget);
+    expect(find.text('9月6日 周日'), findsOneWidget);
+    expect(find.text('净支出 ¥18.00'), findsOneWidget);
+    expect(find.text('3 笔账单'), findsNothing);
+    expect(find.text('2 笔账单'), findsOneWidget);
+    expect(find.text('1 笔账单'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('记账概览支持月、周、日三种时间视图', (tester) async {
+    final transaction = FinanceTransaction(
+      uuid: 'overview-transaction',
+      amountMinor: 1200,
+      transactionDate: '2026-09-01',
+      occurredAt: DateTime(2026, 9, 1, 9).millisecondsSinceEpoch,
+      merchant: '早餐',
+      categoryUuid: 'food',
+    );
+    const summary = FinanceSummary(
+      expenseMinor: 1200,
+      transactionCount: 1,
+      expenseByCategory: {'food': 1200},
+      expenseByDate: {'2026-09-01': 1200},
+    );
+    DateTime? changedMonth;
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: DateTime(2026, 9),
+          summary: summary,
+          transactions: [transaction],
+          categories: {
+            'food': FinanceCategory(uuid: 'food', name: '餐饮', icon: '🍜'),
+          },
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+          onMonthChanged: (value) => changedMonth = value,
+        ),
+      ),
+    );
+
+    expect(find.text('月视图'), findsOneWidget);
+    expect(find.text('每日支出'), findsOneWidget);
+    expect(find.text('2026 年 9 月'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('finance-overview-period-previous')),
+    );
+    await tester.pump();
+    expect(changedMonth, DateTime(2026, 8));
+
+    await tester.tap(find.text('周视图'));
+    await tester.pumpAndSettle();
+    expect(find.text('周一至周日'), findsOneWidget);
+    expect(find.text('本周每日支出'), findsOneWidget);
+
+    await tester.tap(find.text('日视图'));
+    await tester.pumpAndSettle();
+    expect(find.text('选择具体日期'), findsOneWidget);
+    expect(find.text('当天时段支出'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('账单详情展示完整信息并提供编辑入口', (tester) async {

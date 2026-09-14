@@ -105,7 +105,8 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
       for (final category in _visibleCategories)
         DropdownMenuItem(
           value: category.uuid,
-          child: Text('${category.icon}  ${category.name}',
+          child: Text(
+              '${category.icon}  ${financeCategoryDisplayName(category, _categories)}',
               overflow: TextOverflow.ellipsis),
         ),
     ];
@@ -170,86 +171,93 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return PopScope(
       canPop: !_isSaving,
       child: Scaffold(
+        extendBodyBehindAppBar: true,
         appBar: FloatingGlassAppBar(
           flexibleSpace: const FloatingGlassTopBarBackground(),
           title: Text(_isEditing ? '编辑预算' : '新增预算'),
         ),
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _loadError != null
-                ? FinancePageList(children: [
-                    FinanceEmptyState(
-                      icon: Icons.error_outline_rounded,
-                      title: '预算分类加载失败',
-                      description: '请重新加载后再设置预算。',
-                      actionLabel: '重试',
-                      onAction: _loadCategories,
-                    ),
-                  ])
-                : Column(children: [
-                    Expanded(
-                      child: AbsorbPointer(
-                        absorbing: _isSaving,
-                        child: Form(
-                          key: _formKey,
-                          child: FinancePageList(
-                            maxWidth: 720,
-                            children: [
-                              FinanceSectionCard(
-                                title:
-                                    '${widget.month.year} 年 ${widget.month.month} 月',
-                                description: '预算按这个月份的账单统计。',
-                                icon: Icons.calendar_month_outlined,
-                                child: FinanceAmountField(
-                                  key: const ValueKey('finance-budget-amount'),
-                                  controller: _amountController,
-                                  label: '预算金额',
+        body: FloatingGlassTopBarContentFade(
+          topBarHeight: topBarHeight,
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _loadError != null
+                  ? FinancePageList(topPadding: topBarHeight, children: [
+                      FinanceEmptyState(
+                        icon: Icons.error_outline_rounded,
+                        title: '预算分类加载失败',
+                        description: '请重新加载后再设置预算。',
+                        actionLabel: '重试',
+                        onAction: _loadCategories,
+                      ),
+                    ])
+                  : Column(children: [
+                      Expanded(
+                        child: AbsorbPointer(
+                          absorbing: _isSaving,
+                          child: Form(
+                            key: _formKey,
+                            child: FinancePageList(
+                              topPadding: topBarHeight,
+                              maxWidth: 720,
+                              children: [
+                                FinanceSectionCard(
+                                  title:
+                                      '${widget.month.year} 年 ${widget.month.month} 月',
+                                  description: '预算按这个月份的账单统计。',
+                                  icon: Icons.calendar_month_outlined,
+                                  child: FinanceAmountField(
+                                    key:
+                                        const ValueKey('finance-budget-amount'),
+                                    controller: _amountController,
+                                    label: '预算金额',
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 16),
-                              FinanceSectionCard(
-                                title: '预算范围',
-                                icon: Icons.track_changes_outlined,
-                                description: '总预算覆盖全部支出；分类预算独立统计。',
-                                child: DropdownButtonFormField<String>(
-                                  key: ValueKey(
-                                      'finance-budget-scope-$_scopeValue'),
-                                  initialValue: _scopeValue,
-                                  isExpanded: true,
-                                  decoration: financeFieldDecoration(context,
-                                      label: '选择支出范围'),
-                                  items: _scopeItems,
-                                  onChanged: (value) {
-                                    if (value != null) {
-                                      setState(() => _scopeValue = value);
-                                    }
-                                  },
+                                const SizedBox(height: 16),
+                                FinanceSectionCard(
+                                  title: '预算范围',
+                                  icon: Icons.track_changes_outlined,
+                                  description: '总预算覆盖全部支出；分类预算独立统计。',
+                                  child: DropdownButtonFormField<String>(
+                                    key: ValueKey(
+                                        'finance-budget-scope-$_scopeValue'),
+                                    initialValue: _scopeValue,
+                                    isExpanded: true,
+                                    decoration: financeFieldDecoration(context,
+                                        label: '选择支出范围'),
+                                    items: _scopeItems,
+                                    onChanged: (value) {
+                                      if (value != null) {
+                                        setState(() => _scopeValue = value);
+                                      }
+                                    },
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 16),
-                              FinanceSectionCard(
-                                title: '留个备注',
-                                icon: Icons.notes_outlined,
-                                child: TextFormField(
-                                  controller: _noteController,
-                                  decoration: financeFieldDecoration(context,
-                                      label: '备注（可选）', hint: '例如：本月减少外卖，多做饭'),
-                                  maxLength: 120,
-                                  minLines: 2,
-                                  maxLines: 4,
+                                const SizedBox(height: 16),
+                                FinanceSectionCard(
+                                  title: '留个备注',
+                                  icon: Icons.notes_outlined,
+                                  child: TextFormField(
+                                    controller: _noteController,
+                                    decoration: financeFieldDecoration(context,
+                                        label: '备注（可选）', hint: '例如：本月减少外卖，多做饭'),
+                                    maxLength: 120,
+                                    minLines: 2,
+                                    maxLines: 4,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    FinanceFormActions(
-                        isSaving: _isSaving, onSave: _save, label: '保存预算'),
-                  ]),
+                      FinanceFormActions(
+                          isSaving: _isSaving, onSave: _save, label: '保存预算'),
+                    ]),
+        ),
       ),
     );
   }

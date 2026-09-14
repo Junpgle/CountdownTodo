@@ -40,6 +40,7 @@ class FinanceHomeScreen extends StatefulWidget {
 class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   List<FinanceTransaction> _transactions = const [];
+  List<FinanceTransaction> _overviewTransactions = const [];
   List<FinanceCategory> _categories = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
   FinanceSummary _summary = const FinanceSummary();
@@ -92,11 +93,15 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       }
       final from = DateTime(_month.year, _month.month);
       final to = DateTime(_month.year, _month.month + 1);
+      // 周视图需要覆盖月初前和月末后的完整自然周，避免边界日期被截断。
+      final overviewFrom = from.subtract(const Duration(days: 7));
+      final overviewTo = to.add(const Duration(days: 7));
       final values = await Future.wait<dynamic>([
         FinanceRepository.getTransactions(from: from, to: to),
         FinanceRepository.getSummary(from: from, to: to),
         FinanceRepository.getCategories(includeArchived: true),
         FinanceRepository.getPaymentMethods(includeArchived: true),
+        FinanceRepository.getTransactions(from: overviewFrom, to: overviewTo),
       ]);
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -104,6 +109,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         _summary = values[1] as FinanceSummary;
         _categories = values[2] as List<FinanceCategory>;
         _paymentMethods = values[3] as List<FinancePaymentMethod>;
+        _overviewTransactions = values[4] as List<FinanceTransaction>;
         _isLoading = false;
       });
     } catch (error) {
@@ -156,15 +162,30 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     if (result != null && mounted) await _load();
   }
 
-  Future<void> _openDetail(FinanceTransaction transaction) async {
-    final result = await Navigator.of(context).push<FinanceTransaction>(
-      PageTransitions.material(
-        builder: (_) => FinanceTransactionDetailScreen(
-          transaction: transaction,
-          category: _categoryMap[transaction.categoryUuid],
-          paymentMethod: _paymentMethodMap[transaction.paymentMethodUuid],
-        ),
+  Future<void> _openDetail(
+    FinanceTransaction transaction,
+    GlobalKey sourceKey,
+  ) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final category = _categoryMap[transaction.categoryUuid];
+    final categoryDisplayName = category == null
+        ? null
+        : financeCategoryDisplayName(category, _categories);
+    final result = await PageTransitions.pushFromRect<FinanceTransaction>(
+      context: context,
+      page: FinanceTransactionDetailScreen(
+        transaction: transaction,
+        category: category,
+        categoryDisplayName: categoryDisplayName,
+        paymentMethod: _paymentMethodMap[transaction.paymentMethodUuid],
       ),
+      sourceKey: sourceKey,
+      sourceColor: colorScheme.surfaceContainerLow,
+      placeholderBuilder: (_) => Text(
+        category?.icon.isNotEmpty == true ? category!.icon : '💰',
+        style: const TextStyle(fontSize: 30),
+      ),
+      sourceBorderRadius: BorderRadius.circular(18),
     );
     if (result != null && mounted) await _load();
   }
@@ -287,31 +308,20 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     );
   }
 
-  void _changeMonth(int delta) {
+  void _setMonth(DateTime value) {
     setState(() {
-      _month = DateTime(_month.year, _month.month + delta);
+      _month = DateTime(value.year, value.month);
     });
     _load();
-  }
-
-  Future<void> _pickMonth() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _month,
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now().add(const Duration(days: 3650)),
-      helpText: '选择月份',
-    );
-    if (picked == null || !mounted) return;
-    setState(() => _month = DateTime(picked.year, picked.month));
-    await _load();
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final topBarHeight = floatingGlassTopBarHeight(context);
     final scaffold = Scaffold(
       extendBody: true,
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('记账'),
@@ -417,49 +427,54 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _loadError != null
-              ? _buildError(colorScheme)
-              : Column(
-                  children: [
-                    _buildMonthBar(colorScheme),
-                    Expanded(
-                      child: IndexedStack(
-                        index: _selectedIndex,
-                        children: [
-                          FinanceOverviewPanel(
-                            month: _month,
-                            summary: _summary,
-                            transactions: _transactions,
-                            categories: _categoryMap,
-                            onAdd: () => _openEntry(
-                              sourceKey: _overviewAddActionKey,
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+                ? _buildError(colorScheme)
+                : Column(
+                    children: [
+                      Expanded(
+                        child: IndexedStack(
+                          index: _selectedIndex,
+                          children: [
+                            FinanceOverviewPanel(
+                              topPadding: topBarHeight,
+                              month: _month,
+                              summary: _summary,
+                              transactions: _overviewTransactions,
+                              categories: _categoryMap,
+                              onAdd: () => _openEntry(
+                                sourceKey: _overviewAddActionKey,
+                              ),
+                              addActionKey: _overviewAddActionKey,
+                              onRefresh: _load,
+                              onMonthChanged: _setMonth,
                             ),
-                            addActionKey: _overviewAddActionKey,
-                            onRefresh: _load,
-                          ),
-                          FinanceLedgerPanel(
-                            transactions: _transactions,
-                            categories: _categoryMap,
-                            paymentMethods: _paymentMethodMap,
-                            keyword: _keyword,
-                            filterType: _filterType,
-                            onOpenDetail: _openDetail,
-                            onKeywordChanged: (value) =>
-                                setState(() => _keyword = value),
-                            onFilterChanged: (value) =>
-                                setState(() => _filterType = value),
-                            onEdit: (transaction) =>
-                                _openEntry(transaction: transaction),
-                            onDelete: _deleteTransaction,
-                            onRefund: _openRefund,
-                          ),
-                        ],
+                            FinanceLedgerPanel(
+                              topPadding: topBarHeight,
+                              transactions: _transactions,
+                              categories: _categoryMap,
+                              paymentMethods: _paymentMethodMap,
+                              keyword: _keyword,
+                              filterType: _filterType,
+                              onOpenDetail: _openDetail,
+                              onKeywordChanged: (value) =>
+                                  setState(() => _keyword = value),
+                              onFilterChanged: (value) =>
+                                  setState(() => _filterType = value),
+                              onEdit: (transaction) =>
+                                  _openEntry(transaction: transaction),
+                              onDelete: _deleteTransaction,
+                              onRefund: _openRefund,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+      ),
       // 记账入口固定在底栏中央，避免扩展 FAB 覆盖账单内容。
       bottomNavigationBar: FloatingBottomNavigationBar(
         mobilePortraitOnly: false,
@@ -534,49 +549,6 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           autofocus: true,
           child: scaffold,
         ),
-      ),
-    );
-  }
-
-  Widget _buildMonthBar(ColorScheme colorScheme) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: '上个月',
-            onPressed: () => _changeMonth(-1),
-            style: floatingGlassPlainIconButtonStyle(),
-            icon: const Icon(Icons.chevron_left),
-          ),
-          Expanded(
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: _pickMonth,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '${_month.year} 年 ${_month.month} 月',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(width: 4),
-                    Icon(Icons.expand_more,
-                        size: 18, color: colorScheme.onSurfaceVariant),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          IconButton(
-            tooltip: '下个月',
-            onPressed: () => _changeMonth(1),
-            style: floatingGlassPlainIconButtonStyle(),
-            icon: const Icon(Icons.chevron_right),
-          ),
-        ],
       ),
     );
   }

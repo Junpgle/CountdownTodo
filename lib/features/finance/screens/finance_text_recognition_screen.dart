@@ -92,82 +92,87 @@ class _FinanceTextRecognitionScreenState
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('文本识别记账'),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-        children: [
-          Card(
-            margin: EdgeInsets.zero,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.receipt_long_outlined,
-                          color: colorScheme.primary),
-                      const SizedBox(width: 10),
-                      const Expanded(
-                        child: Text(
-                          '粘贴账单，识别后逐笔编辑',
-                          style: TextStyle(fontWeight: FontWeight.w700),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(16, topBarHeight + 12, 16, 32),
+          children: [
+            Card(
+              margin: EdgeInsets.zero,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.receipt_long_outlined,
+                            color: colorScheme.primary),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            '粘贴账单，识别后逐笔编辑',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
                         ),
-                      ),
-                      TextButton(
-                        onPressed: _useExample,
-                        child: const Text('填入示例'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  SelectableText(
-                    FinanceTextParser.formatHelp,
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.45,
-                      color: colorScheme.onSurfaceVariant,
+                        TextButton(
+                          onPressed: _useExample,
+                          child: const Text('填入示例'),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 10),
+                    SelectableText(
+                      FinanceTextParser.formatHelp,
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.45,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _controller,
-            minLines: 10,
-            maxLines: 18,
-            keyboardType: TextInputType.multiline,
-            decoration: InputDecoration(
-              hintText: '#记账\n类型: 支出\n金额: 12.50\n分类: 餐饮',
-              alignLabelWithHint: true,
-              labelText: '账单文本',
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                tooltip: '从剪贴板粘贴',
-                onPressed: _paste,
-                icon: const Icon(Icons.content_paste_rounded),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _controller,
+              minLines: 10,
+              maxLines: 18,
+              keyboardType: TextInputType.multiline,
+              decoration: InputDecoration(
+                hintText: '#记账\n类型: 支出\n金额: 12.50\n分类: 餐饮',
+                alignLabelWithHint: true,
+                labelText: '账单文本',
+                border: const OutlineInputBorder(),
+                suffixIcon: IconButton(
+                  tooltip: '从剪贴板粘贴',
+                  onPressed: _paste,
+                  icon: const Icon(Icons.content_paste_rounded),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: _isRecognizing ? null : _recognize,
-            icon: _isRecognizing
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.auto_awesome_rounded),
-            label: Text(_isRecognizing ? '正在打开编辑器...' : '识别并编辑'),
-          ),
-        ],
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _isRecognizing ? null : _recognize,
+              icon: _isRecognizing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.auto_awesome_rounded),
+              label: Text(_isRecognizing ? '正在打开编辑器...' : '识别并编辑'),
+            ),
+          ],
+        ),
       ),
     );
   }

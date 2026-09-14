@@ -307,7 +307,9 @@ abstract final class FinanceRepository {
           transaction.type.label,
           (amount / 100).toStringAsFixed(2),
           sanitizeFinanceCsvText(
-            category == null ? '未分类' : '${category.icon} ${category.name}',
+            category == null
+                ? '未分类'
+                : '${category.icon} ${financeCategoryDisplayName(category, categories.values)}',
           ),
           sanitizeFinanceCsvText(
             payment == null ? '未指定' : '${payment.icon} ${payment.name}',

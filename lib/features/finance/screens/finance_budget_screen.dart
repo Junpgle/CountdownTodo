@@ -157,7 +157,10 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
 
   String _budgetTitle(FinanceBudget budget) {
     if (budget.isOverall) return '全部支出';
-    return _categoryMap[budget.categoryUuid]?.name ?? '已归档或未知分类';
+    final category = _categoryMap[budget.categoryUuid];
+    return category == null
+        ? '已归档或未知分类'
+        : financeCategoryDisplayName(category, _categories);
   }
 
   String _budgetIcon(FinanceBudget budget) {
@@ -168,68 +171,74 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('预算'),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _loadError != null
-              ? _buildError(colorScheme)
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: FinancePageList(
-                    bottomPadding: 112,
-                    children: [
-                      _buildMonthBar(colorScheme),
-                      const SizedBox(height: 8),
-                      _buildSummaryCard(colorScheme),
-                      const SizedBox(height: 24),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '预算项目',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                          Text(
-                            '${_budgets.length} 项',
-                            style: TextStyle(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      if (_budgets.isEmpty)
-                        _buildEmptyState(colorScheme)
-                      else
-                        FinanceAdaptiveFields(
-                          minChildWidth: 330,
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+                ? _buildError(colorScheme)
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: FinancePageList(
+                      topPadding: topBarHeight,
+                      bottomPadding: 112,
+                      children: [
+                        _buildMonthBar(colorScheme),
+                        const SizedBox(height: 8),
+                        _buildSummaryCard(colorScheme),
+                        const SizedBox(height: 24),
+                        Row(
                           children: [
-                            for (final budget in _budgets)
-                              _buildBudgetCard(budget, colorScheme)
+                            Expanded(
+                              child: Text(
+                                '预算项目',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            Text(
+                              '${_budgets.length} 项',
+                              style: TextStyle(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
                           ],
                         ),
-                      if (_budgets.isNotEmpty && _overallBudget == null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            '当前仅统计已设置分类预算的进度；想控制整月支出，可以再添加“全部支出”预算。',
-                            style: TextStyle(
-                              color: colorScheme.onSurfaceVariant,
-                              fontSize: 12,
+                        const SizedBox(height: 8),
+                        if (_budgets.isEmpty)
+                          _buildEmptyState(colorScheme)
+                        else
+                          FinanceAdaptiveFields(
+                            minChildWidth: 330,
+                            children: [
+                              for (final budget in _budgets)
+                                _buildBudgetCard(budget, colorScheme)
+                            ],
+                          ),
+                        if (_budgets.isNotEmpty && _overallBudget == null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              '当前仅统计已设置分类预算的进度；想控制整月支出，可以再添加“全部支出”预算。',
+                              style: TextStyle(
+                                color: colorScheme.onSurfaceVariant,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
+      ),
       floatingActionButton: _isLoading || _loadError != null
           ? null
           : FloatingGlassActionButton.extended(

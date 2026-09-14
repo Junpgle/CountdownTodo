@@ -19,10 +19,16 @@ abstract final class FinanceTextParser {
 
 类型支持：支出、收入、退款。金额单位为元，日期省略时默认为今天。''';
 
-  /// The short sentence format shown in the normal entry form.
+  /// The natural-language shortcut shown in the normal entry form.
   ///
-  /// It is parsed into a draft and never saved directly. This keeps
-  /// one-sentence entry just as reviewable as text recognition.
+  /// It is parsed into drafts and never saved directly. This keeps quick
+  /// entry just as reviewable as text recognition while allowing one or more
+  /// bills in the same input.
+  static const String quickEntryExample = '今天早餐 8 元，微信；中午午餐 25 元，支付宝';
+  static const String quickEntryHelp =
+      '直接描述一笔或多笔账单；多笔请用换行或分号分开，缺少分类和付款方式也可以稍后补充';
+
+  /// Kept for callers that still use the old single-sentence wording.
   static const String oneSentenceExample = '今天午餐花了 28.5 元，微信支付，分类餐饮';
   static const String oneSentenceHelp = '说法：时间 + 事项 + 金额 + 付款方式 + 分类\n'
       '示例：今天午餐花了 28.5 元，微信支付，分类餐饮';
@@ -45,38 +51,38 @@ abstract final class FinanceTextParser {
     '吃饭': '餐饮',
     '吃东西': '餐饮',
     '用餐': '餐饮',
-    '早餐': '餐饮',
-    '早饭': '餐饮',
-    '午餐': '餐饮',
-    '午饭': '餐饮',
-    '晚餐': '餐饮',
-    '晚饭': '餐饮',
-    '夜宵': '餐饮',
-    '咖啡': '餐饮',
-    '奶茶': '餐饮',
+    '早餐': '早餐',
+    '早饭': '早餐',
+    '午餐': '午餐',
+    '午饭': '午餐',
+    '晚餐': '晚餐',
+    '晚饭': '晚餐',
+    '夜宵': '晚餐',
+    '咖啡': '咖啡',
+    '奶茶': '奶茶',
     '饮料': '餐饮',
-    '外卖': '餐饮',
-    '点餐': '餐饮',
+    '外卖': '外卖',
+    '点餐': '外卖',
     '餐厅': '餐饮',
     '食堂': '餐饮',
-    '买菜': '餐饮',
+    '买菜': '买菜',
     '交通': '交通',
-    '地铁': '交通',
-    '公交': '交通',
-    '打车': '交通',
-    '出租车': '交通',
-    '网约车': '交通',
-    '滴滴': '交通',
-    '共享单车': '交通',
-    '单车': '交通',
-    '公交车': '交通',
-    '火车': '交通',
-    '高铁': '交通',
-    '飞机': '交通',
-    '机票': '交通',
-    '加油': '交通',
-    '充电': '交通',
-    '停车': '交通',
+    '地铁': '公交地铁',
+    '公交': '公交地铁',
+    '打车': '打车',
+    '出租车': '打车',
+    '网约车': '打车',
+    '滴滴': '打车',
+    '共享单车': '骑行',
+    '单车': '骑行',
+    '公交车': '公交地铁',
+    '火车': '火车飞机',
+    '高铁': '火车飞机',
+    '飞机': '火车飞机',
+    '机票': '火车飞机',
+    '加油': '加油',
+    '充电': '加油',
+    '停车': '停车',
     '过路费': '交通',
     '高速费': '交通',
     '购物': '购物',
@@ -86,77 +92,82 @@ abstract final class FinanceTextParser {
     '商场': '购物',
     '超市': '购物',
     '网购': '购物',
-    '衣服': '购物',
-    '鞋子': '购物',
-    '鞋': '购物',
-    '化妆品': '购物',
-    '日用品': '购物',
-    '数码': '购物',
-    '手机': '购物',
-    '电脑': '购物',
-    '家具': '购物',
-    '家电': '购物',
+    '衣服': '服饰鞋包',
+    '鞋子': '服饰鞋包',
+    '鞋': '服饰鞋包',
+    '化妆品': '美妆个护',
+    '日用品': '日用品',
+    '数码': '数码',
+    '手机': '数码',
+    '电脑': '数码',
+    '家具': '家居家电',
+    '家电': '家居家电',
+    '宠物': '宠物用品',
     '淘宝': '购物',
     '京东': '购物',
     '拼多多': '购物',
-    '房贷': '居住',
-    '房租': '居住',
-    '租房': '居住',
-    '水电': '居住',
-    '水费': '居住',
-    '电费': '居住',
-    '燃气': '居住',
-    '物业': '居住',
+    '房贷': '房租',
+    '房租': '房租',
+    '租房': '房租',
+    '水电': '水电燃气',
+    '水费': '水电燃气',
+    '电费': '水电燃气',
+    '燃气': '水电燃气',
+    '物业': '物业',
+    '宽带': '通讯网络',
+    '话费': '通讯网络',
     '居住': '居住',
     '住房': '居住',
     '学习': '学习',
-    '课程': '学习',
-    '学费': '学习',
-    '教材': '学习',
-    '书籍': '学习',
-    '买书': '学习',
-    '培训': '学习',
-    '考试': '学习',
-    '报名': '学习',
+    '课程': '课程培训',
+    '学费': '课程培训',
+    '教材': '书籍',
+    '书籍': '书籍',
+    '买书': '书籍',
+    '培训': '课程培训',
+    '考试': '考试报名',
+    '报名': '考试报名',
     '学校': '学习',
     '娱乐': '娱乐',
-    '电影': '娱乐',
-    '看电影': '娱乐',
-    '游戏': '娱乐',
-    '游戏充值': '娱乐',
-    '电影票': '娱乐',
-    '演唱会': '娱乐',
-    '音乐': '娱乐',
+    '电影': '电影演出',
+    '看电影': '电影演出',
+    '游戏': '游戏',
+    '游戏充值': '游戏',
+    '电影票': '电影演出',
+    '演唱会': '电影演出',
+    '音乐': '音乐',
     'ktv': '娱乐',
     '旅游': '娱乐',
     '旅行': '娱乐',
     '健康': '健康',
-    '医院': '健康',
-    '看病': '健康',
-    '挂号': '健康',
-    '买药': '健康',
-    '买了药': '健康',
-    '药品': '健康',
-    '药店': '健康',
-    '体检': '健康',
-    '看牙': '健康',
-    '牙医': '健康',
-    '健身': '健康',
-    '医疗': '健康',
+    '医院': '医疗就诊',
+    '看病': '医疗就诊',
+    '挂号': '医疗就诊',
+    '买药': '药品',
+    '买了药': '药品',
+    '药品': '药品',
+    '药店': '药品',
+    '体检': '体检',
+    '看牙': '医疗就诊',
+    '牙医': '医疗就诊',
+    '健身': '健身',
+    '医疗': '医疗就诊',
     '社交': '社交',
-    '礼物': '社交',
-    '送礼': '社交',
-    '红包': '社交',
-    '请客': '社交',
-    '份子钱': '社交',
-    '人情': '社交',
+    '礼物': '礼物',
+    '送礼': '礼物',
+    '红包': '红包',
+    '请客': '聚餐',
+    '份子钱': '随礼',
+    '人情': '随礼',
     '订阅': '订阅',
+    '视频会员': '视频会员',
+    '音乐会员': '音乐会员',
     '会员': '订阅',
     '续费': '订阅',
     '月费': '订阅',
     '年费': '订阅',
-    '网盘': '订阅',
-    'icloud': '订阅',
+    '网盘': '云存储',
+    'icloud': '云存储',
     'ai服务': 'AI 服务',
     '人工智能': 'AI 服务',
     'chatgpt': 'AI 服务',
@@ -174,20 +185,24 @@ abstract final class FinanceTextParser {
 
   static const Map<String, String> _incomeCategoryAliases = {
     '工资': '工资',
+    '基本工资': '基本工资',
     '薪资': '工资',
     '薪水': '工资',
     '发薪': '工资',
     '月薪': '工资',
+    '加班费': '加班费',
+    '津贴': '津贴补贴',
+    '补贴': '津贴补贴',
     '兼职工资': '工资',
     '零花钱': '零花钱',
-    '生活费': '零花钱',
-    '零用钱': '零花钱',
-    '家里给': '零花钱',
-    '父母给': '零花钱',
+    '生活费': '生活费',
+    '零用钱': '生活费',
+    '家里给': '家庭支持',
+    '父母给': '家庭支持',
     '奖金': '奖金',
-    '年终奖': '奖金',
-    '绩效': '奖金',
-    '奖励': '奖金',
+    '年终奖': '年终奖',
+    '绩效': '项目奖金',
+    '奖励': '竞赛奖励',
     '其他收入': '其他',
     '其他': '其他',
   };
@@ -287,6 +302,55 @@ abstract final class FinanceTextParser {
       source: source,
       originalText: input.trim(),
     );
+  }
+
+  /// Parses the flexible natural-language input used by the normal entry
+  /// form. Structured blocks continue to use [parse]; ordinary text can be a
+  /// single sentence or multiple entries separated by a newline, semicolon,
+  /// or Chinese full stop.
+  static List<FinanceEntryDraft> parseQuickEntries(
+    String input, {
+    DateTime? now,
+    FinanceEntrySource source = FinanceEntrySource.manual,
+  }) {
+    final normalized =
+        input.replaceAll('\r\n', '\n').replaceAll('\r', '\n').trim();
+    if (normalized.isEmpty) return const [];
+
+    final structuredText = normalized.replaceAll('：', ':');
+    final hasStructuredFields = RegExp(
+      r'(?:^|\n)\s*(?:#?记账|类型|方向|收支|金额|分类|日期|付款方式)\s*[:=]',
+      multiLine: true,
+    ).hasMatch(structuredText);
+    if (_blockMarker.hasMatch(structuredText) || hasStructuredFields) {
+      final structured = parse(
+        normalized,
+        now: now,
+        source: source,
+      );
+      if (structured.isNotEmpty) return structured;
+    }
+
+    final segments = _splitQuickEntrySegments(normalized);
+    final drafts = <FinanceEntryDraft>[];
+    for (final segment in segments) {
+      final draft = parseOneSentence(
+        segment,
+        now: now,
+        source: source,
+      );
+      if (draft != null) drafts.add(draft);
+    }
+
+    // A line break or punctuation may only be visual wrapping inside one
+    // entry. Prefer the whole-text parse whenever it yields one draft.
+    final wholeDraft = parseOneSentence(
+      normalized.replaceAll('\n', ' '),
+      now: now,
+      source: source,
+    );
+    if (wholeDraft != null && drafts.length <= 1) return [wholeDraft];
+    return _deduplicate(drafts);
   }
 
   /// Parses one or more explicit bill blocks. Invalid/incomplete blocks are
@@ -526,6 +590,44 @@ abstract final class FinanceTextParser {
       if (block.isNotEmpty) blocks.add(block);
     }
     return blocks;
+  }
+
+  static List<String> _splitQuickEntrySegments(String text) {
+    final sentenceSegments = text
+        .split(RegExp(r'[\n；;。！？!?]+'))
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    final segments = <String>[];
+    for (final segment in sentenceSegments) {
+      segments.addAll(_splitCommaSeparatedQuickEntries(segment));
+    }
+    return segments;
+  }
+
+  static List<String> _splitCommaSeparatedQuickEntries(String text) {
+    final clauses = text
+        .split(RegExp(r'\s*[,，]\s*'))
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (clauses.length < 2) return [text];
+
+    final groups = <String>[];
+    var current = '';
+    for (final clause in clauses) {
+      final startsEntry = _findSentenceAmountMatch(clause) != null;
+      if (startsEntry && current.trim().isNotEmpty) {
+        groups.add(current.trim());
+        current = clause;
+      } else if (current.isEmpty) {
+        current = clause;
+      } else {
+        current = '$current，$clause';
+      }
+    }
+    if (current.trim().isNotEmpty) groups.add(current.trim());
+    return groups.length > 1 ? groups : [text];
   }
 
   static Map<String, String> _parseFields(String block) {
@@ -838,7 +940,8 @@ abstract final class FinanceTextParser {
           .trim();
       value = value.replaceFirst(RegExp(r'^(?:的|一笔)'), '').trim();
       if (value.isEmpty || value.length > 80) continue;
-      if (_sameSentenceValue(value, category) ||
+      if ((_sameSentenceValue(value, category) &&
+              !_isDefaultSubcategoryName(category)) ||
           _sameSentenceValue(value, payment) ||
           _sameSentenceValue(value, note) ||
           _knownSentencePayment(value) != null ||
@@ -853,6 +956,16 @@ abstract final class FinanceTextParser {
   static bool _sameSentenceValue(String value, String? other) {
     return other != null &&
         value.trim().toLowerCase() == other.trim().toLowerCase();
+  }
+
+  static bool _isDefaultSubcategoryName(String? value) {
+    final normalized = value?.trim().toLowerCase();
+    if (normalized == null || normalized.isEmpty) return false;
+    return FinanceDefaults.categories.any(
+      (item) =>
+          item['parent_uuid'] != null &&
+          item['name']?.toString().trim().toLowerCase() == normalized,
+    );
   }
 
   static String _removeSentenceDate(String value) {

@@ -222,6 +222,33 @@ void main() {
     );
   });
 
+  test('默认细分类使用父分类 UUID，并能生成可读路径', () {
+    final parent = FinanceCategory.fromMap(
+      FinanceDefaults.categories.firstWhere(
+        (item) => item['uuid'] == 'finance-system-category-food',
+      ),
+    );
+    final child = FinanceCategory.fromMap(
+      FinanceDefaults.categories.firstWhere(
+        (item) => item['uuid'] == 'finance-system-category-food-milk-tea',
+      ),
+    );
+
+    expect(child.parentUuid, parent.uuid);
+    expect(
+      financeCategoryDisplayName(child, [parent, child]),
+      '餐饮 - 奶茶',
+    );
+    expect(
+      FinanceDefaults.categories
+          .where((item) => item['parent_uuid'] != null)
+          .every((item) => FinanceDefaults.categories.any(
+                (parent) => parent['uuid'] == item['parent_uuid'],
+              )),
+      isTrue,
+    );
+  });
+
   test('记账云同步按账号默认关闭并相互隔离', () async {
     SharedPreferences.setMockInitialValues({});
 
@@ -239,5 +266,4 @@ void main() {
       isFalse,
     );
   });
-
 }

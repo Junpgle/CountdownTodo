@@ -191,7 +191,7 @@ void main() {
       expect(draft!.transactionDate, '2026-08-29');
       expect(draft.amountMinor, 1200);
       expect(draft.merchant, '打车');
-      expect(draft.categoryName, '交通');
+      expect(draft.categoryName, '打车');
       expect(draft.paymentMethodName, '现金');
     });
 
@@ -224,19 +224,19 @@ void main() {
       expect(draft, isNotNull);
       expect(draft!.amountMinor, 1200);
       expect(draft.transactionDate, '2026-08-29');
-      expect(draft.categoryName, '交通');
+      expect(draft.categoryName, '打车');
       expect(draft.paymentMethodName, '现金');
     });
 
     test('常见事项会按语义归入默认分类', () {
       final cases = <String, String>{
-        '买了衣服20': '购物',
-        '买了药80': '健康',
-        '交房租1000': '居住',
-        '报名课程300': '学习',
-        '买了电影票50': '娱乐',
-        '去医院看病80': '健康',
-        '给朋友买礼物100': '社交',
+        '买了衣服20': '服饰鞋包',
+        '买了药80': '药品',
+        '交房租1000': '房租',
+        '报名课程300': '课程培训',
+        '买了电影票50': '电影演出',
+        '去医院看病80': '医疗就诊',
+        '给朋友买礼物100': '礼物',
         '续费会员25': '订阅',
         '充值ChatGPT20': 'AI 服务',
         '支付贷款利息200': '贷款利息',
@@ -249,11 +249,11 @@ void main() {
       }
     });
 
-    test('收入语义会归入工资、零花钱和奖金', () {
+    test('收入语义会归入工资和对应细分类', () {
       final cases = <String, String>{
         '收到工资8000': '工资',
-        '收到生活费1000': '零花钱',
-        '收到年终奖5000': '奖金',
+        '收到生活费1000': '生活费',
+        '收到年终奖5000': '年终奖',
       };
 
       for (final entry in cases.entries) {
@@ -263,5 +263,57 @@ void main() {
         expect(draft.categoryName, entry.value, reason: entry.key);
       }
     });
+
+    test('饮品自然语言优先识别为餐饮下的细分类', () {
+      final draft = FinanceTextParser.parseOneSentence(
+        '今天喝奶茶 15 元，微信支付',
+        now: now,
+      );
+
+      expect(draft, isNotNull);
+      expect(draft!.categoryName, '奶茶');
+    });
+  });
+
+  test('自然语言快速记账支持换行和分号录入多笔账单', () {
+    final drafts = FinanceTextParser.parseQuickEntries(
+      '今天早餐 8 元，微信；中午午餐 25 元，支付宝\n昨天奶茶 15 元',
+      now: now,
+    );
+
+    expect(drafts, hasLength(3));
+    expect(drafts.map((draft) => draft.amountMinor), [800, 2500, 1500]);
+    expect(
+      drafts.map((draft) => draft.categoryName),
+      ['早餐', '午餐', '奶茶'],
+    );
+    expect(drafts.map((draft) => draft.transactionDate), [
+      '2026-08-30',
+      '2026-08-30',
+      '2026-08-29',
+    ]);
+
+    final commaSeparated = FinanceTextParser.parseQuickEntries(
+      '今天早餐 8 元，微信，午餐 25 元，支付宝',
+      now: now,
+    );
+    expect(commaSeparated, hasLength(2));
+    expect(commaSeparated.map((draft) => draft.categoryName), ['早餐', '午餐']);
+    expect(
+      commaSeparated.map((draft) => draft.paymentMethodName),
+      ['微信', '支付宝'],
+    );
+  });
+
+  test('自然语言快速记账兼容全角冒号的结构化文本', () {
+    final drafts = FinanceTextParser.parseQuickEntries(
+      '类型：支出\n金额：28.50\n分类：餐饮\n商家：午餐',
+      now: now,
+    );
+
+    expect(drafts, hasLength(1));
+    expect(drafts.single.amountMinor, 2850);
+    expect(drafts.single.categoryName, '餐饮');
+    expect(drafts.single.merchant, '午餐');
   });
 }

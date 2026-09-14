@@ -10,6 +10,7 @@ enum _AutomationTab { rules, templates }
 enum _RuleFilter { all, enabled, paused }
 
 class FinanceAutomationManager extends StatefulWidget {
+  final double topPadding;
   final List<FinanceRecurringRule> rules;
   final List<FinanceEntryTemplate> templates;
   final List<FinanceCategory> categories;
@@ -25,6 +26,7 @@ class FinanceAutomationManager extends StatefulWidget {
 
   const FinanceAutomationManager({
     super.key,
+    this.topPadding = 0,
     required this.rules,
     required this.templates,
     required this.categories,
@@ -93,7 +95,9 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
 
   String _categoryName(String? uuid) {
     for (final category in widget.categories) {
-      if (category.uuid == uuid) return '${category.icon} ${category.name}';
+      if (category.uuid == uuid) {
+        return '${category.icon} ${financeCategoryDisplayName(category, widget.categories)}';
+      }
     }
     return uuid == null ? '未指定分类' : '已归档或未知分类';
   }
@@ -134,7 +138,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
     final filtered = _search.text.trim().isNotEmpty ||
         (_isRules && _filter != _RuleFilter.all);
 
-    return FinancePageList(children: [
+    return FinancePageList(topPadding: widget.topPadding, children: [
       const FinancePageIntro(
         icon: Icons.auto_awesome_outlined,
         title: '让记账少一步',

@@ -15,19 +15,21 @@ import 'finance_entry_screen.dart';
 class FinanceTransactionDetailScreen extends StatelessWidget {
   final FinanceTransaction transaction;
   final FinanceCategory? category;
+  final String? categoryDisplayName;
   final FinancePaymentMethod? paymentMethod;
 
   const FinanceTransactionDetailScreen({
     super.key,
     required this.transaction,
     this.category,
+    this.categoryDisplayName,
     this.paymentMethod,
   });
 
   String get _title {
     final merchant = transaction.merchant?.trim();
     if (merchant != null && merchant.isNotEmpty) return merchant;
-    if (category != null) return category!.name;
+    if (category != null) return categoryDisplayName ?? category!.name;
     return transaction.type.label;
   }
 
@@ -39,7 +41,9 @@ class FinanceTransactionDetailScreen extends StatelessWidget {
 
   String _categoryLabel() {
     final value = category;
-    return value == null ? '未分类' : '${value.icon} ${value.name}';
+    return value == null
+        ? '未分类'
+        : '${value.icon} ${categoryDisplayName ?? value.name}';
   }
 
   String _paymentMethodLabel() {

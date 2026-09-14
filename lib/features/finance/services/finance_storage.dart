@@ -45,6 +45,7 @@ abstract final class FinanceStorage {
           'name': raw['name'],
           'type': raw['type'],
           'icon': raw['icon'],
+          'parent_uuid': raw['parent_uuid'],
           'is_system': 1,
           'is_archived': 0,
           'is_deleted': 0,
@@ -62,6 +63,7 @@ abstract final class FinanceStorage {
           'name': raw['name'],
           'type': raw['type'],
           'icon': raw['icon'],
+          'parent_uuid': raw['parent_uuid'],
           'is_archived': 0,
           'is_deleted': 0,
           'sort_order': raw['sort_order'],
@@ -817,9 +819,43 @@ abstract final class FinanceStorage {
     if (category.name.trim().isEmpty) {
       throw ArgumentError.value(category.name, 'name', '分类名称不能为空');
     }
-    category.pendingSync = true;
+    final parentUuid = category.parentUuid?.trim();
+    category.parentUuid =
+        parentUuid == null || parentUuid.isEmpty ? null : parentUuid;
     await ensureReady();
     final db = await _database;
+    if (category.parentUuid != null) {
+      if (category.parentUuid == category.uuid) {
+        throw ArgumentError.value(
+          category.parentUuid,
+          'parentUuid',
+          '分类不能将自己设置为上级大类',
+        );
+      }
+      final parentRows = await db.query(
+        'finance_categories',
+        where: 'uuid = ? AND is_deleted = 0',
+        whereArgs: [category.parentUuid],
+        limit: 1,
+      );
+      if (parentRows.isEmpty) {
+        throw ArgumentError.value(
+          category.parentUuid,
+          'parentUuid',
+          '上级大类不存在',
+        );
+      }
+      final parent = FinanceCategory.fromMap(parentRows.first);
+      if (parent.type != category.type ||
+          parent.parentUuid?.trim().isNotEmpty == true) {
+        throw ArgumentError.value(
+          category.parentUuid,
+          'parentUuid',
+          '上级分类必须是同一收支类型的一级分类',
+        );
+      }
+    }
+    category.pendingSync = true;
     await db.insert(
       'finance_categories',
       _localValues(category.toMap()),
@@ -848,6 +884,23 @@ abstract final class FinanceStorage {
       where: 'uuid = ?',
       whereArgs: [uuid],
     );
+    final children = await db.query(
+      'finance_categories',
+      where: 'parent_uuid = ? AND is_deleted = 0 AND is_archived = 0',
+      whereArgs: [uuid],
+    );
+    for (final raw in children) {
+      final child = FinanceCategory.fromMap(raw);
+      if (child.isSystem) continue;
+      child.isArchived = true;
+      child.markAsChanged();
+      await db.update(
+        'finance_categories',
+        _localValues(child.toMap()),
+        where: 'uuid = ?',
+        whereArgs: [child.uuid],
+      );
+    }
     _notifyChanged();
   }
 
@@ -871,6 +924,23 @@ abstract final class FinanceStorage {
       where: 'uuid = ?',
       whereArgs: [uuid],
     );
+    final children = await db.query(
+      'finance_categories',
+      where: 'parent_uuid = ? AND is_deleted = 0 AND is_archived = 1',
+      whereArgs: [uuid],
+    );
+    for (final raw in children) {
+      final child = FinanceCategory.fromMap(raw);
+      if (child.isSystem) continue;
+      child.isArchived = false;
+      child.markAsChanged();
+      await db.update(
+        'finance_categories',
+        _localValues(child.toMap()),
+        where: 'uuid = ?',
+        whereArgs: [child.uuid],
+      );
+    }
     _notifyChanged();
   }
 

@@ -6,6 +6,7 @@ import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../services/finance_storage.dart';
 import '../services/finance_text_parser.dart';
+import '../widgets/finance_catalog_editor.dart';
 
 class _FinanceOptionSelection<T> {
   const _FinanceOptionSelection(this.value);
@@ -36,7 +37,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   late final TextEditingController _amountController;
   late final TextEditingController _merchantController;
   late final TextEditingController _noteController;
-  late final TextEditingController _oneSentenceController;
+  late final TextEditingController _quickEntryController;
   late final TextEditingController _installmentCountController;
 
   FinanceTransactionType _type = FinanceTransactionType.expense;
@@ -107,7 +108,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     _noteController = TextEditingController(
       text: transaction?.note ?? draft?.note ?? template?.note ?? '',
     );
-    _oneSentenceController = TextEditingController();
+    _quickEntryController = TextEditingController();
     _installmentCountController = TextEditingController(
       text: _installmentCount.toString(),
     );
@@ -128,7 +129,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     _amountController.dispose();
     _merchantController.dispose();
     _noteController.dispose();
-    _oneSentenceController.dispose();
+    _quickEntryController.dispose();
     _installmentCountController.dispose();
     super.dispose();
   }
@@ -233,17 +234,26 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         draft.categoryName!,
         _type,
       );
-      _categoryUuid = _categories
+      final candidates = _categories
           .where((item) => item.type == categoryType && !item.isDeleted)
-          .where((item) {
-            final itemName = _normalizeOptionName(item.name);
-            if (itemName == wanted) return true;
-            if (semanticWanted == null) return false;
-            return FinanceTextParser.inferCategoryName(item.name, _type) ==
-                semanticWanted;
-          })
-          .map((item) => item.uuid)
+          .toList();
+      final exact = candidates
+          .where((item) =>
+              _normalizeOptionName(item.name) == wanted ||
+              _normalizeOptionName(
+                    financeCategoryDisplayName(item, _categories),
+                  ) ==
+                  wanted)
           .firstOrNull;
+      _categoryUuid = exact?.uuid ??
+          candidates
+              .where((item) {
+                if (semanticWanted == null) return false;
+                return FinanceTextParser.inferCategoryName(item.name, _type) ==
+                    semanticWanted;
+              })
+              .map((item) => item.uuid)
+              .firstOrNull;
     }
     if (_paymentMethodUuid == null && draft.paymentMethodName != null) {
       final wanted = _normalizeOptionName(draft.paymentMethodName!);
@@ -287,6 +297,34 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         .toLowerCase();
   }
 
+  String _categoryName(FinanceCategory category) =>
+      financeCategoryDisplayName(category, _categories);
+
+  FinanceCategory? _categoryByUuid(String? uuid) {
+    final normalized = uuid?.trim();
+    if (normalized == null || normalized.isEmpty) return null;
+    for (final category in _categories) {
+      if (category.uuid == normalized) return category;
+    }
+    return null;
+  }
+
+  FinanceCategory _topLevelCategory(FinanceCategory category) {
+    var current = category;
+    final visited = <String>{category.uuid};
+    while (true) {
+      final parentUuid = current.parentUuid?.trim();
+      if (parentUuid == null ||
+          parentUuid.isEmpty ||
+          !visited.add(parentUuid)) {
+        return current;
+      }
+      final parent = _categoryByUuid(parentUuid);
+      if (parent == null || parent.type != current.type) return current;
+      current = parent;
+    }
+  }
+
   List<FinanceCategory> get _visibleCategories {
     final type = financeCategoryTypeForTransaction(_type);
     final result = _categories
@@ -303,6 +341,44 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       result.insertAll(0, selected);
     }
     return result;
+  }
+
+  List<FinanceCategory> get _visibleCategoryParents {
+    final type = financeCategoryTypeForTransaction(_type);
+    final roots = _categories
+        .where(
+          (item) =>
+              item.type == type &&
+              !item.isArchived &&
+              !item.isDeleted &&
+              (item.parentUuid == null || item.parentUuid!.trim().isEmpty),
+        )
+        .toList();
+    final selected = _categoryByUuid(_categoryUuid);
+    final selectedRoot = selected == null ? null : _topLevelCategory(selected);
+    if (selectedRoot != null &&
+        !selectedRoot.isDeleted &&
+        roots.every((item) => item.uuid != selectedRoot.uuid)) {
+      roots.insert(0, selectedRoot);
+    }
+    return roots;
+  }
+
+  List<FinanceCategory> _childrenOf(FinanceCategory parent) {
+    return _visibleCategories
+        .where((item) => item.parentUuid?.trim() == parent.uuid)
+        .toList();
+  }
+
+  int _nextSubcategorySortOrder(FinanceCategory parent) {
+    var maxSortOrder = parent.sortOrder;
+    for (final category in _categories) {
+      if (category.parentUuid?.trim() == parent.uuid &&
+          category.sortOrder > maxSortOrder) {
+        maxSortOrder = category.sortOrder;
+      }
+    }
+    return maxSortOrder + 1;
   }
 
   List<FinancePaymentMethod> get _visiblePaymentMethods {
@@ -338,7 +414,14 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     if (notify && mounted) setState(() {});
   }
 
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus(
+      disposition: UnfocusDisposition.scope,
+    );
+  }
+
   Future<void> _pickDate() async {
+    _dismissKeyboard();
     final picked = await showDatePicker(
       context: context,
       initialDate: _date,
@@ -346,23 +429,33 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       lastDate: DateTime.now().add(const Duration(days: 3650)),
       helpText: '选择账单日期',
     );
+    _dismissKeyboard();
     if (picked != null && mounted) setState(() => _date = picked);
   }
 
-  void _applyOneSentence() {
+  Future<void> _applyQuickEntry() async {
     if (_isSaving) return;
-    final input = _oneSentenceController.text.trim();
+    final input = _quickEntryController.text.trim();
     if (input.isEmpty) {
-      _showError('请先输入一句话，例如：今天午餐花了 28.5 元，微信支付，分类餐饮');
+      _showError('请先描述账单，例如：今天午餐 28 元，微信支付，分类餐饮');
       return;
     }
-    final draft = FinanceTextParser.parseOneSentence(input);
-    if (draft == null) {
-      _showError('没有识别到金额，请说清楚金额，例如：今天午餐花了 28.5 元');
+    final drafts = FinanceTextParser.parseQuickEntries(input);
+    if (drafts.isEmpty) {
+      _showError('没有识别到金额；多笔账单可以用换行或分号分开');
       return;
     }
 
-    FocusScope.of(context).unfocus();
+    _dismissKeyboard();
+    if (drafts.length > 1) {
+      await _reviewQuickEntries(drafts);
+      return;
+    }
+    _applyQuickDraft(drafts.single);
+  }
+
+  void _applyQuickDraft(FinanceEntryDraft draft) {
+    _dismissKeyboard();
     setState(() {
       _type = draft.type;
       _date = dateFromKey(draft.transactionDate);
@@ -379,7 +472,161 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         allowDefaultCategory: !_shouldKeepUnresolvedDraftCategory(),
       );
     });
-    _showMessage('已填入表单，请核对后保存');
+    _showMessage('已识别并填入表单，请核对后保存');
+  }
+
+  Future<void> _reviewQuickEntries(List<FinanceEntryDraft> drafts) async {
+    final shouldReview = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      requestFocus: false,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.76,
+      ),
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 2, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    children: [
+                      Icon(Icons.receipt_long_rounded,
+                          color: colorScheme.primary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '识别到 ${drafts.length} 笔账单',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '请逐笔核对后保存，缺少分类或付款方式可在编辑页补充',
+                              style: TextStyle(
+                                color: colorScheme.onSurfaceVariant,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.42,
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: drafts.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 6),
+                    itemBuilder: (context, index) {
+                      final draft = drafts[index];
+                      final isIncome =
+                          draft.type == FinanceTransactionType.income;
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        leading: CircleAvatar(
+                          backgroundColor: isIncome
+                              ? colorScheme.tertiaryContainer
+                              : colorScheme.primaryContainer,
+                          child: Icon(
+                            isIncome
+                                ? Icons.south_west_rounded
+                                : Icons.north_east_rounded,
+                            color: isIncome
+                                ? colorScheme.onTertiaryContainer
+                                : colorScheme.onPrimaryContainer,
+                          ),
+                        ),
+                        title: Text(
+                          '${draft.type.label} · '
+                          '${formatFinanceAmount(draft.amountMinor)}',
+                        ),
+                        subtitle: Text(
+                          _quickDraftSummary(draft),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(sheetContext).pop(false),
+                        child: const Text('返回修改'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => Navigator.of(sheetContext).pop(true),
+                        icon: const Icon(Icons.edit_note_rounded),
+                        label: const Text('逐笔确认'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    _dismissKeyboard();
+    if (shouldReview != true || !mounted) return;
+
+    var savedCount = 0;
+    for (final draft in drafts) {
+      if (!mounted) return;
+      final saved = await Navigator.of(context).push<FinanceTransaction>(
+        MaterialPageRoute(
+          builder: (_) => FinanceEntryScreen(initialDraft: draft),
+        ),
+      );
+      if (saved != null) savedCount++;
+    }
+    _dismissKeyboard();
+    if (!mounted) return;
+    if (savedCount > 0) {
+      _quickEntryController.clear();
+      _showMessage('已保存 $savedCount/${drafts.length} 笔账单');
+    }
+  }
+
+  String _quickDraftSummary(FinanceEntryDraft draft) {
+    final parts = <String>[draft.transactionDate];
+    final category = draft.categoryName?.trim();
+    final merchant = draft.merchant?.trim();
+    final payment = draft.paymentMethodName?.trim();
+    parts.add(category == null || category.isEmpty ? '待选择分类' : category);
+    if (merchant != null && merchant.isNotEmpty) parts.add(merchant);
+    if (payment != null && payment.isNotEmpty) parts.add(payment);
+    return parts.join(' · ');
   }
 
   Future<void> _save() async {
@@ -606,7 +853,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       colorScheme: colorScheme,
       label: '分类',
       placeholder: '请选择分类',
-      selectedName: selectedCategory?.name,
+      selectedName:
+          selectedCategory == null ? null : _categoryName(selectedCategory),
       selectedIcon: selectedCategory?.icon,
       fieldIcon: Icons.category_outlined,
       onTap: _isSaving || _isBoundRefund ? null : _pickCategory,
@@ -733,28 +981,105 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   }
 
   Future<void> _pickCategory() async {
-    final selected = await _showFinanceOptionPicker<FinanceCategory>(
-      title: '选择分类',
-      subtitle: '选择这笔账单所属的本地分类',
+    _dismissKeyboard();
+    final parents = _visibleCategoryParents;
+    if (parents.isEmpty) return;
+    final currentCategory = _categoryByUuid(_categoryUuid);
+    final selectedParentUuid = currentCategory == null
+        ? parents.first.uuid
+        : _topLevelCategory(currentCategory).uuid;
+    final parent = await _showFinanceOptionPicker<FinanceCategory>(
+      title: '选择大类',
+      subtitle: '先选择这笔账单所属的大类',
       headerIcon: Icons.category_outlined,
-      options: _visibleCategories,
-      selectedUuid: _categoryUuid,
+      options: parents,
+      selectedUuid: selectedParentUuid,
       optionUuid: (item) => item.uuid,
       optionBuilder: (context, item, isSelected, onTap) =>
           _buildFinanceOptionTile(
         context,
         title: item.name,
+        subtitle: '一级分类',
         iconText: item.icon,
         accent: _optionAccent(item.colorValue, Theme.of(context).colorScheme),
         isSelected: isSelected,
         onTap: onTap,
       ),
     );
+    if (!mounted || parent?.value == null) return;
+
+    final selectedParent = parent!.value!;
+    final children = _childrenOf(selectedParent);
+    if (children.isEmpty) {
+      _dismissKeyboard();
+      setState(() => _categoryUuid = selectedParent.uuid);
+      return;
+    }
+
+    final current = _categoryByUuid(_categoryUuid);
+    final currentBelongsToParent = current != null &&
+        (current.uuid == selectedParent.uuid ||
+            current.parentUuid?.trim() == selectedParent.uuid);
+    final selected = await _showFinanceOptionPicker<FinanceCategory>(
+      title: '${selectedParent.name} · 选择小类',
+      subtitle: '可以只记为大类，也可以选择更具体的细分',
+      headerIcon: Icons.account_tree_outlined,
+      options: [selectedParent, ...children],
+      selectedUuid: currentBelongsToParent ? current.uuid : selectedParent.uuid,
+      optionUuid: (item) => item.uuid,
+      addTooltip: '新增小类',
+      onAdd: () => _addSubcategory(selectedParent),
+      optionBuilder: (context, item, isSelected, onTap) {
+        final isParent = item.uuid == selectedParent.uuid;
+        return _buildFinanceOptionTile(
+          context,
+          title: isParent ? '仅记为${selectedParent.name}' : item.name,
+          subtitle: isParent ? '不选择小类' : '${selectedParent.name}下的细分类',
+          iconText: item.icon,
+          accent: _optionAccent(item.colorValue, Theme.of(context).colorScheme),
+          isSelected: isSelected,
+          onTap: onTap,
+        );
+      },
+    );
     if (!mounted || selected?.value == null) return;
+    _dismissKeyboard();
     setState(() => _categoryUuid = selected!.value!.uuid);
   }
 
+  Future<FinanceCategory?> _addSubcategory(FinanceCategory parent) async {
+    _dismissKeyboard();
+    FinanceCategory? created;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => FinanceCatalogEditor(
+        initialIcon: parent.icon,
+        categoryType: parent.type,
+        availableParents: _categories,
+        initialParentUuid: parent.uuid,
+        lockParent: true,
+        isSubcategory: true,
+        onSave: (draft) async {
+          final category = FinanceCategory(
+            name: draft.name,
+            type: draft.type!,
+            icon: draft.icon,
+            parentUuid: draft.parentUuid,
+            sortOrder: _nextSubcategorySortOrder(parent),
+          );
+          await FinanceRepository.saveCategory(category);
+          created = category;
+        },
+      ),
+    );
+    _dismissKeyboard();
+    if (saved != true || !mounted || created == null) return null;
+    setState(() => _categories = [..._categories, created!]);
+    return created;
+  }
+
   Future<void> _pickPaymentMethod() async {
+    _dismissKeyboard();
     final selected = await _showFinanceOptionPicker<FinancePaymentMethod>(
       title: '选择付款方式',
       subtitle: '记录这笔账单使用的支付渠道',
@@ -774,6 +1099,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       ),
     );
     if (!mounted || selected == null) return;
+    _dismissKeyboard();
     setState(() => _paymentMethodUuid = selected.value?.uuid);
   }
 
@@ -791,12 +1117,16 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       VoidCallback onTap,
     ) optionBuilder,
     bool includeUnset = false,
-  }) {
-    return showModalBottomSheet<_FinanceOptionSelection<T>>(
+    String? addTooltip,
+    Future<T?> Function()? onAdd,
+  }) async {
+    _dismissKeyboard();
+    final selected = await showModalBottomSheet<_FinanceOptionSelection<T>>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
+      requestFocus: false,
       backgroundColor: Theme.of(context).colorScheme.surface,
       clipBehavior: Clip.antiAlias,
       shape: const RoundedRectangleBorder(
@@ -850,6 +1180,19 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                       ],
                     ),
                   ),
+                  if (onAdd != null)
+                    IconButton(
+                      key: ValueKey(addTooltip ?? 'finance-option-add'),
+                      tooltip: addTooltip ?? '新增',
+                      onPressed: () async {
+                        final added = await onAdd();
+                        if (!sheetContext.mounted || added == null) return;
+                        Navigator.of(sheetContext).pop(
+                          _FinanceOptionSelection<T>(added),
+                        );
+                      },
+                      icon: const Icon(Icons.add_rounded),
+                    ),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 9,
@@ -907,6 +1250,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         );
       },
     );
+    _dismissKeyboard();
+    return selected;
   }
 
   Widget _buildFinanceOptionTile(
@@ -1083,31 +1428,34 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       ),
       child: Column(
         children: [
-          SwitchListTile.adaptive(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-            secondary: Icon(
-              Icons.calendar_month_outlined,
-              color: colorScheme.primary,
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile.adaptive(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+              secondary: Icon(
+                Icons.calendar_month_outlined,
+                color: colorScheme.primary,
+              ),
+              title: Text(
+                _isEditingInstallment ? '分期账单' : '分期付款',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              subtitle: Text(subtitle),
+              value: hasPlan,
+              onChanged: _isSaving || _isEditingInstallment
+                  ? null
+                  : (value) {
+                      setState(() {
+                        _installmentEnabled = value;
+                        if (value) {
+                          _installmentCount =
+                              FinanceInstallmentCalculator.minCount;
+                          _installmentCountController.text =
+                              _installmentCount.toString();
+                        }
+                      });
+                    },
             ),
-            title: Text(
-              _isEditingInstallment ? '分期账单' : '分期付款',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            subtitle: Text(subtitle),
-            value: hasPlan,
-            onChanged: _isSaving || _isEditingInstallment
-                ? null
-                : (value) {
-                    setState(() {
-                      _installmentEnabled = value;
-                      if (value) {
-                        _installmentCount =
-                            FinanceInstallmentCalculator.minCount;
-                        _installmentCountController.text =
-                            _installmentCount.toString();
-                      }
-                    });
-                  },
           ),
           if (hasPlan) ...[
             const Divider(height: 1),
@@ -1233,8 +1581,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
       resizeToAvoidBottomInset: false,
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(
@@ -1254,98 +1604,104 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= 620;
-                  return ListView(
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      8,
-                      16,
-                      96 + MediaQuery.viewPaddingOf(context).bottom,
-                    ),
-                    children: [
-                      _buildTypeSelector(colorScheme),
-                      if (_isBoundRefund) ...[
-                        const SizedBox(height: 12),
-                        _buildRefundContextCard(colorScheme),
-                      ],
-                      if (!_isEditing && !_isBoundRefund) ...[
-                        const SizedBox(height: 16),
-                        _buildOneSentenceEntry(colorScheme),
-                      ],
-                      const SizedBox(height: 20),
-                      TextFormField(
-                        controller: _amountController,
-                        autofocus: false,
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Form(
+                key: _formKey,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isWide = constraints.maxWidth >= 620;
+                    return ListView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        topBarHeight + 8,
+                        16,
+                        96 + MediaQuery.viewPaddingOf(context).bottom,
+                      ),
+                      children: [
+                        _buildTypeSelector(colorScheme),
+                        if (_isBoundRefund) ...[
+                          const SizedBox(height: 12),
+                          _buildRefundContextCard(colorScheme),
                         ],
-                        decoration: _fieldDecoration(
-                          colorScheme,
-                          labelText: _installmentEnabled ? '分期总额' : '金额',
-                          prefixText: '¥ ',
-                          hintText: '0.00',
-                          floatingLabelBehavior: FloatingLabelBehavior.always,
-                          contentPadding: const EdgeInsets.fromLTRB(
-                            16,
-                            20,
-                            16,
-                            12,
+                        if (!_isEditing &&
+                            !_isBoundRefund &&
+                            widget.initialDraft == null) ...[
+                          const SizedBox(height: 16),
+                          _buildOneSentenceEntry(colorScheme),
+                        ],
+                        const SizedBox(height: 20),
+                        TextFormField(
+                          controller: _amountController,
+                          autofocus: false,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                                RegExp(r'[0-9.,]')),
+                          ],
+                          decoration: _fieldDecoration(
+                            colorScheme,
+                            labelText: _installmentEnabled ? '分期总额' : '金额',
+                            prefixText: '¥ ',
+                            hintText: '0.00',
+                            floatingLabelBehavior: FloatingLabelBehavior.always,
+                            contentPadding: const EdgeInsets.fromLTRB(
+                              16,
+                              20,
+                              16,
+                              12,
+                            ),
+                            prefixStyle: TextStyle(
+                              color: colorScheme.primary,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                          prefixStyle: TextStyle(
-                            color: colorScheme.primary,
-                            fontSize: 22,
+                          style: TextStyle(
+                            color: colorScheme.onSurface,
+                            fontSize: 28,
                             fontWeight: FontWeight.w700,
                           ),
+                          validator: (value) =>
+                              parseFinanceAmount(value ?? '') == null
+                                  ? '请输入金额'
+                                  : null,
                         ),
-                        style: TextStyle(
-                          color: colorScheme.onSurface,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        validator: (value) =>
-                            parseFinanceAmount(value ?? '') == null
-                                ? '请输入金额'
-                                : null,
-                      ),
-                      const SizedBox(height: 14),
-                      _buildSelectionFields(colorScheme, isWide: isWide),
-                      const SizedBox(height: 14),
-                      _buildDateField(colorScheme),
-                      if (_type == FinanceTransactionType.expense) ...[
                         const SizedBox(height: 14),
-                        _buildInstallmentField(colorScheme),
+                        _buildSelectionFields(colorScheme, isWide: isWide),
+                        const SizedBox(height: 14),
+                        _buildDateField(colorScheme),
+                        if (_type == FinanceTransactionType.expense) ...[
+                          const SizedBox(height: 14),
+                          _buildInstallmentField(colorScheme),
+                        ],
+                        const SizedBox(height: 14),
+                        _buildOptionalFields(colorScheme, isWide: isWide),
+                        const SizedBox(height: 20),
+                        FilledButton.icon(
+                          style: _primaryButtonStyle(colorScheme),
+                          onPressed: _isSaving ? null : _save,
+                          icon: _isSaving
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.check_rounded),
+                          label: Text(_isSaving ? '保存中...' : '保存账单'),
+                        ),
                       ],
-                      const SizedBox(height: 14),
-                      _buildOptionalFields(colorScheme, isWide: isWide),
-                      const SizedBox(height: 20),
-                      FilledButton.icon(
-                        style: _primaryButtonStyle(colorScheme),
-                        onPressed: _isSaving ? null : _save,
-                        icon: _isSaving
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.check_rounded),
-                        label: Text(_isSaving ? '保存中...' : '保存账单'),
-                      ),
-                    ],
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
+      ),
     );
   }
 
@@ -1376,6 +1732,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(10),
                   onTap: () {
+                    _dismissKeyboard();
                     if (type == _type ||
                         _isEditingInstallment ||
                         _hasRefundBinding) {
@@ -1499,7 +1856,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 const SizedBox(width: 7),
                 const Expanded(
                   child: Text(
-                    '快速记账',
+                    '自然语言记账',
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
@@ -1518,7 +1875,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
               ],
             ),
             Text(
-              '输入一句话，自动填入金额、分类、商家和付款方式；逗号和“元”可以省略',
+              FinanceTextParser.quickEntryHelp,
               style: TextStyle(
                 color: colorScheme.onSurfaceVariant,
                 fontSize: 12,
@@ -1536,7 +1893,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                     ),
                   ),
                   TextSpan(
-                    text: FinanceTextParser.oneSentenceExample,
+                    text: FinanceTextParser.quickEntryExample,
                     style: TextStyle(
                       color: colorScheme.onSurfaceVariant,
                     ),
@@ -1548,23 +1905,28 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
             LayoutBuilder(
               builder: (context, constraints) {
                 final input = TextField(
-                  controller: _oneSentenceController,
-                  autofocus: true,
-                  textInputAction: TextInputAction.done,
-                  maxLength: 200,
-                  onSubmitted: (_) => _applyOneSentence(),
+                  key: const ValueKey('finance-quick-entry-input'),
+                  controller: _quickEntryController,
+                  autofocus: false,
+                  minLines: 2,
+                  maxLines: 5,
+                  maxLength: 500,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  onSubmitted: (_) => _applyQuickEntry(),
                   decoration: _fieldDecoration(
                     colorScheme,
-                    hintText: '输入账单描述',
+                    labelText: '账单描述',
+                    hintText: '如：今天早餐 8 元，微信；中午午餐 25 元，支付宝',
                     prefixIcon: Icons.edit_note_rounded,
                     counterText: '',
                   ),
                 );
                 final action = TextButton.icon(
                   style: _compactTextButtonStyle(colorScheme),
-                  onPressed: _isSaving ? null : _applyOneSentence,
+                  onPressed: _isSaving ? null : _applyQuickEntry,
                   icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-                  label: const Text('解析并填入'),
+                  label: const Text('识别账单'),
                 );
                 if (constraints.maxWidth >= 520) {
                   return Row(
@@ -1591,9 +1953,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   }
 
   Future<void> _showTemplatePicker() async {
+    _dismissKeyboard();
     final selected = await showModalBottomSheet<FinanceEntryTemplate>(
       context: context,
       showDragHandle: true,
+      requestFocus: false,
       builder: (context) => SafeArea(
         child: ListView(
           shrinkWrap: true,
@@ -1623,6 +1987,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         ),
       ),
     );
+    _dismissKeyboard();
     if (selected == null || !mounted) return;
     setState(() {
       _selectedTemplateUuid = selected.uuid;
@@ -1635,5 +2000,6 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _paymentMethodUuid = selected.paymentMethodUuid;
       _normalizeSelections(notify: false);
     });
+    _dismissKeyboard();
   }
 }

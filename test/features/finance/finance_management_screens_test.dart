@@ -5,11 +5,14 @@ import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/screens/finance_automation_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_budget_entry_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_budget_screen.dart';
+import 'package:countdown_todo/features/finance/screens/finance_entry_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_loan_entry_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_loan_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_trash_screen.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_catalog_editor.dart';
 import 'package:countdown_todo/services/database_helper.dart';
+import 'package:countdown_todo/widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -38,6 +41,10 @@ FinanceBudget _budget() => FinanceBudget(
 Finder _key(String value) => find.byKey(ValueKey(value));
 Finder _field(String value) =>
     find.descendant(of: _key(value), matching: find.byType(TextField));
+
+bool _hasFocusedEditable(WidgetTester tester) => tester
+    .widgetList<EditableText>(find.byType(EditableText))
+    .any((field) => field.focusNode.hasFocus);
 
 Future<Database> _seed(WidgetTester tester) async {
   SharedPreferences.setMockInitialValues({});
@@ -174,7 +181,13 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
   if (finder.evaluate().isEmpty) {
     await tester.scrollUntilVisible(finder, 250, maxScrolls: 30);
   }
-  await tester.ensureVisible(finder);
+  // Keep controls below the transparent top-bar layer after pages begin
+  // behind their app bars; the default alignment can place them at y=0.
+  await Scrollable.ensureVisible(
+    finder.evaluate().first,
+    alignment: 0.2,
+    duration: Duration.zero,
+  );
   await tester.pump(const Duration(milliseconds: 300));
   await tester.tap(finder);
   await tester.pump();
@@ -190,6 +203,144 @@ Future<void> _top(WidgetTester tester) async {
 
 void main() {
   sqfliteFfiInit();
+
+  testWidgets('记账分类先选大类，再选小类并支持现场新增', (tester) async {
+    final db = await _seed(tester);
+    await _pump(tester, const FinanceEntryScreen());
+
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+    final entryList = tester.widget<ListView>(find.byType(ListView).first);
+    final entryPadding = entryList.padding! as EdgeInsets;
+    expect(scaffold.extendBodyBehindAppBar, isTrue);
+    expect(find.byType(FloatingGlassTopBarContentFade), findsOneWidget);
+    expect(entryPadding.top, greaterThan(kToolbarHeight));
+
+    const categoryField =
+        ValueKey('finance-category-FinanceTransactionType.expense-test-food');
+    await _tap(tester, find.byKey(categoryField));
+    expect(find.text('选择大类'), findsOneWidget);
+    expect(find.text('奶茶'), findsNothing);
+
+    await _tap(tester, find.text('餐饮').last);
+    expect(find.text('餐饮 · 选择小类'), findsOneWidget);
+    expect(find.text('奶茶'), findsOneWidget);
+    expect(find.byTooltip('新增小类'), findsOneWidget);
+
+    await _tap(tester, find.text('奶茶'));
+    await tester.pumpAndSettle();
+    expect(find.text('餐饮 - 奶茶'), findsOneWidget);
+
+    const milkTeaField = ValueKey(
+        'finance-category-FinanceTransactionType.expense-finance-system-category-food-milk-tea');
+    await _tap(tester, find.byKey(milkTeaField));
+    await _tap(tester, find.text('餐饮').last);
+    await _tap(tester, find.byTooltip('新增小类'));
+    expect(
+        find.byKey(const ValueKey('finance-catalog-parent')), findsOneWidget);
+    await tester.enterText(
+        find.byKey(const ValueKey('finance-catalog-name')), '夜宵');
+    await _tap(tester, find.byKey(const ValueKey('finance-catalog-save')));
+    await _waitFor(
+      tester,
+      () =>
+          find.byType(FinanceCatalogEditor).evaluate().isEmpty &&
+          find.byTooltip('新增小类').evaluate().isEmpty,
+    );
+    expect(find.text('餐饮 - 夜宵'), findsOneWidget);
+    final rows = (await tester.runAsync(() => db.query(
+          'finance_categories',
+          where: 'name = ?',
+          whereArgs: ['夜宵'],
+        )))!;
+    expect(rows.single['parent_uuid'], 'finance-system-category-food');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('记账选择分类后不会重新唤起键盘', (tester) async {
+    await _seed(tester);
+    await _pump(tester, const FinanceEntryScreen());
+    expect(_hasFocusedEditable(tester), isFalse);
+
+    await tester.showKeyboard(find.byType(EditableText).first);
+    await tester.pump();
+    expect(_hasFocusedEditable(tester), isTrue);
+
+    const categoryField =
+        ValueKey('finance-category-FinanceTransactionType.expense-test-food');
+    await _tap(tester, find.byKey(categoryField));
+    await _tap(tester, find.text('餐饮').last);
+    await _tap(tester, find.text('奶茶'));
+    await tester.pumpAndSettle();
+
+    expect(_hasFocusedEditable(tester), isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('自然语言记账支持多笔描述并先逐笔确认', (tester) async {
+    await _seed(tester);
+    await _pump(tester, const FinanceEntryScreen());
+    await tester.enterText(
+      find.byKey(const ValueKey('finance-quick-entry-input')),
+      '今天早餐 8 元，微信；中午午餐 25 元，支付宝',
+    );
+    await _tap(tester, find.text('识别账单'));
+
+    expect(find.text('识别到 2 笔账单'), findsOneWidget);
+    expect(find.textContaining('· 早餐 · 早餐 · 微信'), findsOneWidget);
+    expect(find.textContaining('· 午餐 ·'), findsOneWidget);
+    expect(find.text('逐笔确认'), findsOneWidget);
+
+    await _tap(tester, find.text('返回修改'));
+    await tester.pumpAndSettle();
+    expect(find.text('识别到 2 笔账单'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('自定义大类也可以新增自定义小类', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(() => FinanceStorage.saveCategory(FinanceCategory(
+          uuid: 'test-food-existing-child',
+          name: '外卖',
+          parentUuid: 'test-food',
+          sortOrder: 1,
+        )));
+    await _pump(tester, const FinanceEntryScreen());
+
+    const categoryField =
+        ValueKey('finance-category-FinanceTransactionType.expense-test-food');
+    await _tap(tester, find.byKey(categoryField));
+    expect(find.text('日常餐饮'), findsWidgets);
+    expect(find.text('外卖'), findsNothing);
+
+    await _tap(tester, find.text('日常餐饮').last);
+    expect(find.text('日常餐饮 · 选择小类'), findsOneWidget);
+    expect(find.text('外卖'), findsOneWidget);
+    await _tap(tester, find.byTooltip('新增小类'));
+    await tester.enterText(
+        find.byKey(const ValueKey('finance-catalog-name')), '夜宵');
+    await _tap(tester, find.byKey(const ValueKey('finance-catalog-save')));
+    await _waitFor(
+      tester,
+      () =>
+          find.byType(FinanceCatalogEditor).evaluate().isEmpty &&
+          find.byTooltip('新增小类').evaluate().isEmpty,
+    );
+
+    expect(find.text('日常餐饮 - 夜宵'), findsOneWidget);
+    final rows = (await tester.runAsync(() => db.query(
+          'finance_categories',
+          where: 'uuid = ?',
+          whereArgs: ['test-food-existing-child'],
+        )))!;
+    expect(rows.single['parent_uuid'], 'test-food');
+    final customRows = (await tester.runAsync(() => db.query(
+          'finance_categories',
+          where: 'name = ?',
+          whereArgs: ['夜宵'],
+        )))!;
+    expect(customRows.single['parent_uuid'], 'test-food');
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('预算卡片直接编辑并保存，范围和备注保持不变', (tester) async {
     final db = await _seed(tester);
