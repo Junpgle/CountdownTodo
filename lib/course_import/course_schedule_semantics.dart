@@ -2,6 +2,21 @@ import 'package:intl/intl.dart';
 
 import '../models.dart';
 
+/// Aggregated schedule information for all occurrences of one course series.
+class CourseSeriesSummary {
+  const CourseSeriesSummary({
+    required this.startWeek,
+    required this.endWeek,
+    required this.totalLessons,
+    required this.completedLessons,
+  });
+
+  final int startWeek;
+  final int endWeek;
+  final int totalLessons;
+  final int completedLessons;
+}
+
 /// Shared schedule rules used by every course-import and merge entry point.
 ///
 /// A [CourseItem] stores both its relative position (week/day) and a concrete
@@ -36,6 +51,47 @@ abstract final class CourseScheduleSemantics {
         _isClockTime(course.endTime) &&
         course.startTime > 0 &&
         course.endTime > course.startTime;
+  }
+
+  /// Summarizes every scheduled occurrence belonging to [course].
+  ///
+  /// A course item represents one occurrence of a class.  Semester and subject
+  /// identify the series; teacher, lesson type, room, weekday, and time are
+  /// occurrence attributes and may change between weeks.
+  static CourseSeriesSummary summarizeCourseSeries(
+    CourseItem course,
+    Iterable<CourseItem> courses, {
+    DateTime? asOf,
+  }) {
+    final related = <String, CourseItem>{};
+    for (final candidate in courses) {
+      if (!_belongsToCourseSeries(course, candidate)) continue;
+      related[candidate.uuid] = candidate;
+    }
+    // Keep the detail subject visible even when the caller has not loaded the
+    // full schedule yet or the source list does not contain this occurrence.
+    related[course.uuid] = course;
+
+    final occurrences = related.values.toList();
+    final weeks = occurrences
+        .map((item) => item.weekIndex)
+        .where((week) => week > 0)
+        .toList();
+    final fallbackWeek = course.weekIndex > 0 ? course.weekIndex : 1;
+    final startWeek = weeks.isEmpty ? fallbackWeek : weeks.reduce(_min);
+    final endWeek = weeks.isEmpty ? fallbackWeek : weeks.reduce(_max);
+    final referenceTime = asOf ?? DateTime.now();
+    final completedLessons = occurrences.where((item) {
+      final start = _scheduledStart(item);
+      return start != null && !start.isAfter(referenceTime);
+    }).length;
+
+    return CourseSeriesSummary(
+      startWeek: startWeek,
+      endWeek: endWeek,
+      totalLessons: occurrences.length,
+      completedLessons: completedLessons,
+    );
   }
 
   /// Returns a copy with a repaired time range and a UUID derived from the
@@ -203,6 +259,26 @@ abstract final class CourseScheduleSemantics {
     final normalized = semesterId?.trim() ?? '';
     return normalized.isEmpty ? 'default' : normalized;
   }
+
+  static bool _belongsToCourseSeries(CourseItem course, CourseItem candidate) {
+    return canonicalSemesterId(course.semesterId) ==
+            canonicalSemesterId(candidate.semesterId) &&
+        course.courseName.trim() == candidate.courseName.trim();
+  }
+
+  static DateTime? _scheduledStart(CourseItem course) {
+    final date = DateTime.tryParse(course.date.trim());
+    if (date == null) return null;
+
+    if (!hasUsableTime(course) || !_isClockTime(course.startTime)) return null;
+    final hour = course.startTime ~/ 100;
+    final minute = course.startTime % 100;
+    return DateTime(date.year, date.month, date.day, hour, minute);
+  }
+
+  static int _min(int left, int right) => left < right ? left : right;
+
+  static int _max(int left, int right) => left > right ? left : right;
 
   static bool _isClockTime(int value) {
     if (value < 0) return false;

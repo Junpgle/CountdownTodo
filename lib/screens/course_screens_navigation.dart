@@ -412,7 +412,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         onTap: () => Navigator.push(
             context,
             PageTransitions.material(
-                builder: (_) => CourseDetailScreen(course: item))),
+                builder: (_) => CourseDetailScreen(
+                    course: item, courseSchedule: _allCourses))),
       );
     } else if (item is TodoItem) {
       final colorScheme = Theme.of(context).colorScheme;
@@ -548,7 +549,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
         onTap: () => _openFixedScheduleDetail(
           item,
           sourceKey: sourceKey,
-          sourceColor: color.withValues(alpha: 0.12),
+          sourceColor: colorScheme.brightness == Brightness.dark
+              ? Colors.black
+              : Colors.white,
           sourceBorderRadius: const BorderRadius.all(Radius.circular(12)),
         ),
       );

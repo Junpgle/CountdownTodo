@@ -2,13 +2,60 @@ part of 'course_screens.dart';
 
 // --- Detail Screens ---
 
-class CourseDetailScreen extends StatelessWidget {
+class CourseDetailScreen extends StatefulWidget {
   final CourseItem course;
-  const CourseDetailScreen({super.key, required this.course});
+  final List<CourseItem>? courseSchedule;
+  final String? username;
+
+  const CourseDetailScreen({
+    super.key,
+    required this.course,
+    this.courseSchedule,
+    this.username,
+  });
+
+  @override
+  State<CourseDetailScreen> createState() => _CourseDetailScreenState();
+}
+
+class _CourseDetailScreenState extends State<CourseDetailScreen> {
+  late CourseSeriesSummary _courseSummary;
+
+  @override
+  void initState() {
+    super.initState();
+    final courseSchedule = widget.courseSchedule;
+    _courseSummary = CourseScheduleSemantics.summarizeCourseSeries(
+      widget.course,
+      courseSchedule ?? [widget.course],
+    );
+    if (courseSchedule == null) {
+      _loadCourseSchedule();
+    }
+  }
+
+  Future<void> _loadCourseSchedule() async {
+    final username = widget.username ?? await StorageService.getLoginSession();
+    if (username == null || username.trim().isEmpty) return;
+
+    try {
+      final courses = await CourseService.getAllCourses(username);
+      if (!mounted) return;
+      setState(() {
+        _courseSummary = CourseScheduleSemantics.summarizeCourseSeries(
+          widget.course,
+          courses,
+        );
+      });
+    } catch (error) {
+      debugPrint('加载课程进度失败: $error');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final course = widget.course;
     return AppDetailScreen(
       appBarTitle: '课程详情',
       icon: Icons.class_,
@@ -64,6 +111,36 @@ class CourseDetailScreen extends StatelessWidget {
                         ? '理论课'
                         : course.lessonType!),
               ),
+          ],
+        ),
+        AppDetailSection(
+          title: '课程进度',
+          children: [
+            AppDetailWideCard(
+              icon: Icons.date_range_rounded,
+              title: '持续时间',
+              value:
+                  '第${_courseSummary.startWeek}周 - 第${_courseSummary.endWeek}周',
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: AppDetailInfoCard(
+                    icon: Icons.menu_book_rounded,
+                    title: '总节数',
+                    value: '${_courseSummary.totalLessons} 节',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: AppDetailInfoCard(
+                    icon: Icons.check_circle_outline_rounded,
+                    title: '已上节数',
+                    value: '${_courseSummary.completedLessons} 节',
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ],

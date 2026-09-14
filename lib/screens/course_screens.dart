@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import '../course_import/course_schedule_semantics.dart';
 import '../services/course_service.dart';
 import '../services/pomodoro_service.dart';
 import '../services/power_save_mode_service.dart';

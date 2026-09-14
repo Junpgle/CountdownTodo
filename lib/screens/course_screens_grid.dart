@@ -1336,8 +1336,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 top;
             if (height < 18.0) height = 18.0;
 
-            final fixedColor =
-                Theme.of(context).colorScheme.primary.withValues(alpha: 0.82);
+            final colorScheme = Theme.of(context).colorScheme;
+            final fixedColor = colorScheme.primary.withValues(alpha: 0.82);
+            final fixedSchedulePlaceholderColor =
+                colorScheme.brightness == Brightness.dark
+                    ? Colors.black
+                    : Colors.white;
             final fixedScheduleCardKey =
                 _getFixedScheduleCardKey(schedule.id, weekday);
             eventsPerDay[weekday]!.add(_TimelineEvent(
@@ -1356,7 +1360,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                     onTap: () => _openFixedScheduleDetail(
                       schedule,
                       sourceKey: fixedScheduleCardKey,
-                      sourceColor: fixedColor,
+                      sourceColor: fixedSchedulePlaceholderColor,
                       sourceBorderRadius:
                           const BorderRadius.all(Radius.circular(4)),
                     ),
@@ -1829,7 +1833,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                         Navigator.push(
                           context,
                           ContainerTransformRoute(
-                            page: CourseDetailScreen(course: course),
+                            page: CourseDetailScreen(
+                              course: course,
+                              courseSchedule: _allCourses,
+                            ),
                             sourceRect: rect,
                             sourceColor: bgColor.withValues(alpha: 0.95),
                             sourceBorderRadius:
@@ -1840,7 +1847,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                         Navigator.push(
                             context,
                             PageTransitions.slideHorizontal(
-                              CourseDetailScreen(course: course),
+                              CourseDetailScreen(
+                                course: course,
+                                courseSchedule: _allCourses,
+                              ),
                             ));
                       }
                     },
