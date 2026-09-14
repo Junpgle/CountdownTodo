@@ -39,154 +39,165 @@ class _MathMenuScreenState extends State<MathMenuScreen>
 
   @override
   Widget build(BuildContext context) {
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text("数学测验中心"),
         centerTitle: true,
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          // 断点判断：是否为平板/桌面端 (宽屏)
-          final bool isTablet = constraints.maxWidth >= 600;
-          final bool isWideScreen = constraints.maxWidth >= 800;
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // 断点判断：是否为平板/桌面端 (宽屏)
+            final bool isTablet = constraints.maxWidth >= 600;
+            final bool isWideScreen = constraints.maxWidth >= 800;
 
-          // 宽屏时一行展示4个卡片，普通屏幕展示2个
-          final int columns = isWideScreen ? 4 : 2;
+            // 宽屏时一行展示4个卡片，普通屏幕展示2个
+            final int columns = isWideScreen ? 4 : 2;
 
-          return Center(
-            child: ConstrainedBox(
-              // 限制全局最大宽度，防止在带鱼屏或 4K 显示器上过度拉伸
-              constraints: const BoxConstraints(maxWidth: 1000),
-              child: CustomScrollView(
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.all(isTablet ? 24.0 : 16.0),
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                          vertical: isTablet ? 32 : 20,
-                          horizontal: isTablet ? 40 : 20,
+            return Center(
+              child: ConstrainedBox(
+                // 限制全局最大宽度，防止在带鱼屏或 4K 显示器上过度拉伸
+                constraints: const BoxConstraints(maxWidth: 1000),
+                child: CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          isTablet ? 24.0 : 16.0,
+                          topBarHeight + (isTablet ? 24.0 : 16.0),
+                          isTablet ? 24.0 : 16.0,
+                          isTablet ? 24.0 : 16.0,
                         ),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(colors: [
-                            Theme.of(context).colorScheme.secondary,
-                            Colors.lightBlue
-                          ]),
-                          borderRadius:
-                              BorderRadius.circular(isTablet ? 24 : 16),
-                        ),
-                        child: Column(
-                          children: [
-                            Icon(Icons.calculate,
-                                size: isTablet ? 64 : 48, color: Colors.white),
-                            SizedBox(height: isTablet ? 16 : 10),
-                            Text(
-                              "保持大脑活跃！",
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: isTablet ? 26 : 20,
-                                  fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              "每日坚持练习，提高计算速度",
-                              style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: isTablet ? 16 : 14),
-                            )
-                          ],
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            vertical: isTablet ? 32 : 20,
+                            horizontal: isTablet ? 40 : 20,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(colors: [
+                              Theme.of(context).colorScheme.secondary,
+                              Colors.lightBlue
+                            ]),
+                            borderRadius:
+                                BorderRadius.circular(isTablet ? 24 : 16),
+                          ),
+                          child: Column(
+                            children: [
+                              Icon(Icons.calculate,
+                                  size: isTablet ? 64 : 48,
+                                  color: Colors.white),
+                              SizedBox(height: isTablet ? 16 : 10),
+                              Text(
+                                "保持大脑活跃！",
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: isTablet ? 26 : 20,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                "每日坚持练习，提高计算速度",
+                                style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: isTablet ? 16 : 14),
+                              )
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  SliverPadding(
-                    padding: EdgeInsets.symmetric(
-                        horizontal: isTablet ? 24.0 : 16.0),
-                    sliver: SliverGrid.count(
-                      crossAxisCount: columns,
-                      crossAxisSpacing: isTablet ? 20 : 16,
-                      mainAxisSpacing: isTablet ? 20 : 16,
-                      childAspectRatio: isWideScreen ? 1.0 : 1.1,
-                      children: [
-                        _AnimatedMenuCard(
-                          index: 0,
-                          animationController: _animationController,
-                          child: _MenuCard(
-                            key: _quizCardKey,
-                            title: "开始答题",
-                            subtitle: "进入测验",
-                            colorStart: const Color(0xFF4facfe),
-                            colorEnd: const Color(0xFF00f2fe),
-                            icon: Icons.play_arrow_rounded,
-                            onTap: () => PageTransitions.pushFromRect(
-                              context: context,
-                              page: QuizScreen(username: widget.username),
-                              sourceKey: _quizCardKey,
+                    SliverPadding(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: isTablet ? 24.0 : 16.0),
+                      sliver: SliverGrid.count(
+                        crossAxisCount: columns,
+                        crossAxisSpacing: isTablet ? 20 : 16,
+                        mainAxisSpacing: isTablet ? 20 : 16,
+                        childAspectRatio: isWideScreen ? 1.0 : 1.1,
+                        children: [
+                          _AnimatedMenuCard(
+                            index: 0,
+                            animationController: _animationController,
+                            child: _MenuCard(
+                              key: _quizCardKey,
+                              title: "开始答题",
+                              subtitle: "进入测验",
+                              colorStart: const Color(0xFF4facfe),
+                              colorEnd: const Color(0xFF00f2fe),
+                              icon: Icons.play_arrow_rounded,
+                              onTap: () => PageTransitions.pushFromRect(
+                                context: context,
+                                page: QuizScreen(username: widget.username),
+                                sourceKey: _quizCardKey,
+                              ),
                             ),
                           ),
-                        ),
-                        _AnimatedMenuCard(
-                          index: 1,
-                          animationController: _animationController,
-                          child: _MenuCard(
-                            key: _settingsCardKey,
-                            title: "题目设置",
-                            subtitle: "调整难度",
-                            colorStart: const Color(0xFF43e97b),
-                            colorEnd: const Color(0xFF38f9d7),
-                            icon: Icons.tune_rounded,
-                            onTap: () => PageTransitions.pushFromRect(
-                              context: context,
-                              page: const SettingsScreen(),
-                              sourceKey: _settingsCardKey,
+                          _AnimatedMenuCard(
+                            index: 1,
+                            animationController: _animationController,
+                            child: _MenuCard(
+                              key: _settingsCardKey,
+                              title: "题目设置",
+                              subtitle: "调整难度",
+                              colorStart: const Color(0xFF43e97b),
+                              colorEnd: const Color(0xFF38f9d7),
+                              icon: Icons.tune_rounded,
+                              onTap: () => PageTransitions.pushFromRect(
+                                context: context,
+                                page: const SettingsScreen(),
+                                sourceKey: _settingsCardKey,
+                              ),
                             ),
                           ),
-                        ),
-                        _AnimatedMenuCard(
-                          index: 2,
-                          animationController: _animationController,
-                          child: _MenuCard(
-                            key: _leaderboardCardKey,
-                            title: "排行榜",
-                            subtitle: "查看排名",
-                            colorStart: const Color(0xFFfa709a),
-                            colorEnd: const Color(0xFFfee140),
-                            icon: Icons.emoji_events_rounded,
-                            onTap: () => PageTransitions.pushFromRect(
-                              context: context,
-                              page: const LeaderboardScreen(),
-                              sourceKey: _leaderboardCardKey,
+                          _AnimatedMenuCard(
+                            index: 2,
+                            animationController: _animationController,
+                            child: _MenuCard(
+                              key: _leaderboardCardKey,
+                              title: "排行榜",
+                              subtitle: "查看排名",
+                              colorStart: const Color(0xFFfa709a),
+                              colorEnd: const Color(0xFFfee140),
+                              icon: Icons.emoji_events_rounded,
+                              onTap: () => PageTransitions.pushFromRect(
+                                context: context,
+                                page: const LeaderboardScreen(),
+                                sourceKey: _leaderboardCardKey,
+                              ),
                             ),
                           ),
-                        ),
-                        _AnimatedMenuCard(
-                          index: 3,
-                          animationController: _animationController,
-                          child: _MenuCard(
-                            key: _historyCardKey,
-                            title: "历史记录",
-                            subtitle: "过往成绩",
-                            colorStart: const Color(0xFF667eea),
-                            colorEnd: const Color(0xFF764ba2),
-                            icon: Icons.history_edu_rounded,
-                            onTap: () => PageTransitions.pushFromRect(
-                              context: context,
-                              page: HistoryScreen(username: widget.username),
-                              sourceKey: _historyCardKey,
+                          _AnimatedMenuCard(
+                            index: 3,
+                            animationController: _animationController,
+                            child: _MenuCard(
+                              key: _historyCardKey,
+                              title: "历史记录",
+                              subtitle: "过往成绩",
+                              colorStart: const Color(0xFF667eea),
+                              colorEnd: const Color(0xFF764ba2),
+                              icon: Icons.history_edu_rounded,
+                              onTap: () => PageTransitions.pushFromRect(
+                                context: context,
+                                page: HistoryScreen(username: widget.username),
+                                sourceKey: _historyCardKey,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  // 底部留白，防止滚动到底部时贴边
-                  const SliverToBoxAdapter(child: SizedBox(height: 40)),
-                ],
+                    // 底部留白，防止滚动到底部时贴边
+                    const SliverToBoxAdapter(child: SizedBox(height: 40)),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

@@ -273,9 +273,7 @@ class _DataImportPageState extends State<DataImportPage> {
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
         16,
-        standalone
-            ? floatingGlassSettingsContentTopInset(context, extra: 16)
-            : 16,
+        standalone ? floatingGlassSettingsContentTopInset(context) : 16,
         16,
         16,
       ),

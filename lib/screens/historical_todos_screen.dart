@@ -256,7 +256,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     await _runAction(item.id, () => _permanentlyDeleteItem(item));
   }
 
-  Widget _buildList(List<TodoItem> items, int section) {
+  Widget _buildList(List<TodoItem> items, int section, double topPadding) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final query = _searchController.text.trim().toLowerCase();
@@ -287,6 +287,7 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       child: ManagementPage(
           key: PageStorageKey('todo-history-$section'),
           maxWidth: 900,
+          topPadding: topPadding,
           children: [
             ManagementIntro(
                 icon: icons[section],
@@ -423,40 +424,47 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: FloatingGlassAppBar(
-          flexibleSpace: const FloatingGlassTopBarBackground(),
-          title: const Text('待办深度清理'),
-          actions: [
-            IconButton(
-                icon: const Icon(Icons.refresh_rounded),
-                tooltip: '重新扫描',
-                onPressed: _isLoading || _busyId != null ? null : _loadData)
+  Widget build(BuildContext context) {
+    final topBarHeight = floatingGlassTopBarHeight(context) + kTextTabBarHeight;
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: FloatingGlassAppBar(
+        flexibleSpace: const FloatingGlassTopBarBackground(),
+        title: const Text('待办深度清理'),
+        actions: [
+          IconButton(
+              icon: const Icon(Icons.refresh_rounded),
+              tooltip: '重新扫描',
+              onPressed: _isLoading || _busyId != null ? null : _loadData)
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          tabs: [
+            Tab(text: '历史记录 ${_history.length}'),
+            Tab(text: '回收站 ${_deletedTodos.length}'),
+            Tab(text: '待修复 ${_orphanTodos.length}')
           ],
-          bottom: TabBar(
-            controller: _tabController,
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            tabs: [
-              Tab(text: '历史记录 ${_history.length}'),
-              Tab(text: '回收站 ${_deletedTodos.length}'),
-              Tab(text: '待修复 ${_orphanTodos.length}')
-            ],
-          ),
         ),
-        body: _isLoading
+      ),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _loadFailed
-                ? ManagementPage(children: [
+                ? ManagementPage(topPadding: topBarHeight, children: [
                     ManagementLoadError(
                         title: '暂时无法加载待办',
                         description: '请重试，已保存的待办不会受影响。',
                         onRetry: _loadData),
                   ])
                 : TabBarView(controller: _tabController, children: [
-                    _buildList(_history, 0),
-                    _buildList(_deletedTodos, 1),
-                    _buildList(_orphanTodos, 2)
+                    _buildList(_history, 0, topBarHeight),
+                    _buildList(_deletedTodos, 1, topBarHeight),
+                    _buildList(_orphanTodos, 2, topBarHeight)
                   ]),
-      );
+      ),
+    );
+  }
 }

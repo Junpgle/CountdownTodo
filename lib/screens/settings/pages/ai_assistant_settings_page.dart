@@ -307,9 +307,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
     return ListView(
       padding: EdgeInsets.fromLTRB(
         16,
-        widget.isEmbedded
-            ? 16
-            : floatingGlassSettingsContentTopInset(context, extra: 16),
+        widget.isEmbedded ? 16 : floatingGlassSettingsContentTopInset(context),
         16,
         32,
       ),

@@ -248,8 +248,10 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     final bool isDesktop = MediaQuery.of(context).size.width >= 768;
+    final topBarHeight = floatingGlassTopBarHeight(context);
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: LayoutBuilder(
@@ -479,215 +481,228 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
           const SizedBox(width: 8),
         ],
       ),
-      body: _isLoading
-          ? _buildSkeleton()
-          : LayoutBuilder(
-              builder: (context, constraints) {
-                final bool isWide = constraints.maxWidth > 900;
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? _buildSkeleton()
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  final bool isWide = constraints.maxWidth > 900;
 
-                return Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onScaleUpdate: (details) {
-                          final now = DateTime.now();
-                          if (_lastModeSwitch != null &&
-                              now.difference(_lastModeSwitch!).inMilliseconds <
-                                  800) {
-                            return;
-                          }
-
-                          if (details.scale < 0.7) {
-                            if (_viewMode < 2) {
-                              _toggleViewMode(_viewMode + 1);
-                              _lastModeSwitch = now;
-                              HapticFeedback.lightImpact();
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onScaleUpdate: (details) {
+                            final now = DateTime.now();
+                            if (_lastModeSwitch != null &&
+                                now
+                                        .difference(_lastModeSwitch!)
+                                        .inMilliseconds <
+                                    800) {
+                              return;
                             }
-                          } else if (details.scale > 1.5) {
-                            if (_viewMode > 0) {
-                              _toggleViewMode(_viewMode - 1);
-                              _lastModeSwitch = now;
-                              HapticFeedback.lightImpact();
-                            }
-                          }
-                        },
-                        onHorizontalDragUpdate: (details) {
-                          // 让视图跟手移动
-                          setState(() {
-                            _dragOffset += details.delta.dx;
-                          });
-                        },
-                        onHorizontalDragEnd: (details) {
-                          final screenWidth = MediaQuery.of(context).size.width;
-                          final threshold = screenWidth * 0.2; // 20% 宽度触发切换
 
-                          if (_dragOffset.abs() > threshold ||
-                              details.primaryVelocity!.abs() > 300) {
-                            if (_dragOffset > 0 ||
-                                (details.primaryVelocity ?? 0) > 300) {
-                              // 向右滑动 -> 上一个
-                              if (_viewMode == 2) {
-                                _changeMonth(-1);
-                              } else {
-                                _changeWeek(-1);
+                            if (details.scale < 0.7) {
+                              if (_viewMode < 2) {
+                                _toggleViewMode(_viewMode + 1);
+                                _lastModeSwitch = now;
+                                HapticFeedback.lightImpact();
                               }
-                            } else {
-                              // 向左滑动 -> 下一个
-                              if (_viewMode == 2) {
-                                _changeMonth(1);
-                              } else {
-                                _changeWeek(1);
+                            } else if (details.scale > 1.5) {
+                              if (_viewMode > 0) {
+                                _toggleViewMode(_viewMode - 1);
+                                _lastModeSwitch = now;
+                                HapticFeedback.lightImpact();
                               }
                             }
-                            HapticFeedback.lightImpact();
-                          }
+                          },
+                          onHorizontalDragUpdate: (details) {
+                            // 让视图跟手移动
+                            setState(() {
+                              _dragOffset += details.delta.dx;
+                            });
+                          },
+                          onHorizontalDragEnd: (details) {
+                            final screenWidth =
+                                MediaQuery.of(context).size.width;
+                            final threshold = screenWidth * 0.2; // 20% 宽度触发切换
 
-                          // 重置位移（AnimatedSwitcher 会处理新旧视图的平滑切换）
-                          setState(() {
-                            _dragOffset = 0;
-                          });
-                        },
-                        child: Column(
-                          children: [
-                            if (_viewMode == 0) ...[
-                              SizedBox(
-                                key: _dayHeaderKey,
-                                child: _buildHeader(_getMondayOfCurrentWeek()),
-                              ),
-                              SizedBox(
-                                key: _allDayKey,
-                                child: _buildAllDayHeaderRow(
-                                    _getMondayOfCurrentWeek()),
-                              ),
-                              Divider(
-                                  height: 1,
-                                  thickness: 0.5,
-                                  color:
-                                      isDark ? Colors.white10 : Colors.black12),
-                            ],
-                            Expanded(
-                              child: _viewMode > 0
-                                  ? CourseMonthView(
-                                      key: ValueKey(
-                                          'MonthView_${_selectedMonth.year}_${_selectedMonth.month}_mode$_viewMode'),
-                                      selectedMonth: _selectedMonth,
-                                      courseMap: _monthCourseMap,
-                                      todoMap: _monthTodoMap,
-                                      crossDayTodoMap: _monthCrossDayTodoMap,
-                                      logMap: _monthLogMap,
-                                      pomMap: _monthPomMap,
-                                      fixedScheduleMap: _monthFixedScheduleMap,
-                                      deviceCalendarMap:
-                                          _monthDeviceCalendarMap,
-                                      pomodoroTags: _pomodoroTags,
-                                      activeDataViews: _activeDataViews,
-                                      allTodos: _allTodos,
-                                      viewMode: _viewMode,
-                                      currentWeekMonday:
-                                          _getMondayOfCurrentWeek(),
-                                      deviceCalendarCardKeyBuilder:
-                                          (event, dateKey) =>
-                                              _getDeviceCalendarCardKey(
-                                        event.id,
-                                        dateKey,
-                                        surface: 'month',
-                                      ),
-                                      onDeviceCalendarTap: (event, sourceKey) {
-                                        _showDeviceCalendarEventDetail(
-                                          context,
-                                          event,
-                                          sourceKey: sourceKey,
-                                        );
-                                      },
-                                      onMonthChanged: (m) =>
-                                          setState(() => _selectedMonth = m),
-                                      onDayTapped: (d) {
-                                        setState(() => _selectedMonthDay = d);
-                                        if (constraints.maxWidth <= 900) {
-                                          _showDayDetailSheet(d);
-                                        }
-                                      },
-                                      onGanttTodoTap: (todo) {
-                                        if (todo.dueDate != null) {
-                                          setState(() =>
-                                              _selectedMonthDay = todo.dueDate);
+                            if (_dragOffset.abs() > threshold ||
+                                details.primaryVelocity!.abs() > 300) {
+                              if (_dragOffset > 0 ||
+                                  (details.primaryVelocity ?? 0) > 300) {
+                                // 向右滑动 -> 上一个
+                                if (_viewMode == 2) {
+                                  _changeMonth(-1);
+                                } else {
+                                  _changeWeek(-1);
+                                }
+                              } else {
+                                // 向左滑动 -> 下一个
+                                if (_viewMode == 2) {
+                                  _changeMonth(1);
+                                } else {
+                                  _changeWeek(1);
+                                }
+                              }
+                              HapticFeedback.lightImpact();
+                            }
+
+                            // 重置位移（AnimatedSwitcher 会处理新旧视图的平滑切换）
+                            setState(() {
+                              _dragOffset = 0;
+                            });
+                          },
+                          child: Column(
+                            children: [
+                              if (_viewMode == 0) ...[
+                                SizedBox(
+                                  key: _dayHeaderKey,
+                                  child:
+                                      _buildHeader(_getMondayOfCurrentWeek()),
+                                ),
+                                SizedBox(
+                                  key: _allDayKey,
+                                  child: _buildAllDayHeaderRow(
+                                      _getMondayOfCurrentWeek()),
+                                ),
+                                Divider(
+                                    height: 1,
+                                    thickness: 0.5,
+                                    color: isDark
+                                        ? Colors.white10
+                                        : Colors.black12),
+                              ],
+                              Expanded(
+                                child: _viewMode > 0
+                                    ? CourseMonthView(
+                                        key: ValueKey(
+                                            'MonthView_${_selectedMonth.year}_${_selectedMonth.month}_mode$_viewMode'),
+                                        selectedMonth: _selectedMonth,
+                                        courseMap: _monthCourseMap,
+                                        todoMap: _monthTodoMap,
+                                        crossDayTodoMap: _monthCrossDayTodoMap,
+                                        logMap: _monthLogMap,
+                                        pomMap: _monthPomMap,
+                                        fixedScheduleMap:
+                                            _monthFixedScheduleMap,
+                                        deviceCalendarMap:
+                                            _monthDeviceCalendarMap,
+                                        pomodoroTags: _pomodoroTags,
+                                        activeDataViews: _activeDataViews,
+                                        allTodos: _allTodos,
+                                        viewMode: _viewMode,
+                                        currentWeekMonday:
+                                            _getMondayOfCurrentWeek(),
+                                        deviceCalendarCardKeyBuilder:
+                                            (event, dateKey) =>
+                                                _getDeviceCalendarCardKey(
+                                          event.id,
+                                          dateKey,
+                                          surface: 'month',
+                                        ),
+                                        onDeviceCalendarTap:
+                                            (event, sourceKey) {
+                                          _showDeviceCalendarEventDetail(
+                                            context,
+                                            event,
+                                            sourceKey: sourceKey,
+                                          );
+                                        },
+                                        onMonthChanged: (m) =>
+                                            setState(() => _selectedMonth = m),
+                                        onDayTapped: (d) {
+                                          setState(() => _selectedMonthDay = d);
                                           if (constraints.maxWidth <= 900) {
-                                            _showDayDetailSheet(todo.dueDate!);
+                                            _showDayDetailSheet(d);
                                           }
-                                        }
-                                      },
-                                    )
-                                  : AnimatedSwitcher(
-                                      key: _gridKey,
-                                      duration:
-                                          const Duration(milliseconds: 400),
-                                      transitionBuilder: (child, animation) {
-                                        return Transform.translate(
-                                          offset: Offset(
-                                              _dragOffset *
-                                                  (1.0 - animation.value),
-                                              0),
-                                          child: SlideTransition(
-                                            position: Tween<Offset>(
-                                              begin: Offset(
-                                                  _isNextSlide ? 1.0 : -1.0,
-                                                  0.0),
-                                              end: Offset.zero,
-                                            ).animate(CurvedAnimation(
-                                                parent: animation,
-                                                curve: Curves.easeOutCubic)),
-                                            child: FadeTransition(
-                                                opacity: animation,
-                                                child: child),
-                                          ),
-                                        );
-                                      },
-                                      child: RepaintBoundary(
-                                        key: ValueKey('WeekView_$_currentWeek'),
-                                        child: LayoutBuilder(
-                                          builder: (context, innerConstraints) {
-                                            double cellWidth =
-                                                (innerConstraints.maxWidth -
-                                                        timeColumnWidth) /
-                                                    7;
-                                            double totalMinutes =
-                                                (endHour - startHour) * 60.0 -
-                                                    _totalHiddenMinutes;
-                                            double minuteHeight =
-                                                innerConstraints.maxHeight /
-                                                    totalMinutes;
+                                        },
+                                        onGanttTodoTap: (todo) {
+                                          if (todo.dueDate != null) {
+                                            setState(() => _selectedMonthDay =
+                                                todo.dueDate);
+                                            if (constraints.maxWidth <= 900) {
+                                              _showDayDetailSheet(
+                                                  todo.dueDate!);
+                                            }
+                                          }
+                                        },
+                                      )
+                                    : AnimatedSwitcher(
+                                        key: _gridKey,
+                                        duration:
+                                            const Duration(milliseconds: 400),
+                                        transitionBuilder: (child, animation) {
+                                          return Transform.translate(
+                                            offset: Offset(
+                                                _dragOffset *
+                                                    (1.0 - animation.value),
+                                                0),
+                                            child: SlideTransition(
+                                              position: Tween<Offset>(
+                                                begin: Offset(
+                                                    _isNextSlide ? 1.0 : -1.0,
+                                                    0.0),
+                                                end: Offset.zero,
+                                              ).animate(CurvedAnimation(
+                                                  parent: animation,
+                                                  curve: Curves.easeOutCubic)),
+                                              child: FadeTransition(
+                                                  opacity: animation,
+                                                  child: child),
+                                            ),
+                                          );
+                                        },
+                                        child: RepaintBoundary(
+                                          key: ValueKey(
+                                              'WeekView_$_currentWeek'),
+                                          child: LayoutBuilder(
+                                            builder:
+                                                (context, innerConstraints) {
+                                              double cellWidth =
+                                                  (innerConstraints.maxWidth -
+                                                          timeColumnWidth) /
+                                                      7;
+                                              double totalMinutes =
+                                                  (endHour - startHour) * 60.0 -
+                                                      _totalHiddenMinutes;
+                                              double minuteHeight =
+                                                  innerConstraints.maxHeight /
+                                                      totalMinutes;
 
-                                            return _buildGrid(
-                                                cellWidth, minuteHeight);
-                                          },
+                                              return _buildGrid(
+                                                  cellWidth, minuteHeight);
+                                            },
+                                          ),
                                         ),
                                       ),
-                                    ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (isWide)
-                      Container(
-                        width: 350,
-                        decoration: BoxDecoration(
-                          border: Border(
-                            left: BorderSide(
-                              color: isDark ? Colors.white10 : Colors.black12,
-                              width: 1,
-                            ),
+                              ),
+                            ],
                           ),
                         ),
-                        child: _selectedMonthDay != null
-                            ? _buildMonthDaySidebar(_selectedMonthDay!)
-                            : _buildTodaySidebar(),
                       ),
-                  ],
-                );
-              },
-            ),
+                      if (isWide)
+                        Container(
+                          width: 350,
+                          decoration: BoxDecoration(
+                            border: Border(
+                              left: BorderSide(
+                                color: isDark ? Colors.white10 : Colors.black12,
+                                width: 1,
+                              ),
+                            ),
+                          ),
+                          child: _selectedMonthDay != null
+                              ? _buildMonthDaySidebar(_selectedMonthDay!)
+                              : _buildTodaySidebar(),
+                        ),
+                    ],
+                  );
+                },
+              ),
+      ),
     );
   }
 

@@ -196,7 +196,7 @@ class _DeviceCalendarReadPageState extends State<DeviceCalendarReadPage> {
             16,
             widget.isEmbedded
                 ? 16
-                : floatingGlassSettingsContentTopInset(context, extra: 16),
+                : floatingGlassSettingsContentTopInset(context),
             16,
             24,
           ),

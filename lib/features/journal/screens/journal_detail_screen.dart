@@ -104,7 +104,9 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(DateFormat('yyyy年MM月dd日').format(_entry.occurredAt)),
@@ -119,54 +121,58 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
               icon: const Icon(Icons.delete_outline_rounded)),
         ],
       ),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 880),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 48),
-              children: [
-                Text(
-                  DateFormat('EEEE', 'zh_CN').format(_entry.occurredAt),
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: scheme.primary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _entry.title?.trim().isNotEmpty == true
-                      ? _entry.title!
-                      : '无题',
-                  style: theme.textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -1,
-                  ),
-                ),
-                if (_entry.content.trim().isNotEmpty) ...[
-                  const SizedBox(height: 24),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: SafeArea(
+          top: false,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 880),
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(20, topBarHeight + 12, 20, 48),
+                children: [
                   Text(
-                    _entry.content,
-                    style: theme.textTheme.bodyLarge?.copyWith(height: 1.75),
-                  ),
-                ],
-                if (_entry.attachments.isNotEmpty) ...[
-                  const SizedBox(height: 28),
-                  _DetailGallery(
-                    attachments: _entry.attachments,
-                    onTap: _openImage,
-                  ),
-                ],
-                const SizedBox(height: 36),
-                Center(
-                  child: Text(
-                    '记录于 ${DateFormat('yyyy年MM月dd日 HH:mm').format(_entry.createdAt)}',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
+                    DateFormat('EEEE', 'zh_CN').format(_entry.occurredAt),
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  Text(
+                    _entry.title?.trim().isNotEmpty == true
+                        ? _entry.title!
+                        : '无题',
+                    style: theme.textTheme.displaySmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -1,
+                    ),
+                  ),
+                  if (_entry.content.trim().isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    Text(
+                      _entry.content,
+                      style: theme.textTheme.bodyLarge?.copyWith(height: 1.75),
+                    ),
+                  ],
+                  if (_entry.attachments.isNotEmpty) ...[
+                    const SizedBox(height: 28),
+                    _DetailGallery(
+                      attachments: _entry.attachments,
+                      onTap: _openImage,
+                    ),
+                  ],
+                  const SizedBox(height: 36),
+                  Center(
+                    child: Text(
+                      '记录于 ${DateFormat('yyyy年MM月dd日 HH:mm').format(_entry.createdAt)}',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

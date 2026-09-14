@@ -1037,8 +1037,10 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     final hasImage = localImageExists(imagePath);
     final bool hasMoreTodos = _currentIndex < _allTodos.length;
     final currentTodo = hasMoreTodos ? _allTodos[_currentIndex] : null;
+    final topBarHeight = floatingGlassTopBarHeight(context);
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(hasMoreTodos
@@ -1062,116 +1064,120 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
             ),
         ],
       ),
-      body: _isRetrying
-          ? _buildSkeleton(Theme.of(context).brightness == Brightness.dark)
-          : Column(
-              children: [
-                // 图片预览（可折叠）
-                if (hasImage)
-                  Container(
-                    height: 120,
-                    width: double.infinity,
-                    margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: imagePath != null
-                          ? localImageWidget(imagePath, fit: BoxFit.contain)
-                          : const SizedBox.shrink(),
-                    ),
-                  ),
-
-                // 重试状态提示
-                if (_retryStatus != null)
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isRetrying
+            ? _buildSkeleton(Theme.of(context).brightness == Brightness.dark)
+            : Column(
+                children: [
+                  // 图片预览（可折叠）
+                  if (hasImage)
+                    Container(
+                      height: 120,
+                      width: double.infinity,
+                      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                       decoration: BoxDecoration(
-                        color: _isRetrying
-                            ? Theme.of(context).colorScheme.primary
-                            : (_retryStatus!.contains('失败')
-                                ? Colors.red
-                                : Colors.orange),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey),
                       ),
-                      child: Row(
-                        children: [
-                          if (_isRetrying)
-                            const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          else
-                            Icon(
-                              _retryStatus!.contains('失败')
-                                  ? Icons.error_outline
-                                  : Icons.info_outline,
-                              size: 16,
-                              color: _retryStatus!.contains('失败')
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: imagePath != null
+                            ? localImageWidget(imagePath, fit: BoxFit.contain)
+                            : const SizedBox.shrink(),
+                      ),
+                    ),
+
+                  // 重试状态提示
+                  if (_retryStatus != null)
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _isRetrying
+                              ? Theme.of(context).colorScheme.primary
+                              : (_retryStatus!.contains('失败')
                                   ? Colors.red
-                                  : Colors.orange,
-                            ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _retryStatus!,
-                              style: TextStyle(
-                                fontSize: 13,
+                                  : Colors.orange),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            if (_isRetrying)
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            else
+                              Icon(
+                                _retryStatus!.contains('失败')
+                                    ? Icons.error_outline
+                                    : Icons.info_outline,
+                                size: 16,
                                 color: _retryStatus!.contains('失败')
                                     ? Colors.red
-                                    : Colors.black87,
+                                    : Colors.orange,
+                              ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _retryStatus!,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: _retryStatus!.contains('失败')
+                                      ? Colors.red
+                                      : Colors.black87,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
+
+                  // 当前待办卡片 或 完成页面
+                  Expanded(
+                    child: _allTodos.isEmpty
+                        ? _buildEmptyState()
+                        : hasMoreTodos
+                            ? AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 350),
+                                transitionBuilder: (child, animation) {
+                                  final slideAnimation = Tween<Offset>(
+                                    begin: const Offset(0.3, 0.0),
+                                    end: Offset.zero,
+                                  ).animate(CurvedAnimation(
+                                    parent: animation,
+                                    curve: Curves.easeOutCubic,
+                                  ));
+                                  return FadeTransition(
+                                    opacity: animation,
+                                    child: SlideTransition(
+                                      position: slideAnimation,
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: _buildCurrentTodoCard(currentTodo!),
+                              )
+                            : _buildCompletedState(),
                   ),
 
-                // 当前待办卡片 或 完成页面
-                Expanded(
-                  child: _allTodos.isEmpty
-                      ? _buildEmptyState()
-                      : hasMoreTodos
-                          ? AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 350),
-                              transitionBuilder: (child, animation) {
-                                final slideAnimation = Tween<Offset>(
-                                  begin: const Offset(0.3, 0.0),
-                                  end: Offset.zero,
-                                ).animate(CurvedAnimation(
-                                  parent: animation,
-                                  curve: Curves.easeOutCubic,
-                                ));
-                                return FadeTransition(
-                                  opacity: animation,
-                                  child: SlideTransition(
-                                    position: slideAnimation,
-                                    child: child,
-                                  ),
-                                );
-                              },
-                              child: _buildCurrentTodoCard(currentTodo!),
-                            )
-                          : _buildCompletedState(),
-                ),
-
-                // 底部按钮
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: hasMoreTodos
-                        ? _buildConfirmButtons()
-                        : _buildDoneButton(),
+                  // 底部按钮
+                  SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: hasMoreTodos
+                          ? _buildConfirmButtons()
+                          : _buildDoneButton(),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+      ),
     );
   }
 

@@ -378,10 +378,12 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isAdmin = widget.team.userRole == TeamRole.admin;
+    final topBarHeight = floatingGlassTopBarHeight(context);
 
     return Scaffold(
       backgroundColor:
           isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FA),
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         title: Text('${widget.team.name} 公告',
             style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -394,20 +396,23 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
               onPressed: _loadAnnouncements),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _announcements.isEmpty
-              ? _buildEmptyState(isDark)
-              : RefreshIndicator(
-                  onRefresh: _loadAnnouncements,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    itemCount: _announcements.length,
-                    itemBuilder: (context, index) => _buildAnnouncementCard(
-                        _announcements[index], isDark, isAdmin),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _announcements.isEmpty
+                ? _buildEmptyState(isDark)
+                : RefreshIndicator(
+                    onRefresh: _loadAnnouncements,
+                    child: ListView.builder(
+                      padding:
+                          EdgeInsets.fromLTRB(16, topBarHeight + 12, 16, 12),
+                      itemCount: _announcements.length,
+                      itemBuilder: (context, index) => _buildAnnouncementCard(
+                          _announcements[index], isDark, isAdmin),
+                    ),
                   ),
-                ),
+      ),
       floatingActionButton: isAdmin
           ? FloatingGlassActionButton.extended(
               onPressed: _showCreateAnnouncementDialog,

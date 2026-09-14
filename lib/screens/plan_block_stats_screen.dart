@@ -222,38 +222,43 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title:
             const Text('规划统计', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadData,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _buildDimensionSelector(theme),
-                  const SizedBox(height: 12),
-                  _buildNavRow(theme),
-                  const SizedBox(height: 16),
-                  _buildOverviewCard(theme),
-                  const SizedBox(height: 20),
-                  _buildTrendChart(theme),
-                  const SizedBox(height: 20),
-                  _buildTodoRanking(theme),
-                  const SizedBox(height: 20),
-                  _buildMissedList(theme),
-                  const SizedBox(height: 20),
-                  _buildAiSuggestionCard(theme),
-                  const SizedBox(height: 80),
-                ],
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadData,
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(16, topBarHeight + 16, 16, 16),
+                  children: [
+                    _buildDimensionSelector(theme),
+                    const SizedBox(height: 12),
+                    _buildNavRow(theme),
+                    const SizedBox(height: 16),
+                    _buildOverviewCard(theme),
+                    const SizedBox(height: 20),
+                    _buildTrendChart(theme),
+                    const SizedBox(height: 20),
+                    _buildTodoRanking(theme),
+                    const SizedBox(height: 20),
+                    _buildMissedList(theme),
+                    const SizedBox(height: 20),
+                    _buildAiSuggestionCard(theme),
+                    const SizedBox(height: 80),
+                  ],
+                ),
               ),
-            ),
+      ),
     );
   }
 

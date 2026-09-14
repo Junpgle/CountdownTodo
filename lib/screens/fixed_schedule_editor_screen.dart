@@ -485,7 +485,9 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(
@@ -513,223 +515,226 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          TextField(
-            controller: _titleController,
-            decoration: const InputDecoration(
-              labelText: '日程名称',
-              hintText: '例如：高等数学考试',
-              border: OutlineInputBorder(),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(16, topBarHeight + 16, 16, 16),
+          children: [
+            TextField(
+              controller: _titleController,
+              decoration: const InputDecoration(
+                labelText: '日程名称',
+                hintText: '例如：高等数学考试',
+                border: OutlineInputBorder(),
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            color: colors.surfaceContainerLow,
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.calendar_today_rounded),
-                  title: Text(
-                    _recurrence == RecurrenceType.none ? '日期' : '首次日期',
-                  ),
-                  subtitle: Text(DateFormat('yyyy-MM-dd').format(_date)),
-                  onTap: _pickDate,
-                ),
-                LiquidGlassSwitchListTile(
-                  secondary: const Icon(Icons.schedule_rounded),
-                  title: const Text('时间待定'),
-                  subtitle: const Text('日期已确定，但主办方尚未公布具体时刻'),
-                  value: _timeTbd,
-                  onChanged: (value) => setState(() => _timeTbd = value),
-                ),
-                if (!_timeTbd) ...[
+            const SizedBox(height: 16),
+            Card(
+              color: colors.surfaceContainerLow,
+              child: Column(
+                children: [
                   ListTile(
-                    leading: const Icon(Icons.play_circle_outline_rounded),
-                    title: const Text('开始时间'),
-                    subtitle: Text(_startTime.format(context)),
-                    onTap: _pickStartTime,
+                    leading: const Icon(Icons.calendar_today_rounded),
+                    title: Text(
+                      _recurrence == RecurrenceType.none ? '日期' : '首次日期',
+                    ),
+                    subtitle: Text(DateFormat('yyyy-MM-dd').format(_date)),
+                    onTap: _pickDate,
                   ),
                   LiquidGlassSwitchListTile(
-                    secondary: const Icon(Icons.more_time_rounded),
-                    title: const Text('结束时间待定'),
-                    value: _endTimeTbd,
-                    onChanged: (value) => setState(() => _endTimeTbd = value),
+                    secondary: const Icon(Icons.schedule_rounded),
+                    title: const Text('时间待定'),
+                    subtitle: const Text('日期已确定，但主办方尚未公布具体时刻'),
+                    value: _timeTbd,
+                    onChanged: (value) => setState(() => _timeTbd = value),
                   ),
-                  if (!_endTimeTbd)
+                  if (!_timeTbd) ...[
                     ListTile(
-                      leading: const Icon(Icons.stop_circle_outlined),
-                      title: const Text('结束时间'),
-                      subtitle: Text(_endTime.format(context)),
-                      onTap: _pickEndTime,
+                      leading: const Icon(Icons.play_circle_outline_rounded),
+                      title: const Text('开始时间'),
+                      subtitle: Text(_startTime.format(context)),
+                      onTap: _pickStartTime,
                     ),
+                    LiquidGlassSwitchListTile(
+                      secondary: const Icon(Icons.more_time_rounded),
+                      title: const Text('结束时间待定'),
+                      value: _endTimeTbd,
+                      onChanged: (value) => setState(() => _endTimeTbd = value),
+                    ),
+                    if (!_endTimeTbd)
+                      ListTile(
+                        leading: const Icon(Icons.stop_circle_outlined),
+                        title: const Text('结束时间'),
+                        subtitle: Text(_endTime.format(context)),
+                        onTap: _pickEndTime,
+                      ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            color: colors.surfaceContainerLow,
-            child: Column(
-              children: [
-                DropdownButtonFormField<RecurrenceType>(
-                  initialValue: _recurrence,
-                  decoration: const InputDecoration(
-                    labelText: '重复规则',
-                    prefixIcon: Icon(Icons.repeat_rounded),
-                    border: InputBorder.none,
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  ),
-                  items: _supportedRecurrences
-                      .map((type) => DropdownMenuItem(
-                            value: type,
-                            child: Text(_recurrenceLabel(type)),
-                          ))
-                      .toList(),
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() {
-                      _recurrence = value;
-                      if (value != RecurrenceType.none &&
-                          !_recurrenceEndDate.isAfter(_date)) {
-                        _recurrenceEndDate =
-                            FixedScheduleRecurrenceService.defaultEndDate(
-                          startDate: _date,
-                          recurrence: value,
-                          customIntervalDays: int.tryParse(
-                                _customIntervalController.text.trim(),
-                              ) ??
-                              1,
-                        );
-                      }
-                    });
-                  },
-                ),
-                if (_recurrence != RecurrenceType.none)
-                  ListTile(
-                    leading: const Icon(Icons.event_repeat_rounded),
-                    title: const Text('重复结束日期'),
-                    subtitle: Text(
-                      DateFormat('yyyy-MM-dd').format(_recurrenceEndDate),
+            const SizedBox(height: 12),
+            Card(
+              color: colors.surfaceContainerLow,
+              child: Column(
+                children: [
+                  DropdownButtonFormField<RecurrenceType>(
+                    initialValue: _recurrence,
+                    decoration: const InputDecoration(
+                      labelText: '重复规则',
+                      prefixIcon: Icon(Icons.repeat_rounded),
+                      border: InputBorder.none,
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     ),
-                    onTap: _pickRecurrenceEndDate,
+                    items: _supportedRecurrences
+                        .map((type) => DropdownMenuItem(
+                              value: type,
+                              child: Text(_recurrenceLabel(type)),
+                            ))
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        _recurrence = value;
+                        if (value != RecurrenceType.none &&
+                            !_recurrenceEndDate.isAfter(_date)) {
+                          _recurrenceEndDate =
+                              FixedScheduleRecurrenceService.defaultEndDate(
+                            startDate: _date,
+                            recurrence: value,
+                            customIntervalDays: int.tryParse(
+                                  _customIntervalController.text.trim(),
+                                ) ??
+                                1,
+                          );
+                        }
+                      });
+                    },
                   ),
-                if (_recurrence == RecurrenceType.customDays)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: TextField(
-                      controller: _customIntervalController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: '每隔多少天',
-                        suffixText: '天',
-                        border: OutlineInputBorder(),
+                  if (_recurrence != RecurrenceType.none)
+                    ListTile(
+                      leading: const Icon(Icons.event_repeat_rounded),
+                      title: const Text('重复结束日期'),
+                      subtitle: Text(
+                        DateFormat('yyyy-MM-dd').format(_recurrenceEndDate),
+                      ),
+                      onTap: _pickRecurrenceEndDate,
+                    ),
+                  if (_recurrence == RecurrenceType.customDays)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: TextField(
+                        controller: _customIntervalController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: '每隔多少天',
+                          suffixText: '天',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _selectedTeamUuid ?? '',
-            decoration: const InputDecoration(
-              labelText: '团队归属',
-              prefixIcon: Icon(Icons.groups_rounded),
-              border: OutlineInputBorder(),
-              helperText: '关联团队后，团队成员可同步看到该日程系列',
-            ),
-            items: [
-              const DropdownMenuItem(
-                value: '',
-                child: Text('个人私有（仅自己可见）'),
+                ],
               ),
-              if (_selectedTeamUuid != null &&
-                  !_teams.any((team) => team.uuid == _selectedTeamUuid))
-                DropdownMenuItem(
-                  value: _selectedTeamUuid,
-                  child: const Text('当前团队'),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _selectedTeamUuid ?? '',
+              decoration: const InputDecoration(
+                labelText: '团队归属',
+                prefixIcon: Icon(Icons.groups_rounded),
+                border: OutlineInputBorder(),
+                helperText: '关联团队后，团队成员可同步看到该日程系列',
+              ),
+              items: [
+                const DropdownMenuItem(
+                  value: '',
+                  child: Text('个人私有（仅自己可见）'),
                 ),
-              ..._teams.map(
-                (team) => DropdownMenuItem(
-                  value: team.uuid,
-                  child: Text(team.name),
+                if (_selectedTeamUuid != null &&
+                    !_teams.any((team) => team.uuid == _selectedTeamUuid))
+                  DropdownMenuItem(
+                    value: _selectedTeamUuid,
+                    child: const Text('当前团队'),
+                  ),
+                ..._teams.map(
+                  (team) => DropdownMenuItem(
+                    value: team.uuid,
+                    child: Text(team.name),
+                  ),
                 ),
+              ],
+              onChanged: _canChangeTeam
+                  ? (value) => setState(() {
+                        _selectedTeamUuid =
+                            value == null || value.isEmpty ? null : value;
+                      })
+                  : null,
+            ),
+            if (!_canChangeTeam)
+              const Padding(
+                padding: EdgeInsets.only(top: 6, left: 12, right: 12),
+                child: Text('只有日程创建者可以更改团队归属；其他内容仍可协作编辑。'),
+              ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _locationController,
+              decoration: const InputDecoration(
+                labelText: '地点（可选）',
+                prefixIcon: Icon(Icons.location_on_outlined),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            InputDecorator(
+              decoration: InputDecoration(
+                labelText: '提醒（可多选）',
+                prefixIcon: const Icon(Icons.notifications_outlined),
+                border: const OutlineInputBorder(),
+                helperText: _timeTbd ? '时间确定后生效；全部取消即关闭提醒' : '全部取消即关闭提醒',
+              ),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children:
+                    ({15, 30, 60, 1440, ..._reminderMinutes}.toList()..sort())
+                        .map(
+                          (minutes) => FilterChip(
+                            label: Text(_reminderLabel(minutes)),
+                            selected: _reminderMinutes.contains(minutes),
+                            onSelected: (selected) => setState(() {
+                              if (selected) {
+                                _reminderMinutes.add(minutes);
+                              } else {
+                                _reminderMinutes.remove(minutes);
+                              }
+                            }),
+                          ),
+                        )
+                        .toList(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _remarkController,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: '备注（可选）',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            if (_editing) ...[
+              const SizedBox(height: 8),
+              LiquidGlassSwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('日程已取消'),
+                subtitle: const Text('取消后不再参与冲突、进行中状态和日历导出'),
+                value: _cancelled,
+                onChanged: (value) => setState(() => _cancelled = value),
               ),
             ],
-            onChanged: _canChangeTeam
-                ? (value) => setState(() {
-                      _selectedTeamUuid =
-                          value == null || value.isEmpty ? null : value;
-                    })
-                : null,
-          ),
-          if (!_canChangeTeam)
-            const Padding(
-              padding: EdgeInsets.only(top: 6, left: 12, right: 12),
-              child: Text('只有日程创建者可以更改团队归属；其他内容仍可协作编辑。'),
-            ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _locationController,
-            decoration: const InputDecoration(
-              labelText: '地点（可选）',
-              prefixIcon: Icon(Icons.location_on_outlined),
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          InputDecorator(
-            decoration: InputDecoration(
-              labelText: '提醒（可多选）',
-              prefixIcon: const Icon(Icons.notifications_outlined),
-              border: const OutlineInputBorder(),
-              helperText: _timeTbd ? '时间确定后生效；全部取消即关闭提醒' : '全部取消即关闭提醒',
-            ),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children:
-                  ({15, 30, 60, 1440, ..._reminderMinutes}.toList()..sort())
-                      .map(
-                        (minutes) => FilterChip(
-                          label: Text(_reminderLabel(minutes)),
-                          selected: _reminderMinutes.contains(minutes),
-                          onSelected: (selected) => setState(() {
-                            if (selected) {
-                              _reminderMinutes.add(minutes);
-                            } else {
-                              _reminderMinutes.remove(minutes);
-                            }
-                          }),
-                        ),
-                      )
-                      .toList(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _remarkController,
-            minLines: 2,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: '备注（可选）',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          if (_editing) ...[
-            const SizedBox(height: 8),
-            LiquidGlassSwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('日程已取消'),
-              subtitle: const Text('取消后不再参与冲突、进行中状态和日历导出'),
-              value: _cancelled,
-              onChanged: (value) => setState(() => _cancelled = value),
-            ),
           ],
-        ],
+        ),
       ),
     );
   }

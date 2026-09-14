@@ -205,6 +205,10 @@ class _PomodoroScreenState extends State<PomodoroScreen>
         _workbenchState?.handleFinishEarly();
       } else if (action == 'pomodoroAbandon') {
         _workbenchState?.handleAbandonFocus();
+      } else if (action == 'macTogglePause') {
+        _workbenchState?.handleTogglePause();
+      } else if (action == 'macStopFocus') {
+        _workbenchState?.handleStopFocus();
       }
     });
   }

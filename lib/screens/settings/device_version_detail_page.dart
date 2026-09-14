@@ -75,7 +75,7 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
                 child: ListView(
                   padding: EdgeInsets.fromLTRB(
                     16,
-                    floatingGlassSettingsContentTopInset(context, extra: 16),
+                    floatingGlassSettingsContentTopInset(context),
                     16,
                     16,
                   ),

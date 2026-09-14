@@ -309,6 +309,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   int _localPomodoroRemaining = 0;
   StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
   StreamSubscription<MacIslandCommand>? _macIslandCommandSub;
+  StreamSubscription<MacPomodoroAction>? _macIslandActionSub;
   Timer? _collaborativeSyncDebouncer; // 🚀 协同同步防抖器
   Timer? _syncWatchdogTimer;
   int _syncAttemptGeneration = 0;

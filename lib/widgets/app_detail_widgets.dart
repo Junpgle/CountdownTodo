@@ -375,97 +375,109 @@ class AppDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final topBarHeight = floatingGlassTopBarHeight(context);
+    final resolvedPadding = padding.resolve(Directionality.of(context));
+
     return Scaffold(
       backgroundColor: backgroundColor,
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(appBarTitle),
         actions: appBarActions,
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isWide = constraints.maxWidth > 700;
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isWide = constraints.maxWidth > 700;
 
-          if (isWide) {
-            final contentWidth =
-                constraints.maxWidth > 900 ? 900.0 : constraints.maxWidth;
-            final horizontalInset = (constraints.maxWidth - contentWidth) / 2;
-            final resolvedPadding = padding.resolve(Directionality.of(context));
-
-            return Center(
-              child: SingleChildScrollView(
-                physics: scrollPhysics,
-                padding: EdgeInsets.symmetric(
-                  horizontal: horizontalInset + resolvedPadding.left,
-                  vertical: 48,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 4,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          AppDetailHeader(
-                            icon: icon,
-                            title: title,
-                            subtitle: headerSubtitle,
-                            color: color,
-                            iconSize: iconSize,
-                            titleSize: titleSize,
-                            titleDecoration: titleDecoration,
-                            titleColor: titleColor,
-                            progress: progress,
-                            progressColor: progressColor,
-                          ),
-                          if (leftSections != null &&
-                              leftSections!.isNotEmpty) ...[
-                            const SizedBox(height: 20),
-                            ...leftSections!,
+            if (isWide) {
+              final contentWidth =
+                  constraints.maxWidth > 900 ? 900.0 : constraints.maxWidth;
+              final horizontalInset = (constraints.maxWidth - contentWidth) / 2;
+              return Center(
+                child: SingleChildScrollView(
+                  physics: scrollPhysics,
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalInset + resolvedPadding.left,
+                    topBarHeight + 48,
+                    horizontalInset + resolvedPadding.left,
+                    48,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 4,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AppDetailHeader(
+                              icon: icon,
+                              title: title,
+                              subtitle: headerSubtitle,
+                              color: color,
+                              iconSize: iconSize,
+                              titleSize: titleSize,
+                              titleDecoration: titleDecoration,
+                              titleColor: titleColor,
+                              progress: progress,
+                              progressColor: progressColor,
+                            ),
+                            if (leftSections != null &&
+                                leftSections!.isNotEmpty) ...[
+                              const SizedBox(height: 20),
+                              ...leftSections!,
+                            ],
                           ],
-                        ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 32),
-                    Expanded(
-                      flex: 6,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: sections,
+                      const SizedBox(width: 32),
+                      Expanded(
+                        flex: 6,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: sections,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            );
-          }
+              );
+            }
 
-          return ListView(
-            padding: padding,
-            physics: scrollPhysics,
-            children: [
-              AppDetailHeader(
-                icon: icon,
-                title: title,
-                subtitle: headerSubtitle,
-                color: color,
-                iconSize: iconSize,
-                titleSize: titleSize,
-                titleDecoration: titleDecoration,
-                titleColor: titleColor,
-                progress: progress,
-                progressColor: progressColor,
+            return ListView(
+              padding: EdgeInsets.fromLTRB(
+                resolvedPadding.left,
+                topBarHeight + resolvedPadding.top,
+                resolvedPadding.right,
+                resolvedPadding.bottom,
               ),
-              if (leftSections != null && leftSections!.isNotEmpty) ...[
+              physics: scrollPhysics,
+              children: [
+                AppDetailHeader(
+                  icon: icon,
+                  title: title,
+                  subtitle: headerSubtitle,
+                  color: color,
+                  iconSize: iconSize,
+                  titleSize: titleSize,
+                  titleDecoration: titleDecoration,
+                  titleColor: titleColor,
+                  progress: progress,
+                  progressColor: progressColor,
+                ),
+                if (leftSections != null && leftSections!.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  ...leftSections!,
+                ],
                 const SizedBox(height: 20),
-                ...leftSections!,
+                ...sections,
               ],
-              const SizedBox(height: 20),
-              ...sections,
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

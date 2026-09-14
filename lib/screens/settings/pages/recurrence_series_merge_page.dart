@@ -211,8 +211,7 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
                       16,
                       widget.isEmbedded
                           ? 16
-                          : floatingGlassSettingsContentTopInset(context,
-                              extra: 16),
+                          : floatingGlassSettingsContentTopInset(context),
                       16,
                       8,
                     ),

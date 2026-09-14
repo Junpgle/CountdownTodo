@@ -767,6 +767,39 @@ void main() {
     expect(find.text('高等数学'), findsOneWidget);
   });
 
+  testWidgets('detail screen fades content beneath its top bar',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: AppDetailScreen(
+          appBarTitle: '详情',
+          icon: Icons.info_outline,
+          title: '示例详情',
+          sections: [
+            AppDetailSection(
+              title: '信息',
+              children: [SizedBox(height: 700)],
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+    final listView = tester.widget<ListView>(find.byType(ListView));
+    final listPadding = listView.padding! as EdgeInsets;
+
+    expect(scaffold.extendBodyBehindAppBar, isTrue);
+    expect(find.byType(FloatingGlassTopBarContentFade), findsOneWidget);
+    expect(listPadding.top, greaterThan(kToolbarHeight));
+  });
+
   test('glass theme changes stock Material surfaces only while enabled', () {
     final base = ThemeData(
       colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),

@@ -238,7 +238,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
             16,
             widget.isEmbedded
                 ? 16
-                : floatingGlassSettingsContentTopInset(context, extra: 16),
+                : floatingGlassSettingsContentTopInset(context),
             16,
             16,
           ),

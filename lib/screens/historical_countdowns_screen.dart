@@ -128,7 +128,9 @@ class _HistoricalCountdownsScreenState
         .where((item) => item.title.toLowerCase().contains(query))
         .toList();
     if (_oldestFirst) visible = visible.reversed.toList();
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('历史倒计时'),
@@ -139,53 +141,60 @@ class _HistoricalCountdownsScreenState
               icon: const Icon(Icons.refresh_rounded))
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadData,
-              child: ManagementPage(maxWidth: 900, children: [
-                const ManagementIntro(
-                    icon: Icons.history_rounded,
-                    title: '那些期待过的日子',
-                    description: '已结束的倒计时留在这里，方便回顾与整理。'),
-                if (_loadFailed) ...[
-                  ManagementLoadError(
-                      title: '暂时无法加载记录',
-                      description: '请重试，已保存的倒计时不会受影响。',
-                      onRetry: _loadData),
-                ] else ...[
-                  ManagementSearchField(
-                      controller: _searchController,
-                      hintText: '搜索历史倒计时',
-                      onChanged: (_) => setState(() {})),
-                  const SizedBox(height: 16),
-                  ManagementFilterBar<bool>(
-                      value: _oldestFirst,
-                      onChanged: (value) =>
-                          setState(() => _oldestFirst = value),
-                      options: [
-                        ManagementFilterOption(value: false, label: '最近结束'),
-                        ManagementFilterOption(value: true, label: '最早结束')
-                      ]),
-                  const SizedBox(height: 16),
-                  Text(
-                      query.isEmpty
-                          ? '共 ${_history.length} 段记录'
-                          : '找到 ${visible.length} 段记录',
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(color: scheme.onSurfaceVariant)),
-                  const SizedBox(height: 12),
-                  if (visible.isEmpty)
-                    ManagementEmptyState(
-                        icon: Icons.hourglass_empty_rounded,
-                        title: query.isEmpty ? '还没有历史倒计时' : '没有找到匹配的记录',
-                        description: query.isEmpty
-                            ? '倒计时结束后，可以在这里回顾。'
-                            : '试试其他关键词，或清空搜索。'),
-                  ...visible.map(_buildCard),
-                ],
-              ]),
-            ),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadData,
+                child: ManagementPage(
+                  topPadding: topBarHeight,
+                  maxWidth: 900,
+                  children: [
+                    const ManagementIntro(
+                        icon: Icons.history_rounded,
+                        title: '那些期待过的日子',
+                        description: '已结束的倒计时留在这里，方便回顾与整理。'),
+                    if (_loadFailed) ...[
+                      ManagementLoadError(
+                          title: '暂时无法加载记录',
+                          description: '请重试，已保存的倒计时不会受影响。',
+                          onRetry: _loadData),
+                    ] else ...[
+                      ManagementSearchField(
+                          controller: _searchController,
+                          hintText: '搜索历史倒计时',
+                          onChanged: (_) => setState(() {})),
+                      const SizedBox(height: 16),
+                      ManagementFilterBar<bool>(
+                          value: _oldestFirst,
+                          onChanged: (value) =>
+                              setState(() => _oldestFirst = value),
+                          options: [
+                            ManagementFilterOption(value: false, label: '最近结束'),
+                            ManagementFilterOption(value: true, label: '最早结束')
+                          ]),
+                      const SizedBox(height: 16),
+                      Text(
+                          query.isEmpty
+                              ? '共 ${_history.length} 段记录'
+                              : '找到 ${visible.length} 段记录',
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(color: scheme.onSurfaceVariant)),
+                      const SizedBox(height: 12),
+                      if (visible.isEmpty)
+                        ManagementEmptyState(
+                            icon: Icons.hourglass_empty_rounded,
+                            title: query.isEmpty ? '还没有历史倒计时' : '没有找到匹配的记录',
+                            description: query.isEmpty
+                                ? '倒计时结束后，可以在这里回顾。'
+                                : '试试其他关键词，或清空搜索。'),
+                      ...visible.map(_buildCard),
+                    ],
+                  ],
+                ),
+              ),
+      ),
     );
   }
 

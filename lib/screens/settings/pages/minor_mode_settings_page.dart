@@ -116,8 +116,7 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
                     16,
                     widget.isEmbedded
                         ? 8
-                        : floatingGlassSettingsContentTopInset(context,
-                            extra: 8),
+                        : floatingGlassSettingsContentTopInset(context),
                     16,
                     32,
                   ),
@@ -516,11 +515,13 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
                 : '用于系统联动不可用或系统模式关闭时的兜底保护',
             icon: Icons.tune,
             value: state.manualEnabled,
-            onChanged: state.systemEnabled ? null : (val) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _setManualEnabled(val ?? false);
-              });
-            },
+            onChanged: state.systemEnabled
+                ? null
+                : (val) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      _setManualEnabled(val ?? false);
+                    });
+                  },
           ),
         ),
         const AppSettingsDivider(),

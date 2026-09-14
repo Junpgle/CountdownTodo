@@ -490,6 +490,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       },
       child: Scaffold(
         backgroundColor: _TC.surface(context),
+        extendBodyBehindAppBar: true,
         appBar: FloatingGlassAppBar(
           flexibleSpace: const FloatingGlassTopBarBackground(),
           leading: _view == _ViewMode.day
@@ -529,57 +530,62 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
           elevation: 0,
           surfaceTintColor: Colors.transparent,
         ),
-        body: _isLoading
-            ? _buildSkeleton()
-            : _view == _ViewMode.week
-                ? _WeekView(
-                    weekStart: _weekStart,
-                    logs: _allLogs,
-                    pomodoros: _allPomodoros,
-                    tags: _tags,
-                    onDayTap: (d) => _goDay(d),
-                    onTagTap: _showTagDetail,
-                    onManageTags: _showTagManager,
-                    onAddLog: () => _goDay(DateTime.now(), mode: _DayMode.edit),
-                    onPomodoroTap: _showPomodoroDetail,
-                    onTimeLogTap: _showTimeLogDetail,
-                    username: widget.username)
-                : _dayMode == _DayMode.view
-                    ? _DayGridView(
-                        date: _focusedDate,
-                        logs: _allLogs,
-                        pomodoros: _allPomodoros,
-                        tags: _tags,
-                        onPomodoroTap: _showPomodoroDetail,
-                        onTimeLogTap: _showTimeLogDetail,
-                        onSwitchEdit: () =>
-                            setState(() => _dayMode = _DayMode.edit))
-                    : _DayView(
-                        date: _focusedDate,
-                        crossDay: _crossDay,
-                        logs: _allLogs,
-                        planBlocks: _allPlanBlocks,
-                        pomodoros: _allPomodoros,
-                        tags: _tags,
-                        todos: _allTodos,
-                        todoGroups: _allTodoGroups,
-                        username: widget.username,
-                        entryMode: _entryMode,
-                        onEntryModeChanged: (mode) =>
-                            setState(() => _entryMode = mode),
-                        onBack: _goWeek,
-                        onCrossDayChanged: (v) => setState(() => _crossDay = v),
-                        onSaveLog: (log) {
-                          _addLog(log);
-                          setState(() => _dayMode = _DayMode.view);
-                        },
-                        onSavePlanBlock: (block) {
-                          _addPlanBlock(block);
-                          setState(() => _dayMode = _DayMode.view);
-                        },
-                        onPomodoroTap: _showPomodoroDetail,
-                        onDeleteLog: _deleteLog,
-                        onDeletePlanBlock: _deletePlanBlock),
+        body: FloatingGlassTopBarContentFade(
+          topBarHeight: floatingGlassTopBarHeight(context) + 34,
+          child: _isLoading
+              ? _buildSkeleton()
+              : _view == _ViewMode.week
+                  ? _WeekView(
+                      weekStart: _weekStart,
+                      logs: _allLogs,
+                      pomodoros: _allPomodoros,
+                      tags: _tags,
+                      onDayTap: (d) => _goDay(d),
+                      onTagTap: _showTagDetail,
+                      onManageTags: _showTagManager,
+                      onAddLog: () =>
+                          _goDay(DateTime.now(), mode: _DayMode.edit),
+                      onPomodoroTap: _showPomodoroDetail,
+                      onTimeLogTap: _showTimeLogDetail,
+                      username: widget.username)
+                  : _dayMode == _DayMode.view
+                      ? _DayGridView(
+                          date: _focusedDate,
+                          logs: _allLogs,
+                          pomodoros: _allPomodoros,
+                          tags: _tags,
+                          onPomodoroTap: _showPomodoroDetail,
+                          onTimeLogTap: _showTimeLogDetail,
+                          onSwitchEdit: () =>
+                              setState(() => _dayMode = _DayMode.edit))
+                      : _DayView(
+                          date: _focusedDate,
+                          crossDay: _crossDay,
+                          logs: _allLogs,
+                          planBlocks: _allPlanBlocks,
+                          pomodoros: _allPomodoros,
+                          tags: _tags,
+                          todos: _allTodos,
+                          todoGroups: _allTodoGroups,
+                          username: widget.username,
+                          entryMode: _entryMode,
+                          onEntryModeChanged: (mode) =>
+                              setState(() => _entryMode = mode),
+                          onBack: _goWeek,
+                          onCrossDayChanged: (v) =>
+                              setState(() => _crossDay = v),
+                          onSaveLog: (log) {
+                            _addLog(log);
+                            setState(() => _dayMode = _DayMode.view);
+                          },
+                          onSavePlanBlock: (block) {
+                            _addPlanBlock(block);
+                            setState(() => _dayMode = _DayMode.view);
+                          },
+                          onPomodoroTap: _showPomodoroDetail,
+                          onDeleteLog: _deleteLog,
+                          onDeletePlanBlock: _deletePlanBlock),
+        ),
       ),
     );
   }

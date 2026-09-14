@@ -439,9 +439,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
     return ListView(
       padding: EdgeInsets.fromLTRB(
         16,
-        standalone
-            ? floatingGlassSettingsContentTopInset(context, extra: 12)
-            : 12,
+        standalone ? floatingGlassSettingsContentTopInset(context) : 12,
         16,
         100,
       ),

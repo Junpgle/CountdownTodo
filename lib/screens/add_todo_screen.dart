@@ -1683,9 +1683,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final bgColor = theme.brightness == Brightness.light
         ? const Color(0xFFF2F2F7)
         : theme.colorScheme.surface;
+    final topBarHeight = floatingGlassTopBarHeight(context);
 
     return Scaffold(
       extendBody: true,
+      extendBodyBehindAppBar: true,
       backgroundColor: bgColor,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
@@ -1722,11 +1724,16 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       ),
       bottomNavigationBar:
           _selectedTabIndex == 0 ? _buildManualKindBottomBar() : null,
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        child: _selectedTabIndex == 0
-            ? _buildManualInputTab(key: const ValueKey('manual'))
-            : _buildAIRecognitionTab(key: const ValueKey('ai')),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: _selectedTabIndex == 0
+              ? _buildManualInputTab(
+                  key: const ValueKey('manual'), topPadding: topBarHeight)
+              : _buildAIRecognitionTab(
+                  key: const ValueKey('ai'), topPadding: topBarHeight),
+        ),
       ),
     );
   }
@@ -1870,13 +1877,13 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     );
   }
 
-  Widget _buildManualInputTab({Key? key}) {
+  Widget _buildManualInputTab({Key? key, double topPadding = 0}) {
     final colors = Theme.of(context).colorScheme;
     return LayoutBuilder(builder: (context, _) {
       return SingleChildScrollView(
         key: key,
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: EdgeInsets.fromLTRB(16, topPadding + 8, 16, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2499,10 +2506,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   }
 
   // ================= AI 识别界面 (保持卡片风格) =================
-  Widget _buildAIRecognitionTab({Key? key}) {
+  Widget _buildAIRecognitionTab({Key? key, double topPadding = 0}) {
     return SingleChildScrollView(
       key: key,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.fromLTRB(16, topPadding + 8, 16, 8),
       child: Column(
         children: [
           // 🚀 待确认的图片识别事项入口

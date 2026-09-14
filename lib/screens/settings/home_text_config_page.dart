@@ -566,9 +566,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
     return ListView(
       padding: EdgeInsets.fromLTRB(
         16,
-        standalone
-            ? floatingGlassSettingsContentTopInset(context, extra: 16)
-            : 16,
+        standalone ? floatingGlassSettingsContentTopInset(context) : 16,
         16,
         16,
       ),

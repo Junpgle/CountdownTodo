@@ -29,7 +29,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
 
   @override
   Widget build(BuildContext context) {
+    final topBarHeight = floatingGlassTopBarHeight(context) + kTextTabBarHeight;
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text("排行榜"),
@@ -41,12 +43,15 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [
-          _LeaderboardList(isCloud: true),
-          _LeaderboardList(isCloud: false),
-        ],
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            _LeaderboardList(isCloud: true, topPadding: topBarHeight),
+            _LeaderboardList(isCloud: false, topPadding: topBarHeight),
+          ],
+        ),
       ),
     );
   }
@@ -54,7 +59,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
 
 class _LeaderboardList extends StatefulWidget {
   final bool isCloud;
-  const _LeaderboardList({required this.isCloud});
+  final double topPadding;
+  const _LeaderboardList({required this.isCloud, required this.topPadding});
 
   @override
   State<_LeaderboardList> createState() => _LeaderboardListState();
@@ -112,7 +118,7 @@ class _LeaderboardListState extends State<_LeaderboardList> {
           }
 
           return ListView.separated(
-            padding: const EdgeInsets.all(10),
+            padding: EdgeInsets.fromLTRB(10, widget.topPadding + 10, 10, 10),
             itemCount: list.length,
             separatorBuilder: (ctx, i) => const Divider(),
             itemBuilder: (ctx, i) {
@@ -165,35 +171,40 @@ class HistoryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
           flexibleSpace: const FloatingGlassTopBarBackground(),
           title: Text("$username 的答题记录")),
-      body: FutureBuilder<List<String>>(
-        future: StorageService.getHistory(username),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          var list = snapshot.data!;
-          if (list.isEmpty) return const Center(child: Text("暂无历史记录"));
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: FutureBuilder<List<String>>(
+          future: StorageService.getHistory(username),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            var list = snapshot.data!;
+            if (list.isEmpty) return const Center(child: Text("暂无历史记录"));
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(10),
-            itemCount: list.length,
-            itemBuilder: (ctx, i) {
-              return Card(
-                elevation: 2,
-                margin: const EdgeInsets.only(bottom: 10),
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Text(list[i],
-                      style: const TextStyle(fontSize: 14, height: 1.5)),
-                ),
-              );
-            },
-          );
-        },
+            return ListView.builder(
+              padding: EdgeInsets.fromLTRB(10, topBarHeight + 10, 10, 10),
+              itemCount: list.length,
+              itemBuilder: (ctx, i) {
+                return Card(
+                  elevation: 2,
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Text(list[i],
+                        style: const TextStyle(fontSize: 14, height: 1.5)),
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

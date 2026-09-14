@@ -111,7 +111,9 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text('${widget.team.name} · 分享管理'),
@@ -122,11 +124,14 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _shares.isEmpty
-              ? _buildEmptyState()
-              : _buildSharesList(),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _shares.isEmpty
+                ? _buildEmptyState()
+                : _buildSharesList(topBarHeight),
+      ),
       floatingActionButton: FloatingGlassActionButton.extended(
         onPressed: _showCreateShareDialog,
         icon: const Icon(Icons.add_link),
@@ -157,11 +162,11 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
     );
   }
 
-  Widget _buildSharesList() {
+  Widget _buildSharesList(double topPadding) {
     return RefreshIndicator(
       onRefresh: _loadShares,
       child: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(16, topPadding + 16, 16, 16),
         itemCount: _shares.length,
         itemBuilder: (context, index) => _buildShareCard(_shares[index]),
       ),
@@ -445,141 +450,147 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('创建分享链接'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _titleController,
-              decoration: InputDecoration(
-                labelText: '标题（可选）',
-                hintText: '例如：项目进度',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _descController,
-              decoration: InputDecoration(
-                labelText: '描述（可选）',
-                hintText: '简要说明分享内容',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              '分享内容',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            CheckboxListTile(
-              title: const Text('待办事项'),
-              value: _shareTodos,
-              onChanged: (v) => setState(() => _shareTodos = v ?? true),
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-            ),
-            CheckboxListTile(
-              title: const Text('倒计时'),
-              value: _shareCountdowns,
-              onChanged: (v) => setState(() => _shareCountdowns = v ?? true),
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-            ),
-            CheckboxListTile(
-              title: const Text('日程'),
-              value: _shareSchedules,
-              onChanged: (v) => setState(() => _shareSchedules = v ?? true),
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-            ),
-            CheckboxListTile(
-              title: const Text('团队公告'),
-              value: _shareAnnouncements,
-              onChanged: (v) => setState(() => _shareAnnouncements = v ?? true),
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-            ),
-            const Divider(height: 32),
-            LiquidGlassSwitchListTile(
-              title: const Text('密码保护'),
-              subtitle: const Text('访问者需要输入密码才能查看'),
-              value: _usePassword,
-              onChanged: (v) => setState(() => _usePassword = v),
-              contentPadding: EdgeInsets.zero,
-            ),
-            if (_usePassword) ...[
-              const SizedBox(height: 8),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(24, topBarHeight + 8, 24, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               TextField(
-                controller: _passwordController,
+                controller: _titleController,
                 decoration: InputDecoration(
-                  labelText: '设置密码',
+                  labelText: '标题（可选）',
+                  hintText: '例如：项目进度',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                obscureText: true,
               ),
-            ],
-            const SizedBox(height: 24),
-            const Text(
-              '过期时间',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _buildExpiryChip('1 天', 24),
-                _buildExpiryChip('7 天', 168),
-                _buildExpiryChip('30 天', 720),
-                _buildExpiryChip('永不过期', null),
-              ],
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: (_shareTodos ||
-                            _shareSchedules ||
-                            _shareCountdowns ||
-                            _shareAnnouncements) &&
-                        !_isCreating
-                    ? _createShare
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                  shape: RoundedRectangleBorder(
+              const SizedBox(height: 12),
+              TextField(
+                controller: _descController,
+                decoration: InputDecoration(
+                  labelText: '描述（可选）',
+                  hintText: '简要说明分享内容',
+                  border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: _isCreating
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text('生成分享链接'),
+                maxLines: 2,
               ),
-            ),
-          ],
+              const SizedBox(height: 24),
+              const Text(
+                '分享内容',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                title: const Text('待办事项'),
+                value: _shareTodos,
+                onChanged: (v) => setState(() => _shareTodos = v ?? true),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+              CheckboxListTile(
+                title: const Text('倒计时'),
+                value: _shareCountdowns,
+                onChanged: (v) => setState(() => _shareCountdowns = v ?? true),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+              CheckboxListTile(
+                title: const Text('日程'),
+                value: _shareSchedules,
+                onChanged: (v) => setState(() => _shareSchedules = v ?? true),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+              CheckboxListTile(
+                title: const Text('团队公告'),
+                value: _shareAnnouncements,
+                onChanged: (v) =>
+                    setState(() => _shareAnnouncements = v ?? true),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+              const Divider(height: 32),
+              LiquidGlassSwitchListTile(
+                title: const Text('密码保护'),
+                subtitle: const Text('访问者需要输入密码才能查看'),
+                value: _usePassword,
+                onChanged: (v) => setState(() => _usePassword = v),
+                contentPadding: EdgeInsets.zero,
+              ),
+              if (_usePassword) ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _passwordController,
+                  decoration: InputDecoration(
+                    labelText: '设置密码',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  obscureText: true,
+                ),
+              ],
+              const SizedBox(height: 24),
+              const Text(
+                '过期时间',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildExpiryChip('1 天', 24),
+                  _buildExpiryChip('7 天', 168),
+                  _buildExpiryChip('30 天', 720),
+                  _buildExpiryChip('永不过期', null),
+                ],
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: (_shareTodos ||
+                              _shareSchedules ||
+                              _shareCountdowns ||
+                              _shareAnnouncements) &&
+                          !_isCreating
+                      ? _createShare
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: _isCreating
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('生成分享链接'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

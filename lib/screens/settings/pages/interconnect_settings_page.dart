@@ -388,7 +388,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
             16,
             widget.isEmbedded
                 ? 16
-                : floatingGlassSettingsContentTopInset(context, extra: 16),
+                : floatingGlassSettingsContentTopInset(context),
             16,
             16,
           ),

@@ -252,7 +252,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           padding: EdgeInsets.only(
             top: widget.isEmbedded
                 ? 16
-                : floatingGlassSettingsContentTopInset(context, extra: 16),
+                : floatingGlassSettingsContentTopInset(context),
           ),
           children: [
             _buildWallpaperSection(),

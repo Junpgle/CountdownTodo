@@ -133,9 +133,11 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
     final entries = _entries;
     final width = MediaQuery.sizeOf(context).width;
     final isWide = width >= 900;
+    final topBarHeight = floatingGlassTopBarHeight(context);
 
     return Scaffold(
       backgroundColor: scheme.surface,
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
@@ -199,38 +201,43 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : entries.isEmpty
-              ? _JournalEmptyState(
-                  hasSearch: _query.isNotEmpty,
-                  onClearSearch: () async {
-                    setState(() {
-                      _query = '';
-                      _searchController.clear();
-                    });
-                    await _loadEntries();
-                  },
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadEntries,
-                  child: _isPhotoWall
-                      ? _PhotoWall(
-                          entries: entries,
-                          isWide: isWide,
-                          controller: _scrollController,
-                          accountId: widget.username,
-                          onTap: _openEntry,
-                        )
-                      : _Timeline(
-                          entries: entries,
-                          isWide: isWide,
-                          controller: _scrollController,
-                          isLoadingMore: _isLoadingMore,
-                          accountId: widget.username,
-                          onTap: _openEntry,
-                        ),
-                ),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : entries.isEmpty
+                ? _JournalEmptyState(
+                    hasSearch: _query.isNotEmpty,
+                    onClearSearch: () async {
+                      setState(() {
+                        _query = '';
+                        _searchController.clear();
+                      });
+                      await _loadEntries();
+                    },
+                  )
+                : RefreshIndicator(
+                    onRefresh: _loadEntries,
+                    child: _isPhotoWall
+                        ? _PhotoWall(
+                            topPadding: topBarHeight,
+                            entries: entries,
+                            isWide: isWide,
+                            controller: _scrollController,
+                            accountId: widget.username,
+                            onTap: _openEntry,
+                          )
+                        : _Timeline(
+                            topPadding: topBarHeight,
+                            entries: entries,
+                            isWide: isWide,
+                            controller: _scrollController,
+                            isLoadingMore: _isLoadingMore,
+                            accountId: widget.username,
+                            onTap: _openEntry,
+                          ),
+                  ),
+      ),
       floatingActionButton: FloatingGlassActionButton.extended(
         onPressed: _createEntry,
         icon: const Icon(Icons.edit_rounded),
@@ -344,6 +351,7 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
 }
 
 class _Timeline extends StatelessWidget {
+  final double topPadding;
   final List<JournalEntry> entries;
   final bool isWide;
   final ScrollController controller;
@@ -352,6 +360,7 @@ class _Timeline extends StatelessWidget {
   final ValueChanged<JournalEntry> onTap;
 
   const _Timeline({
+    required this.topPadding,
     required this.entries,
     required this.isWide,
     required this.controller,
@@ -370,7 +379,8 @@ class _Timeline extends StatelessWidget {
     return ListView(
       controller: controller,
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(isWide ? 40 : 20, 12, isWide ? 40 : 20, 120),
+      padding: EdgeInsets.fromLTRB(
+          isWide ? 40 : 20, topPadding + 12, isWide ? 40 : 20, 120),
       children: [
         for (final group in grouped.entries) ...[
           Padding(
@@ -430,6 +440,7 @@ class _Timeline extends StatelessWidget {
 }
 
 class _PhotoWall extends StatelessWidget {
+  final double topPadding;
   final List<JournalEntry> entries;
   final bool isWide;
   final ScrollController controller;
@@ -437,6 +448,7 @@ class _PhotoWall extends StatelessWidget {
   final ValueChanged<JournalEntry> onTap;
 
   const _PhotoWall({
+    required this.topPadding,
     required this.entries,
     required this.isWide,
     required this.controller,
@@ -450,7 +462,8 @@ class _PhotoWall extends StatelessWidget {
     return GridView.builder(
       controller: controller,
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(isWide ? 40 : 16, 20, isWide ? 40 : 16, 120),
+      padding: EdgeInsets.fromLTRB(
+          isWide ? 40 : 16, topPadding + 20, isWide ? 40 : 16, 120),
       itemCount: entries.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: columns,

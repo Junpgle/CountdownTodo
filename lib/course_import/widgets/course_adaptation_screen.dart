@@ -69,9 +69,11 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-
+    final topBarHeight =
+        widget.isEmbedded ? 0.0 : floatingGlassTopBarHeight(context);
     return Scaffold(
       backgroundColor: colorScheme.surface,
+      extendBodyBehindAppBar: !widget.isEmbedded,
       appBar: widget.isEmbedded
           ? null
           : FloatingGlassAppBar(
@@ -83,185 +85,202 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
               elevation: 0,
               flexibleSpace: const FloatingGlassTopBarBackground(),
             ),
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: Column(
-          children: [
-            // 顶部横幅
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
-              color: colorScheme.primary.withValues(alpha: 0.05),
-              child: Column(
-                children: [
-                  Icon(Icons.school_rounded,
-                      size: 48, color: Theme.of(context).colorScheme.secondary),
-                  const SizedBox(height: 12),
-                  const Text('让你的校园生活更高效',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text('只需 1 分钟，为全校同学谋福利',
-                      style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                ],
+      body: floatingGlassSettingsBody(
+        context,
+        standalone: !widget.isEmbedded,
+        topBarHeight: topBarHeight,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.only(top: topBarHeight),
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            children: [
+              // 顶部横幅
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+                color: colorScheme.primary.withValues(alpha: 0.05),
+                child: Column(
+                  children: [
+                    Icon(Icons.school_rounded,
+                        size: 48,
+                        color: Theme.of(context).colorScheme.secondary),
+                    const SizedBox(height: 12),
+                    const Text('让你的校园生活更高效',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text('只需 1 分钟，为全校同学谋福利',
+                        style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                  ],
+                ),
               ),
-            ),
 
-            Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 新增置顶方法：移动端快捷适配
-                  _buildSectionHeader(Icons.flash_on_rounded, '方案一：自动嗅探 (推荐)'),
-                  const SizedBox(height: 16),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          colorScheme.primary.withValues(alpha: 0.1),
-                          colorScheme.primary.withValues(alpha: 0.05)
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                          color: colorScheme.primary.withValues(alpha: 0.2)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '可以先使用 App 内“网页登录”尝试导入。',
-                          style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(Icons.lightbulb_outline_rounded,
-                                size: 18, color: Colors.orange[700]),
-                            const SizedBox(width: 8),
-                            const Expanded(
-                              child: Text(
-                                '失败后，请将手机“文件管理/Download”目录下的 course_debug.html 发送给开发者。',
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.black87,
-                                    height: 1.4),
-                              ),
-                            ),
+              Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 新增置顶方法：移动端快捷适配
+                    _buildSectionHeader(
+                        Icons.flash_on_rounded, '方案一：自动嗅探 (推荐)'),
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            colorScheme.primary.withValues(alpha: 0.1),
+                            colorScheme.primary.withValues(alpha: 0.05)
                           ],
                         ),
-                      ],
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                            color: colorScheme.primary.withValues(alpha: 0.2)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '可以先使用 App 内“网页登录”尝试导入。',
+                            style: TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.lightbulb_outline_rounded,
+                                  size: 18, color: Colors.orange[700]),
+                              const SizedBox(width: 8),
+                              const Expanded(
+                                child: Text(
+                                  '失败后，请将手机“文件管理/Download”目录下的 course_debug.html 发送给开发者。',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.black87,
+                                      height: 1.4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
 
-                  const SizedBox(height: 32),
+                    const SizedBox(height: 32),
 
-                  // 步骤标题
-                  _buildSectionHeader(Icons.computer_rounded, '方案二：手动导出 (电脑端)'),
-                  const SizedBox(height: 16),
+                    // 步骤标题
+                    _buildSectionHeader(
+                        Icons.computer_rounded, '方案二：手动导出 (电脑端)'),
+                    const SizedBox(height: 16),
 
-                  // 步骤时间轴
-                  _buildStepTile(1, '登录教务系统', '在电脑浏览器中进入课表查询页面。',
-                      isFirst: true),
-                  _buildStepTile(2, '右键另存为', '点击页面空白处，选择“另存为”。'),
-                  _buildStepTile(3, '选择格式', '保存类型选“网页，单个文件 (*.mhtml)”。'),
-                  _buildStepTile(4, '发送文件', '通过下方联系方式将文件发给开发者。', isLast: true),
+                    // 步骤时间轴
+                    _buildStepTile(1, '登录教务系统', '在电脑浏览器中进入课表查询页面。',
+                        isFirst: true),
+                    _buildStepTile(2, '右键另存为', '点击页面空白处，选择“另存为”。'),
+                    _buildStepTile(3, '选择格式', '保存类型选“网页，单个文件 (*.mhtml)”。'),
+                    _buildStepTile(4, '发送文件', '通过下方联系方式将文件发给开发者。',
+                        isLast: true),
 
-                  const SizedBox(height: 32),
+                    const SizedBox(height: 32),
 
-                  // 视频部分
-                  _buildSectionHeader(Icons.play_circle_fill_rounded, '操作演示'),
-                  const SizedBox(height: 16),
-                  Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.2),
-                            blurRadius: 15,
-                            offset: const Offset(0, 8))
-                      ],
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: _isError
-                        ? const SizedBox(
-                            height: 200,
-                            child: Center(
-                                child: Text('视频无法加载',
-                                    style: TextStyle(color: Colors.white70))))
-                        : _controller.value.isInitialized
-                            ? Center(
-                                child: ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                      maxHeight:
-                                          MediaQuery.of(context).size.height *
-                                              0.45),
-                                  child: AspectRatio(
-                                    aspectRatio: _controller.value.aspectRatio,
-                                    child: GestureDetector(
-                                      onTap: () => setState(() =>
-                                          _controller.value.isPlaying
-                                              ? _controller.pause()
-                                              : _controller.play()),
-                                      child: Stack(
-                                        alignment: Alignment.center,
-                                        children: [
-                                          VideoPlayer(_controller),
-                                          if (!_controller.value.isPlaying)
-                                            Container(
-                                              padding: const EdgeInsets.all(12),
-                                              decoration: BoxDecoration(
-                                                  color: Colors.black38,
-                                                  shape: BoxShape.circle),
-                                              child: const Icon(
-                                                  Icons.play_arrow_rounded,
-                                                  color: Colors.white,
-                                                  size: 48),
-                                            ),
-                                        ],
+                    // 视频部分
+                    _buildSectionHeader(Icons.play_circle_fill_rounded, '操作演示'),
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.2),
+                              blurRadius: 15,
+                              offset: const Offset(0, 8))
+                        ],
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: _isError
+                          ? const SizedBox(
+                              height: 200,
+                              child: Center(
+                                  child: Text('视频无法加载',
+                                      style: TextStyle(color: Colors.white70))))
+                          : _controller.value.isInitialized
+                              ? Center(
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                        maxHeight:
+                                            MediaQuery.of(context).size.height *
+                                                0.45),
+                                    child: AspectRatio(
+                                      aspectRatio:
+                                          _controller.value.aspectRatio,
+                                      child: GestureDetector(
+                                        onTap: () => setState(() =>
+                                            _controller.value.isPlaying
+                                                ? _controller.pause()
+                                                : _controller.play()),
+                                        child: Stack(
+                                          alignment: Alignment.center,
+                                          children: [
+                                            VideoPlayer(_controller),
+                                            if (!_controller.value.isPlaying)
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.all(12),
+                                                decoration: BoxDecoration(
+                                                    color: Colors.black38,
+                                                    shape: BoxShape.circle),
+                                                child: const Icon(
+                                                    Icons.play_arrow_rounded,
+                                                    color: Colors.white,
+                                                    size: 48),
+                                              ),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              )
-                            : const SizedBox(
-                                height: 200,
-                                child:
-                                    Center(child: CircularProgressIndicator())),
-                  ),
+                                )
+                              : const SizedBox(
+                                  height: 200,
+                                  child: Center(
+                                      child: CircularProgressIndicator())),
+                    ),
 
-                  const SizedBox(height: 40),
+                    const SizedBox(height: 40),
 
-                  // 联系部分
-                  _buildSectionHeader(Icons.contact_support, '提交申请'),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      _buildContactCard(
-                          'QQ 邮箱',
-                          'junpgle@qq.com',
-                          Icons.alternate_email_rounded,
-                          Theme.of(context).colorScheme.primary,
-                          _launchEmail),
-                      const SizedBox(width: 16),
-                      _buildContactCard('开发者 QQ', '674155783',
-                          Icons.chat_bubble_rounded, Colors.indigo, _launchQQ),
-                    ],
-                  ),
-                  const SizedBox(height: 40),
-                ],
+                    // 联系部分
+                    _buildSectionHeader(Icons.contact_support, '提交申请'),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        _buildContactCard(
+                            'QQ 邮箱',
+                            'junpgle@qq.com',
+                            Icons.alternate_email_rounded,
+                            Theme.of(context).colorScheme.primary,
+                            _launchEmail),
+                        const SizedBox(width: 16),
+                        _buildContactCard(
+                            '开发者 QQ',
+                            '674155783',
+                            Icons.chat_bubble_rounded,
+                            Colors.indigo,
+                            _launchQQ),
+                      ],
+                    ),
+                    const SizedBox(height: 40),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -516,8 +516,10 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
       extendBody: true,
+      extendBodyBehindAppBar: true,
       backgroundColor: cs.surfaceContainerLowest,
       appBar: FloatingGlassAppBar(
         title: const Text("详细统计",
@@ -553,14 +555,17 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           });
         },
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1400),
-                child: _buildMainContent(),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1400),
+                  child: _buildMainContent(),
+                ),
               ),
-            ),
+      ),
     );
   }
 
@@ -1371,6 +1376,7 @@ class CategoryDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final topBarHeight = floatingGlassTopBarHeight(context);
     final apps = _ScreenTimeDetailScreenState.getGroupedApps(stats);
     final int totalDur =
         apps.fold(0, (sum, app) => sum + (app.value['total'] as int));
@@ -1378,6 +1384,7 @@ class CategoryDetailScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: cs.surfaceContainerLowest,
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         title: Text(categoryName,
             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
@@ -1387,128 +1394,133 @@ class CategoryDetailScreen extends StatelessWidget {
         surfaceTintColor: Colors.transparent,
         flexibleSpace: const FloatingGlassTopBarBackground(),
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: Column(children: [
-            // hero 分类卡
-            Container(
-              margin: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-              width: double.infinity,
-              padding: const EdgeInsets.all(28),
-              decoration: BoxDecoration(
-                color: catColor.withValues(alpha: 0.07),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: catColor.withValues(alpha: 0.2)),
-              ),
-              child: Column(children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                      color: catColor.withValues(alpha: 0.15),
-                      shape: BoxShape.circle),
-                  child: Icon(
-                      _ScreenTimeDetailScreenState.getCategoryIcon(
-                          categoryName),
-                      size: 30,
-                      color: catColor),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: Column(children: [
+              // hero 分类卡
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                width: double.infinity,
+                padding: const EdgeInsets.all(28),
+                decoration: BoxDecoration(
+                  color: catColor.withValues(alpha: 0.07),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: catColor.withValues(alpha: 0.2)),
                 ),
-                const SizedBox(height: 12),
-                Text("该类别$periodLabel总计",
-                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-                const SizedBox(height: 6),
-                Text(_ScreenTimeDetailScreenState.formatHM(totalDur),
-                    style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                        color: catColor)),
-              ]),
-            ),
-            Expanded(
-              child: apps.isEmpty
-                  ? const Center(child: Text("暂无数据"))
-                  : OptionalLiquidGlassCard(
-                      margin: const EdgeInsets.symmetric(horizontal: 16),
-                      borderRadius: 22,
-                      highContrast: true,
-                      fallbackDecoration: _cardDecoration(context),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(22),
-                        child: ListView.separated(
-                          padding: EdgeInsets.zero,
-                          itemCount: apps.length,
-                          separatorBuilder: (_, __) => Divider(
-                              height: 1,
-                              indent: 60,
-                              endIndent: 16,
-                              color: cs.outlineVariant.withValues(alpha: 0.4)),
-                          itemBuilder: (ctx, i) {
-                            final app = apps[i];
-                            final devices =
-                                app.value['devices'] as Map<String, int>;
-                            return _ExpandableCard(
-                              pageBuilder: (_) => AppDetailScreen(
-                                appName: app.key,
-                                historyStats: historyStats,
-                                filter: currentFilter,
-                                range: range,
-                                anchorDate: anchorDate,
-                              ),
-                              sourceColor: cs.surface,
-                              borderRadius: BorderRadius.zero,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 12),
-                                child: Row(children: [
-                                  CircleAvatar(
-                                    radius: 20,
-                                    backgroundColor:
-                                        catColor.withValues(alpha: 0.1),
-                                    child: Text(
-                                        app.key.isNotEmpty
-                                            ? app.key[0].toUpperCase()
-                                            : "?",
+                child: Column(children: [
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                        color: catColor.withValues(alpha: 0.15),
+                        shape: BoxShape.circle),
+                    child: Icon(
+                        _ScreenTimeDetailScreenState.getCategoryIcon(
+                            categoryName),
+                        size: 30,
+                        color: catColor),
+                  ),
+                  const SizedBox(height: 12),
+                  Text("该类别$periodLabel总计",
+                      style:
+                          TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+                  const SizedBox(height: 6),
+                  Text(_ScreenTimeDetailScreenState.formatHM(totalDur),
+                      style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w800,
+                          color: catColor)),
+                ]),
+              ),
+              Expanded(
+                child: apps.isEmpty
+                    ? const Center(child: Text("暂无数据"))
+                    : OptionalLiquidGlassCard(
+                        margin: const EdgeInsets.symmetric(horizontal: 16),
+                        borderRadius: 22,
+                        highContrast: true,
+                        fallbackDecoration: _cardDecoration(context),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(22),
+                          child: ListView.separated(
+                            padding: EdgeInsets.zero,
+                            itemCount: apps.length,
+                            separatorBuilder: (_, __) => Divider(
+                                height: 1,
+                                indent: 60,
+                                endIndent: 16,
+                                color:
+                                    cs.outlineVariant.withValues(alpha: 0.4)),
+                            itemBuilder: (ctx, i) {
+                              final app = apps[i];
+                              final devices =
+                                  app.value['devices'] as Map<String, int>;
+                              return _ExpandableCard(
+                                pageBuilder: (_) => AppDetailScreen(
+                                  appName: app.key,
+                                  historyStats: historyStats,
+                                  filter: currentFilter,
+                                  range: range,
+                                  anchorDate: anchorDate,
+                                ),
+                                sourceColor: cs.surface,
+                                borderRadius: BorderRadius.zero,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 12),
+                                  child: Row(children: [
+                                    CircleAvatar(
+                                      radius: 20,
+                                      backgroundColor:
+                                          catColor.withValues(alpha: 0.1),
+                                      child: Text(
+                                          app.key.isNotEmpty
+                                              ? app.key[0].toUpperCase()
+                                              : "?",
+                                          style: TextStyle(
+                                              color: catColor,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 15)),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                        child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                          Text(app.key,
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 15)),
+                                          const SizedBox(height: 5),
+                                          _ScreenTimeDetailScreenState
+                                              .buildDeviceBreakdown(
+                                                  devices, isAllFilter),
+                                        ])),
+                                    Text(
+                                        _ScreenTimeDetailScreenState.formatHM(
+                                            app.value['total'] as int),
                                         style: TextStyle(
-                                            color: catColor,
                                             fontWeight: FontWeight.w700,
-                                            fontSize: 15)),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                      child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                        Text(app.key,
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.w600,
-                                                fontSize: 15)),
-                                        const SizedBox(height: 5),
-                                        _ScreenTimeDetailScreenState
-                                            .buildDeviceBreakdown(
-                                                devices, isAllFilter),
-                                      ])),
-                                  Text(
-                                      _ScreenTimeDetailScreenState.formatHM(
-                                          app.value['total'] as int),
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 14,
-                                          color: cs.onSurfaceVariant)),
-                                  const SizedBox(width: 4),
-                                  Icon(Icons.chevron_right_rounded,
-                                      size: 18, color: cs.outlineVariant),
-                                ]),
-                              ),
-                            );
-                          },
+                                            fontSize: 14,
+                                            color: cs.onSurfaceVariant)),
+                                    const SizedBox(width: 4),
+                                    Icon(Icons.chevron_right_rounded,
+                                        size: 18, color: cs.outlineVariant),
+                                  ]),
+                                ),
+                              );
+                            },
+                          ),
                         ),
                       ),
-                    ),
-            ),
-            const SizedBox(height: 24),
-          ]),
+              ),
+              const SizedBox(height: 24),
+            ]),
+          ),
         ),
       ),
     );
