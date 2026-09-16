@@ -609,18 +609,24 @@ class _AboutScreenState extends State<AboutScreen> {
             style: Theme.of(context).textTheme.bodyLarge,
           ),
           const SizedBox(height: 32),
-          _buildInfoCard(
-            context,
-            title: '软件介绍',
-            icon: Icons.info_outline,
-            child: const Text(
-              'CountDownTodo 是一款集成了多种实用功能的个人效率管理应用，旨在帮助您更好地管理时间、任务和学习。\n\n'
-              '主要功能：待办事项管理、重要日倒计时、课程表管理、屏幕使用时间、番茄钟专注、数学测验、多设备同步等。',
-              style: TextStyle(fontSize: 14),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _buildInfoCard(
+              context,
+              title: '软件介绍',
+              icon: Icons.info_outline,
+              child: const Text(
+                'CountDownTodo 是一款集成了多种实用功能的个人效率管理应用，旨在帮助您更好地管理时间、任务和学习。\n\n'
+                '主要功能：待办事项管理、重要日倒计时、课程表管理、屏幕使用时间、番茄钟专注、数学测验、多设备同步等。',
+                style: TextStyle(fontSize: 14),
+              ),
             ),
           ),
           const SizedBox(height: 16),
-          _buildDeviceCard(context),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _buildDeviceCard(context),
+          ),
           const SizedBox(height: 16),
           _buildPerformanceCard(context),
           const SizedBox(height: 16),
