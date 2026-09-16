@@ -17,23 +17,6 @@ WidgetStateProperty<Color?> _glassButtonForeground(
   });
 }
 
-WidgetStateProperty<BorderSide?> _glassButtonSide(
-  Color color, {
-  required double opacity,
-}) {
-  return WidgetStateProperty.resolveWith((states) {
-    final resolvedOpacity = states.contains(WidgetState.disabled)
-        ? opacity * 0.5
-        : states.contains(WidgetState.pressed)
-            ? opacity + 0.12
-            : opacity;
-    return BorderSide(
-      color: color.withValues(alpha: _clampOpacity(resolvedOpacity)),
-      width: 0.8,
-    );
-  });
-}
-
 WidgetStateProperty<Color?> _glassButtonOverlay(Color color) {
   return WidgetStateProperty.resolveWith((states) {
     if (states.contains(WidgetState.pressed)) {
@@ -145,7 +128,9 @@ ThemeData applyAppLiquidGlassTheme(
 
   final buttonRadius = BorderRadius.circular(18);
   final glassSurface = scheme.surfaceContainerHighest;
-  final glassOutline = scheme.outlineVariant;
+  // GlassContainer already paints the button's single specular rim. Keeping
+  // a Material `side` as well draws a second outline at the same bounds.
+  const noButtonSide = WidgetStatePropertyAll<BorderSide?>(BorderSide.none);
   final filledGlassStyle = ButtonStyle(
     backgroundColor: const WidgetStatePropertyAll(Colors.transparent),
     backgroundBuilder: _glassButtonBackgroundBuilder(
@@ -160,10 +145,7 @@ ThemeData applyAppLiquidGlassTheme(
     surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
     shadowColor: const WidgetStatePropertyAll(Colors.transparent),
     elevation: const WidgetStatePropertyAll(0),
-    side: _glassButtonSide(
-      scheme.onPrimaryContainer,
-      opacity: isDark ? 0.26 : 0.34,
-    ),
+    side: noButtonSide,
     shape: WidgetStatePropertyAll(
       RoundedRectangleBorder(borderRadius: buttonRadius),
     ),
@@ -182,10 +164,7 @@ ThemeData applyAppLiquidGlassTheme(
     surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
     shadowColor: const WidgetStatePropertyAll(Colors.transparent),
     elevation: const WidgetStatePropertyAll(0),
-    side: _glassButtonSide(
-      glassOutline,
-      opacity: isDark ? 0.4 : 0.52,
-    ),
+    side: noButtonSide,
     shape: WidgetStatePropertyAll(
       RoundedRectangleBorder(borderRadius: buttonRadius),
     ),
@@ -203,10 +182,7 @@ ThemeData applyAppLiquidGlassTheme(
     surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
     shadowColor: const WidgetStatePropertyAll(Colors.transparent),
     elevation: const WidgetStatePropertyAll(0),
-    side: _glassButtonSide(
-      scheme.primary,
-      opacity: isDark ? 0.42 : 0.5,
-    ),
+    side: noButtonSide,
     shape: WidgetStatePropertyAll(
       RoundedRectangleBorder(borderRadius: buttonRadius),
     ),
@@ -224,10 +200,7 @@ ThemeData applyAppLiquidGlassTheme(
     surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
     shadowColor: const WidgetStatePropertyAll(Colors.transparent),
     elevation: const WidgetStatePropertyAll(0),
-    side: _glassButtonSide(
-      glassOutline,
-      opacity: isDark ? 0.26 : 0.34,
-    ),
+    side: noButtonSide,
     shape: WidgetStatePropertyAll(
       RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
@@ -247,10 +220,7 @@ ThemeData applyAppLiquidGlassTheme(
     surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
     shadowColor: const WidgetStatePropertyAll(Colors.transparent),
     elevation: const WidgetStatePropertyAll(0),
-    side: _glassButtonSide(
-      glassOutline,
-      opacity: isDark ? 0.34 : 0.46,
-    ),
+    side: noButtonSide,
     shape: const WidgetStatePropertyAll(CircleBorder()),
   );
   final segmentedGlassStyle = ButtonStyle(
@@ -278,10 +248,7 @@ ThemeData applyAppLiquidGlassTheme(
     surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
     shadowColor: const WidgetStatePropertyAll(Colors.transparent),
     elevation: const WidgetStatePropertyAll(0),
-    side: _glassButtonSide(
-      glassOutline,
-      opacity: isDark ? 0.38 : 0.5,
-    ),
+    side: noButtonSide,
     shape: WidgetStatePropertyAll(
       RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),

@@ -828,6 +828,21 @@ void main() {
     expect(glass.dialogTheme.backgroundColor, isNotNull);
     expect(glass.bottomSheetTheme.showDragHandle, isTrue);
     expect(glass.inputDecorationTheme.filled, isTrue);
+
+    for (final style in [
+      glass.elevatedButtonTheme.style,
+      glass.filledButtonTheme.style,
+      glass.outlinedButtonTheme.style,
+      glass.textButtonTheme.style,
+      glass.iconButtonTheme.style,
+      glass.segmentedButtonTheme.style,
+    ]) {
+      expect(style?.backgroundBuilder, isNotNull);
+      expect(
+        style?.side?.resolve(const <WidgetState>{}),
+        BorderSide.none,
+      );
+    }
   });
 
   test('maps standard and enhanced modes to distinct renderer tiers', () {

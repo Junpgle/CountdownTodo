@@ -372,48 +372,57 @@ class _PomodoroScreenState extends State<PomodoroScreen>
       );
     }
 
+    final topInset = MediaQuery.paddingOf(context).top;
     return Scaffold(
       extendBody: true,
       body: FloatingGlassScrollAware(
         child: SafeArea(
+          // Keep the horizontal safe-area behavior of the previous column,
+          // while letting the custom header occupy the overlay layer.
+          top: false,
           bottom: false,
-          child: Column(
-            children: [
-              // ── 顶部导航栏：淡入淡出 ──
-              _buildAppBar(isFocusingOrWatching),
-
-              // ── 主内容区：IndexedStack 保持状态 + AnimatedOpacity 淡入淡出 ──
-              Expanded(
-                child: FadingIndexedStack(
-                  index: tabIndex,
-                  children: [
-                    // portrait workbench
-                    PomodoroWorkbench(
-                      key: _workbenchKey,
-                      username: widget.username,
-                      onPhaseChanged: (phase) {
-                        if (!_disposed && mounted && _currentPhase != phase) {
-                          setState(() => _currentPhase = phase);
-                        }
-                      },
-                      onReady: _handleWorkbenchReady,
-                      onRecordAdded: () {
-                        if (!_disposed && mounted) {
-                          try {
-                            _statsKey.currentState?.reload();
-                          } catch (_) {}
-                        }
-                      },
-                    ),
-                    PomodoroStats(
-                      key: _statsKey,
-                      username: widget.username,
-                      initialDimension: widget.initialDimension,
-                    ),
-                  ],
-                ),
+          child: FloatingGlassPinnedHeaderLayout(
+            initialHeaderExtent:
+                topInset + (isFocusingOrWatching ? 0.0 : kToolbarHeight),
+            fadeTailExtent: 0,
+            header: SafeArea(
+              top: true,
+              bottom: false,
+              left: false,
+              right: false,
+              child: _buildAppBar(isFocusingOrWatching),
+            ),
+            bodyBuilder: (context, headerExtent) => Padding(
+              padding: EdgeInsets.only(top: headerExtent),
+              child: FadingIndexedStack(
+                index: tabIndex,
+                children: [
+                  // portrait workbench
+                  PomodoroWorkbench(
+                    key: _workbenchKey,
+                    username: widget.username,
+                    onPhaseChanged: (phase) {
+                      if (!_disposed && mounted && _currentPhase != phase) {
+                        setState(() => _currentPhase = phase);
+                      }
+                    },
+                    onReady: _handleWorkbenchReady,
+                    onRecordAdded: () {
+                      if (!_disposed && mounted) {
+                        try {
+                          _statsKey.currentState?.reload();
+                        } catch (_) {}
+                      }
+                    },
+                  ),
+                  PomodoroStats(
+                    key: _statsKey,
+                    username: widget.username,
+                    initialDimension: widget.initialDimension,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

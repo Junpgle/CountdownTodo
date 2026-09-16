@@ -81,8 +81,10 @@ ButtonStyle _floatingGlassChildButtonStyle(ButtonStyle? style) {
   return (style ?? const ButtonStyle()).copyWith(
     // FloatingGlassControl owns the only surface around its child. Preserve
     // the child's shape, colors, padding, and interaction settings, but stop
-    // the app-wide liquid-glass button theme from adding another container.
+    // the app-wide liquid-glass button theme from adding another container or
+    // outline around the child.
     backgroundBuilder: _floatingGlassIdentityButtonBackground,
+    side: const WidgetStatePropertyAll<BorderSide?>(BorderSide.none),
   );
 }
 
