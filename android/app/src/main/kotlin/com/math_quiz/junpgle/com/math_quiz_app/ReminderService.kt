@@ -99,6 +99,8 @@ class ReminderService : Service() {
                 val originalText = intent.getStringExtra("original_text")
                 val planBlockId = intent.getStringExtra("plan_block_id")
                 val todoId = intent.getStringExtra("todo_id")
+                val triggerAtMs = intent.getLongExtra("trigger_at_ms", 0L)
+                val sessionUuid = intent.getStringExtra("session_uuid")
                 executor.execute {
                     postReminderNotification(
                         notifId = notifId,
@@ -113,7 +115,9 @@ class ReminderService : Service() {
                         teacher = teacher,
                         originalText = originalText,
                         planBlockId = planBlockId,
-                        todoId = todoId
+                        todoId = todoId,
+                        triggerAtMs = triggerAtMs,
+                        sessionUuid = sessionUuid
                     )
                     // 发完通知就结束，不常驻
                     stopSelf(startId)
@@ -170,6 +174,7 @@ class ReminderService : Service() {
                 val imagePath   = item.optString("analysisImagePath", "").takeIf { it.isNotBlank() }
                 val planBlockId = item.optString("planBlockId", "").takeIf { it.isNotBlank() }
                 val todoId      = item.optString("todoId", "").takeIf { it.isNotBlank() }
+                val sessionUuid = item.optString("sessionUuid", "").takeIf { it.isNotBlank() }
 
                 if (triggerAtMs <= now) continue   // 过期的跳过
 
@@ -188,7 +193,8 @@ class ReminderService : Service() {
                     teacher,
                     originalText,
                     planBlockId,
-                    todoId
+                    todoId,
+                    sessionUuid
                 )
             }
         } catch (e: Exception) {
@@ -211,13 +217,16 @@ class ReminderService : Service() {
         teacher: String?,
         originalText: String?,
         planBlockId: String?,
-        todoId: String?
+        todoId: String?,
+        sessionUuid: String?
     ) {
         val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
             action = ReminderAlarmReceiver.ACTION_FIRE
+            putExtra("trigger_at_ms", triggerAtMs)
             putExtra("title", title)
             putExtra("text", text)
             putExtra("notifId", notifId)
+            if (!sessionUuid.isNullOrBlank()) putExtra("session_uuid", sessionUuid)
             if (!analysisImagePath.isNullOrBlank()) {
                 putExtra("analysis_image_path", analysisImagePath)
             }
@@ -271,8 +280,27 @@ class ReminderService : Service() {
         teacher: String?,
         originalText: String?,
         planBlockId: String?,
-        todoId: String?
+        todoId: String?,
+        triggerAtMs: Long,
+        sessionUuid: String?
     ) {
+        // The focus-end alarm is also responsible for ending CountDownTodo's
+        // own system DND rule when Flutter is not running. This lets the end
+        // notification be delivered, while a user's independent DND choice
+        // remains untouched by the rule-scoped restore.
+        if (type == "pomodoro" && notifId == 40001 &&
+            SystemDoNotDisturbManager.isCurrentFocusEndReminder(
+                this,
+                sessionUuid,
+                triggerAtMs
+            )
+        ) {
+            SystemDoNotDisturbManager.restoreIfOwned(this)
+        }
+        if (SystemDoNotDisturbManager.shouldSuppressNotification(this, type, notifId)) {
+            Log.d(TAG, "Skip reminder during focus DND notifId=$notifId type=$type")
+            return
+        }
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_CLEAR_TOP or

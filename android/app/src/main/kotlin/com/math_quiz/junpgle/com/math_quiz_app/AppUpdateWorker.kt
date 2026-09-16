@@ -238,6 +238,15 @@ class AppUpdateWorker(
         manifest: JSONObject,
         packageDownloaded: Boolean
     ) {
+        if (SystemDoNotDisturbManager.shouldSuppressNotification(
+                applicationContext,
+                "update_found",
+                NOTIFICATION_ID
+            )
+        ) {
+            Log.d(TAG, "Skip update notification during focus DND")
+            return
+        }
         val manager = applicationContext.getSystemService(
             Context.NOTIFICATION_SERVICE
         ) as NotificationManager

@@ -72,6 +72,9 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
               totalCycles: saved.totalCycles,
               plannedFocusSeconds: saved.plannedFocusSeconds,
               note: saved.note,
+              doNotDisturb: saved.phase == PomodoroPhase.focusing &&
+                  saved.doNotDisturbDuringFocus &&
+                  !saved.strictWaitingForFlip,
               customTimestamp: saved.sessionStartMs, // 🚀 关键：使用真实的起点时间
             );
           }
@@ -189,6 +192,11 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
           if (rem <= 0) return;
         }
 
+        await _setFocusDoNotDisturb(
+          signal.doNotDisturb == true,
+          sessionUuid: signal.sessionUuid,
+          untilMs: signal.isPaused == true ? null : endMs,
+        );
         setState(() {
           _remotePomodoro = signal;
           _remotePomodoroRemaining = rem;
@@ -213,6 +221,12 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
       case 'STOP':
       case 'INTERRUPT':
       case 'FOCUS_DISCONNECTED':
+        final remoteSessionUuid =
+            signal.sessionUuid ?? _remotePomodoro?.sessionUuid;
+        await _setFocusDoNotDisturb(
+          false,
+          sessionUuid: remoteSessionUuid,
+        );
         _stopRemotePomodoroTicker();
         setState(() => _remotePomodoro = null);
 
@@ -227,6 +241,11 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
       case 'SWITCH':
         if (_remotePomodoro == null) return;
         final isCountUp = _remotePomodoro!.mode == 1;
+        await _setFocusDoNotDisturb(
+          _remotePomodoro!.doNotDisturb == true,
+          sessionUuid: signal.sessionUuid ?? _remotePomodoro!.sessionUuid,
+          untilMs: isCountUp ? null : _remotePomodoro!.targetEndMs,
+        );
         setState(() {
           _remotePomodoro = CrossDevicePomodoroState(
             action: _remotePomodoro!.action,
@@ -240,6 +259,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
             mode: _remotePomodoro!.mode,
             tags: _remotePomodoro!.tags,
             note: signal.note ?? _remotePomodoro!.note,
+            doNotDisturb: _remotePomodoro!.doNotDisturb,
           );
           if (isCountUp) {
             _remotePomodoroRemaining = 0; // 🚀 关键：同步侧归零
@@ -283,6 +303,7 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
             mode: _remotePomodoro!.mode,
             tags: _remotePomodoro!.tags,
             note: signal.note ?? '',
+            doNotDisturb: _remotePomodoro!.doNotDisturb,
           );
         });
         if (AppPlatform.isWindows) {
@@ -325,6 +346,10 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
             ((targetEndMs - DateTime.now().millisecondsSinceEpoch) / 1000)
                 .ceil();
         if (rem <= 0) {
+          unawaited(_setFocusDoNotDisturb(
+            false,
+            sessionUuid: _remotePomodoro?.sessionUuid,
+          ));
           _remotePomodoroTicker?.cancel();
           if (mounted) setState(() => _remotePomodoro = null);
         } else {
@@ -340,12 +365,28 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
     _remotePomodoroTicker = null;
   }
 
+  Future<void> _setFocusDoNotDisturb(
+    bool active, {
+    String? sessionUuid,
+    int? untilMs,
+    bool force = false,
+  }) async {
+    await FocusDoNotDisturbService.setActive(
+      active,
+      sessionUuid: sessionUuid,
+      untilMs: untilMs,
+      force: force,
+    );
+    await NotificationService.reconcileScheduledRemindersForDoNotDisturb();
+  }
+
   /// 🚀 重新实现：监测本地专注状态
   /// 不再使用 1 秒一次的轮询读取 Storage，改为监听 Stream
   void _initLocalPomodoroMonitoring() {
     _localPomodoroSub?.cancel();
     _localPomodoroSub = PomodoroService.onRunStateChanged.listen((saved) {
       if (!mounted) return;
+      unawaited(_syncLocalFocusDoNotDisturb(saved));
       if (saved != null &&
           (saved.phase == PomodoroPhase.focusing ||
               saved.phase == PomodoroPhase.breaking)) {
@@ -371,7 +412,9 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
 
     // 初始加载一次
     PomodoroService.loadRunState().then((saved) {
-      if (!mounted || saved == null) return;
+      if (!mounted) return;
+      unawaited(_syncLocalFocusDoNotDisturb(saved));
+      if (saved == null) return;
       if (saved.phase == PomodoroPhase.focusing ||
           saved.phase == PomodoroPhase.breaking) {
         final now = DateTime.now().millisecondsSinceEpoch;
@@ -387,6 +430,22 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
         _startLocalTicker(isCountUp);
       }
     });
+  }
+
+  Future<void> _syncLocalFocusDoNotDisturb(PomodoroRunState? saved) {
+    final active = saved != null &&
+        saved.phase == PomodoroPhase.focusing &&
+        saved.doNotDisturbDuringFocus &&
+        !saved.strictWaitingForFlip;
+    return _setFocusDoNotDisturb(
+      active,
+      sessionUuid: saved?.sessionUuid,
+      untilMs:
+          saved == null || saved.isPaused || saved.mode == TimerMode.countUp
+              ? null
+              : saved.targetEndMs,
+      force: saved == null,
+    );
   }
 
   void _startLocalTicker(bool isCountUp) {

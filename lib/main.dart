@@ -32,6 +32,7 @@ import 'services/notification_service.dart';
 import 'services/reminder_schedule_service.dart';
 import 'services/android_window_rendering_policy.dart';
 import 'services/pomodoro_service.dart';
+import 'services/focus_do_not_disturb_service.dart';
 import 'widgets/macos_menu_bar.dart';
 import 'services/pomodoro_sync_service.dart';
 import 'services/widget_service.dart';
@@ -100,6 +101,34 @@ Future<T?> _runStartupTask<T>(
   }
 }
 
+Future<void> _reconcileFocusDoNotDisturbWithRunState() async {
+  final saved = await PomodoroService.loadRunState();
+  final now = DateTime.now().millisecondsSinceEpoch;
+  final countdownAlreadyEnded = saved != null &&
+      saved.mode == TimerMode.countdown &&
+      !saved.isPaused &&
+      saved.targetEndMs <= now;
+  final shouldBeActive = saved != null &&
+      saved.phase == PomodoroPhase.focusing &&
+      saved.doNotDisturbDuringFocus &&
+      !saved.strictWaitingForFlip &&
+      !countdownAlreadyEnded;
+
+  if (shouldBeActive) {
+    await FocusDoNotDisturbService.setActive(
+      true,
+      sessionUuid: saved.sessionUuid,
+      untilMs: saved.isPaused || saved.mode == TimerMode.countUp
+          ? null
+          : saved.targetEndMs,
+    );
+  } else {
+    // This is deliberately forced: a process can die after native DND has
+    // been enabled but before the run-state write completes.
+    await FocusDoNotDisturbService.setActive(false, force: true);
+  }
+}
+
 Future<void> _initializePlatformBeforeHome(List<String> args) async {
   // Read Android Battery Saver first, then start the independent tasks together
   // while the Flutter splash is visible. This prevents optional shader warm-up
@@ -120,6 +149,16 @@ Future<void> _initializePlatformBeforeHome(List<String> args) async {
   final powerSaveMode = PowerSaveModeService.isEnabled;
   PageTransitions.setPowerSaveMode(powerSaveMode);
   await LiquidGlassEffectService.setPowerSaveMode(powerSaveMode);
+  await _runStartupTask(
+    'FocusDoNotDisturbService.initialize',
+    FocusDoNotDisturbService.initialize(),
+    timeout: const Duration(seconds: 2),
+  );
+  await _runStartupTask(
+    'FocusDoNotDisturbService.reconcileWithRunState',
+    _reconcileFocusDoNotDisturbWithRunState(),
+    timeout: const Duration(seconds: 2),
+  );
   await Future.wait<dynamic>([
     _runStartupTask(
       'NotificationService.bindNativeChannel',
@@ -158,6 +197,11 @@ Future<void> _initializePlatformBeforeHome(List<String> args) async {
       timeout: const Duration(seconds: 2),
     ),
   ]);
+  await _runStartupTask(
+    'NotificationService.reconcileScheduledRemindersForDoNotDisturb',
+    NotificationService.reconcileScheduledRemindersForDoNotDisturb(),
+    timeout: const Duration(seconds: 2),
+  );
 }
 
 String? _detectInitialShareCode() {
@@ -863,6 +907,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       await PomodoroService.addRecord(record);
       // debugPrint('[Band] Clearing run state');
       await PomodoroService.clearRunState();
+      await NotificationService.reconcileScheduledRemindersForDoNotDisturb();
     } else if (action == 'abandon') {
       final now = DateTime.now().millisecondsSinceEpoch;
       final actualSeconds = PomodoroRunState.computeActualSeconds(
@@ -879,6 +924,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       }
       // debugPrint('[Band] Clearing run state (abandon)');
       await PomodoroService.clearRunState();
+      await NotificationService.reconcileScheduledRemindersForDoNotDisturb();
       // debugPrint('[Band] 番茄钟已放弃');
     }
   }

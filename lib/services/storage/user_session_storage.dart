@@ -12,6 +12,7 @@ import '../background_notification_service.dart';
 import '../database_helper.dart';
 import '../../utils/app_platform.dart';
 import 'storage_key_scope.dart';
+import '../focus_do_not_disturb_service.dart';
 
 /// Immutable identity captured by an asynchronous operation.
 ///
@@ -99,6 +100,7 @@ class UserSessionStorage {
 
   static Future<void> clearLoginSession() async {
     _sessionRevision++;
+    await FocusDoNotDisturbService.setActive(false, force: true);
     final prefs = await _prefs;
     final username = prefs.getString(_currentUser);
     await prefs.remove(_currentUser);

@@ -12,6 +12,7 @@ import '../../../services/pomodoro_control_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/scheduled_reminder_registry.dart';
 import '../../../services/pomodoro_sync_service.dart';
+import '../../../services/focus_do_not_disturb_service.dart';
 import '../../../services/strict_focus_sensor_service.dart';
 import '../../../services/strict_focus_haptic_service.dart';
 import '../../../services/strict_focus_session_coordinator.dart';
@@ -155,6 +156,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       SyncConnectionState.disconnected; // 🚀 新增：跟踪连接状态
   bool _hasShownUpdate = false;
   bool _initializing = true;
+  bool? _systemDoNotDisturbAccess;
 
   static const _keyBoundTodoUuid = 'pomodoro_idle_bound_todo_uuid';
   static const _keyBoundTodoTitle = 'pomodoro_idle_bound_todo_title';
@@ -250,6 +252,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         // Island action (finish/abandon) cleared the state, we must sync UI
         _ticker?.cancel();
         NotificationService.cancelNotification();
+        unawaited(_setFocusDoNotDisturb(false, force: true));
         if (mounted) {
           setState(() {
             _phase = PomodoroPhase.idle;
@@ -318,10 +321,32 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _suppressRunStateEvents = true;
     try {
       await PomodoroService.clearRunState();
+      await NotificationService.reconcileScheduledRemindersForDoNotDisturb();
       await Future<void>.delayed(Duration.zero);
     } finally {
       _suppressRunStateEvents = false;
     }
+  }
+
+  Future<void> _setFocusDoNotDisturb(
+    bool active, {
+    String? sessionUuid,
+    int? untilMs,
+    bool force = false,
+  }) async {
+    await FocusDoNotDisturbService.setActive(
+      active,
+      sessionUuid: sessionUuid,
+      untilMs: untilMs,
+      force: force,
+    );
+    await NotificationService.reconcileScheduledRemindersForDoNotDisturb();
+  }
+
+  Future<void> _refreshSystemDoNotDisturbAccess() async {
+    if (!FocusDoNotDisturbService.supportsSystemDoNotDisturb) return;
+    final access = await FocusDoNotDisturbService.hasSystemDoNotDisturbAccess();
+    if (mounted) setState(() => _systemDoNotDisturbAccess = access);
   }
 
   @override
@@ -372,6 +397,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     }
     if (state == AppLifecycleState.resumed) {
       _appInForeground = true;
+      unawaited(_refreshSystemDoNotDisturbAccess());
       unawaited(_resumeUiTickers());
       unawaited(_syncService.resumeFromBackground());
       if (_isStrictFreeFocus && _phase == PomodoroPhase.focusing && _isPaused) {
@@ -607,6 +633,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       _allTags = results[1] as List<PomodoroTag>;
       _tags = _allTags.where((t) => !t.isArchived).toList();
       _deviceId = results[2] as String;
+      unawaited(_refreshSystemDoNotDisturbAccess());
 
       final todosRaw = results[3] as List<TodoItem>;
       _todos = todosRaw.where((t) => !t.isDeleted && !t.isDone).toList();
@@ -634,6 +661,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           debugPrint('[PomodoroWorkbench] 恢复计时状态失败: $e');
         }
       } else {
+        // A crash can leave the native DND marker behind even when no run
+        // state was committed. Clear that stale ownership before restoring
+        // the idle workbench.
+        unawaited(_setFocusDoNotDisturb(false, force: true));
         try {
           SharedPreferences? prefs;
           try {
@@ -845,6 +876,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 createdAt: 0)
             : null;
 
+        await _setFocusDoNotDisturb(
+          signal.doNotDisturb == true,
+          sessionUuid: signal.sessionUuid,
+          untilMs: isPaused ? null : (isCountUp ? null : localTargetEnd),
+        );
+        if (!mounted) return;
         setState(() {
           _phase = PomodoroPhase.remoteWatching;
           _targetEndMs = isCountUp ? 0 : localTargetEnd; // 仅倒计时需要此标记
@@ -902,6 +939,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 mode: _remoteState?.mode,
                 tags: _remoteState?.tags ?? [],
                 note: _currentNote,
+                doNotDisturb: _remoteState?.doNotDisturb,
               );
             }
           });
@@ -912,6 +950,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
       case 'PAUSE':
         if (_phase != PomodoroPhase.remoteWatching) break;
+        await _setFocusDoNotDisturb(
+          (signal.doNotDisturb ?? _remoteState?.doNotDisturb) == true,
+          sessionUuid: signal.sessionUuid ?? _remoteState?.sessionUuid,
+        );
         if (mounted) {
           setState(() {
             _isPaused = true;
@@ -967,6 +1009,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             }
           }
 
+          await _setFocusDoNotDisturb(
+            (signal.doNotDisturb ?? _remoteState?.doNotDisturb) == true,
+            sessionUuid: signal.sessionUuid ?? _remoteState?.sessionUuid,
+            untilMs: isCountUp ? null : localTargetEnd,
+          );
+
           setState(() {
             _remoteState = signal;
             _isPaused = false;
@@ -1015,6 +1063,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         if (_phase == PomodoroPhase.idle || _phase == PomodoroPhase.finished) {
           break;
         }
+        await _setFocusDoNotDisturb(
+          false,
+          sessionUuid: signal.sessionUuid ?? _remoteState?.sessionUuid,
+        );
         _stopRemoteTicker();
         setState(() {
           _phase = PomodoroPhase.idle;
@@ -1034,6 +1086,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           final isCountUp = _remoteState?.mode == 1;
           final newTimestamp =
               signal.timestamp ?? DateTime.now().millisecondsSinceEpoch;
+
+          await _setFocusDoNotDisturb(
+            _remoteState?.doNotDisturb == true,
+            sessionUuid: signal.sessionUuid ?? _remoteState?.sessionUuid,
+            untilMs: isCountUp ? null : _targetEndMs,
+          );
 
           setState(() {
             _boundTodo =
@@ -1066,6 +1124,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               mode: _remoteState?.mode,
               tags: _remoteState?.tags ?? [],
               note: signal.note ?? _remoteState?.note,
+              doNotDisturb: _remoteState?.doNotDisturb,
             );
           });
           if (isCountUp) {
@@ -1103,6 +1162,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 .ceil();
         // 增加 2 秒容错缓冲，防止由于两端时钟微小偏差导致远端提前退出
         if (rem < -2) {
+          unawaited(_setFocusDoNotDisturb(
+            false,
+            sessionUuid: _remoteState?.sessionUuid ?? _currentSessionUuid,
+          ));
           _remoteTicker?.cancel();
           setState(() {
             _phase = PomodoroPhase.idle;
@@ -1232,6 +1295,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _settings.cycles = saved.totalCycles;
           _settings.mode = saved.mode;
           _settings.strictFreeFocus = saved.strictFreeFocus;
+          _settings.doNotDisturbDuringFocus = saved.doNotDisturbDuringFocus;
           _boundTodo = boundTodo;
           _selectedTagUuids = saved.tagUuids;
           _sessionStartMs = saved.sessionStartMs;
@@ -1249,6 +1313,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             _pauseIntervals.add(PauseInterval(startMs: now));
           }
         });
+        await _setFocusDoNotDisturb(
+          saved.phase == PomodoroPhase.focusing &&
+              saved.doNotDisturbDuringFocus &&
+              !saved.strictWaitingForFlip,
+          sessionUuid: saved.sessionUuid,
+          untilMs: saved.isPaused || isCountUp ? null : saved.targetEndMs,
+        );
         if (forceStrictPause) {
           await PomodoroService.saveRunState(_buildCurrentRunState());
         }
@@ -1267,16 +1338,33 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _pauseTicker = null;
           _startTicker();
         }
-        if (!isCountUp) {
-          _scheduleReminders(saved.targetEndMs, saved.phase, saved.todoTitle,
-              saved.currentCycle, saved.totalCycles);
+        if (!isCountUp && saved.isPaused != true && !forceStrictPause) {
+          _scheduleReminders(
+            saved.targetEndMs,
+            saved.phase,
+            saved.todoTitle,
+            saved.currentCycle,
+            saved.totalCycles,
+            sessionUuid: saved.sessionUuid,
+          );
+        } else if (!isCountUp) {
+          // A previously registered focus-end alarm is stale while paused.
+          unawaited(NotificationService.cancelReminder(
+            saved.phase == PomodoroPhase.focusing ? 40001 : 40002,
+          ));
         }
       }
     }
   }
 
   void _scheduleReminders(
-      int endMs, PomodoroPhase phase, String? todoTitle, int cycle, int total) {
+    int endMs,
+    PomodoroPhase phase,
+    String? todoTitle,
+    int cycle,
+    int total, {
+    String? sessionUuid,
+  }) {
     final isFocusing = phase == PomodoroPhase.focusing;
     final alarmNotifId = isFocusing ? 40001 : 40002;
     final alarmTitle = isFocusing ? '🍅 专注时间到！' : '☕ 休息结束，继续出发！';
@@ -1294,6 +1382,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           'notifId': alarmNotifId,
           'type': 'pomodoro',
           'source': ScheduledReminderSources.pomodoro,
+          if (sessionUuid != null) 'sessionUuid': sessionUuid,
         }
       ],
       clearFirst: false,
@@ -1540,6 +1629,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     setState(() {
       _isPaused = true;
     });
+    // Do not leave the old countdown alarm armed while the focus is paused;
+    // it could otherwise fire and end the DND rule for a still-running run.
+    unawaited(NotificationService.cancelReminder(40001));
+    unawaited(_setFocusDoNotDisturb(
+      _settings.doNotDisturbDuringFocus,
+      sessionUuid: _currentSessionUuid,
+    ));
     _startPauseTicker();
     // debugPrint(
     //     '[Pause] LOCKED. _pausedAtMs: $_pausedAtMs, _accumulatedMs: $_accumulatedMs');
@@ -1552,6 +1648,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       pausedAtMs: _pausedAtMs,
       accumulatedMs: _accumulatedMs,
       pauseStartMs: _pauseStartMs,
+      doNotDisturb: _settings.doNotDisturbDuringFocus,
     );
   }
 
@@ -1579,9 +1676,16 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _boundTodo?.title,
           _currentCycle,
           _settings.cycles,
+          sessionUuid: _currentSessionUuid,
         );
       }
     }
+
+    await _setFocusDoNotDisturb(
+      _settings.doNotDisturbDuringFocus,
+      sessionUuid: _currentSessionUuid,
+      untilMs: _settings.mode == TimerMode.countdown ? _targetEndMs : null,
+    );
 
     // debugPrint('[Resume] Settings _isPaused=false and starting ticker');
     setState(() {
@@ -1604,6 +1708,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       todoUuid: _boundTodo?.id,
       todoTitle: _boundTodo?.title,
       note: _currentNote.isNotEmpty ? _currentNote : null,
+      doNotDisturb: _settings.doNotDisturbDuringFocus,
     );
     await PomodoroService.saveRunState(_buildCurrentRunState());
   }
@@ -1867,6 +1972,11 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     if (isCountUpNow) {
       setState(() => _remainingSeconds = 0); // 🚀 本端也显式清零
     }
+    await _setFocusDoNotDisturb(
+      _settings.doNotDisturbDuringFocus,
+      sessionUuid: _currentSessionUuid,
+      untilMs: isCountUpNow ? null : _targetEndMs,
+    );
     await _saveCurrentRunState();
 
     _syncService.sendSwitchSignal(
@@ -1915,7 +2025,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
       await _persistIdleBoundTodo(_boundTodo);
       await _clearRunStateSilently();
-      _syncService.sendStopSignal(todoUuid: _boundTodo?.id);
+      _syncService.sendStopSignal(
+        todoUuid: _boundTodo?.id,
+        sessionUuid: _currentSessionUuid,
+      );
       // Notify island to switch to idle immediately.
       await _updateFloatSafely(
           FloatWindowService.update(endMs: 0, isLocal: true));
@@ -1953,7 +2066,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
       await _persistIdleBoundTodo(_boundTodo);
       await _clearRunStateSilently();
-      _syncService.sendStopSignal(todoUuid: _boundTodo?.id);
+      _syncService.sendStopSignal(
+        todoUuid: _boundTodo?.id,
+        sessionUuid: _currentSessionUuid,
+      );
       // Notify island to switch to idle immediately.
       await _updateFloatSafely(
           FloatWindowService.update(endMs: 0, isLocal: true));
@@ -2113,7 +2229,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _startTicker();
     NotificationService.cancelReminder(40001);
     _scheduleReminders(end, PomodoroPhase.breaking, _boundTodo?.title,
-        _currentCycle, _settings.cycles);
+        _currentCycle, _settings.cycles,
+        sessionUuid: _currentSessionUuid);
     await _saveCurrentRunState();
   }
 
@@ -2122,6 +2239,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _isHandlingEnd = true;
     try {
       NotificationService.cancelReminder(40002);
+      await _setFocusDoNotDisturb(
+        false,
+        sessionUuid: _currentSessionUuid,
+      );
       NotificationService.sendPomodoroEndAlert(
           alertKey: 'pomo_end_$_targetEndMs',
           todoTitle: _boundTodo?.title,
@@ -2200,7 +2321,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         NotificationService.cancelNotification();
         NotificationService.cancelReminder(40001);
         NotificationService.cancelReminder(40002);
-        _syncService.sendStopSignal(todoUuid: _boundTodo?.id);
+        _syncService.sendStopSignal(
+          todoUuid: _boundTodo?.id,
+          sessionUuid: _currentSessionUuid,
+        );
         // Notify island to switch to idle immediately.
         await _updateFloatSafely(
             FloatWindowService.update(endMs: 0, isLocal: true));
@@ -2293,7 +2417,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                   breakMinutes: b.clamp(1, 60),
                   cycles: c.clamp(1, 20),
                   mode: _settings.mode,
-                  strictFreeFocus: _settings.strictFreeFocus);
+                  strictFreeFocus: _settings.strictFreeFocus,
+                  doNotDisturbDuringFocus: _settings.doNotDisturbDuringFocus);
               await PomodoroService.saveSettings(ns);
               if (!mounted) {
                 if (ctx.mounted) Navigator.pop(ctx);
@@ -2632,6 +2757,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         mode: _settings.mode,
         strictFreeFocus: _settings.strictFreeFocus,
         strictWaitingForFlip: _strictWaitingForFlip,
+        doNotDisturbDuringFocus: _settings.doNotDisturbDuringFocus,
         isPaused: _isPaused,
         pausedAtMs: _pausedAtMs,
         accumulatedMs: _accumulatedMs,
@@ -3072,6 +3198,50 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                       setState(() => _settings.strictFreeFocus = value);
                       await PomodoroService.saveSettings(_settings);
                     },
+            ),
+          ],
+          const SizedBox(height: 6),
+          Tooltip(
+            message:
+                '专注期间隐藏 CountdownTodo 的其他提醒，并同步到当前在线的其他设备；Android 授权后还会打开系统勿扰。专注进度和结束提醒仍保留。',
+            child: FilterChip(
+              avatar: Icon(
+                Icons.do_not_disturb_on_outlined,
+                size: 16,
+                color: _settings.doNotDisturbDuringFocus
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              label: const Text('专注勿扰', style: TextStyle(fontSize: 12)),
+              selected: _settings.doNotDisturbDuringFocus,
+              showCheckmark: false,
+              visualDensity: VisualDensity.compact,
+              onSelected: _strictWaitingForFlip
+                  ? null
+                  : (value) async {
+                      setState(() {
+                        _settings.doNotDisturbDuringFocus = value;
+                      });
+                      await PomodoroService.saveSettings(_settings);
+                    },
+            ),
+          ),
+          if (FocusDoNotDisturbService.supportsSystemDoNotDisturb &&
+              _settings.doNotDisturbDuringFocus &&
+              _systemDoNotDisturbAccess != true) ...[
+            TextButton.icon(
+              onPressed: () async {
+                await FocusDoNotDisturbService.openSystemDoNotDisturbSettings();
+                await _refreshSystemDoNotDisturbAccess();
+              },
+              icon: const Icon(Icons.settings_outlined, size: 14),
+              label: const Text('授权系统勿扰', style: TextStyle(fontSize: 11)),
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
             ),
           ],
         ],

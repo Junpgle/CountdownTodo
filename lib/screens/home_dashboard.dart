@@ -37,6 +37,7 @@ import '../services/wallpaper_cache_service.dart';
 import '../services/pomodoro_service.dart';
 import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_sync_service.dart';
+import '../services/focus_do_not_disturb_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
 import '../services/island_slot_provider.dart';

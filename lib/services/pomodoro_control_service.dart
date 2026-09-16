@@ -11,6 +11,7 @@ import 'notification_service.dart';
 import 'scheduled_reminder_registry.dart';
 import 'pomodoro_service.dart';
 import 'pomodoro_sync_service.dart';
+import 'focus_do_not_disturb_service.dart';
 
 class PomodoroStartResult {
   const PomodoroStartResult({
@@ -96,6 +97,7 @@ class PomodoroControlService {
       mode: settings.mode,
       strictFreeFocus: settings.strictFreeFocus,
       strictWaitingForFlip: isStrictWaiting,
+      doNotDisturbDuringFocus: settings.doNotDisturbDuringFocus,
       isPaused: isStrictWaiting,
       pausedAtMs: isStrictWaiting ? now : 0,
       accumulatedMs: 0,
@@ -104,6 +106,18 @@ class PomodoroControlService {
       planBlockId: activePlanBlockId,
       note: note,
     );
+
+    // Commit the run marker before touching native DND. If the process is
+    // killed in between, startup can distinguish a valid focus from a
+    // half-started native side effect and clear it safely.
+    await PomodoroService.saveRunState(state);
+
+    await FocusDoNotDisturbService.setActive(
+      settings.doNotDisturbDuringFocus && !isStrictWaiting,
+      sessionUuid: sessionUuid,
+      untilMs: isCountUp ? null : end,
+    );
+    await NotificationService.reconcileScheduledRemindersForDoNotDisturb();
 
     PomodoroSyncService.instance.setLocalFocusing(true);
     if (notify) {
@@ -125,6 +139,7 @@ class PomodoroControlService {
           todoTitle: boundTodo?.title,
           cycle: currentCycle,
           totalCycles: settings.cycles,
+          sessionUuid: sessionUuid,
         );
       }
     }
@@ -145,8 +160,6 @@ class PomodoroControlService {
       );
     }
 
-    await PomodoroService.saveRunState(state);
-
     if (sync) {
       if (ensureSyncConnection) {
         await _ensureSyncConnected(deviceId);
@@ -166,6 +179,7 @@ class PomodoroControlService {
         totalCycles: settings.cycles,
         plannedFocusSeconds: focusSeconds,
         note: note,
+        doNotDisturb: settings.doNotDisturbDuringFocus && !isStrictWaiting,
         customTimestamp: now,
       );
     }
@@ -285,6 +299,7 @@ class PomodoroControlService {
       await FloatWindowService.update(endMs: 0, isLocal: true);
     }
     await PomodoroService.clearRunState();
+    await NotificationService.reconcileScheduledRemindersForDoNotDisturb();
 
     if (notifyEnd) {
       await NotificationService.sendPomodoroEndAlert(
@@ -301,6 +316,7 @@ class PomodoroControlService {
     required String? todoTitle,
     required int cycle,
     required int totalCycles,
+    required String sessionUuid,
   }) {
     NotificationService.scheduleReminders(
       [
@@ -313,6 +329,7 @@ class PomodoroControlService {
           'notifId': 40001,
           'type': 'pomodoro',
           'source': ScheduledReminderSources.pomodoro,
+          'sessionUuid': sessionUuid,
         }
       ],
       clearFirst: false,

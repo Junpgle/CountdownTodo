@@ -8,6 +8,7 @@ import '../models.dart';
 import 'storage/app_settings_storage.dart';
 import 'item_semantics_service.dart';
 import 'scheduled_reminder_registry.dart';
+import 'focus_do_not_disturb_service.dart';
 
 class NotificationService {
   static final StreamController<MethodCall> _eventCtrl =
@@ -99,7 +100,11 @@ class NotificationService {
     String title,
     String body, {
     String? tag,
+    bool bypassDoNotDisturb = false,
   }) async {
+    if (!bypassDoNotDisturb && FocusDoNotDisturbService.isActive) {
+      return false;
+    }
     if (!await AppSettingsStorage.isNormalNotificationEnabled()) return false;
     return _showBrowserNotification(title, body, tag: tag);
   }
@@ -109,6 +114,7 @@ class NotificationService {
     String body, {
     String? tag,
   }) async {
+    if (FocusDoNotDisturbService.isActive) return false;
     if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) {
       return false;
     }
@@ -213,7 +219,12 @@ class NotificationService {
     final body = todoTitle?.isNotEmpty == true
         ? '"$todoTitle" 阶段已结束'
         : (isBreak ? '准备开始下一轮专注' : '请休息一下吧');
-    await _showNormalNotification(title, body, tag: alertKey);
+    await _showNormalNotification(
+      title,
+      body,
+      tag: alertKey,
+      bypassDoNotDisturb: true,
+    );
   }
 
   static Future<void> cancelNotification() async {}
@@ -283,6 +294,11 @@ class NotificationService {
     _reminderTimers.remove(notifId)?.cancel();
     _scheduledReminders.remove(notifId);
   }
+
+  /// Kept for API parity with native platforms. Browser reminder callbacks
+  /// re-check the current DND state at fire time, so no timer recreation is
+  /// necessary when the state changes.
+  static Future<void> reconcileScheduledRemindersForDoNotDisturb() async {}
 
   static Future<bool> checkExactAlarmPermission() async => true;
 
@@ -413,6 +429,12 @@ class NotificationService {
         .where((reminder) {
           final source = ScheduledReminderRegistry.sourceOf(reminder);
           final type = reminder['type']?.toString();
+          if (FocusDoNotDisturbService.isActive &&
+              source != ScheduledReminderSources.pomodoro &&
+              type != 'pomodoro' &&
+              type != 'pomodoro_end') {
+            return false;
+          }
           if (source == ScheduledReminderSources.pomodoro ||
               type == 'pomodoro' ||
               type == 'pomodoro_end') {

@@ -7,6 +7,7 @@ import 'float_window_service.dart';
 import 'notification_service.dart';
 import 'pomodoro_service.dart';
 import 'pomodoro_sync_service.dart';
+import 'focus_do_not_disturb_service.dart';
 import 'strict_focus_haptic_service.dart';
 import 'strict_focus_sensor_service.dart';
 
@@ -221,6 +222,11 @@ class StrictFocusSessionCoordinator with WidgetsBindingObserver {
       pauseIntervals: intervals,
     );
     await PomodoroService.saveRunState(paused);
+    await FocusDoNotDisturbService.setActive(
+      paused.doNotDisturbDuringFocus,
+      sessionUuid: paused.sessionUuid,
+    );
+    await NotificationService.reconcileScheduledRemindersForDoNotDisturb();
     // Persist the pause before invoking platform haptics so a background
     // transition cannot leave an unpaused state if the process is suspended.
     unawaited(StrictFocusHapticService.notifyFocusPaused());
@@ -230,6 +236,7 @@ class StrictFocusSessionCoordinator with WidgetsBindingObserver {
       pausedAtMs: paused.pausedAtMs,
       accumulatedMs: paused.accumulatedMs,
       pauseStartMs: paused.pauseStartMs,
+      doNotDisturb: paused.doNotDisturbDuringFocus,
     );
   }
 
@@ -265,6 +272,13 @@ class StrictFocusSessionCoordinator with WidgetsBindingObserver {
     await PomodoroService.saveRunState(resumed);
     unawaited(_updateFloat(resumed));
 
+    await FocusDoNotDisturbService.setActive(
+      resumed.doNotDisturbDuringFocus,
+      sessionUuid: resumed.sessionUuid,
+      untilMs: resumed.mode == TimerMode.countdown ? resumed.targetEndMs : null,
+    );
+    await NotificationService.reconcileScheduledRemindersForDoNotDisturb();
+
     if (wasWaitingForFlip) {
       unawaited(NotificationService.updatePomodoroNotification(
         remainingSeconds: 0,
@@ -293,6 +307,7 @@ class StrictFocusSessionCoordinator with WidgetsBindingObserver {
         plannedFocusSeconds: resumed.plannedFocusSeconds,
         mode: resumed.mode.index,
         note: resumed.note,
+        doNotDisturb: resumed.doNotDisturbDuringFocus,
         customTimestamp: resumed.sessionStartMs,
       );
     } else {
@@ -306,6 +321,7 @@ class StrictFocusSessionCoordinator with WidgetsBindingObserver {
         todoUuid: resumed.todoUuid,
         todoTitle: resumed.todoTitle,
         note: resumed.note,
+        doNotDisturb: resumed.doNotDisturbDuringFocus,
       );
     }
   }
@@ -364,6 +380,7 @@ class StrictFocusSessionCoordinator with WidgetsBindingObserver {
       pauseIntervals: pauseIntervals,
       planBlockId: state.planBlockId,
       note: state.note,
+      doNotDisturbDuringFocus: state.doNotDisturbDuringFocus,
     );
   }
 

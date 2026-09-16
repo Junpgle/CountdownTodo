@@ -49,6 +49,7 @@ class CrossDevicePomodoroState {
   final int? accumulatedMs;
   final int? pauseStartMs;
   final int? serverElapsedMs;
+  final bool? doNotDisturb;
 
   // 🚀 团队协作扩展
   final List<ConflictInfo>? conflicts;
@@ -81,6 +82,7 @@ class CrossDevicePomodoroState {
     this.accumulatedMs,
     this.pauseStartMs,
     this.serverElapsedMs,
+    this.doNotDisturb,
     this.conflicts,
     this.teamUuid,
     this.delta,
@@ -119,6 +121,9 @@ class CrossDevicePomodoroState {
         pauseStartMs: _parseInt(j['pauseStartMs']),
         serverElapsedMs:
             _parseInt(j['server_elapsed_ms'] ?? j['serverElapsedMs']),
+        doNotDisturb: _parseBool(
+          j['do_not_disturb'] ?? j['doNotDisturb'] ?? j['dnd'],
+        ),
         conflicts: j['conflicts'] != null
             ? (j['conflicts'] as List)
                 .map((c) => ConflictInfo.fromJson(c))
@@ -130,6 +135,24 @@ class CrossDevicePomodoroState {
 
   static int? _parseInt(dynamic v) {
     return JsonValueParser.toNullableInt(v);
+  }
+
+  static bool? _parseBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      switch (value.trim().toLowerCase()) {
+        case 'true':
+        case '1':
+        case 'yes':
+          return true;
+        case 'false':
+        case '0':
+        case 'no':
+          return false;
+      }
+    }
+    return null;
   }
 
   static List<String> _parseStringList(dynamic v) {
@@ -161,6 +184,7 @@ class CrossDevicePomodoroState {
         if (pausedAtMs != null) 'pausedAtMs': pausedAtMs,
         if (accumulatedMs != null) 'accumulatedMs': accumulatedMs,
         if (pauseStartMs != null) 'pauseStartMs': pauseStartMs,
+        if (doNotDisturb != null) 'do_not_disturb': doNotDisturb,
       };
 }
 
@@ -582,6 +606,7 @@ class PomodoroSyncService {
     List<String> tagNames = const [],
     String? sourceDeviceName,
     String? note,
+    bool doNotDisturb = false,
     int? customTimestamp,
   }) {
     _send({
@@ -595,6 +620,7 @@ class PomodoroSyncService {
       'tags': tagNames,
       if (sourceDeviceName != null) 'source_device_name': sourceDeviceName,
       if (note != null) 'note': note,
+      'do_not_disturb': doNotDisturb,
       if (mode != null) 'mode': mode,
       if (currentCycle != null) 'current_cycle': currentCycle,
       if (totalCycles != null) 'total_cycles': totalCycles,
@@ -618,6 +644,7 @@ class PomodoroSyncService {
     List<String> tagNames = const [],
     String? sourceDeviceName,
     String? note,
+    bool doNotDisturb = false,
     int? customTimestamp,
   }) {
     _send({
@@ -631,6 +658,7 @@ class PomodoroSyncService {
       'tags': tagNames,
       if (sourceDeviceName != null) 'source_device_name': sourceDeviceName,
       if (note != null) 'note': note,
+      'do_not_disturb': doNotDisturb,
       if (mode != null) 'mode': mode,
       if (currentCycle != null) 'current_cycle': currentCycle,
       if (totalCycles != null) 'total_cycles': totalCycles,
@@ -731,6 +759,7 @@ class PomodoroSyncService {
     required int pausedAtMs,
     required int accumulatedMs,
     required int pauseStartMs,
+    bool? doNotDisturb,
   }) {
     _send({
       'action': 'PAUSE',
@@ -738,6 +767,7 @@ class PomodoroSyncService {
       'pausedAtMs': pausedAtMs,
       'accumulatedMs': accumulatedMs,
       'pauseStartMs': pauseStartMs,
+      if (doNotDisturb != null) 'do_not_disturb': doNotDisturb,
     });
   }
 
@@ -751,6 +781,7 @@ class PomodoroSyncService {
     String? todoUuid,
     String? todoTitle,
     String? note,
+    bool? doNotDisturb,
   }) {
     _send({
       'action': 'RESUME',
@@ -763,6 +794,7 @@ class PomodoroSyncService {
       if (todoUuid != null) 'todo_uuid': todoUuid,
       if (todoTitle != null) 'todo_title': todoTitle,
       if (note != null) 'note': note,
+      if (doNotDisturb != null) 'do_not_disturb': doNotDisturb,
     });
   }
 

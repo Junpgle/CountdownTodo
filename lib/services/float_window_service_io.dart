@@ -9,6 +9,7 @@ import '../utils/navigator_utils.dart';
 import '../storage_service.dart';
 import 'pomodoro_service.dart';
 import 'pomodoro_sync_service.dart';
+import 'notification_service.dart';
 import '../windows_island/island_manager.dart';
 import '../windows_island/island_channel.dart';
 import '../windows_island/island_config.dart';
@@ -362,6 +363,8 @@ class FloatWindowService {
       if (saved == null) {
         if (action == 'abandon') {
           await PomodoroService.clearRunState();
+          await NotificationService
+              .reconcileScheduledRemindersForDoNotDisturb();
           clearFocus();
           await update(endMs: 0, isLocal: true);
         }
@@ -372,6 +375,7 @@ class FloatWindowService {
 
       // Clear state and update island
       await PomodoroService.clearRunState();
+      await NotificationService.reconcileScheduledRemindersForDoNotDisturb();
       clearFocus();
       await update(endMs: 0, isLocal: true);
 
@@ -398,7 +402,10 @@ class FloatWindowService {
         );
 
         await PomodoroService.addRecord(record);
-        PomodoroSyncService().sendStopSignal();
+        PomodoroSyncService().sendStopSignal(
+          todoUuid: saved.todoUuid,
+          sessionUuid: saved.sessionUuid,
+        );
 
         if (saved.todoUuid != null && saved.todoUuid!.isNotEmpty) {
           final username = await StorageService.getLoginSession() ?? 'default';
@@ -421,7 +428,10 @@ class FloatWindowService {
             endMs: now,
           ));
         }
-        PomodoroSyncService().sendStopSignal();
+        PomodoroSyncService().sendStopSignal(
+          todoUuid: saved.todoUuid,
+          sessionUuid: saved.sessionUuid,
+        );
       }
 
       // debugPrint('[FloatWindow] $action done');

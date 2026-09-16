@@ -13,6 +13,7 @@ import 'api_service.dart';
 import 'storage/storage_key_scope.dart';
 import 'storage/user_session_storage.dart';
 import '../utils/json_value_parser.dart';
+import 'focus_do_not_disturb_service.dart';
 
 // ============================================================
 // 番茄钟数据模型（对齐数据库 pomodoro_tags 表）
@@ -396,6 +397,7 @@ class PomodoroSettings {
   int cycles; // default_loop_count
   TimerMode mode; // 🚀 新增：倒计时或正计时模式
   bool strictFreeFocus; // 严格自由专注：通过手机翻转控制计时
+  bool doNotDisturbDuringFocus; // 专注期间抑制 CountdownTodo 的其他提醒
 
   PomodoroSettings({
     this.focusMinutes = 25,
@@ -403,6 +405,7 @@ class PomodoroSettings {
     this.cycles = 4,
     this.mode = TimerMode.countdown,
     this.strictFreeFocus = false,
+    this.doNotDisturbDuringFocus = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -411,6 +414,7 @@ class PomodoroSettings {
         'cycles': cycles,
         'mode': mode.index,
         'strictFreeFocus': strictFreeFocus,
+        'doNotDisturbDuringFocus': doNotDisturbDuringFocus,
         // 后端字段（秒）
         'default_focus_duration': focusMinutes * 60,
         'default_rest_duration': breakMinutes * 60,
@@ -426,6 +430,9 @@ class PomodoroSettings {
     final strictFreeFocus = j['strictFreeFocus'] == true ||
         j['strict_free_focus'] == true ||
         j['strictMode'] == true;
+    final doNotDisturbDuringFocus = j['doNotDisturbDuringFocus'] == true ||
+        j['do_not_disturb_during_focus'] == true ||
+        j['do_not_disturb'] == true;
 
     int toMinutes(dynamic v, int def) {
       final n = JsonValueParser.toInt(v, fallback: def);
@@ -440,6 +447,7 @@ class PomodoroSettings {
       mode: TimerMode
           .values[modeIdx.clamp(0, TimerMode.values.length - 1).toInt()],
       strictFreeFocus: strictFreeFocus,
+      doNotDisturbDuringFocus: doNotDisturbDuringFocus,
     );
   }
 }
@@ -467,6 +475,7 @@ class PomodoroRunState {
   TimerMode mode;
   bool strictFreeFocus;
   bool strictWaitingForFlip;
+  bool doNotDisturbDuringFocus;
   // 🚀 暂停状态持久化
   bool isPaused;
   int pausedAtMs;
@@ -493,6 +502,7 @@ class PomodoroRunState {
     this.mode = TimerMode.countdown,
     this.strictFreeFocus = false,
     this.strictWaitingForFlip = false,
+    this.doNotDisturbDuringFocus = false,
     this.isPaused = false,
     this.pausedAtMs = 0,
     this.accumulatedMs = 0,
@@ -536,6 +546,7 @@ class PomodoroRunState {
         'isCountUp': mode == TimerMode.countUp,
         'strictFreeFocus': strictFreeFocus,
         'strictWaitingForFlip': strictWaitingForFlip,
+        'doNotDisturbDuringFocus': doNotDisturbDuringFocus,
         'isPaused': isPaused,
         'paused_at_ms': pausedAtMs,
         'accumulated_ms': accumulatedMs,
@@ -583,6 +594,9 @@ class PomodoroRunState {
           j['strictMode'] == true,
       strictWaitingForFlip: j['strictWaitingForFlip'] == true ||
           j['strict_waiting_for_flip'] == true,
+      doNotDisturbDuringFocus: j['doNotDisturbDuringFocus'] == true ||
+          j['do_not_disturb_during_focus'] == true ||
+          j['do_not_disturb'] == true,
       isPaused: j['is_paused'] == 1 ||
           j['is_paused'] == true ||
           j['isPaused'] == 1 ||
@@ -708,6 +722,7 @@ class PomodoroService {
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_keyRunState);
     await prefs.remove(scopedKey);
+    await FocusDoNotDisturbService.setActive(false, force: true);
     _runStateCtrl.add(null); // 🚀 发送清除信号
   }
 

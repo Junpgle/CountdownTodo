@@ -13,6 +13,7 @@ import 'macos_pomodoro_status_bar_service.dart';
 import 'todo_notification_policy.dart';
 import 'item_semantics_service.dart';
 import 'scheduled_reminder_registry.dart';
+import 'focus_do_not_disturb_service.dart';
 import '../utils/time_utils.dart';
 
 class NotificationService {
@@ -194,6 +195,7 @@ class NotificationService {
     required String timeStr,
     required String teacher,
   }) async {
+    if (FocusDoNotDisturbService.isActive) return;
     if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isCourseNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
@@ -235,6 +237,7 @@ class NotificationService {
       await cancelQuizNotification();
       return;
     }
+    if (FocusDoNotDisturbService.isActive) return;
     if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isQuizNotificationEnabled()) return;
 
@@ -257,6 +260,7 @@ class NotificationService {
     required String title,
     required String body,
   }) async {
+    if (FocusDoNotDisturbService.isActive) return;
     final now = DateTime.now();
     final dedupeKey = '$title\u0000$body';
     final lastShown = _recentGenericNotifications[dedupeKey];
@@ -294,6 +298,7 @@ class NotificationService {
     required String body,
     required String alertKey,
   }) async {
+    if (FocusDoNotDisturbService.isActive) return;
     if (!await AppSettingsStorage.isFinanceBudgetAlertEnabled()) return;
     if (!await AppSettingsStorage.isNormalNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
@@ -352,6 +357,7 @@ class NotificationService {
   }
 
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {
+    if (FocusDoNotDisturbService.isActive) return;
     if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isTodoSummaryNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
@@ -414,6 +420,7 @@ class NotificationService {
   }
 
   static Future<void> showUpcomingTodoNotification(TodoItem todo) async {
+    if (FocusDoNotDisturbService.isActive) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
 
@@ -680,6 +687,9 @@ class NotificationService {
 
     if (_isDesktopSupported) {
       final finalIds = merged
+          .where((reminder) =>
+              !FocusDoNotDisturbService.isActive ||
+              _isPomodoroReminder(reminder))
           .map(ScheduledReminderRegistry.notifIdOf)
           .whereType<int>()
           .toSet();
@@ -696,34 +706,19 @@ class NotificationService {
       }
 
       final now = DateTime.now();
-      for (final reminder in activeIncoming) {
-        final triggerAtMs = _readInt(reminder['triggerAtMs']);
-        if (triggerAtMs == null) continue;
-        final triggerAt = DateTime.fromMillisecondsSinceEpoch(triggerAtMs);
-
-        // 已进入“提前提醒窗口”但事项尚未开始时，不再向系统预约过去的时间，
-        // 仍保留给 macOS 灵动岛立即补发。
-        if (!triggerAt.isAfter(now)) continue;
-
-        try {
-          await _plugin.zonedSchedule(
-            id: ScheduledReminderRegistry.notifIdOf(reminder) ??
-                triggerAtMs.hashCode,
-            scheduledDate: tz.TZDateTime.from(triggerAt, tz.local),
-            notificationDetails: _desktopNotificationDetails,
-            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-            title: reminder['title'] ?? '',
-            body: reminder['text'] ?? '',
-          );
-        } catch (_) {
-          // Desktop notification scheduling is best-effort.
-        }
+      final desktopReminders = merged
+          .where((reminder) =>
+              !FocusDoNotDisturbService.isActive ||
+              _isPomodoroReminder(reminder))
+          .toList(growable: false);
+      for (final reminder in desktopReminders) {
+        await _scheduleDesktopReminder(reminder, now: now);
       }
 
       await StorageService.saveWindowsScheduledReminders(merged);
       if (Platform.isMacOS) {
         await MacPomodoroStatusBarService.scheduleIslandReminders(
-          merged,
+          desktopReminders,
           clearFirst: true,
         );
       }
@@ -741,6 +736,7 @@ class NotificationService {
           'notifId': r['notifId'],
           if (r['source'] != null) 'source': r['source'],
           if (r['type'] != null) 'type': r['type'],
+          if (r['sessionUuid'] != null) 'sessionUuid': r['sessionUuid'],
           if (r['todoType'] != null) 'todoType': r['todoType'],
           if (r['courseName'] != null) 'courseName': r['courseName'],
           if (r['courseId'] != null) 'courseId': r['courseId'],
@@ -802,6 +798,10 @@ class NotificationService {
         .where((reminder) {
           final source = ScheduledReminderRegistry.sourceOf(reminder);
           final type = reminder['type']?.toString();
+          if (FocusDoNotDisturbService.isActive &&
+              !_isPomodoroReminder(reminder)) {
+            return false;
+          }
           if (source == ScheduledReminderSources.pomodoro ||
               type == 'pomodoro' ||
               type == 'pomodoro_end') {
@@ -823,6 +823,78 @@ class NotificationService {
         })
         .map(Map<String, dynamic>.from)
         .toList(growable: false);
+  }
+
+  static bool _isPomodoroReminder(Map<String, dynamic> reminder) {
+    final source = ScheduledReminderRegistry.sourceOf(reminder);
+    final type = reminder['type']?.toString();
+    return source == ScheduledReminderSources.pomodoro ||
+        type == 'pomodoro' ||
+        type == 'pomodoro_end';
+  }
+
+  /// Desktop notifications are scheduled directly with the OS, so cancel
+  /// non-Pomodoro alarms while DND is active and restore them afterwards.
+  /// Android's alarm receiver applies the same check at fire time; iOS has no
+  /// equivalent system-level scheduling hook.
+  static Future<void> reconcileScheduledRemindersForDoNotDisturb() async {
+    if (!_isDesktopSupported) return;
+    await ensureInitialized();
+
+    final stored = ScheduledReminderRegistry.retainActive(
+      await StorageService.getWindowsScheduledReminders(),
+    );
+    final visible = FocusDoNotDisturbService.isActive
+        ? stored.where(_isPomodoroReminder).toList(growable: false)
+        : stored;
+    final visibleIds = visible
+        .map(ScheduledReminderRegistry.notifIdOf)
+        .whereType<int>()
+        .toSet();
+    final storedIds = stored
+        .map(ScheduledReminderRegistry.notifIdOf)
+        .whereType<int>()
+        .toSet();
+
+    for (final id in storedIds.difference(visibleIds)) {
+      try {
+        await _plugin.cancel(id: id);
+      } catch (_) {}
+    }
+    final now = DateTime.now();
+    for (final reminder in visible) {
+      await _scheduleDesktopReminder(reminder, now: now);
+    }
+    if (Platform.isMacOS) {
+      await MacPomodoroStatusBarService.scheduleIslandReminders(
+        visible,
+        clearFirst: true,
+      );
+    }
+  }
+
+  static Future<void> _scheduleDesktopReminder(
+    Map<String, dynamic> reminder, {
+    required DateTime now,
+  }) async {
+    final triggerAtMs = _readInt(reminder['triggerAtMs']);
+    if (triggerAtMs == null) return;
+    final triggerAt = DateTime.fromMillisecondsSinceEpoch(triggerAtMs);
+    if (!triggerAt.isAfter(now)) return;
+
+    try {
+      await _plugin.zonedSchedule(
+        id: ScheduledReminderRegistry.notifIdOf(reminder) ??
+            triggerAtMs.hashCode,
+        scheduledDate: tz.TZDateTime.from(triggerAt, tz.local),
+        notificationDetails: _desktopNotificationDetails,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        title: reminder['title']?.toString() ?? '',
+        body: reminder['text']?.toString() ?? '',
+      );
+    } catch (_) {
+      // Desktop notification scheduling is best-effort.
+    }
   }
 
   static int? _readInt(dynamic value) {
@@ -907,6 +979,7 @@ class NotificationService {
     required int maxAttempts,
     required String status,
   }) async {
+    if (FocusDoNotDisturbService.isActive) return;
     if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
@@ -950,6 +1023,7 @@ class NotificationService {
     // 先撤掉 ongoing 进度通知，再发送可点击的普通结果通知；否则系统/小岛
     // 会继续把上一条“识别中”当作活动任务保留在顶部。
     await cancelTodoRecognizeNotification();
+    if (FocusDoNotDisturbService.isActive) return;
     if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     await ensureInitialized();
@@ -985,6 +1059,7 @@ class NotificationService {
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await cancelTodoRecognizeNotification();
+    if (FocusDoNotDisturbService.isActive) return;
     if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     await ensureInitialized();
@@ -1038,6 +1113,7 @@ class NotificationService {
     required String updateContent,
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    if (FocusDoNotDisturbService.isActive) return;
     // GitHub、服务器和 WebSocket 可能用不同标题/文案报告同一版本；
     // 以版本号去重，避免同一个更新连续弹出多条通知。
     final notificationKey = versionName;

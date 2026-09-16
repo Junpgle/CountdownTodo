@@ -1595,6 +1595,15 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     val args = call.arguments as? Map<String, Any>
                     if (args != null) {
                         val type = args["type"] as? String
+                        if (SystemDoNotDisturbManager.shouldSuppressNotification(
+                                this@MainActivity,
+                                type,
+                                0
+                            )
+                        ) {
+                            result.success(null)
+                            return@setMethodCallHandler
+                        }
                         when (type) {
                             "quiz" -> updateQuizNotification(args)
                             "course" -> updateCourseNotification(args)
@@ -1893,6 +1902,36 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     } else {
                         result.success(true)
                     }
+                }
+
+                "getSystemDoNotDisturbAccess" -> {
+                    result.success(SystemDoNotDisturbManager.hasAccess(this@MainActivity))
+                }
+
+                "openSystemDoNotDisturbSettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Unable to open notification policy settings", e)
+                        result.success(false)
+                    }
+                }
+
+                "setSystemDoNotDisturb" -> {
+                    val args = call.arguments as? Map<*, *>
+                    val enabled = args?.get("enabled") as? Boolean ?: false
+                    val untilMs = (args?.get("untilMs") as? Number)?.toLong()
+                    result.success(
+                        SystemDoNotDisturbManager.setEnabled(
+                            this@MainActivity,
+                            enabled,
+                            untilMs
+                        )
+                    )
                 }
 
                 "checkCalendarPermission" -> {
