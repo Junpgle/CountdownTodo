@@ -384,7 +384,6 @@ class _PomodoroScreenState extends State<PomodoroScreen>
           child: FloatingGlassPinnedHeaderLayout(
             initialHeaderExtent:
                 topInset + (isFocusingOrWatching ? 0.0 : kToolbarHeight),
-            fadeTailExtent: 0,
             header: SafeArea(
               top: true,
               bottom: false,

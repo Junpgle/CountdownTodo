@@ -557,7 +557,6 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       ),
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
-        tailExtent: 0,
         child: Padding(
           // The app bar is transparent and paints above the body. Reserve its
           // full height so the first filter and summary cards stay visible.
@@ -1403,7 +1402,6 @@ class CategoryDetailScreen extends StatelessWidget {
       ),
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
-        tailExtent: 0,
         child: Padding(
           // Keep the category summary below the transparent app bar as well.
           padding: EdgeInsets.only(top: topBarHeight),
