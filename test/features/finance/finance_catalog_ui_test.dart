@@ -85,6 +85,7 @@ Future<void> _openEditor(
   required Future<void> Function(FinanceCatalogDraft) onSave,
   FinanceCategoryType? type = FinanceCategoryType.expense,
   bool editing = false,
+  bool iconOnly = false,
   String name = '',
   List<FinanceCategory> availableParents = const [],
   String? initialParentUuid,
@@ -116,6 +117,7 @@ Future<void> _openEditor(
                     availableParents: availableParents,
                     initialParentUuid: initialParentUuid,
                     lockParent: lockParent,
+                    iconOnly: iconOnly,
                     onSave: onSave,
                   ),
                 ),
@@ -128,9 +130,14 @@ Future<void> _openEditor(
 }
 
 void main() {
-  testWidgets('细分类显示完整的父子路径', (tester) async {
+  testWidgets('二级分类收在对应的一级分类卡片内', (tester) async {
     await _pumpCatalog(tester);
-    expect(find.text('餐饮 - 奶茶'), findsOneWidget);
+    final parent = find.byKey(const ValueKey('finance-catalog-item-food'));
+    expect(find.text('一级分类 · 2'), findsOneWidget);
+    expect(find.textContaining('个二级分类'), findsNWidgets(2));
+    expect(
+        find.descendant(of: parent, matching: find.text('奶茶')), findsOneWidget);
+    expect(find.text('餐饮 - 奶茶'), findsNothing);
   });
 
   testWidgets('分类按收支分开，搜索与归档筛选不会显示已删除项目', (tester) async {
@@ -169,7 +176,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('自定义卡片直接编辑并支持归档，系统项目不提供无效操作', (tester) async {
+  testWidgets('自定义卡片直接编辑并支持归档，系统分类可单独自定义图标', (tester) async {
     String? edited;
     String? archived;
     await _pumpCatalog(
@@ -182,9 +189,12 @@ void main() {
         find.descendant(
             of: system, matching: find.byType(PopupMenuButton<String>)),
         findsNothing);
+    await tester.tap(find.byTooltip('自定义餐饮图标'));
+    await tester.pumpAndSettle();
+    expect(edited, 'food');
     await tester.tap(find.text('餐饮'));
     await tester.pumpAndSettle();
-    expect(edited, isNull);
+    expect(edited, 'food');
     await tester.tap(find.text('咖啡'));
     await tester.pumpAndSettle();
     expect(edited, 'coffee');
@@ -193,6 +203,31 @@ void main() {
     await tester.tap(find.text('归档'));
     await tester.pumpAndSettle();
     expect(archived, 'coffee');
+  });
+
+  testWidgets('系统分类编辑器只开放图标并保留分类身份', (tester) async {
+    FinanceCatalogDraft? saved;
+    await _openEditor(
+      tester,
+      editing: true,
+      iconOnly: true,
+      name: '餐饮',
+      onSave: (draft) async => saved = draft,
+    );
+
+    expect(
+      tester.widget<TextFormField>(find.byKey(_nameKey)).enabled,
+      isFalse,
+    );
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(find.byKey(const ValueKey('finance-catalog-parent')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('finance-icon-🐾')));
+    await tester.tap(find.byKey(_saveKey));
+    await tester.pumpAndSettle();
+
+    expect(saved?.name, '餐饮');
+    expect(saved?.icon, '🐾');
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('自定义大类可以直接新增自己的细分类', (tester) async {

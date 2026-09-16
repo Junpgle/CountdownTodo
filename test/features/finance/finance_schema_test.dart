@@ -147,6 +147,13 @@ void main() {
       final columns = await db.rawQuery('PRAGMA table_info($table)');
       expect(columns.map((row) => row['name']), contains('pending_sync'));
     }
+    final categoryColumns = await db.rawQuery(
+      'PRAGMA table_info(finance_categories)',
+    );
+    expect(
+      categoryColumns.map((row) => row['name']),
+      contains('icon_customized'),
+    );
   });
 
   test('AI usage schema upgrades existing records with MiMo detail columns',
@@ -210,6 +217,19 @@ void main() {
     expect(rows, hasLength(1));
     expect(rows.single['parent_uuid'], 'finance-system-category-food');
     expect(rows.single['is_system'], 1);
+
+    final onlineShoppingRows = await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: ['finance-system-category-food-online-shopping'],
+    );
+
+    expect(onlineShoppingRows, hasLength(1));
+    expect(
+      onlineShoppingRows.single['parent_uuid'],
+      'finance-system-category-food',
+    );
+    expect(onlineShoppingRows.single['is_system'], 1);
   });
 
   test('自定义小类校验父分类类型，并随大类归档恢复', () async {
@@ -264,6 +284,85 @@ void main() {
             where: 'uuid = ?', whereArgs: [child.uuid]))
         .single;
     expect(childRow['is_archived'], 0);
+  });
+
+  test('系统分类自定义图标会保留且进入待同步状态', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-system-icon-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+    await FinanceStorage.ensureReady();
+
+    final food = FinanceCategory.fromMap(
+      (await db.query(
+        'finance_categories',
+        where: 'uuid = ?',
+        whereArgs: ['finance-system-category-food'],
+      ))
+          .single,
+    )
+      ..icon = '🥗'
+      ..iconCustomized = true
+      ..markAsChanged();
+    await FinanceStorage.saveCategory(food);
+    await FinanceStorage.ensureReady();
+
+    final row = (await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: ['finance-system-category-food'],
+    ))
+        .single;
+    expect(row['icon'], '🥗');
+    expect(row['icon_customized'], 1);
+    expect(row['pending_sync'], 1);
+  });
+
+  test('云端系统分类图标覆盖不会被新设备默认值覆盖', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-remote-icon-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+    await FinanceStorage.ensureReady();
+
+    final changed = await FinanceStorage.mergeRemoteBundle({
+      'categories': [
+        FinanceCategory(
+          uuid: 'finance-system-category-food',
+          name: '餐饮',
+          icon: '🥗',
+          isSystem: true,
+          iconCustomized: true,
+          version: 2,
+          createdAt: 1,
+          updatedAt: 1,
+        ).toMap(),
+      ],
+    });
+    await FinanceStorage.ensureReady();
+
+    final row = (await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: ['finance-system-category-food'],
+    ))
+        .single;
+    expect(changed, 1);
+    expect(row['icon'], '🥗');
+    expect(row['icon_customized'], 1);
+    expect(row['pending_sync'], 0);
   });
 
   test('同一预算范围使用稳定 UUID，远端重复范围只保留较新记录', () async {

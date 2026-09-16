@@ -249,6 +249,34 @@ void main() {
     );
   });
 
+  test('餐饮默认分类包含网购小类', () {
+    final onlineShopping = FinanceDefaults.categories.firstWhere(
+      (item) => item['uuid'] == 'finance-system-category-food-online-shopping',
+    );
+
+    expect(onlineShopping['name'], '网购');
+    expect(
+      onlineShopping['parent_uuid'],
+      'finance-system-category-food',
+    );
+    expect(onlineShopping['type'], 'expense');
+  });
+
+  test('分类图标自定义标记会进入本地映射与云同步载荷', () {
+    final category = FinanceCategory(
+      uuid: 'finance-system-category-food',
+      name: '餐饮',
+      icon: '🥗',
+      isSystem: true,
+      iconCustomized: true,
+    );
+
+    final map = category.toMap();
+    expect(map['icon'], '🥗');
+    expect(map['icon_customized'], 1);
+    expect(FinanceCategory.fromMap(map).iconCustomized, isTrue);
+  });
+
   test('记账云同步按账号默认关闭并相互隔离', () async {
     SharedPreferences.setMockInitialValues({});
 

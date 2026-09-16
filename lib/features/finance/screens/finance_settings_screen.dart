@@ -11,6 +11,8 @@ import '../widgets/finance_catalog_editor.dart';
 import '../widgets/finance_catalog_manager.dart';
 import 'finance_automation_screen.dart';
 
+enum _FinanceSettingsSection { catalog, preferences }
+
 class FinanceSettingsScreen extends StatefulWidget {
   final String username;
 
@@ -27,6 +29,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
   bool _cloudSyncEnabled = false;
   bool _isLoading = true;
   String? _loadError;
+  _FinanceSettingsSection _section = _FinanceSettingsSection.catalog;
 
   @override
   void initState() {
@@ -68,7 +71,6 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
     required FinanceCategoryType type,
     FinanceCategory? category,
   }) async {
-    if (category?.isSystem == true) return null;
     FinanceCategory? savedCategory;
     final saved = await showDialog<bool>(
       context: context,
@@ -81,6 +83,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
         availableParents: _categories,
         initialParentUuid: category?.parentUuid,
         editingCategoryUuid: category?.uuid,
+        iconOnly: category?.isSystem == true,
         onSave: (draft) async {
           final updated = category == null
               ? FinanceCategory(
@@ -93,6 +96,9 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
             ..name = draft.name
             ..icon = draft.icon
             ..parentUuid = draft.parentUuid;
+          if (category?.isSystem == true) {
+            updated.iconCustomized = true;
+          }
           if (category != null) updated.markAsChanged();
           await FinanceRepository.saveCategory(updated);
           savedCategory = updated;
@@ -101,7 +107,11 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
     );
     if (saved != true || !mounted) return null;
     await _load();
-    _showMessage(category == null ? '分类已添加' : '分类已保存');
+    _showMessage(category?.isSystem == true
+        ? '系统分类图标已保存'
+        : category == null
+            ? '分类已添加'
+            : '分类已保存');
     return savedCategory;
   }
 
@@ -283,27 +293,30 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
                           keyboardDismissBehavior:
                               ScrollViewKeyboardDismissBehavior.onDrag,
                           children: [
-                            FinanceCatalogManager(
-                              categories: _categories,
-                              paymentMethods: _paymentMethods,
-                              onAddCategory: (type) =>
-                                  _showCategoryEditor(type: type),
-                              onAddSubcategory: _addSubcategory,
-                              onEditCategory: (category) async {
-                                await _showCategoryEditor(
-                                    type: category.type, category: category);
-                              },
-                              onArchiveCategory: _archiveCategory,
-                              onRestoreCategory: _unarchiveCategory,
-                              onAddPaymentMethod: () => _showPaymentEditor(),
-                              onEditPaymentMethod: (method) async {
-                                await _showPaymentEditor(method: method);
-                              },
-                              onArchivePaymentMethod: _archivePaymentMethod,
-                              onRestorePaymentMethod: _unarchivePaymentMethod,
-                            ),
-                            const SizedBox(height: 28),
-                            _buildPreferences(context),
+                            _buildSectionPicker(context),
+                            const SizedBox(height: 20),
+                            if (_section == _FinanceSettingsSection.catalog)
+                              FinanceCatalogManager(
+                                categories: _categories,
+                                paymentMethods: _paymentMethods,
+                                onAddCategory: (type) =>
+                                    _showCategoryEditor(type: type),
+                                onAddSubcategory: _addSubcategory,
+                                onEditCategory: (category) async {
+                                  await _showCategoryEditor(
+                                      type: category.type, category: category);
+                                },
+                                onArchiveCategory: _archiveCategory,
+                                onRestoreCategory: _unarchiveCategory,
+                                onAddPaymentMethod: () => _showPaymentEditor(),
+                                onEditPaymentMethod: (method) async {
+                                  await _showPaymentEditor(method: method);
+                                },
+                                onArchivePaymentMethod: _archivePaymentMethod,
+                                onRestorePaymentMethod: _unarchivePaymentMethod,
+                              )
+                            else
+                              _buildPreferences(context),
                           ],
                         ),
                       ),
@@ -313,64 +326,141 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
     );
   }
 
+  Widget _buildSectionPicker(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+        final showIcons = constraints.maxWidth >= 420 * textScale;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: SegmentedButton<_FinanceSettingsSection>(
+              key: const ValueKey('finance-settings-section-picker'),
+              showSelectedIcon: false,
+              segments: [
+                ButtonSegment(
+                  value: _FinanceSettingsSection.catalog,
+                  icon: showIcons
+                      ? const Icon(Icons.account_tree_outlined, size: 18)
+                      : null,
+                  label: const Text('分类目录'),
+                ),
+                ButtonSegment(
+                  value: _FinanceSettingsSection.preferences,
+                  icon: showIcons
+                      ? const Icon(Icons.tune_rounded, size: 18)
+                      : null,
+                  label: const Text('其他设置'),
+                ),
+              ],
+              selected: {_section},
+              onSelectionChanged: (selection) =>
+                  setState(() => _section = selection.single),
+              style: ButtonStyle(
+                minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
+                padding: const WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(horizontal: 18)),
+                side: WidgetStatePropertyAll(BorderSide(
+                    color: colors.outlineVariant.withValues(alpha: 0.6))),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildPreferences(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      color: colors.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-        side: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.45)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        shape: const Border(),
-        collapsedShape: const Border(),
-        tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-        leading: Icon(Icons.tune_rounded, color: colors.primary),
-        title: const Text('更多记账设置'),
-        subtitle: const Text('云同步、预算提醒与自动化'),
-        children: [
-          LiquidGlassSwitchListTile(
-            value: _cloudSyncEnabled,
-            onChanged: widget.username.trim().isEmpty
-                ? null
-                : (value) async {
-                    setState(() => _cloudSyncEnabled = value);
-                    await AppSettingsStorage.setFinanceCloudSyncEnabled(
-                        widget.username, value);
-                    if (value) StorageService.requestSync(widget.username);
-                    if (!mounted) return;
-                    _showMessage(value
-                        ? '已开启记账云同步，现有本地数据将排队同步'
-                        : '已停止后续记账同步；不会中断待办、习惯等其他正在进行的同步');
-                  },
-            title: const Text('记账云同步'),
-            subtitle: const Text('默认仅保存在本机；开启后同步到当前账号'),
-            secondary: const Icon(Icons.cloud_sync_outlined),
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: colors.secondaryContainer,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child:
+                  Icon(Icons.tune_rounded, color: colors.onSecondaryContainer),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('其他设置',
+                      style: theme.textTheme.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Text('管理同步、提醒和自动化，不会和分类目录混在一起',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: colors.onSurfaceVariant)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        Card(
+          margin: EdgeInsets.zero,
+          elevation: 0,
+          color: colors.surfaceContainerLow,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+            side: BorderSide(
+                color: colors.outlineVariant.withValues(alpha: 0.45)),
           ),
-          const Divider(height: 1, indent: 20, endIndent: 20),
-          LiquidGlassSwitchListTile(
-            value: _budgetAlertsEnabled,
-            onChanged: (value) async {
-              setState(() => _budgetAlertsEnabled = value);
-              await AppSettingsStorage.setFinanceBudgetAlertEnabled(value);
-            },
-            title: const Text('预算提醒'),
-            subtitle: const Text('达到 80% 或超支时发送系统通知'),
-            secondary: const Icon(Icons.notifications_active_outlined),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              LiquidGlassSwitchListTile(
+                value: _cloudSyncEnabled,
+                onChanged: widget.username.trim().isEmpty
+                    ? null
+                    : (value) async {
+                        setState(() => _cloudSyncEnabled = value);
+                        await AppSettingsStorage.setFinanceCloudSyncEnabled(
+                            widget.username, value);
+                        if (value) StorageService.requestSync(widget.username);
+                        if (!mounted) return;
+                        _showMessage(value
+                            ? '已开启记账云同步，现有本地数据将排队同步'
+                            : '已停止后续记账同步；不会中断待办、习惯等其他正在进行的同步');
+                      },
+                title: const Text('记账云同步'),
+                subtitle: const Text('默认仅保存在本机；开启后同步到当前账号'),
+                secondary: const Icon(Icons.cloud_sync_outlined),
+              ),
+              const Divider(height: 1, indent: 20, endIndent: 20),
+              LiquidGlassSwitchListTile(
+                value: _budgetAlertsEnabled,
+                onChanged: (value) async {
+                  setState(() => _budgetAlertsEnabled = value);
+                  await AppSettingsStorage.setFinanceBudgetAlertEnabled(value);
+                },
+                title: const Text('预算提醒'),
+                subtitle: const Text('达到 80% 或超支时发送系统通知'),
+                secondary: const Icon(Icons.notifications_active_outlined),
+              ),
+              const Divider(height: 1, indent: 20, endIndent: 20),
+              ListTile(
+                leading: const Icon(Icons.autorenew_outlined),
+                title: const Text('周期账单与快捷模板'),
+                subtitle: const Text('管理固定支出、周期收入和常用账单模板'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: _openAutomation,
+              ),
+            ],
           ),
-          const Divider(height: 1, indent: 20, endIndent: 20),
-          ListTile(
-            leading: const Icon(Icons.autorenew_outlined),
-            title: const Text('周期账单与快捷模板'),
-            subtitle: const Text('管理固定支出、周期收入和常用账单模板'),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: _openAutomation,
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

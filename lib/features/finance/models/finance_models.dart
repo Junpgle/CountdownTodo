@@ -653,6 +653,14 @@ abstract final class FinanceDefaults {
       'sort_order': 18,
     },
     {
+      'uuid': 'finance-system-category-food-online-shopping',
+      'name': '网购',
+      'icon': '🛒',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-food',
+      'sort_order': 19,
+    },
+    {
       'uuid': 'finance-system-category-transport',
       'name': '交通',
       'icon': '🚇',
@@ -1219,6 +1227,10 @@ class FinanceCategory {
   String name;
   FinanceCategoryType type;
   String icon;
+
+  /// Only system categories need this marker. Their built-in rows are seeded
+  /// locally and must not be uploaded as user edits until the icon changes.
+  bool iconCustomized;
   int? colorValue;
   String? parentUuid;
   bool isSystem;
@@ -1235,6 +1247,7 @@ class FinanceCategory {
     required this.name,
     this.type = FinanceCategoryType.expense,
     this.icon = '📦',
+    this.iconCustomized = false,
     this.colorValue,
     this.parentUuid,
     this.isSystem = false,
@@ -1261,6 +1274,7 @@ class FinanceCategory {
         'name': name,
         'type': type.name,
         'icon': icon,
+        'icon_customized': iconCustomized ? 1 : 0,
         'color_value': colorValue,
         'parent_uuid': parentUuid,
         'is_system': isSystem ? 1 : 0,
@@ -1281,6 +1295,7 @@ class FinanceCategory {
       name: _string(map['name']) ?? '未命名分类',
       type: _categoryType(map['type'] ?? map['category_type']),
       icon: _string(map['icon']) ?? '📦',
+      iconCustomized: _bool(map['icon_customized'] ?? map['iconCustomized']),
       colorValue: _nullableInt(map['color_value'] ?? map['colorValue']),
       parentUuid: _nullableString(map['parent_uuid'] ?? map['parentUuid']),
       isSystem: _bool(map['is_system'] ?? map['isSystem']),
