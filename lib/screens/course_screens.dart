@@ -62,6 +62,10 @@ class _HiddenTimeRange {
 class _TimelineEvent {
   final double top;
   final double bottom;
+  /// The actual time boundary used for column allocation. [bottom] may be
+  /// extended for a readable minimum card height without making adjacent
+  /// records look like overlapping events.
+  final double collisionBottom;
   final Widget Function(double left, double width) builder;
   int columnIndex = 0;
   int maxColumns = 1;
@@ -70,8 +74,9 @@ class _TimelineEvent {
   _TimelineEvent({
     required this.top,
     required this.bottom,
+    double? collisionBottom,
     required this.builder,
-  });
+  }) : collisionBottom = collisionBottom ?? bottom;
 }
 
 class _WeeklyCourseScreenState extends _WeeklyCourseScreenStateBase

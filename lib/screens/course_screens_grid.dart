@@ -37,6 +37,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     return colors[hash % colors.length];
   }
 
+  Color get _weekLazyLoadPlaceholderColor {
+    return Theme.of(context).colorScheme.brightness == Brightness.dark
+        ? Colors.black
+        : Colors.white;
+  }
+
   void _showAllDayTodos(
       BuildContext context, List<TodoItem> todos, String dateStr) {
     showAppModalBottomSheet(
@@ -716,6 +722,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           eventsPerDay[weekday]!.add(_TimelineEvent(
               top: top,
               bottom: top + height,
+              collisionBottom: bottom,
               builder: (left, width) {
                 final double fontScale =
                     (width / (cellWidth - 2)).clamp(0.4, 1.0);
@@ -755,27 +762,15 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                     },
                     child: GestureDetector(
                       onTap: () {
-                        final renderBox = todoCardKey.currentContext
-                            ?.findRenderObject() as RenderBox?;
-                        if (renderBox != null) {
-                          final rect = renderBox.localToGlobal(Offset.zero) &
-                              renderBox.size;
-                          Navigator.push(
-                            context,
-                            ContainerTransformRoute(
-                              page: TodoDetailScreen(todo: todo),
-                              sourceRect: rect,
-                              sourceColor: todoColor,
-                              sourceBorderRadius:
-                                  const BorderRadius.all(Radius.circular(4)),
-                            ),
-                          );
-                        } else {
-                          Navigator.push(
-                              context,
-                              PageTransitions.slideHorizontal(
-                                  TodoDetailScreen(todo: todo)));
-                        }
+                        PageTransitions.pushFromRect(
+                          context: context,
+                          page: TodoDetailScreen(todo: todo),
+                          sourceKey: todoCardKey,
+                          sourceColor: _weekLazyLoadPlaceholderColor,
+                          sourceBorderRadius:
+                              const BorderRadius.all(Radius.circular(4)),
+                          placeholderIcon: Icons.task_alt_rounded,
+                        );
                       },
                       child: Container(
                         key: todoCardKey,
@@ -936,6 +931,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           eventsPerDay[weekday]!.add(_TimelineEvent(
               top: top,
               bottom: top + height,
+              collisionBottom: bottom,
               builder: (left, width) {
                 final double fontScale =
                     (width / (cellWidth - 2)).clamp(0.4, 1.0);
@@ -973,29 +969,16 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                     },
                     child: GestureDetector(
                       onTap: () {
-                        final renderBox = logCardKey.currentContext
-                            ?.findRenderObject() as RenderBox?;
-                        if (renderBox != null) {
-                          final rect = renderBox.localToGlobal(Offset.zero) &
-                              renderBox.size;
-                          Navigator.push(
-                            context,
-                            ContainerTransformRoute(
-                              page: TimeLogDetailScreen(
-                                  log: log, tags: _pomodoroTags),
-                              sourceRect: rect,
-                              sourceColor: logColor,
-                              sourceBorderRadius:
-                                  const BorderRadius.all(Radius.circular(4)),
-                            ),
-                          );
-                        } else {
-                          Navigator.push(
-                              context,
-                              PageTransitions.slideHorizontal(
-                                  TimeLogDetailScreen(
-                                      log: log, tags: _pomodoroTags)));
-                        }
+                        PageTransitions.pushFromRect(
+                          context: context,
+                          page: TimeLogDetailScreen(
+                              log: log, tags: _pomodoroTags),
+                          sourceKey: logCardKey,
+                          sourceColor: _weekLazyLoadPlaceholderColor,
+                          sourceBorderRadius:
+                              const BorderRadius.all(Radius.circular(4)),
+                          placeholderIcon: Icons.receipt_long_rounded,
+                        );
                       },
                       child: Container(
                         key: logCardKey,
@@ -1086,6 +1069,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           eventsPerDay[weekday]!.add(_TimelineEvent(
               top: top,
               bottom: top + height,
+              collisionBottom: bottom,
               builder: (left, width) {
                 final double fontScale =
                     (width / (cellWidth - 2)).clamp(0.4, 1.0);
@@ -1328,12 +1312,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               visibleStart % 60,
               minuteHeight,
             );
-            var height = _timeToY(
-                  visibleEnd ~/ 60,
-                  visibleEnd % 60,
-                  minuteHeight,
-                ) -
-                top;
+            final bottom = _timeToY(
+              visibleEnd ~/ 60,
+              visibleEnd % 60,
+              minuteHeight,
+            );
+            var height = bottom - top;
             if (height < 18.0) height = 18.0;
 
             final colorScheme = Theme.of(context).colorScheme;
@@ -1344,9 +1328,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                     : Colors.white;
             final fixedScheduleCardKey =
                 _getFixedScheduleCardKey(schedule.id, weekday);
-            eventsPerDay[weekday]!.add(_TimelineEvent(
+          eventsPerDay[weekday]!.add(_TimelineEvent(
               top: top,
               bottom: top + height,
+              collisionBottom: bottom,
               builder: (left, width) {
                 final titleSize =
                     (height * 0.3 * (width / (cellWidth - 2)).clamp(0.4, 1.0))
@@ -1523,10 +1508,11 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 .toList()
                 .indexOf(record);
 
-            eventsPerDay[weekday]!.add(_TimelineEvent(
-                top: top,
-                bottom: top + height,
-                builder: (left, width) {
+          eventsPerDay[weekday]!.add(_TimelineEvent(
+              top: top,
+              bottom: top + height,
+              collisionBottom: bottom,
+              builder: (left, width) {
                   final double fontScale =
                       (width / (cellWidth - 2)).clamp(0.4, 1.0);
                   final double titleFontSize =
@@ -1564,29 +1550,17 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       },
                       child: GestureDetector(
                         onTap: () {
-                          final renderBox = pomCardKey.currentContext
-                              ?.findRenderObject() as RenderBox?;
-                          if (renderBox != null) {
-                            final rect = renderBox.localToGlobal(Offset.zero) &
-                                renderBox.size;
-                            Navigator.push(
-                              context,
-                              ContainerTransformRoute(
-                                page: PomodoroDetailScreen(
-                                    record: record, tags: _pomodoroTags),
-                                sourceRect: rect,
-                                sourceColor: pomColor,
-                                sourceBorderRadius:
-                                    const BorderRadius.all(Radius.circular(4)),
-                              ),
-                            );
-                          } else {
-                            Navigator.push(
-                                context,
-                                PageTransitions.slideHorizontal(
-                                    PomodoroDetailScreen(
-                                        record: record, tags: _pomodoroTags)));
-                          }
+                          PageTransitions.pushFromRect(
+                            context: context,
+                            page: PomodoroDetailScreen(
+                                record: record, tags: _pomodoroTags),
+                            sourceKey: pomCardKey,
+                            sourceColor: _weekLazyLoadPlaceholderColor,
+                            sourceBorderRadius: const BorderRadius.all(
+                              Radius.circular(4),
+                            ),
+                            placeholderIcon: Icons.timer_outlined,
+                          );
                         },
                         child: Container(
                           key: pomCardKey,
@@ -1681,8 +1655,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 endMinutes.clamp(startHour * 60, endHour * 60).toInt();
             final top =
                 _timeToY(visibleStart ~/ 60, visibleStart % 60, minuteHeight);
-            var height =
-                _timeToY(visibleEnd ~/ 60, visibleEnd % 60, minuteHeight) - top;
+            final bottom =
+                _timeToY(visibleEnd ~/ 60, visibleEnd % 60, minuteHeight);
+            var height = bottom - top;
             if (height < 18.0) height = 18.0;
             final color = event.colorValue == null
                 ? Theme.of(context).colorScheme.tertiary.withValues(alpha: 0.78)
@@ -1693,9 +1668,10 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               surface: 'week-timed',
             );
 
-            eventsPerDay[weekday]!.add(_TimelineEvent(
+          eventsPerDay[weekday]!.add(_TimelineEvent(
               top: top,
               bottom: top + height,
+              collisionBottom: bottom,
               builder: (left, width) {
                 final titleSize =
                     (height * 0.28 * (width / (cellWidth - 2)).clamp(0.4, 1.0))
@@ -1825,34 +1801,18 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   },
                   child: GestureDetector(
                     onTap: () {
-                      final renderBox = cardKey.currentContext
-                          ?.findRenderObject() as RenderBox?;
-                      if (renderBox != null) {
-                        final rect = renderBox.localToGlobal(Offset.zero) &
-                            renderBox.size;
-                        Navigator.push(
-                          context,
-                          ContainerTransformRoute(
-                            page: CourseDetailScreen(
-                              course: course,
-                              courseSchedule: _allCourses,
-                            ),
-                            sourceRect: rect,
-                            sourceColor: bgColor.withValues(alpha: 0.95),
-                            sourceBorderRadius:
-                                const BorderRadius.all(Radius.circular(4)),
-                          ),
-                        );
-                      } else {
-                        Navigator.push(
-                            context,
-                            PageTransitions.slideHorizontal(
-                              CourseDetailScreen(
-                                course: course,
-                                courseSchedule: _allCourses,
-                              ),
-                            ));
-                      }
+                      PageTransitions.pushFromRect(
+                        context: context,
+                        page: CourseDetailScreen(
+                          course: course,
+                          courseSchedule: _allCourses,
+                        ),
+                        sourceKey: cardKey,
+                        sourceColor: _weekLazyLoadPlaceholderColor,
+                        sourceBorderRadius:
+                            const BorderRadius.all(Radius.circular(4)),
+                        placeholderIcon: Icons.calendar_month_rounded,
+                      );
                     },
                     child: Container(
                       key: cardKey,
@@ -1925,7 +1885,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             for (int i = e.columnIndex + 1; i < columns.length; i++) {
               bool overlap = false;
               for (var other in columns[i]) {
-                if (other.top < e.bottom && other.bottom > e.top) {
+                if (other.top < e.collisionBottom &&
+                    other.collisionBottom > e.top) {
                   overlap = true;
                   break;
                 }
@@ -1940,13 +1901,13 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         }
 
         currentGroup.add(event);
-        if (event.bottom > groupBottom) {
-          groupBottom = event.bottom;
+        if (event.collisionBottom > groupBottom) {
+          groupBottom = event.collisionBottom;
         }
 
         bool placed = false;
         for (int i = 0; i < columns.length; i++) {
-          if (columns[i].last.bottom <= event.top) {
+          if (columns[i].last.collisionBottom <= event.top) {
             columns[i].add(event);
             event.columnIndex = i;
             placed = true;
@@ -1965,7 +1926,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         for (int i = e.columnIndex + 1; i < columns.length; i++) {
           bool overlap = false;
           for (var other in columns[i]) {
-            if (other.top < e.bottom && other.bottom > e.top) {
+            if (other.top < e.collisionBottom &&
+                other.collisionBottom > e.top) {
               overlap = true;
               break;
             }
