@@ -39,6 +39,22 @@ bool _hasRadius(WidgetTester tester, double value) {
   return _clipRadii(tester).any((r) => (r - value).abs() < 0.01);
 }
 
+double _containerTransformWidth(WidgetTester tester) {
+  final candidates = tester
+      .widgetList<Positioned>(
+        find.byType(Positioned, skipOffstage: false),
+      )
+      .where((positioned) => positioned.width != null)
+      .map((positioned) => positioned.width!)
+      .where((width) => width >= 120.0 && width <= 800.0)
+      .toList();
+
+  if (candidates.isEmpty) {
+    throw StateError('Container transform bounds were not found');
+  }
+  return candidates.reduce((a, b) => a > b ? a : b);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -294,6 +310,68 @@ void main() {
       await tester.pump();
 
       expect(find.text('📖', skipOffstage: false), findsOneWidget);
+    });
+
+    testWidgets('container transform closes with a nonlinear curve',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'enable_lazy_load': false,
+        'animation_duration': 400,
+      });
+      await PageTransitions.init();
+
+      final navigatorKey = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigatorKey,
+          theme: ThemeData(pageTransitionsTheme: PageTransitions.theme),
+          home: Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () => navigatorKey.currentState!.push(
+                  ContainerTransformRoute<void>(
+                    page: const SizedBox.expand(),
+                    sourceRect: const Rect.fromLTWH(40, 40, 120, 80),
+                    sourceColor: Colors.blue,
+                  ),
+                ),
+                child: const Text('go'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('go'));
+      await tester.pumpAndSettle();
+      expect(_containerTransformWidth(tester), closeTo(800.0, 0.01));
+      expect(
+        tester
+            .widget<SnapshotWidget>(
+              find.byType(SnapshotWidget, skipOffstage: false),
+            )
+            .controller
+            .allowSnapshotting,
+        isFalse,
+      );
+
+      navigatorKey.currentState!.pop();
+      await tester.pump();
+      expect(
+        tester
+            .widget<SnapshotWidget>(
+              find.byType(SnapshotWidget, skipOffstage: false),
+            )
+            .controller
+            .allowSnapshotting,
+        isTrue,
+      );
+      // Reverse duration is 300ms. At one third of the close animation, the
+      // eased curve should have collapsed substantially more than a linear
+      // interpolation would (573px from 800px to the 120px source width).
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(_containerTransformWidth(tester), lessThan(500.0));
     });
   });
 }
