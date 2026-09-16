@@ -946,6 +946,7 @@ class _ContainerTransformWidget extends StatefulWidget {
 
 class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
   bool _contentVisible = false;
+  bool _entranceCompleted = false;
   BorderRadius _screenCornerRadii = BorderRadius.zero;
   late final CurvedAnimation _forwardCurve;
   late final CurvedAnimation _backgroundCurve;
@@ -970,13 +971,18 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
     );
     _contentSnapshot = SnapshotController();
     widget.animation.addStatusListener(_handleAnimationStatus);
+    _predictiveBackGestureProgress.addListener(
+      _handlePredictiveBackGestureProgress,
+    );
     if (_AnimSettings.lazyLoad) {
       // 懒加载：容器变换动画期间只显示来源色遮罩盒（类似启动遮罩），
       // 入场动画完成后一次性揭示页面内容。
       _contentVisible = false;
       widget.animation.addStatusListener(_revealOnEntranceCompleted);
+      widget.animation.addStatusListener(_handleLazyLoadAnimationStatus);
     } else {
       _contentVisible = true;
+      _entranceCompleted = true;
     }
   }
 
@@ -990,8 +996,9 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
 
   void _revealOnEntranceCompleted(AnimationStatus status) {
     if (status != AnimationStatus.completed) return;
+    _entranceCompleted = true;
     widget.animation.removeStatusListener(_revealOnEntranceCompleted);
-    if (mounted) setState(() => _contentVisible = true);
+    _setContentVisible(true);
   }
 
   void _handleAnimationStatus(AnimationStatus status) {
@@ -1002,10 +1009,49 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
     }
   }
 
+  void _setContentVisible(bool visible) {
+    if (!mounted || _contentVisible == visible) return;
+    setState(() => _contentVisible = visible);
+  }
+
+  void _handleLazyLoadAnimationStatus(AnimationStatus status) {
+    if (status == AnimationStatus.reverse) {
+      if (_entranceCompleted) {
+        _setContentVisible(false);
+        _contentSnapshot.allowSnapshotting = false;
+      }
+    } else if (status == AnimationStatus.forward) {
+      if (_entranceCompleted) {
+        _setContentVisible(true);
+      }
+    } else if (status == AnimationStatus.completed) {
+      _entranceCompleted = true;
+    }
+  }
+
+  void _handlePredictiveBackGestureProgress() {
+    if (ModalRoute.of(context)?.isCurrent != true) return;
+    if (_predictiveBackGestureProgress.value > 0.0) {
+      // Keep the page mounted throughout an interactive back gesture. The
+      // lazy-load mask is only shown after the gesture commits and the route
+      // animation enters [AnimationStatus.reverse]; unmounting here would
+      // rebuild the page when the gesture is cancelled.
+      if (_entranceCompleted) {
+        _contentSnapshot.allowSnapshotting = true;
+      }
+    } else if (widget.animation.status != AnimationStatus.reverse) {
+      _contentSnapshot.allowSnapshotting = false;
+    }
+  }
+
   @override
   void dispose() {
     widget.animation.removeStatusListener(_revealOnEntranceCompleted);
     widget.animation.removeStatusListener(_handleAnimationStatus);
+    widget.animation.removeStatusListener(_handleLazyLoadAnimationStatus);
+    _predictiveBackGestureProgress.removeListener(
+      _handlePredictiveBackGestureProgress,
+    );
     _contentSnapshot.dispose();
     _forwardCurve.dispose();
     _backgroundCurve.dispose();

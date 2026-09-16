@@ -284,13 +284,15 @@ void main() {
       });
       await PageTransitions.init();
 
+      final navigatorKey = GlobalKey<NavigatorState>();
       await tester.pumpWidget(
         MaterialApp(
+          navigatorKey: navigatorKey,
           theme: ThemeData(pageTransitionsTheme: PageTransitions.theme),
           home: Builder(
             builder: (context) => Center(
               child: TextButton(
-                onPressed: () => Navigator.of(context).push(
+                onPressed: () => navigatorKey.currentState!.push(
                   ContainerTransformRoute<void>(
                     page: const SizedBox.expand(),
                     sourceRect: const Rect.fromLTWH(40, 40, 120, 80),
@@ -309,6 +311,25 @@ void main() {
       await tester.tap(find.text('go'));
       await tester.pump();
 
+      expect(find.text('📖', skipOffstage: false), findsOneWidget);
+
+      await tester.pumpAndSettle();
+      expect(find.text('📖', skipOffstage: false), findsNothing);
+
+      await _sendBackGesture(tester, 'startBackGesture', progress: 0.5);
+      await _sendBackGesture(tester, 'updateBackGestureProgress',
+          progress: 0.5);
+      await tester.pump();
+      expect(find.text('📖', skipOffstage: false), findsNothing);
+      expect(find.byType(SnapshotWidget, skipOffstage: false), findsOneWidget);
+
+      await _sendBackGesture(tester, 'cancelBackGesture');
+      await tester.pumpAndSettle();
+      expect(find.text('📖', skipOffstage: false), findsNothing);
+      expect(find.byType(SnapshotWidget, skipOffstage: false), findsOneWidget);
+
+      navigatorKey.currentState!.pop();
+      await tester.pump();
       expect(find.text('📖', skipOffstage: false), findsOneWidget);
     });
 
