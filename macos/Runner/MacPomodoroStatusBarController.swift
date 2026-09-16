@@ -2025,6 +2025,13 @@ struct MacIslandSwiftUIView: View {
             && !model.nowPlayingTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var hasActiveActivity: Bool {
+        model.activityActive
+            && !model.activityTitle
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+    }
+
     private var compactPriorityActivityTitle: String {
         if model.activityActive,
            !model.activityTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -2740,7 +2747,9 @@ struct MacIslandSwiftUIView: View {
 
     var expandedActivityView: some View {
         Group {
-            if model.isIdle {
+            // Media playback also makes the compact island non-idle. It must
+            // not make an empty activity payload render as an ongoing task.
+            if !hasActiveActivity {
                 VStack(spacing: 12) {
                     HStack(spacing: 10) {
                         Image(systemName: "checkmark.circle.fill")
@@ -3999,18 +4008,6 @@ class MacPomodoroStatusBarController {
         view.nowPlayingIsPlaying = nowPlayingSnapshot.isPlaying
         view.nowPlayingLyrics = nowPlayingSnapshot.lyrics
         updateExpansionState(view, expanded: expanded, detailed: detailed)
-        // SwiftUI handles accessibility
-        // SwiftUI handles accessibility
-        // view.setAccessibilityLabel("CountDownTodo 灵动岛")
-        if isPomodoroActive {
-            let activityValue = hasActivity ? "，同时进行：\(activityTitle)" : ""
-            let reminderValue = hasReminder ? "，提醒：\(view.reminderTitle)" : ""
-            // view.setAccessibilityValue("\(phase == "breaking" ? "休息" : "专注")，\(view.timeText)\(reminderValue)\(activityValue)")
-        } else if hasReminder {
-            // view.setAccessibilityValue("提醒：\(view.reminderTitle)，\(view.reminderBody)")
-        } else {
-            // view.setAccessibilityValue("\(view.activityCategory)，\(activityTitle)，\(view.activityRemainingText)")
-        }
 
         let collapsedNotchWidth = geometry.notchWidth > 0 ? geometry.notchWidth : 180
         // 收起态只在物理刘海两侧各保留约 80pt。旧的 430pt 下限会覆盖
@@ -4024,7 +4021,6 @@ class MacPomodoroStatusBarController {
             : 68
         let compactHeight = compactBaseHeight
             + (hasCompactLyrics ? macCompactLyricsHeight : 0)
-        let focusWithActivity = isPomodoroActive && hasActivity
         let focusWithReminder = isPomodoroActive && hasReminder
         let expandedWidthFloor: CGFloat = geometry.hasNotch
             ? max(360, geometry.notchWidth + 80)
@@ -4036,8 +4032,7 @@ class MacPomodoroStatusBarController {
             )
             : compactWidth
         let height: CGFloat
-        let widthStr: CGFloat = width
-        
+
         let hasNotch = geometry.hasNotch
         let topInset = hasNotch ? max(geometry.topInset, 28) : 6
         
