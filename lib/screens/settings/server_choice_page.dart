@@ -92,7 +92,6 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
                     _buildServerOption(
                       value: ApiService.serverChoiceAliyunDirect,
                       title: '阿里云直连（HTTP）',
-                      endpoint: ApiService.aliyunProdUrl,
                       description: '优点：链路更短，通常延迟更低；不依赖 Cloudflare 中转。\n'
                           '注意：客户端到服务器之间不是加密连接，不建议在公共 Wi-Fi 等不可信网络下使用。',
                       icon: Icons.speed_outlined,
@@ -101,7 +100,6 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
                     _buildServerOption(
                       value: ApiService.serverChoiceCloudflare,
                       title: 'Cloudflare 中转（HTTPS）',
-                      endpoint: ApiService.aliyunCloudflareUrl,
                       description: '优点：客户端到中转入口使用 HTTPS，兼容性和公共网络安全性更好。\n'
                           '不足：多经过一层中转，可能增加少量延迟，并依赖 Cloudflare 线路与代理配置。',
                       icon: Icons.shield_outlined,
@@ -164,7 +162,6 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
   Widget _buildServerOption({
     required String value,
     required String title,
-    required String endpoint,
     required String description,
     required IconData icon,
   }) {
@@ -218,15 +215,6 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
                       color: titleColor,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  SelectableText(
-                    endpoint,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: colorScheme.onSurfaceVariant,
-                      fontFamily: 'monospace',
                     ),
                   ),
                   const SizedBox(height: 8),
