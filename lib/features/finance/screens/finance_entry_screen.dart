@@ -6,6 +6,7 @@ import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../services/finance_storage.dart';
 import '../services/finance_text_parser.dart';
+import '../widgets/finance_amount_calculator.dart';
 import '../widgets/finance_catalog_editor.dart';
 
 class _FinanceOptionSelection<T> {
@@ -48,6 +49,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   String? _categoryUuid;
   String? _paymentMethodUuid;
   String? _selectedTemplateUuid;
+  String? _amountExpression;
   List<FinanceTransaction> _existingInstallments = const [];
   FinanceTransaction? _originalTransaction;
   int _remainingRefundableMinor = 0;
@@ -177,6 +179,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         _existingInstallments = installmentGroup;
         _type = first.type;
         _date = dateFromKey(first.transactionDate);
+        _amountExpression = null;
         _amountController.text = formatFinanceAmount(total, withSymbol: false);
         _merchantController.text = first.merchant ?? '';
         _noteController.text = first.note ?? '';
@@ -196,6 +199,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
             originalTransaction != null &&
             _amountController.text.trim().isEmpty &&
             remainingRefundableMinor > 0) {
+          _amountExpression = null;
           _amountController.text = formatFinanceAmount(
             remainingRefundableMinor,
             withSymbol: false,
@@ -420,6 +424,41 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     );
   }
 
+  void _ensureFocusedFieldVisible() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final focusedContext = FocusManager.instance.primaryFocus?.context;
+      if (focusedContext == null) return;
+      Scrollable.ensureVisible(
+        focusedContext,
+        alignment: 0.2,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  Future<void> _showAmountCalculator() async {
+    if (_isSaving) return;
+    _dismissKeyboard();
+    final result = await showFinanceAmountCalculator(
+      context,
+      initialExpression: _amountExpression ?? _amountController.text,
+    );
+    _dismissKeyboard();
+    if (!mounted || result == null) return;
+    _amountExpression = result.expression;
+    _amountController.text = result.amount;
+    _amountController.selection = TextSelection.collapsed(
+      offset: result.amount.length,
+    );
+    _appendCalculationToNote(
+      expression: result.expression,
+      amount: result.amount,
+    );
+    _formKey.currentState?.validate();
+  }
+
   Future<void> _pickDate() async {
     _dismissKeyboard();
     final picked = await showDatePicker(
@@ -459,6 +498,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     setState(() {
       _type = draft.type;
       _date = dateFromKey(draft.transactionDate);
+      _amountExpression = null;
       _amountController.text =
           formatFinanceAmount(draft.amountMinor, withSymbol: false);
       _merchantController.text = draft.merchant ?? '';
@@ -681,7 +721,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       timezoneOffsetMinutes:
           old?.timezoneOffsetMinutes ?? DateTime.now().timeZoneOffset.inMinutes,
       merchant: _emptyToNull(_merchantController.text),
-      note: _emptyToNull(_noteController.text),
+      note: _noteWithCalculation(),
       source: old?.source ??
           widget.initialDraft?.source ??
           FinanceEntrySource.manual,
@@ -734,6 +774,55 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   String? _emptyToNull(String value) {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+
+  String? _noteWithCalculation() {
+    return _noteWithExpression(
+      noteText: _noteController.text,
+      expression: _amountExpression,
+      amount: _amountController.text,
+    );
+  }
+
+  String? _noteWithExpression({
+    required String noteText,
+    required String? expression,
+    required String amount,
+  }) {
+    final note = _emptyToNull(noteText);
+    final trimmedExpression = expression?.trim();
+    if (expression == null ||
+        trimmedExpression == null ||
+        trimmedExpression.isEmpty ||
+        !RegExp(r'[+\-*/()]').hasMatch(trimmedExpression)) {
+      return note;
+    }
+
+    final trimmedAmount = amount.trim();
+    if (trimmedAmount.isEmpty) return note;
+    final calculationLine = '计算：$trimmedExpression = $trimmedAmount';
+    if (note == null) return calculationLine;
+    final hasSameLine = note
+        .split(RegExp(r'\r?\n'))
+        .any((line) => line.trim() == calculationLine);
+    return hasSameLine ? note : '$note\n$calculationLine';
+  }
+
+  void _appendCalculationToNote({
+    required String expression,
+    required String amount,
+  }) {
+    final current = _noteController.text;
+    final next = _noteWithExpression(
+      noteText: current,
+      expression: expression,
+      amount: amount,
+    );
+    if (next == null || next == current) return;
+    _noteController.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
+    );
   }
 
   void _showError(String message) {
@@ -792,6 +881,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     FloatingLabelBehavior? floatingLabelBehavior,
     EdgeInsetsGeometry? contentPadding,
     TextStyle? prefixStyle,
+    Widget? suffixIcon,
   }) {
     final outline = OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
@@ -808,6 +898,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           : Icon(prefixIcon, size: 21, color: colorScheme.onSurfaceVariant),
       counterText: counterText,
       suffixText: suffixText,
+      suffixIcon: suffixIcon,
       alignLabelWithHint: alignLabelWithHint,
       floatingLabelBehavior: floatingLabelBehavior,
       isDense: true,
@@ -1519,9 +1610,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     required bool isWide,
   }) {
     final merchant = TextFormField(
+      key: const ValueKey('finance-merchant-field'),
       controller: _merchantController,
       textInputAction: TextInputAction.next,
       maxLength: 80,
+      onTap: _ensureFocusedFieldVisible,
       decoration: _fieldDecoration(
         colorScheme,
         labelText: '商家（可选）',
@@ -1529,9 +1622,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       ),
     );
     final note = TextFormField(
+      key: const ValueKey('finance-note-field'),
       controller: _noteController,
       maxLines: 2,
       maxLength: 300,
+      onTap: _ensureFocusedFieldVisible,
       decoration: _fieldDecoration(
         colorScheme,
         labelText: '备注（可选）',
@@ -1583,7 +1678,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
@@ -1636,14 +1731,13 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                         ],
                         const SizedBox(height: 20),
                         TextFormField(
+                          key: const ValueKey('finance-amount-field'),
                           controller: _amountController,
                           autofocus: false,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                                RegExp(r'[0-9.,]')),
-                          ],
+                          readOnly: true,
+                          showCursor: false,
+                          keyboardType: TextInputType.none,
+                          onTap: _isSaving ? null : _showAmountCalculator,
                           decoration: _fieldDecoration(
                             colorScheme,
                             labelText: _installmentEnabled ? '分期总额' : '金额',
@@ -1660,6 +1754,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                               color: colorScheme.primary,
                               fontSize: 22,
                               fontWeight: FontWeight.w700,
+                            ),
+                            suffixIcon: Icon(
+                              Icons.calculate_outlined,
+                              color: colorScheme.primary,
                             ),
                           ),
                           style: TextStyle(
@@ -1992,6 +2090,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     setState(() {
       _selectedTemplateUuid = selected.uuid;
       _type = selected.type;
+      _amountExpression = null;
       _amountController.text =
           formatFinanceAmount(selected.amountMinor, withSymbol: false);
       _merchantController.text = selected.merchant ?? '';

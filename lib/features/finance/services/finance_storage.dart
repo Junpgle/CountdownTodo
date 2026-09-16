@@ -17,6 +17,8 @@ abstract final class FinanceStorage {
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
   @visibleForTesting
   static Database? databaseOverride;
+  static Database? _readyDatabase;
+  static Future<void>? _readyFuture;
 
   static Future<Database> get _database async =>
       databaseOverride ?? await DatabaseHelper.instance.database;
@@ -36,42 +38,89 @@ abstract final class FinanceStorage {
 
   static Future<void> ensureReady() async {
     final db = await _database;
-    for (final raw in FinanceDefaults.categories) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      await db.insert(
-        'finance_categories',
-        {
-          'uuid': raw['uuid'],
-          'name': raw['name'],
-          'type': raw['type'],
-          'icon': raw['icon'],
-          'icon_customized': 0,
-          'parent_uuid': raw['parent_uuid'],
-          'is_system': 1,
-          'is_archived': 0,
-          'is_deleted': 0,
-          'sort_order': raw['sort_order'],
-          'version': 1,
-          'created_at': now,
-          'updated_at': now,
-          'pending_sync': 0,
-        },
-        conflictAlgorithm: ConflictAlgorithm.ignore,
-      );
-      await db.update(
-        'finance_categories',
-        {
-          'name': raw['name'],
-          'type': raw['type'],
-          'parent_uuid': raw['parent_uuid'],
-          'is_archived': 0,
-          'is_deleted': 0,
-          'sort_order': raw['sort_order'],
-        },
-        where: 'uuid = ? AND is_system = 1',
-        whereArgs: [raw['uuid']],
-      );
+    if (identical(_readyDatabase, db)) {
+      await _readyFuture;
+      await _repairLegacyRefundCategories(db);
+      return;
     }
+
+    final ready = _ensureReadyFor(db);
+    _readyDatabase = db;
+    _readyFuture = ready;
+    try {
+      await ready;
+      await _repairLegacyRefundCategories(db);
+    } catch (_) {
+      if (identical(_readyDatabase, db) && identical(_readyFuture, ready)) {
+        _readyDatabase = null;
+        _readyFuture = null;
+      }
+      rethrow;
+    }
+  }
+
+  static Future<void> _ensureReadyFor(Database db) async {
+    await db.transaction((txn) async {
+      for (final raw in FinanceDefaults.categories) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        await txn.insert(
+          'finance_categories',
+          {
+            'uuid': raw['uuid'],
+            'name': raw['name'],
+            'type': raw['type'],
+            'icon': raw['icon'],
+            'icon_customized': 0,
+            'parent_uuid': raw['parent_uuid'],
+            'is_system': 1,
+            'is_archived': 0,
+            'is_deleted': 0,
+            'sort_order': raw['sort_order'],
+            'version': 1,
+            'created_at': now,
+            'updated_at': now,
+            'pending_sync': 0,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+        await txn.update(
+          'finance_categories',
+          {
+            'name': raw['name'],
+            'type': raw['type'],
+            'parent_uuid': raw['parent_uuid'],
+            'is_archived': 0,
+            'is_deleted': 0,
+            'sort_order': raw['sort_order'],
+          },
+          where: 'uuid = ? AND is_system = 1',
+          whereArgs: [raw['uuid']],
+        );
+      }
+      for (final raw in FinanceDefaults.paymentMethods) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        await txn.insert(
+          'finance_payment_methods',
+          {
+            'uuid': raw['uuid'],
+            'name': raw['name'],
+            'icon': raw['icon'],
+            'is_system': 1,
+            'is_archived': 0,
+            'is_deleted': 0,
+            'sort_order': raw['sort_order'],
+            'version': 1,
+            'created_at': now,
+            'updated_at': now,
+            'pending_sync': 0,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    });
+  }
+
+  static Future<void> _repairLegacyRefundCategories(Database db) async {
     final migrationNow = DateTime.now().millisecondsSinceEpoch;
     await db.rawUpdate(
       '''
@@ -94,26 +143,6 @@ abstract final class FinanceStorage {
         migrationNow,
       ],
     );
-    for (final raw in FinanceDefaults.paymentMethods) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      await db.insert(
-        'finance_payment_methods',
-        {
-          'uuid': raw['uuid'],
-          'name': raw['name'],
-          'icon': raw['icon'],
-          'is_system': 1,
-          'is_archived': 0,
-          'is_deleted': 0,
-          'sort_order': raw['sort_order'],
-          'version': 1,
-          'created_at': now,
-          'updated_at': now,
-          'pending_sync': 0,
-        },
-        conflictAlgorithm: ConflictAlgorithm.ignore,
-      );
-    }
   }
 
   static Future<List<FinanceTransaction>> getTransactions({

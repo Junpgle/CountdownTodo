@@ -23,6 +23,14 @@ import 'finance_text_recognition_screen.dart';
 import 'finance_trash_screen.dart';
 import 'finance_transaction_detail_screen.dart';
 
+typedef _FinanceHomeData = ({
+  List<FinanceTransaction> transactions,
+  FinanceSummary summary,
+  List<FinanceCategory> categories,
+  List<FinancePaymentMethod> paymentMethods,
+  List<FinanceTransaction> overviewTransactions,
+});
+
 class FinanceHomeScreen extends StatefulWidget {
   final String username;
   final bool openQuickEntry;
@@ -46,10 +54,13 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   FinanceSummary _summary = const FinanceSummary();
   String _keyword = '';
   FinanceTransactionType? _filterType;
+  String? _categoryFilterUuid;
   int _selectedIndex = 0;
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
+  bool _maintenanceScheduled = false;
+  Future<void>? _maintenanceFuture;
   final GlobalKey _overviewAddActionKey = GlobalKey();
   final GlobalKey _bottomAddActionKey = GlobalKey();
 
@@ -81,43 +92,99 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       });
     }
     try {
-      try {
-        await FinanceAutomationService.reconcileCurrentPeriod();
-      } catch (_) {
-        // 自动化异常不应阻断已有账单的查看和手动记账。
-      }
-      try {
-        await AiUsageCostService.reconcileCurrentMonth();
-      } catch (_) {
-        // AI 费用补偿失败不应阻断已有账单的查看和手动记账。
-      }
-      final from = DateTime(_month.year, _month.month);
-      final to = DateTime(_month.year, _month.month + 1);
-      // 周视图需要覆盖月初前和月末后的完整自然周，避免边界日期被截断。
-      final overviewFrom = from.subtract(const Duration(days: 7));
-      final overviewTo = to.add(const Duration(days: 7));
-      final values = await Future.wait<dynamic>([
-        FinanceRepository.getTransactions(from: from, to: to),
-        FinanceRepository.getSummary(from: from, to: to),
-        FinanceRepository.getCategories(includeArchived: true),
-        FinanceRepository.getPaymentMethods(includeArchived: true),
-        FinanceRepository.getTransactions(from: overviewFrom, to: overviewTo),
-      ]);
+      final data = await _loadOverviewData();
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _transactions = values[0] as List<FinanceTransaction>;
-        _summary = values[1] as FinanceSummary;
-        _categories = values[2] as List<FinanceCategory>;
-        _paymentMethods = values[3] as List<FinancePaymentMethod>;
-        _overviewTransactions = values[4] as List<FinanceTransaction>;
+        _transactions = data.transactions;
+        _summary = data.summary;
+        _categories = data.categories;
+        _paymentMethods = data.paymentMethods;
+        _overviewTransactions = data.overviewTransactions;
         _isLoading = false;
       });
+      _startBackgroundMaintenance(generation);
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _isLoading = false;
         _loadError = error.toString();
       });
+    }
+  }
+
+  Future<_FinanceHomeData> _loadOverviewData() async {
+    final from = DateTime(_month.year, _month.month);
+    final to = DateTime(_month.year, _month.month + 1);
+    // 周视图需要覆盖月初前和月末后的完整自然周，避免边界日期被截断。
+    final overviewFrom = from.subtract(const Duration(days: 7));
+    final overviewTo = to.add(const Duration(days: 7));
+    final values = await Future.wait<dynamic>([
+      // 这个范围已经包含本月，后续在内存中切出本月账单，避免重复查询。
+      FinanceRepository.getTransactions(from: overviewFrom, to: overviewTo),
+      FinanceRepository.getCategories(includeArchived: true),
+      FinanceRepository.getPaymentMethods(includeArchived: true),
+    ]);
+    final overviewTransactions = values[0] as List<FinanceTransaction>;
+    final fromKey = dateKey(from);
+    final toKey = dateKey(to);
+    final transactions = overviewTransactions
+        .where((transaction) =>
+            transaction.transactionDate.compareTo(fromKey) >= 0 &&
+            transaction.transactionDate.compareTo(toKey) < 0)
+        .toList(growable: false);
+    return (
+      transactions: transactions,
+      summary: FinanceRepository.summarizeTransactions(transactions),
+      categories: values[1] as List<FinanceCategory>,
+      paymentMethods: values[2] as List<FinancePaymentMethod>,
+      overviewTransactions: overviewTransactions,
+    );
+  }
+
+  void _startBackgroundMaintenance(int generation) {
+    if (_maintenanceFuture != null || _maintenanceScheduled) return;
+    _maintenanceScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maintenanceScheduled = false;
+      if (!mounted ||
+          generation != _loadGeneration ||
+          _maintenanceFuture != null) {
+        return;
+      }
+      final future = _reconcileAfterFirstPaint(generation);
+      _maintenanceFuture = future;
+      unawaited(future);
+    });
+  }
+
+  Future<void> _reconcileAfterFirstPaint(int generation) async {
+    try {
+      var needsRefresh = false;
+      try {
+        needsRefresh =
+            await FinanceAutomationService.reconcileCurrentPeriod() > 0;
+      } catch (_) {
+        // 自动化异常不应阻断已有账单的查看和手动记账。
+      }
+      try {
+        needsRefresh =
+            await AiUsageCostService.reconcileCurrentMonth() || needsRefresh;
+      } catch (_) {
+        // AI 费用补偿失败不应阻断已有账单的查看和手动记账。
+      }
+      if (!needsRefresh || !mounted || generation != _loadGeneration) return;
+
+      final data = await _loadOverviewData();
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _transactions = data.transactions;
+        _summary = data.summary;
+        _categories = data.categories;
+        _paymentMethods = data.paymentMethods;
+        _overviewTransactions = data.overviewTransactions;
+      });
+    } catch (_) {
+      // 后台补偿失败不覆盖已经可见的首屏数据。
     }
   }
 
@@ -315,6 +382,15 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     _load();
   }
 
+  void _selectCategoryFromOverview(String categoryUuid) {
+    setState(() {
+      _categoryFilterUuid = categoryUuid;
+      // 概览中的分类都属于支出，避免沿用“收入”筛选导致下钻后看不到账单。
+      _filterType = null;
+      _selectedIndex = 1;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -451,6 +527,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                               addActionKey: _overviewAddActionKey,
                               onRefresh: _load,
                               onMonthChanged: _setMonth,
+                              onCategorySelected: _selectCategoryFromOverview,
                             ),
                             FinanceLedgerPanel(
                               topPadding: topBarHeight,
@@ -459,11 +536,14 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                               paymentMethods: _paymentMethodMap,
                               keyword: _keyword,
                               filterType: _filterType,
+                              categoryUuid: _categoryFilterUuid,
                               onOpenDetail: _openDetail,
                               onKeywordChanged: (value) =>
                                   setState(() => _keyword = value),
                               onFilterChanged: (value) =>
                                   setState(() => _filterType = value),
+                              onCategoryChanged: (value) =>
+                                  setState(() => _categoryFilterUuid = value),
                               onEdit: (transaction) =>
                                   _openEntry(transaction: transaction),
                               onDelete: _deleteTransaction,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
+import '../screens/finance_category_detail_screen.dart';
 
 /// Leaves enough scrollable room for the shared navigation bar and its bottom
 /// margin, so the final finance card can clear the bar completely.
@@ -22,6 +23,7 @@ class FinanceOverviewPanel extends StatefulWidget {
   final GlobalKey addActionKey;
   final Future<void> Function() onRefresh;
   final ValueChanged<DateTime>? onMonthChanged;
+  final ValueChanged<String>? onCategorySelected;
 
   const FinanceOverviewPanel({
     super.key,
@@ -34,6 +36,7 @@ class FinanceOverviewPanel extends StatefulWidget {
     required this.addActionKey,
     required this.onRefresh,
     this.onMonthChanged,
+    this.onCategorySelected,
   });
 
   @override
@@ -52,6 +55,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   GlobalKey get addActionKey => widget.addActionKey;
   Future<void> Function() get onRefresh => widget.onRefresh;
   ValueChanged<DateTime>? get onMonthChanged => widget.onMonthChanged;
+  ValueChanged<String>? get onCategorySelected => widget.onCategorySelected;
 
   @override
   void initState() {
@@ -81,10 +85,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final period = _currentPeriod;
-    final topCategories = period.summary.expenseByCategory.entries
-        .where((entry) => entry.value > 0)
-        .toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    final topCategories = _topExpenseCategories(period);
     final maxCategory = topCategories.isEmpty ? 1 : topCategories.first.value;
     final bottomPadding = financeBottomContentPaddingFor(context);
 
@@ -132,6 +133,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                         entry,
                         maxCategory,
                         colorScheme,
+                        period,
                       ),
                   ],
                 ),
@@ -477,45 +479,122 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
 
   Widget _buildCategoryBar(
     BuildContext context,
-    MapEntry<String, int> entry,
+    _FinanceCategoryTotal entry,
     int maxCategory,
     ColorScheme colorScheme,
+    _FinanceOverviewPeriod period,
   ) {
-    final category = categories[entry.key];
-    final categoryName = category == null
-        ? '未分类'
-        : financeCategoryDisplayName(category, categories.values);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 82,
-            child: Text(
-              category == null ? '未分类' : '${category.icon} $categoryName',
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                minHeight: 8,
-                value: entry.value / maxCategory,
-                backgroundColor: colorScheme.surfaceContainerHighest,
-                color: colorScheme.primary,
+    final category =
+        entry.categoryUuid == null ? null : categories[entry.categoryUuid];
+    final categoryName = category == null ? '未分类' : category.name;
+    final categoryKey = ValueKey(
+      'finance-overview-category-${entry.categoryUuid ?? 'uncategorized'}',
+    );
+    return Semantics(
+      button: true,
+      label: '查看$categoryName支出详情',
+      child: InkWell(
+        key: categoryKey,
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _openCategoryDetail(entry, period),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 82,
+                child: Text(
+                  category == null ? '未分类' : '${category.icon} $categoryName',
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    minHeight: 8,
+                    value: entry.value / maxCategory,
+                    backgroundColor: colorScheme.surfaceContainerHighest,
+                    color: colorScheme.primary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                formatFinanceAmount(entry.value),
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(width: 2),
+              Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          Text(
-            formatFinanceAmount(entry.value),
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-        ],
+        ),
       ),
     );
+  }
+
+  List<_FinanceCategoryTotal> _topExpenseCategories(
+    _FinanceOverviewPeriod period,
+  ) {
+    final totals = <String, int>{};
+    for (final transaction in period.transactions) {
+      final amount = switch (transaction.type) {
+        FinanceTransactionType.expense => transaction.amountMinor,
+        FinanceTransactionType.refund => -transaction.amountMinor,
+        FinanceTransactionType.income => 0,
+      };
+      if (amount == 0) continue;
+      final category = categories[transaction.categoryUuid];
+      final rootUuid = category == null ? '' : _rootCategory(category).uuid;
+      totals[rootUuid] = (totals[rootUuid] ?? 0) + amount;
+    }
+    final result = [
+      for (final entry in totals.entries)
+        if (entry.value > 0)
+          _FinanceCategoryTotal(
+            categoryUuid: entry.key.isEmpty ? null : entry.key,
+            value: entry.value,
+          ),
+    ];
+    result.sort((a, b) => b.value.compareTo(a.value));
+    return result;
+  }
+
+  FinanceCategory _rootCategory(FinanceCategory category) {
+    var current = category;
+    final visited = <String>{};
+    while (visited.add(current.uuid)) {
+      final parentUuid = current.parentUuid?.trim();
+      if (parentUuid == null || parentUuid.isEmpty) break;
+      final parent = categories[parentUuid];
+      if (parent == null || parent.type != current.type) break;
+      current = parent;
+    }
+    return current;
+  }
+
+  Future<void> _openCategoryDetail(
+    _FinanceCategoryTotal entry,
+    _FinanceOverviewPeriod period,
+  ) async {
+    final selectedCategoryUuid = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => FinanceCategoryDetailScreen(
+          periodTitle: period.title,
+          rootCategoryUuid: entry.categoryUuid,
+          transactions: period.transactions,
+          categories: categories,
+        ),
+      ),
+    );
+    if (selectedCategoryUuid != null && mounted) {
+      onCategorySelected?.call(selectedCategoryUuid);
+    }
   }
 
   Widget _buildSpendingChart(
@@ -718,9 +797,11 @@ class FinanceLedgerPanel extends StatefulWidget {
   final Map<String, FinancePaymentMethod> paymentMethods;
   final String keyword;
   final FinanceTransactionType? filterType;
+  final String? categoryUuid;
   final void Function(FinanceTransaction, GlobalKey) onOpenDetail;
   final ValueChanged<String> onKeywordChanged;
   final ValueChanged<FinanceTransactionType?> onFilterChanged;
+  final ValueChanged<String?>? onCategoryChanged;
   final ValueChanged<FinanceTransaction> onEdit;
   final ValueChanged<FinanceTransaction> onDelete;
   final ValueChanged<FinanceTransaction> onRefund;
@@ -733,9 +814,11 @@ class FinanceLedgerPanel extends StatefulWidget {
     required this.paymentMethods,
     required this.keyword,
     required this.filterType,
+    this.categoryUuid,
     required this.onOpenDetail,
     required this.onKeywordChanged,
     required this.onFilterChanged,
+    this.onCategoryChanged,
     required this.onEdit,
     required this.onDelete,
     required this.onRefund,
@@ -753,11 +836,13 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   Map<String, FinancePaymentMethod> get paymentMethods => widget.paymentMethods;
   String get keyword => widget.keyword;
   FinanceTransactionType? get filterType => widget.filterType;
+  String? get categoryUuid => widget.categoryUuid;
   void Function(FinanceTransaction, GlobalKey) get onOpenDetail =>
       widget.onOpenDetail;
   ValueChanged<String> get onKeywordChanged => widget.onKeywordChanged;
   ValueChanged<FinanceTransactionType?> get onFilterChanged =>
       widget.onFilterChanged;
+  ValueChanged<String?>? get onCategoryChanged => widget.onCategoryChanged;
   ValueChanged<FinanceTransaction> get onEdit => widget.onEdit;
   ValueChanged<FinanceTransaction> get onDelete => widget.onDelete;
   ValueChanged<FinanceTransaction> get onRefund => widget.onRefund;
@@ -770,6 +855,9 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   Widget build(BuildContext context) {
     final filtered = transactions.where((transaction) {
       if (filterType != null && transaction.type != filterType) return false;
+      if (categoryUuid != null && transaction.categoryUuid != categoryUuid) {
+        return false;
+      }
       if (keyword.trim().isEmpty) return true;
       final query = keyword.trim().toLowerCase();
       final category = categories[transaction.categoryUuid];
@@ -818,6 +906,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
               _buildFilterChip(context, '全部', null),
               for (final type in FinanceTransactionType.values)
                 _buildFilterChip(context, type.label, type),
+              if (categoryUuid != null) _buildCategoryFilterChip(context),
             ],
           ),
         ),
@@ -864,6 +953,25 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         label: Text(label),
         selected: filterType == type,
         onSelected: (_) => onFilterChanged(type),
+      ),
+    );
+  }
+
+  Widget _buildCategoryFilterChip(BuildContext context) {
+    final category = categories[categoryUuid];
+    final label = category == null
+        ? '分类筛选'
+        : '分类 · ${financeCategoryDisplayName(category, categories.values)}';
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: FilterChip(
+        key: const ValueKey('finance-ledger-category-filter'),
+        avatar: category == null ? null : Text(category.icon),
+        label: Text(label),
+        selected: true,
+        onSelected: onCategoryChanged == null
+            ? null
+            : (_) => onCategoryChanged?.call(null),
       ),
     );
   }
@@ -1024,7 +1132,9 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
               size: 48, color: colorScheme.onSurfaceVariant),
           const SizedBox(height: 12),
           Text(
-            keyword.isEmpty && filterType == null ? '本月还没有账单' : '没有匹配的账单',
+            keyword.isEmpty && filterType == null && categoryUuid == null
+                ? '本月还没有账单'
+                : '没有匹配的账单',
             style: TextStyle(color: colorScheme.onSurfaceVariant),
           ),
         ],
@@ -1055,6 +1165,16 @@ class _FinanceOverviewPeriod {
     required this.shortTitle,
     required this.summary,
     required this.transactions,
+  });
+}
+
+class _FinanceCategoryTotal {
+  final String? categoryUuid;
+  final int value;
+
+  const _FinanceCategoryTotal({
+    required this.categoryUuid,
+    required this.value,
   });
 }
 

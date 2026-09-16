@@ -71,6 +71,57 @@ abstract final class FinanceRepository {
     );
   }
 
+  /// Builds the same summary used by the overview from an already loaded list.
+  ///
+  /// Keeping this computation separate lets callers that already need the
+  /// overview range avoid issuing a second database query for the month.
+  static FinanceSummary summarizeTransactions(
+    Iterable<FinanceTransaction> transactions,
+  ) {
+    var income = 0;
+    var expense = 0;
+    var refund = 0;
+    var transactionCount = 0;
+    final expenseByCategory = <String, int>{};
+    final incomeByCategory = <String, int>{};
+    final expenseByDate = <String, int>{};
+
+    for (final transaction in transactions) {
+      transactionCount++;
+      final categoryUuid = transaction.categoryUuid ?? '';
+      switch (transaction.type) {
+        case FinanceTransactionType.income:
+          income += transaction.amountMinor;
+          incomeByCategory[categoryUuid] =
+              (incomeByCategory[categoryUuid] ?? 0) + transaction.amountMinor;
+        case FinanceTransactionType.expense:
+          expense += transaction.amountMinor;
+          expenseByCategory[categoryUuid] =
+              (expenseByCategory[categoryUuid] ?? 0) + transaction.amountMinor;
+          expenseByDate[transaction.transactionDate] =
+              (expenseByDate[transaction.transactionDate] ?? 0) +
+                  transaction.amountMinor;
+        case FinanceTransactionType.refund:
+          refund += transaction.amountMinor;
+          expenseByCategory[categoryUuid] =
+              (expenseByCategory[categoryUuid] ?? 0) - transaction.amountMinor;
+          expenseByDate[transaction.transactionDate] =
+              (expenseByDate[transaction.transactionDate] ?? 0) -
+                  transaction.amountMinor;
+      }
+    }
+
+    return FinanceSummary(
+      incomeMinor: income,
+      expenseMinor: expense,
+      refundMinor: refund,
+      transactionCount: transactionCount,
+      expenseByCategory: expenseByCategory,
+      incomeByCategory: incomeByCategory,
+      expenseByDate: expenseByDate,
+    );
+  }
+
   static Future<void> saveTransaction(FinanceTransaction transaction) async {
     await FinanceStorage.saveTransaction(transaction);
     try {

@@ -211,6 +211,39 @@ void main() {
     expect(summary.balanceMinor, 6200);
   });
 
+  test('已加载的交易列表可以直接生成概览汇总', () {
+    final summary = FinanceRepository.summarizeTransactions([
+      FinanceTransaction(
+        uuid: 'summary-income',
+        type: FinanceTransactionType.income,
+        amountMinor: 10000,
+        transactionDate: '2026-09-01',
+        categoryUuid: 'salary',
+      ),
+      FinanceTransaction(
+        uuid: 'summary-expense',
+        amountMinor: 5000,
+        transactionDate: '2026-09-02',
+        categoryUuid: 'food',
+      ),
+      FinanceTransaction(
+        uuid: 'summary-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 1200,
+        transactionDate: '2026-09-03',
+        categoryUuid: 'food',
+      ),
+    ]);
+
+    expect(summary.incomeMinor, 10000);
+    expect(summary.expenseMinor, 5000);
+    expect(summary.refundMinor, 1200);
+    expect(summary.netExpenseMinor, 3800);
+    expect(summary.expenseByCategory['food'], 3800);
+    expect(summary.expenseByDate['2026-09-02'], 5000);
+    expect(summary.expenseByDate['2026-09-03'], -1200);
+  });
+
   test('默认分类和付款方式使用稳定 ID', () {
     expect(
       FinanceDefaults.categories.map((item) => item['uuid']).toSet().length,

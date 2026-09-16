@@ -49,6 +49,7 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
   final _busyItems = <String>{};
   _CatalogSection _section = _CatalogSection.expense;
   _CatalogFilter _filter = _CatalogFilter.active;
+  final _expandedCategoryUuids = <String>{};
   bool _isAdding = false;
 
   bool get _isPayment => _section == _CatalogSection.payment;
@@ -60,48 +61,73 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
         _CatalogSection.payment => '付款方式',
       };
 
-  List<_CatalogEntry> get _entries => _isPayment
-      ? [
-          for (final method in widget.paymentMethods)
-            if (!method.isDeleted)
-              _CatalogEntry(
-                uuid: method.uuid,
-                name: method.name,
-                icon: method.icon,
-                isSystem: method.isSystem,
-                isArchived: method.isArchived,
-                onEdit: () => widget.onEditPaymentMethod(method),
-                onArchive: () => widget.onArchivePaymentMethod(method),
-                onRestore: () => widget.onRestorePaymentMethod(method),
-              ),
-        ]
-      : [
-          for (final category in widget.categories)
-            if (!category.isDeleted &&
-                category.type ==
-                    (_section == _CatalogSection.expense
-                        ? FinanceCategoryType.expense
-                        : FinanceCategoryType.income))
-              _CatalogEntry(
-                uuid: category.uuid,
-                name: category.name,
-                icon: category.icon,
-                isSystem: category.isSystem,
-                isArchived: category.isArchived,
-                parentUuid: category.parentUuid,
-                searchName:
-                    financeCategoryDisplayName(category, widget.categories),
-                onEdit: () => widget.onEditCategory(category),
-                onArchive: () => widget.onArchiveCategory(category),
-                onRestore: () => widget.onRestoreCategory(category),
-                onAddSubcategory:
-                    category.parentUuid?.trim().isNotEmpty == true ||
-                            category.isArchived ||
-                            widget.onAddSubcategory == null
-                        ? null
-                        : () => widget.onAddSubcategory!(category),
-              ),
-        ];
+  List<_CatalogEntry> get _entries {
+    if (_isPayment) {
+      return [
+        for (final method in widget.paymentMethods)
+          if (!method.isDeleted)
+            _CatalogEntry(
+              uuid: method.uuid,
+              name: method.name,
+              icon: method.icon,
+              isSystem: method.isSystem,
+              isArchived: method.isArchived,
+              onEdit: () => widget.onEditPaymentMethod(method),
+              onArchive: () => widget.onArchivePaymentMethod(method),
+              onRestore: () => widget.onRestorePaymentMethod(method),
+            ),
+      ];
+    }
+
+    final categoriesByUuid = <String, FinanceCategory>{
+      for (final category in widget.categories) category.uuid: category,
+    };
+    final type = _section == _CatalogSection.expense
+        ? FinanceCategoryType.expense
+        : FinanceCategoryType.income;
+    final entries = <_CatalogEntry>[];
+    for (final category in widget.categories) {
+      if (category.isDeleted || category.type != type) continue;
+      entries.add(
+        _CatalogEntry(
+          uuid: category.uuid,
+          name: category.name,
+          icon: category.icon,
+          isSystem: category.isSystem,
+          isArchived: category.isArchived,
+          parentUuid: category.parentUuid,
+          searchName: _categorySearchName(category, categoriesByUuid),
+          onEdit: () => widget.onEditCategory(category),
+          onArchive: () => widget.onArchiveCategory(category),
+          onRestore: () => widget.onRestoreCategory(category),
+          onAddSubcategory: category.parentUuid?.trim().isNotEmpty == true ||
+                  category.isArchived ||
+                  widget.onAddSubcategory == null
+              ? null
+              : () => widget.onAddSubcategory!(category),
+        ),
+      );
+    }
+    return entries;
+  }
+
+  String _categorySearchName(
+    FinanceCategory category,
+    Map<String, FinanceCategory> categoriesByUuid,
+  ) {
+    final names = <String>[];
+    final visited = <String>{};
+    FinanceCategory? current = category;
+    while (current != null && visited.add(current.uuid)) {
+      names.insert(0, current.name);
+      final parentUuid = current.parentUuid?.trim();
+      if (parentUuid == null || parentUuid.isEmpty) break;
+      final parent = categoriesByUuid[parentUuid];
+      if (parent == null || parent.type != current.type) break;
+      current = parent;
+    }
+    return names.join(' - ');
+  }
 
   bool _matchesFilter(_CatalogEntry entry, _CatalogFilter filter) =>
       switch (filter) {
@@ -129,6 +155,15 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
       _section = section;
       _filter = _CatalogFilter.active;
       _searchController.clear();
+      _expandedCategoryUuids.clear();
+    });
+  }
+
+  void _toggleCategoryExpanded(String uuid) {
+    setState(() {
+      if (!_expandedCategoryUuids.add(uuid)) {
+        _expandedCategoryUuids.remove(uuid);
+      }
     });
   }
 
@@ -377,15 +412,24 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
     final roots = entries
         .where((entry) => entry.parentUuid?.trim().isNotEmpty != true)
         .toList();
+    final childrenByParent = <String, List<_CatalogEntry>>{};
+    for (final entry in entries) {
+      final parentUuid = entry.parentUuid?.trim();
+      if (parentUuid == null || parentUuid.isEmpty) continue;
+      childrenByParent
+          .putIfAbsent(parentUuid, () => <_CatalogEntry>[])
+          .add(entry);
+    }
     final visibleUuids = visible.map((entry) => entry.uuid).toSet();
     final groups = <_CategoryGroup>[];
     final assigned = <String>{};
 
     for (final root in roots) {
-      final children = entries
-          .where((entry) => entry.parentUuid?.trim() == root.uuid)
-          .where((entry) => _matchesFilter(entry, _filter))
-          .toList();
+      final children = [
+        for (final child
+            in childrenByParent[root.uuid] ?? const <_CatalogEntry>[])
+          if (_matchesFilter(child, _filter)) child,
+      ];
       final rootMatches = visibleUuids.contains(root.uuid);
       final matchingChildren =
           children.where((entry) => visibleUuids.contains(entry.uuid)).toList();
@@ -433,7 +477,7 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                 for (final group in groups)
                   SizedBox(
                     width: width,
-                    child: _buildCategoryGroup(context, group),
+                    child: _buildCategoryGroup(context, group, query),
                   ),
               ],
             );
@@ -467,7 +511,8 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
     );
   }
 
-  Widget _buildCategoryGroup(BuildContext context, _CategoryGroup group) {
+  Widget _buildCategoryGroup(
+      BuildContext context, _CategoryGroup group, String query) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final parent = group.parent;
@@ -501,6 +546,10 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
       );
     }
 
+    final expanded = _expandedCategoryUuids.contains(parent.uuid) ||
+        (query.isNotEmpty &&
+            group.children.any((child) => _matchesSearch(child, query)));
+
     return Material(
       key: ValueKey('finance-catalog-item-${parent.uuid}'),
       color: colors.surfaceContainerLow,
@@ -513,10 +562,9 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           InkWell(
-            onTap: (parent.isSystem && _isPayment) ||
-                    _busyItems.contains(parent.uuid)
+            onTap: group.children.isEmpty
                 ? null
-                : () => _runAction(parent, parent.onEdit),
+                : () => _toggleCategoryExpanded(parent.uuid),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(14, 14, 10, 12),
               child: Row(
@@ -544,6 +592,22 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
                       ],
                     ),
                   ),
+                  if (group.children.isNotEmpty)
+                    Tooltip(
+                      message: expanded ? '收起二级分类' : '展开二级分类',
+                      child: Semantics(
+                        label: expanded ? '收起二级分类' : '展开二级分类',
+                        child: AnimatedRotation(
+                          key:
+                              ValueKey('finance-catalog-expand-${parent.uuid}'),
+                          turns: expanded ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 160),
+                          curve: Curves.easeOutCubic,
+                          child: Icon(Icons.expand_more_rounded,
+                              color: colors.onSurfaceVariant),
+                        ),
+                      ),
+                    ),
                   _buildEntryActions(context, parent),
                 ],
               ),
@@ -559,18 +623,26 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
               ),
             )
           else
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-              child: Column(
-                children: [
-                  Divider(
-                      height: 1,
-                      color: colors.outlineVariant.withValues(alpha: 0.5)),
-                  const SizedBox(height: 2),
-                  for (final child in group.children)
-                    _buildSubcategoryTile(context, child),
-                ],
-              ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: expanded
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                      child: Column(
+                        children: [
+                          Divider(
+                              height: 1,
+                              color:
+                                  colors.outlineVariant.withValues(alpha: 0.5)),
+                          const SizedBox(height: 2),
+                          for (final child in group.children)
+                            _buildSubcategoryTile(context, child),
+                        ],
+                      ),
+                    )
+                  : const SizedBox.shrink(),
             ),
         ],
       ),

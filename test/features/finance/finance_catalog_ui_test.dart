@@ -136,8 +136,16 @@ void main() {
     expect(find.text('一级分类 · 2'), findsOneWidget);
     expect(find.textContaining('个二级分类'), findsNWidgets(2));
     expect(
+        find.descendant(of: parent, matching: find.text('奶茶')), findsNothing);
+    await tester.tap(find.text('餐饮'));
+    await tester.pumpAndSettle();
+    expect(
         find.descendant(of: parent, matching: find.text('奶茶')), findsOneWidget);
     expect(find.text('餐饮 - 奶茶'), findsNothing);
+    await tester.tap(find.text('餐饮'));
+    await tester.pumpAndSettle();
+    expect(
+        find.descendant(of: parent, matching: find.text('奶茶')), findsNothing);
   });
 
   testWidgets('分类按收支分开，搜索与归档筛选不会显示已删除项目', (tester) async {
@@ -196,6 +204,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(edited, 'food');
     await tester.tap(find.text('咖啡'));
+    await tester.pumpAndSettle();
+    expect(edited, 'food');
+    await tester.tap(find.byTooltip('管理咖啡'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑'));
     await tester.pumpAndSettle();
     expect(edited, 'coffee');
     await tester.tap(find.byTooltip('管理咖啡'));

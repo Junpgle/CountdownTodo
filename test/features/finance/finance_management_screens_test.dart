@@ -179,7 +179,12 @@ Future<void> _pump(WidgetTester tester, Widget screen,
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   if (finder.evaluate().isEmpty) {
-    await tester.scrollUntilVisible(finder, 250, maxScrolls: 30);
+    await tester.scrollUntilVisible(
+      finder,
+      250,
+      maxScrolls: 30,
+      scrollable: find.byType(Scrollable).first,
+    );
   }
   // Keep controls below the transparent top-bar layer after pages begin
   // behind their app bars; the default alignment can place them at y=0.
@@ -273,6 +278,118 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_hasFocusedEditable(tester), isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('记一笔金额打开内置计算器并回填可编辑计算结果', (tester) async {
+    final db = await _seed(tester);
+    await _pump(tester, const FinanceEntryScreen());
+
+    await _tap(tester, _key('finance-note-field'));
+    await tester.enterText(_key('finance-note-field'), '晚餐');
+
+    final amountField = find.byKey(const ValueKey('finance-amount-field'));
+    expect(
+      tester
+          .widget<EditableText>(
+            find.descendant(
+                of: amountField, matching: find.byType(EditableText)),
+          )
+          .readOnly,
+      isTrue,
+    );
+    await _tap(tester, amountField);
+    expect(find.text('金额计算器'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('finance-calculator-key-clear')),
+        matching: find.text('清除'),
+      ),
+      findsOneWidget,
+    );
+
+    Future<void> tapCalculatorKey(String keyName) async {
+      await _tap(
+        tester,
+        find.byKey(ValueKey('finance-calculator-key-$keyName')),
+      );
+    }
+
+    await tapCalculatorKey('1');
+    await tapCalculatorKey('2');
+    await tapCalculatorKey('add');
+    await tapCalculatorKey('3');
+    await tapCalculatorKey('equals');
+    expect(find.text('使用结果 ¥15'), findsOneWidget);
+
+    await tapCalculatorKey('backspace');
+    await tapCalculatorKey('4');
+    await tapCalculatorKey('equals');
+    expect(find.text('使用结果 ¥16'), findsOneWidget);
+
+    await _tap(
+        tester, find.byKey(const ValueKey('finance-calculator-use-result')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextFormField>(amountField).controller!.text,
+      '16',
+    );
+    expect(
+      tester.widget<TextFormField>(_key('finance-note-field')).controller!.text,
+      '晚餐\n计算：12+4 = 16',
+    );
+    expect(_hasFocusedEditable(tester), isFalse);
+
+    await _tap(tester, amountField);
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('finance-calculator-expression')),
+          )
+          .controller!
+          .text,
+      '12+4',
+    );
+    tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+    await tester.pumpAndSettle();
+
+    await _tap(tester, _key('finance-merchant-field'));
+    await tester.enterText(_key('finance-merchant-field'), '便利店');
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+    final rows = await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'merchant = ?',
+        whereArgs: ['便利店'],
+      ),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['merchant'], '便利店');
+    expect(rows.single['note'], '晚餐\n计算：12+4 = 16');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('商家和备注输入时表单会为键盘留出可滚动空间', (tester) async {
+    await _seed(tester);
+    await _pump(
+      tester,
+      const FinanceEntryScreen(),
+      size: const Size(390, 844),
+      keyboard: 240,
+    );
+
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+    expect(scaffold.resizeToAvoidBottomInset, isTrue);
+    final noteField = _key('finance-note-field');
+    await _tap(tester, noteField);
+    expect(
+      tester.getBottomLeft(noteField).dy,
+      lessThanOrEqualTo(844 - 240),
+    );
     expect(tester.takeException(), isNull);
   });
 

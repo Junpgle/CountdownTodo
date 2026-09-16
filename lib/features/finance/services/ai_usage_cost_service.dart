@@ -770,9 +770,9 @@ abstract final class AiUsageCostService {
   ///
   /// 这一步既覆盖自动记账关闭期间积累的明细，也会把旧版本按日生成的
   /// AI 账单合并为本月账单，避免低于 1 分的 MiMo 调用永远无法出现在账本。
-  static Future<void> reconcileCurrentMonth({DateTime? now}) async {
+  static Future<bool> reconcileCurrentMonth({DateTime? now}) async {
     final settings = await _loadSettings();
-    if (!settings.autoLedger) return;
+    if (!settings.autoLedger) return false;
 
     final current = now ?? DateTime.now();
     final monthStart = DateTime(current.year, current.month);
@@ -785,18 +785,21 @@ abstract final class AiUsageCostService {
       'WHERE is_priced = 1 AND created_at >= ? AND created_at < ?',
       [monthStart.millisecondsSinceEpoch, monthEnd.millisecondsSinceEpoch],
     );
+    var changed = false;
     for (final row in providersAndModels) {
       final provider = row['provider']?.toString() ?? '';
       final model = row['model']?.toString() ?? '';
       if (provider.isEmpty || model.isEmpty) continue;
-      await _syncLedgerAggregate(
-        db: db,
-        monthStart: monthStart,
-        monthEnd: monthEnd,
-        provider: provider,
-        model: model,
-      );
+      changed = await _syncLedgerAggregate(
+            db: db,
+            monthStart: monthStart,
+            monthEnd: monthEnd,
+            provider: provider,
+            model: model,
+          ) ||
+          changed;
     }
+    return changed;
   }
 
   static int? _calculateCostMicros(
@@ -937,7 +940,7 @@ abstract final class AiUsageCostService {
     return (numerator + (divisor ~/ 2)) ~/ divisor;
   }
 
-  static Future<void> _syncLedgerAggregate({
+  static Future<bool> _syncLedgerAggregate({
     required Database db,
     required DateTime monthStart,
     required DateTime monthEnd,
@@ -959,7 +962,7 @@ abstract final class AiUsageCostService {
         )) ??
         0;
     final amountMinor = (totalMicros + (_microsPerFen ~/ 2)) ~/ _microsPerFen;
-    if (amountMinor <= 0) return;
+    if (amountMinor <= 0) return false;
 
     final allLinks = await db.query(
       'ai_usage_ledger_links',
@@ -1003,6 +1006,7 @@ abstract final class AiUsageCostService {
         );
     final shouldSaveTransaction =
         existing == null || existing.amountMinor != amountMinor;
+    var changed = shouldSaveTransaction;
     if (existing != null && shouldSaveTransaction) {
       transaction.amountMinor = amountMinor;
       transaction.markAsChanged();
@@ -1015,6 +1019,7 @@ abstract final class AiUsageCostService {
     for (final duplicate in linkedTransactions.values) {
       if (duplicate.uuid == transaction.uuid || duplicate.isDeleted) continue;
       await FinanceRepository.deleteTransaction(duplicate.uuid);
+      changed = true;
     }
     for (final link in links) {
       final key = link['ledger_key']?.toString() ?? '';
@@ -1035,6 +1040,7 @@ abstract final class AiUsageCostService {
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    return changed;
   }
 
   static String _monthlyLedgerKey(
