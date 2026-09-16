@@ -43,6 +43,15 @@ class FinanceSyncRequest {
               _isSystemFinanceUuid(item['uuid']?.toString()))) {
         return false;
       }
+      // Built-in category rows are created locally on every device. Only an
+      // explicit user icon override is a category change worth uploading;
+      // otherwise a new device's initialization timestamp could overwrite a
+      // cloud override during the first full sync.
+      if (key == 'categories' &&
+          _isSystemCategoryUuid(item['uuid']?.toString()) &&
+          !_asBool(item['icon_customized'] ?? item['iconCustomized'])) {
+        return false;
+      }
       if (fullSync) return true;
       // After schema V48 the marker is authoritative. This prevents a
       // downloaded row with a future device timestamp from being uploaded
@@ -55,7 +64,6 @@ class FinanceSyncRequest {
   Map<String, dynamic> get payload => {
         'finance_categories_changes': _changes(
           'categories',
-          excludeSystem: true,
         ),
         'finance_payment_methods_changes': _changes(
           'payment_methods',
@@ -335,7 +343,7 @@ abstract final class FinanceSyncService {
       if (raw is! List) continue;
       for (final item in raw.whereType<Map>()) {
         final map = Map<String, dynamic>.from(item);
-        if ((section == 'categories' || section == 'payment_methods') &&
+        if (section == 'payment_methods' &&
             (_asBool(map['is_system']) ||
                 _isSystemFinanceUuid(map['uuid']?.toString()))) {
           continue;
@@ -374,3 +382,6 @@ bool _asBool(dynamic value) {
 
 bool _isSystemFinanceUuid(String? uuid) =>
     uuid?.startsWith('finance-system-') == true;
+
+bool _isSystemCategoryUuid(String? uuid) =>
+    uuid?.startsWith('finance-system-category-') == true;

@@ -581,6 +581,7 @@ class DatabaseHelper {
         name TEXT NOT NULL,
         type TEXT NOT NULL DEFAULT 'expense',
         icon TEXT NOT NULL DEFAULT '📦',
+        icon_customized INTEGER NOT NULL DEFAULT 0,
         color_value INTEGER,
         parent_uuid TEXT,
         is_system INTEGER NOT NULL DEFAULT 0,
@@ -763,6 +764,14 @@ class DatabaseHelper {
       'finance_loans',
       'finance_loan_installments',
     ];
+    final categoryColumns =
+        await db.rawQuery('PRAGMA table_info(finance_categories)');
+    if (!categoryColumns.any((row) => row['name'] == 'icon_customized')) {
+      await db.execute(
+        'ALTER TABLE finance_categories '
+        'ADD COLUMN icon_customized INTEGER NOT NULL DEFAULT 0',
+      );
+    }
     for (final table in financeTables) {
       final columns = await db.rawQuery('PRAGMA table_info($table)');
       var addedPendingColumn = false;
@@ -959,7 +968,7 @@ class DatabaseHelper {
             if (oldVersion < 52) {
               await ensureAiUsageSchema(db);
             }
-            if (oldVersion < 51) {
+            if (oldVersion < 53) {
               await ensureFinanceSchema(db);
             }
             if (oldVersion < 44) {

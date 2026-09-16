@@ -45,6 +45,7 @@ abstract final class FinanceStorage {
           'name': raw['name'],
           'type': raw['type'],
           'icon': raw['icon'],
+          'icon_customized': 0,
           'parent_uuid': raw['parent_uuid'],
           'is_system': 1,
           'is_archived': 0,
@@ -62,7 +63,6 @@ abstract final class FinanceStorage {
         {
           'name': raw['name'],
           'type': raw['type'],
-          'icon': raw['icon'],
           'parent_uuid': raw['parent_uuid'],
           'is_archived': 0,
           'is_deleted': 0,
@@ -824,6 +824,44 @@ abstract final class FinanceStorage {
         parentUuid == null || parentUuid.isEmpty ? null : parentUuid;
     await ensureReady();
     final db = await _database;
+    final existingRows = await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: [category.uuid],
+      limit: 1,
+    );
+    if (existingRows.isNotEmpty) {
+      final existing = FinanceCategory.fromMap(existingRows.first);
+      if (existing.isSystem) {
+        // System categories keep their built-in identity and hierarchy. The
+        // only user-owned field is the icon, which is now a synced override.
+        category
+          ..isSystem = true
+          ..name = existing.name
+          ..type = existing.type
+          ..colorValue = existing.colorValue
+          ..parentUuid = existing.parentUuid
+          ..sortOrder = existing.sortOrder
+          ..isArchived = false
+          ..isDeleted = false
+          ..iconCustomized = true;
+        if (category.version <= existing.version ||
+            category.updatedAt <= existing.updatedAt) {
+          category
+            ..uuid = existing.uuid
+            ..createdAt = existing.createdAt
+            ..version = existing.version
+            ..updatedAt = existing.updatedAt
+            ..markAsChanged();
+        }
+      }
+    } else if (category.isSystem || _isSystemUuid(category.uuid)) {
+      throw ArgumentError.value(
+        category.uuid,
+        'uuid',
+        '系统分类只能使用内置分类标识',
+      );
+    }
     if (category.parentUuid != null) {
       if (category.parentUuid == category.uuid) {
         throw ArgumentError.value(
@@ -1625,16 +1663,47 @@ abstract final class FinanceStorage {
     for (final map in categoryMaps) {
       final item = FinanceCategory.fromMap(map);
       final oldUuid = item.uuid;
-      if (item.isSystem || _isSystemUuid(oldUuid)) {
+      if (_isSystemUuid(oldUuid)) {
+        // Built-in category identity remains local and trusted. A backup can
+        // restore a user's icon override, but cannot forge its name, type or
+        // hierarchy (or create a new system category).
+        if (!_isSystemCategoryUuid(oldUuid)) {
+          skipped++;
+          continue;
+        }
+        final existing = await _findByUuid(
+          db,
+          'finance_categories',
+          oldUuid,
+        );
+        if (existing == null || !item.iconCustomized) {
+          skipped++;
+          continue;
+        }
+        final current = FinanceCategory.fromMap(existing);
+        if (current.icon == item.icon) {
+          skipped++;
+          continue;
+        }
+        current
+          ..icon = item.icon
+          ..iconCustomized = true
+          ..markAsChanged();
+        await db.update(
+          'finance_categories',
+          _localValues(current.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [oldUuid],
+        );
+        updated++;
+        continue;
+      }
+      if (item.isSystem) {
         skipped++;
         continue;
       }
-      item.uuid = item.isSystem ? oldUuid : remap(oldUuid);
+      item.uuid = remap(oldUuid);
       item.parentUuid = _remapNullable(item.parentUuid, remap);
-      if (item.isSystem) {
-        item.isArchived = false;
-        item.isDeleted = false;
-      }
       final existing = await _findByUuid(
         db,
         'finance_categories',
@@ -1961,7 +2030,8 @@ abstract final class FinanceStorage {
   /// 将服务端返回的个人记账快照按 updated_at/version 合并到本地。
   ///
   /// 记账没有通用 op_logs，因此同步源必须使用一笔 SQLite 事务完成整批
-  /// upsert。系统分类和付款方式是客户端稳定默认数据，永远不接受云端覆盖。
+  /// upsert。系统分类的名称/层级仍由客户端内置定义，用户自定义图标
+  /// 则作为个人覆盖项接受云端合并；系统付款方式仍保持本地默认。
   static Future<int> mergeRemoteBundle(
     Map<String, dynamic> bundle, {
     Set<String> forceRemoteKeys = const {},
@@ -1969,11 +2039,14 @@ abstract final class FinanceStorage {
     await ensureReady();
     final categories = _listOfMaps(bundle['categories'])
         .map(FinanceCategory.fromMap)
-        .where((item) =>
-            !item.isSystem &&
-            !_isSystemUuid(item.uuid) &&
-            _isValidName(item.name))
-        .toList(growable: false);
+        .where((item) {
+      if (!_isValidName(item.name)) return false;
+      if (_isSystemUuid(item.uuid)) {
+        if (!_isSystemCategoryUuid(item.uuid)) return false;
+        return item.isSystem && item.iconCustomized;
+      }
+      return !item.isSystem;
+    }).toList(growable: false);
     final paymentMethods = _listOfMaps(bundle['payment_methods'])
         .map(FinancePaymentMethod.fromMap)
         .where((item) =>
@@ -2161,7 +2234,28 @@ abstract final class FinanceStorage {
         continue;
       }
       final current = FinanceCategory.fromMap(existing);
+      final isSystemOverride = item.isSystem &&
+          _isSystemCategoryUuid(item.uuid) &&
+          item.iconCustomized;
+      if (isSystemOverride && current.isSystem) {
+        // A freshly initialized device has a new local timestamp for its
+        // default row. It must not beat a cloud icon override solely because
+        // that timestamp is newer. A pending local override still follows
+        // normal LWW/conflict handling below.
+        item
+          ..name = current.name
+          ..type = current.type
+          ..colorValue = current.colorValue
+          ..parentUuid = current.parentUuid
+          ..sortOrder = current.sortOrder
+          ..isSystem = true
+          ..isArchived = false
+          ..isDeleted = false;
+      }
       if (!forceRemoteKeys.contains('categories:${item.uuid}') &&
+          !(isSystemOverride &&
+              !current.iconCustomized &&
+              !current.pendingSync) &&
           !_isIncomingWinner(item.updatedAt, item.version, current.updatedAt,
               current.version)) {
         continue;
@@ -2680,6 +2774,9 @@ abstract final class FinanceStorage {
   static bool _isValidName(String value) => value.trim().isNotEmpty;
 
   static bool _isSystemUuid(String uuid) => uuid.startsWith('finance-system-');
+
+  static bool _isSystemCategoryUuid(String uuid) =>
+      uuid.startsWith('finance-system-category-');
 
   static int _asInt(dynamic value) {
     if (value is num) return value.toInt();

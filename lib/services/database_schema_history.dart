@@ -11,10 +11,18 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 52;
+  static const int currentVersion = 53;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 53,
+      title: '记账分类自定义图标同步',
+      changes: [
+        '系统预设分类允许自定义图标，并在个人设备间云同步。',
+        '区分系统默认图标与用户修改，避免新设备初始化覆盖云端图标。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 52,
       title: 'MiMo 精确计费',
