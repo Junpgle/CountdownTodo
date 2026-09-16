@@ -1,10 +1,10 @@
 {
-  "version_code": 60208,
-  "version_name": "6.2.8",
+  "version_code": 60310,
+  "version_name": "6.3.10",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 6.2.8",
-    "description": "【新增】新增 AI 助手行为设置页，支持调整助手交互偏好。\n【优化】优化 AI 多模态识别、智能上下文和记账解析，修复空结果、错误分类、重复打开记账页及旧协议误建待办。\n【修复】图片分享识别持久化临时图片，避免外部分享文件过期导致识别失败。\n【修复】修复 Android 通知栏提前完成番茄钟后仍继续计时的问题。\n【优化】课表导入先校验登录与目标学期，支持多学期隔离，并为缺少时间的课程提供补全。\n【修复】修复多个学校课表解析器的周次、日期、时间和重复课程问题。\n【新增】Android 分享面板按用途拆分为课表导入、图片识别、记账导入和文件保存；文件保存保留原始字节。\n【修复】修复外部分享课表卡在处理中，增加读取、去重超时和安全收尾。\n【优化】macOS 灵动岛忽略剪贴板网址，减少无关网址触发。",
+    "title": "版本更新 6.3.10",
+    "description": "【新增】个人记账支持内置金额计算器，可直接输入四则运算并将计算过程写入备注。\n【新增】完善个人记账分类大类/小类管理、分类详情筛选与图标云同步，快速录入流程更完整。\n【新增】番茄钟支持专注期间勿扰，并同步专注状态与系统勿扰状态。\n【新增】课表支持固定日程，统一固定日程的数据生命周期、详情页和共享转场。\n【优化】完善多学期课表导入、共存/替换、云端读写和删除刷新，避免学期配置漂移。\n【修复】修复外部分享多文件处理、局域网同步确认、提醒调度所有权、待办账户归属及同步重复上传问题。\n【兼容】支持原生 HTTP 直连与历史迁移，统一阿里云直连和 HTTPS 中转线路。\n【优化】统一玻璃顶栏与内容避让，修复周视图、规划、习惯、屏幕时间和番茄钟统计首屏遮挡及多余空隙。\n【修复】修复课程时间轴相邻记录碰撞布局，并完善固定日程详情转场。\n【优化】优化懒加载返回、预测式返回和共享容器动画，提升页面生命周期稳定性。\n【适配】完善 macOS 自绘窗口、无标题栏、登录项、状态栏提醒和灵动岛显示。\n【优化】补充课程系列进度汇总，完善习惯中心同步与页面适配。",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "mac_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
@@ -15,6 +15,20 @@
     },
     "android_delta_packages": {
       "arm64-v8a": [
+        {
+          "from_version": "6.2.8",
+          "from_sha256": "cfbbb2394cca5258282a56c0ac152acaa2cf3672f50c23a7399c26abe40c017c",
+          "to_version": "6.3.10",
+          "to_sha256": "d32b25d856f55135fba4f2bc79a2ffe61aa943b8c7473b1419eedff151477c04",
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-6.2.8_to_6.3.10.patch",
+          "patch_size": 25352410,
+          "full_apk_size": 42637827,
+          "operation_count": 46,
+          "copied_bytes": 17286051,
+          "embedded_bytes": 25351776,
+          "algorithm": "apk-zip-local-spans",
+          "recommended": true
+        },
         {
           "from_version": "5.7.56",
           "from_sha256": "d7df94198a46732017e80988aa1a0fd66b87fdcea044ceeef3de8c2076ee6eec",
@@ -96,6 +110,24 @@
     "image_url": "https://gitee.com/Junpgle/CountdownTodo/raw/master/wallpapergitee/15.jpg"
   },
   "changelog_history": [
+    {
+      "version_name": "6.3.10",
+      "date": "2026-09-16",
+      "items": [
+        "【新增】个人记账支持内置金额计算器，可直接输入四则运算并将计算过程写入备注。",
+        "【新增】完善个人记账分类大类/小类管理、分类详情筛选与图标云同步，快速录入流程更完整。",
+        "【新增】番茄钟支持专注期间勿扰，并同步专注状态与系统勿扰状态。",
+        "【新增】课表支持固定日程，统一固定日程的数据生命周期、详情页和共享转场。",
+        "【优化】完善多学期课表导入、共存/替换、云端读写和删除刷新，避免学期配置漂移。",
+        "【修复】修复外部分享多文件处理、局域网同步确认、提醒调度所有权、待办账户归属及同步重复上传问题。",
+        "【兼容】支持原生 HTTP 直连与历史迁移，统一阿里云直连和 HTTPS 中转线路。",
+        "【优化】统一玻璃顶栏与内容避让，修复周视图、规划、习惯、屏幕时间和番茄钟统计首屏遮挡及多余空隙。",
+        "【修复】修复课程时间轴相邻记录碰撞布局，并完善固定日程详情转场。",
+        "【优化】优化懒加载返回、预测式返回和共享容器动画，提升页面生命周期稳定性。",
+        "【适配】完善 macOS 自绘窗口、无标题栏、登录项、状态栏提醒和灵动岛显示。",
+        "【优化】补充课程系列进度汇总，完善习惯中心同步与页面适配。"
+      ]
+    },
     {
       "version_name": "6.2.8",
       "date": "2026-09-06",
