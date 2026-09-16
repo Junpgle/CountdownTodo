@@ -84,8 +84,8 @@ export const Hero = ({ version, date }: { version?: string, date?: string }) => 
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                 <Download className="w-7 h-7" /> 立即下载
               </a>
-              <a href="#download" className="group flex items-center justify-center gap-4 bg-white/50 backdrop-blur-xl text-slate-900 border border-slate-200 px-12 py-6 rounded-[2rem] text-xl font-bold hover:bg-white transition-all hover:-translate-y-1.5 shadow-xl shadow-slate-100/50 w-full sm:w-auto">
-                <Globe className="w-7 h-7 text-indigo-600 group-hover:rotate-12 transition-transform" /> 网页站入口
+              <a href="https://cdt.junpgle.me/" target="_blank" rel="noreferrer" className="group flex items-center justify-center gap-4 bg-white/50 backdrop-blur-xl text-slate-900 border border-slate-200 px-12 py-6 rounded-[2rem] text-xl font-bold hover:bg-white transition-all hover:-translate-y-1.5 shadow-xl shadow-slate-100/50 w-full sm:w-auto">
+                <Globe className="w-7 h-7 text-indigo-600 group-hover:rotate-12 transition-transform" /> 网页版 Beta
               </a>
             </div>
 
@@ -96,7 +96,7 @@ export const Hero = ({ version, date }: { version?: string, date?: string }) => 
                  { icon: <Command />, label: "macOS" },
                  { icon: <Smartphone />, label: "Android" },
                  { icon: <Watch />, label: "Mi Band" },
-                 { icon: <Globe />, label: "Web Pro" },
+                 { icon: <Globe />, label: "Web Beta" },
                  { icon: <Github />, label: "Source" }
                ].map((item, i) => (
                  <div key={i} className="flex flex-col items-center lg:items-start gap-2 group cursor-default">
@@ -198,4 +198,3 @@ export const Hero = ({ version, date }: { version?: string, date?: string }) => 
     </section>
   );
 };
-

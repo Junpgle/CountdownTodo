@@ -123,7 +123,7 @@ export const WebInstallGuide = ({ onBack }: { onBack: () => void }) => {
             </main>
 
             <footer className="py-12 border-t border-slate-200 text-center">
-                <p className="text-slate-400 text-sm font-bold">CountDownTodo Web Pro | Powered by PWA Technology</p>
+                <p className="text-slate-400 text-sm font-bold">CountDownTodo Web Flutter Beta | Powered by PWA Technology</p>
             </footer>
         </div>
     );
