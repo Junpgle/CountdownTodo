@@ -70,7 +70,12 @@ Future<void> tapVisible(WidgetTester tester, Finder finder) async {
     await tester.scrollUntilVisible(finder, 220,
         scrollable: find.byType(Scrollable).first);
   }
-  await tester.ensureVisible(finder);
+  // Keep targets below the floating top bar. The default alignment (0.0)
+  // can place a newly revealed control underneath the bar on small screens.
+  await Scrollable.ensureVisible(
+    tester.element(finder),
+    alignment: 0.35,
+  );
   await tester.pumpAndSettle();
   await tester.tap(finder);
   await tester.pumpAndSettle();

@@ -369,31 +369,37 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       ),
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : Column(
-                children: [
-                  _PlanDaySummary(
-                    blocks: _planBlocks,
-                    pomodoroRecords: _pomodoroRecords,
-                  ),
-                  Expanded(
-                    child: _PlanGridView(
-                      date: _focusedDate,
-                      blocks: displayBlocks,
-                      mappedBlockIds: _mappedBlockIds,
-                      todos: _todos,
-                      todoGroups: _todoGroups,
-                      courses: _courses,
-                      tags: _tags,
+        tailExtent: 0,
+        child: Padding(
+          // The transparent app bar paints over the body. Keep the plan
+          // summary and grid below it instead of hiding their first row.
+          padding: EdgeInsets.only(top: topBarHeight),
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
+                  children: [
+                    _PlanDaySummary(
+                      blocks: _planBlocks,
                       pomodoroRecords: _pomodoroRecords,
-                      username: widget.username,
-                      initialTodoId: widget.initialTodoId,
-                      onRefresh: _loadData,
                     ),
-                  ),
-                ],
-              ),
+                    Expanded(
+                      child: _PlanGridView(
+                        date: _focusedDate,
+                        blocks: displayBlocks,
+                        mappedBlockIds: _mappedBlockIds,
+                        todos: _todos,
+                        todoGroups: _todoGroups,
+                        courses: _courses,
+                        tags: _tags,
+                        pomodoroRecords: _pomodoroRecords,
+                        username: widget.username,
+                        initialTodoId: widget.initialTodoId,
+                        onRefresh: _loadData,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }

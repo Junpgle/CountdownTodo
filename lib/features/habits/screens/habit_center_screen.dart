@@ -630,7 +630,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
 
         final bodyTabs = [
           HabitTodayTab(
-            topPadding: topBarHeight,
+            topPadding: 0,
             username: widget.username,
             coachTargetKey: _todayContentKey,
             reloadTick: _reloadTick,
@@ -638,12 +638,12 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
             onChanged: () => setState(() => _reloadTick++),
           ),
           HabitCalendarTab(
-            topPadding: topBarHeight,
+            topPadding: 0,
             username: widget.username,
             reloadTick: _reloadTick,
           ),
           HabitAnalysisTab(
-            topPadding: topBarHeight,
+            topPadding: 0,
             username: widget.username,
             reloadTick: _reloadTick,
           ),
@@ -696,9 +696,15 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
           ),
           body: FloatingGlassTopBarContentFade(
             topBarHeight: topBarHeight,
-            child: TabBarView(
-              controller: _tabController,
-              children: bodyTabs,
+            tailExtent: 0,
+            child: Padding(
+              // The tab pages share one transparent top bar, so reserve its
+              // space once here rather than once per tab.
+              padding: EdgeInsets.only(top: topBarHeight),
+              child: TabBarView(
+                controller: _tabController,
+                children: bodyTabs,
+              ),
             ),
           ),
         );
