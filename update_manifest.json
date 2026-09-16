@@ -75,6 +75,14 @@
       "content": "20260614已更新注册登录逻辑，加入人机验证，旧版本的用户退出账号后可能无法正常登录，请更新到最新版本！",
       "remind_mode": "once",
       "target_versions": []
+    }，
+    {
+      "show": true,
+      "id": "ann_20260916_001",
+      "title": "新版本发布提醒",
+      "content": "20260916已发布Android新版本，由于手头没有Windows电脑，不能构建Windows包。希望抢先体验新版本的可以手动前往设置-强制获取最新版完整包进行更新。",
+      "remind_mode": "once",
+      "target_versions": []
     }
   ],
   "wallpaper": {
