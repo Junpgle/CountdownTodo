@@ -45,6 +45,7 @@ import 'services/liquid_glass_effect_service.dart';
 import 'services/power_save_mode_service.dart';
 import 'theme/app_liquid_glass_theme.dart';
 import 'widgets/island_debug_host.dart';
+import 'widgets/macos_window_chrome.dart';
 
 import 'utils/navigator_utils.dart';
 import 'utils/url_hash.dart';
@@ -1150,10 +1151,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                                     )
                                                   : content;
 
-                                          return AppSystemUiRegion(
-                                            backgroundBrightness:
-                                                Theme.of(context).brightness,
-                                            child: adaptedContent,
+                                          return MacosWindowChrome(
+                                            child: AppSystemUiRegion(
+                                              backgroundBrightness:
+                                                  Theme.of(context).brightness,
+                                              child: adaptedContent,
+                                            ),
                                           );
                                         },
                                       );
