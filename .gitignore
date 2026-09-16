@@ -155,6 +155,7 @@ todo.md
 !/test/widgets/todo_recurrence_completion_overview_test.dart
 !/test/widgets/todo_section_series_visibility_test.dart
 !/test/widgets/interconnect_settings_page_test.dart
+!/test/widgets/notification_settings_page_test.dart
 !/test/widgets/optional_liquid_glass_surface_test.dart
 !/test/widgets/app_status_toast_test.dart
 !/test/widgets/home_bottom_navigation_content_test.dart

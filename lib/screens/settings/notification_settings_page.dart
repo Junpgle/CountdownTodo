@@ -283,7 +283,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           ? null
           : FloatingGlassAppBar(
               flexibleSpace: const FloatingGlassTopBarBackground(),
-              title: const Text('通知与提醒设置'),
+              title: Text(
+                '通知与提醒设置',
+                style: TextStyle(color: colorScheme.onSurface),
+              ),
               centerTitle: true,
             ),
       body: floatingGlassSettingsBody(
@@ -302,24 +305,14 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                 isDesktop ? 32 : 16,
               ),
               children: [
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: isDesktop ? 3 : 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: isDesktop ? 2.45 : 1.3,
-                  children: [
-                    _buildMasterSwitch(
-                      title: '实时活动通知',
-                      subtitle: '在状态栏实时更新进度（课程、测验、待办、番茄钟等）',
-                      icon: Icons.notifications_active,
-                      color: colorScheme.primary,
-                      value: _liveActivityEnabled,
-                      onChanged: _toggleLiveActivityMaster,
-                      isDesktop: isDesktop,
-                    ),
-                  ],
+                _buildMasterSwitch(
+                  title: '实时活动通知',
+                  subtitle: '在状态栏实时更新进度（课程、测验、待办、番茄钟等）',
+                  icon: Icons.notifications_active,
+                  color: colorScheme.primary,
+                  value: _liveActivityEnabled,
+                  onChanged: _toggleLiveActivityMaster,
+                  isDesktop: isDesktop,
                 ),
                 const SizedBox(height: 8),
                 _buildSubSection(
@@ -420,24 +413,14 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: isDesktop ? 3 : 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: isDesktop ? 2.45 : 1.3,
-                  children: [
-                    _buildMasterSwitch(
-                      title: '普通通知',
-                      subtitle: '一次性触发的提醒通知（番茄钟结束、定时闹钟等）',
-                      icon: Icons.notifications,
-                      color: colorScheme.secondary,
-                      value: _normalEnabled,
-                      onChanged: _toggleNormalMaster,
-                      isDesktop: isDesktop,
-                    ),
-                  ],
+                _buildMasterSwitch(
+                  title: '普通通知',
+                  subtitle: '一次性触发的提醒通知（番茄钟结束、定时闹钟等）',
+                  icon: Icons.notifications,
+                  color: colorScheme.secondary,
+                  value: _normalEnabled,
+                  onChanged: _toggleNormalMaster,
+                  isDesktop: isDesktop,
                 ),
                 const SizedBox(height: 8),
                 _buildSubSection(
@@ -590,7 +573,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           ? null
           : FloatingGlassAppBar(
               flexibleSpace: const FloatingGlassTopBarBackground(),
-              title: const Text('浏览器通知设置'),
+              title: Text(
+                '浏览器通知设置',
+                style: TextStyle(color: colorScheme.onSurface),
+              ),
               centerTitle: true,
             ),
       body: floatingGlassSettingsBody(
@@ -928,7 +914,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           crossAxisCount: isDesktop ? 3 : 2,
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          childAspectRatio: isDesktop ? 2.45 : 0.95,
+          childAspectRatio: isDesktop ? 2.45 : 1.3,
           children: children,
         ),
       ),
@@ -1003,9 +989,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       style: TextStyle(
         fontWeight: FontWeight.bold,
         fontSize: 14,
-        color: isSelected
-            ? colorScheme.primary
-            : theme.textTheme.bodyMedium?.color,
+        color: isSelected ? colorScheme.primary : colorScheme.onSurface,
         fontFamily: theme.textTheme.bodyMedium?.fontFamily,
       ),
       maxLines: 1,
@@ -1064,7 +1048,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [iconWidget, switchWidget],
                   ),
-                  const Spacer(),
+                  const SizedBox(height: 10),
                   titleWidget,
                   const SizedBox(height: 2),
                   subtitleWidget,
@@ -1093,7 +1077,6 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           padding: const EdgeInsets.all(12.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1128,21 +1111,25 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                 ],
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 '课程提醒时间',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 4),
-              Expanded(
-                child: Text(
-                  '距上课提前 $_courseReminderMinutes 分钟提醒',
-                  style: TextStyle(
-                      fontSize: 11, color: Colors.grey[600], height: 1.2),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
+              Text(
+                '距上课提前 $_courseReminderMinutes 分钟提醒',
+                style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    height: 1.2),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -1338,7 +1325,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           physics: const NeverScrollableScrollPhysics(),
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
-          childAspectRatio: 1.1,
+          childAspectRatio: 1.3,
           children: _todoGroups.map((group) {
             final mins = _categoryReminderMinutes[group.id] ?? 5;
             return Card(
@@ -1358,7 +1345,6 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   padding: const EdgeInsets.all(12.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1395,22 +1381,24 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                       const SizedBox(height: 8),
                       Text(
                         group.name,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 14),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
-                      Expanded(
-                        child: Text(
-                          '点击设置该分类下的待办默认提前提醒时间',
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey[600],
-                              height: 1.2),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      Text(
+                        '点击设置该分类下的待办默认提前提醒时间',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                            height: 1.2),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
