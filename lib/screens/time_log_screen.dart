@@ -421,6 +421,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
   List<Widget> _buildActions() {
     final acts = <Widget>[];
+    // 保证窄屏优先保留必要操作（标签管理、刷新）。AI 助手是低优先级
+    // 入口，避免它占用顶栏空间后把其它按钮挤出可见区域。
+    final showAiAssistant = MediaQuery.sizeOf(context).width >= 480;
     if (_view == _ViewMode.day) {
       // 只保留标签管理，不再有切换图标
       if (_dayMode == _DayMode.edit) {
@@ -430,10 +433,12 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             tooltip: '标签管理'));
       }
     }
-    acts.add(IconButton(
-        icon: const Icon(Icons.smart_toy_outlined, size: 20),
-        tooltip: 'AI专注助手',
-        onPressed: _openAiAssistant));
+    if (showAiAssistant) {
+      acts.add(IconButton(
+          icon: const Icon(Icons.smart_toy_outlined, size: 20),
+          tooltip: 'AI专注助手',
+          onPressed: _openAiAssistant));
+    }
     acts.add(IconButton(
         icon: const Icon(Icons.refresh, size: 20),
         onPressed: () => _loadData(forceSync: true)));
@@ -481,6 +486,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final contentTopInset = floatingGlassTopBarHeight(context) + 34;
     return PopScope(
       canPop: _view == _ViewMode.week,
       onPopInvokedWithResult: (didPop, result) {
@@ -530,8 +536,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
           elevation: 0,
           surfaceTintColor: Colors.transparent,
         ),
-        body: FloatingGlassTopBarContentFade(
-          topBarHeight: floatingGlassTopBarHeight(context) + 34,
+        body: Padding(
+          padding: EdgeInsets.only(top: contentTopInset),
           child: _isLoading
               ? _buildSkeleton()
               : _view == _ViewMode.week
