@@ -1,10 +1,10 @@
 {
-  "version_code": 60310,
-  "version_name": "6.3.10",
+  "version_code": 60400,
+  "version_name": "6.4.0",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 6.3.10",
-    "description": "【新增】个人记账支持内置金额计算器，可直接输入四则运算并将计算过程写入备注。\n【新增】完善个人记账分类大类/小类管理、分类详情筛选与图标云同步，快速录入流程更完整。\n【新增】番茄钟支持专注期间勿扰，并同步专注状态与系统勿扰状态。\n【新增】课表支持固定日程，统一固定日程的数据生命周期、详情页和共享转场。\n【优化】完善多学期课表导入、共存/替换、云端读写和删除刷新，避免学期配置漂移。\n【修复】修复外部分享多文件处理、局域网同步确认、提醒调度所有权、待办账户归属及同步重复上传问题。\n【兼容】支持原生 HTTP 直连与历史迁移，统一阿里云直连和 HTTPS 中转线路。\n【优化】统一玻璃顶栏与内容避让，修复周视图、规划、习惯、屏幕时间和番茄钟统计首屏遮挡及多余空隙。\n【修复】修复课程时间轴相邻记录碰撞布局，并完善固定日程详情转场。\n【优化】优化懒加载返回、预测式返回和共享容器动画，提升页面生命周期稳定性。\n【适配】完善 macOS 自绘窗口、无标题栏、登录项、状态栏提醒和灵动岛显示。\n【优化】补充课程系列进度汇总，完善习惯中心同步与页面适配。",
+    "title": "版本更新 6.4.0",
+    "description": "【修复】修复时间日志窄屏时补录、标签管理和刷新按钮被 AI 助手挤出顶栏的问题。\n【修复】修复 AI 识别待办结果页顶栏内容被遮挡、显示到屏幕外的问题。\n【修复】Android 小组件支持固定日程展示，并兼容时间待定、结束待定和地点信息。\n【优化】番茄钟和屏幕使用时间页面顶栏支持渐隐，改善内容空间。\n【优化】网页版入口收敛为新版 Flutter Web Beta，减少旧入口误导。",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "mac_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
@@ -15,6 +15,20 @@
     },
     "android_delta_packages": {
       "arm64-v8a": [
+        {
+          "from_version": "6.3.10",
+          "from_sha256": "d32b25d856f55135fba4f2bc79a2ffe61aa943b8c7473b1419eedff151477c04",
+          "to_version": "6.4.0",
+          "to_sha256": "763402620f11b806f9662c1609c87851bbfe9e7655d43513387da3f0b61ac47f",
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-6.3.10_to_6.4.0.patch",
+          "patch_size": 23093491,
+          "full_apk_size": 42638107,
+          "operation_count": 16,
+          "copied_bytes": 19544860,
+          "embedded_bytes": 23093247,
+          "algorithm": "apk-zip-local-spans",
+          "recommended": true
+        },
         {
           "from_version": "6.2.8",
           "from_sha256": "cfbbb2394cca5258282a56c0ac152acaa2cf3672f50c23a7399c26abe40c017c",
@@ -110,6 +124,17 @@
     "image_url": "https://gitee.com/Junpgle/CountdownTodo/raw/master/wallpapergitee/15.jpg"
   },
   "changelog_history": [
+    {
+      "version_name": "6.4.0",
+      "date": "2026-09-20",
+      "items": [
+        "【修复】修复时间日志窄屏时补录、标签管理和刷新按钮被 AI 助手挤出顶栏的问题。",
+        "【修复】修复 AI 识别待办结果页顶栏内容被遮挡、显示到屏幕外的问题。",
+        "【修复】Android 小组件支持固定日程展示，并兼容时间待定、结束待定和地点信息。",
+        "【优化】番茄钟和屏幕使用时间页面顶栏支持渐隐，改善内容空间。",
+        "【优化】网页版入口收敛为新版 Flutter Web Beta，减少旧入口误导。"
+      ]
+    },
     {
       "version_name": "6.3.10",
       "date": "2026-09-16",
