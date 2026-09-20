@@ -1064,8 +1064,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
             ),
         ],
       ),
-      body: FloatingGlassTopBarContentFade(
-        topBarHeight: topBarHeight,
+      body: Padding(
+        padding: EdgeInsets.only(top: topBarHeight),
         child: _isRetrying
             ? _buildSkeleton(Theme.of(context).brightness == Brightness.dark)
             : Column(
