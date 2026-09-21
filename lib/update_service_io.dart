@@ -366,6 +366,23 @@ class UpdateService {
     }
   }
 
+  /// Reads the version embedded in a downloaded Android APK.
+  ///
+  /// The filename is not authoritative: release URLs may be saved as
+  /// `latest.apk` or use another server-provided name.
+  static Future<String?> readDownloadedPackageVersion(String filePath) async {
+    if (!Platform.isAndroid || filePath.trim().isEmpty) return null;
+    try {
+      final version = await const MethodChannel(_updateMethodChannelName)
+          .invokeMethod<String>('getApkVersionName', {'path': filePath});
+      final normalized = version?.trim();
+      return normalized == null || normalized.isEmpty ? null : normalized;
+    } catch (error) {
+      debugPrint('[UpdateService] 读取 APK 内部版本失败: $error');
+      return null;
+    }
+  }
+
   static Future<AppManifest?>? _manifestRefreshFuture;
   static Future<void>? _updateCheckFuture;
   static int? _lastManifestRefreshAttemptMs;
@@ -1571,6 +1588,20 @@ class UpdateService {
     if (!Platform.isAndroid || !context.mounted) return;
     if (!await getAutoDownloadOnWifi() || !context.mounted) return;
     if (_isDownloading || _isDownloaded) return;
+
+    // This method is also reached from update dialogs initiated by external
+    // signals. Re-check the installed version here so an incorrectly marked
+    // signal can never turn into an automatic package download. A manifest
+    // explicitly marked as forceUpdate keeps its existing repair-install path.
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (!manifest.forceUpdate &&
+        !_compareVersions(manifest.versionName, packageInfo.version)) {
+      debugPrint(
+        '[UpdateService] 跳过 Wi-Fi 自动下载：${manifest.versionName} 不高于已安装版本 ${packageInfo.version}',
+      );
+      return;
+    }
+    if (!context.mounted) return;
     if (!await isWifiConnected() || !context.mounted) return;
 
     final existingPath = await isPackageAlreadyDownloaded(manifest.versionName);
@@ -1649,6 +1680,14 @@ class UpdateService {
       bool hasNotice = false,
       bool respectTodaySnooze = true}) async {
     if (_isDialogShowing) return;
+    if (hasUpdate &&
+        !manifest.forceUpdate &&
+        !_compareVersions(manifest.versionName, currentVersion)) {
+      debugPrint(
+        '[UpdateService] 忽略非新版本更新弹窗：${manifest.versionName}，当前版本 $currentVersion',
+      );
+      return;
+    }
     final now = DateTime.now();
     if (hasUpdate &&
         !manifest.forceUpdate &&

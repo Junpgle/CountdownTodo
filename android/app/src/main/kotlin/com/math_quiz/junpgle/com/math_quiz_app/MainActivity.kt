@@ -1507,6 +1507,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     // signed APK currently installed on this device.
                     result.success(applicationInfo.sourceDir)
                 }
+                "getApkVersionName" -> {
+                    val path = call.argument<String>("path")?.trim()
+                    if (path.isNullOrEmpty()) {
+                        result.error("INVALID_APK_PATH", "APK path is empty", null)
+                    } else {
+                        result.success(readApkVersionName(path))
+                    }
+                }
                 "isWifiConnected" -> {
                     val connectivityManager =
                         getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -3256,4 +3264,20 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             Log.e(TAG, "Notify error", e)
         }
     }
+
+    private fun readApkVersionName(path: String): String? {
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageArchiveInfo(
+                path,
+                PackageManager.PackageInfoFlags.of(0L)
+            )
+        } else {
+            readApkPackageInfoLegacy(path)
+        }
+        return packageInfo?.versionName
+    }
+
+    @Suppress("DEPRECATION")
+    private fun readApkPackageInfoLegacy(path: String) =
+        packageManager.getPackageArchiveInfo(path, 0)
 }

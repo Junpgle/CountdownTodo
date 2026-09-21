@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Environment
 import android.util.Log
@@ -75,10 +77,17 @@ class AppUpdateWorker(
                 FLUTTER_PREFS_NAME,
                 Context.MODE_PRIVATE
             ).getBoolean(KEY_AUTO_DOWNLOAD_ON_WIFI, true)
-            val downloadedFile = if (autoDownloadOnWifi) {
+            val downloadedFile = if (autoDownloadOnWifi && isWifiConnected()) {
                 downloadFullPackage(manifest, remoteVersion)
             } else {
-                Log.d(TAG, "Wi-Fi automatic package download is disabled")
+                Log.d(
+                    TAG,
+                    if (!autoDownloadOnWifi) {
+                        "Wi-Fi automatic package download is disabled"
+                    } else {
+                        "Skip package download because the active network is not Wi-Fi"
+                    }
+                )
                 null
             }
             if (!canPostNotification()) {
@@ -162,6 +171,16 @@ class AppUpdateWorker(
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    private fun isWifiConnected(): Boolean {
+        val connectivityManager = applicationContext.getSystemService(
+            Context.CONNECTIVITY_SERVICE
+        ) as? ConnectivityManager ?: return false
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network)
+            ?: return false
+        return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+    }
+
     private fun resolveAndroidPackageUrl(manifest: JSONObject): String {
         val updateInfo = manifest.optJSONObject("update_info") ?: return ""
         val packages = updateInfo.optJSONObject("android_arch_packages")
@@ -193,6 +212,11 @@ class AppUpdateWorker(
         val target = File(targetDirectory, "CountdownTodo_v$version.apk")
         val temporary = File(targetDirectory, "CountdownTodo_v$version.apk.download")
         try {
+            if (target.exists() && target.length() > 1024 * 1024) {
+                Log.d(TAG, "Update package already exists: $target")
+                return target
+            }
+
             val connection = URL(packageUrl).openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
             connection.connectTimeout = 15_000
