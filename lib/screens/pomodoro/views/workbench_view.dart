@@ -2843,7 +2843,11 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     final bool isRemoteWatching = _phase == PomodoroPhase.remoteWatching;
     final Color contentColor = Theme.of(context).colorScheme.onSurface;
 
+    // PomodoroScreen already consumes the top safe area for its pinned glass
+    // header. Applying the default top padding here again shifts the timer
+    // and the active-state back button down by one status-bar inset.
     return SafeArea(
+      top: false,
       bottom: false,
       child: _initializing
           ? _buildSkeleton()
