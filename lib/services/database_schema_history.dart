@@ -11,10 +11,18 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 54;
+  static const int currentVersion = 55;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 55,
+      title: '记账分类名称自定义',
+      changes: [
+        '系统预设的大类和小类均可自定义名称，并保留原有自定义图标。',
+        '云同步服务支持名称覆盖标记，旧服务端不会误确认名称变更。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 54,
       title: '付款方式月度额度',

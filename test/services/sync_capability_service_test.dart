@@ -127,6 +127,25 @@ void main() {
       expect(SyncCapabilityService.supportsFinance(null), isFalse);
     });
 
+    test('recognizes the finance category name override capability', () {
+      expect(
+        SyncCapabilityService.supportsFinanceCategoryNames(
+          {'finance_category_names_v1': 1},
+        ),
+        isTrue,
+      );
+      expect(
+        SyncCapabilityService.supportsFinanceCategoryNames(
+          {'finance_category_names_v1': 0},
+        ),
+        isFalse,
+      );
+      expect(
+        SyncCapabilityService.supportsFinanceCategoryNames(null),
+        isFalse,
+      );
+    });
+
     test('finance acknowledgement is gated by both switch and capability', () {
       expect(
         SyncCapabilityService.shouldAcknowledgeFinanceChanges(

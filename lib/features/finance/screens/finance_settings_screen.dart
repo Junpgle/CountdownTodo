@@ -83,7 +83,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
         availableParents: _categories,
         initialParentUuid: category?.parentUuid,
         editingCategoryUuid: category?.uuid,
-        iconOnly: category?.isSystem == true,
+        systemCategory: category?.isSystem == true,
         onSave: (draft) async {
           final updated = category == null
               ? FinanceCategory(
@@ -96,9 +96,6 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
             ..name = draft.name
             ..icon = draft.icon
             ..parentUuid = draft.parentUuid;
-          if (category?.isSystem == true) {
-            updated.iconCustomized = true;
-          }
           if (category != null) updated.markAsChanged();
           await FinanceRepository.saveCategory(updated);
           savedCategory = updated;
@@ -108,7 +105,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
     if (saved != true || !mounted) return null;
     await _load();
     _showMessage(category?.isSystem == true
-        ? '系统分类图标已保存'
+        ? '系统分类名称和图标已保存'
         : category == null
             ? '分类已添加'
             : '分类已保存');

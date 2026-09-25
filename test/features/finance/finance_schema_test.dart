@@ -156,6 +156,50 @@ void main() {
       categoryColumns.map((row) => row['name']),
       contains('icon_customized'),
     );
+    expect(
+      categoryColumns.map((row) => row['name']),
+      contains('name_customized'),
+    );
+  });
+
+  test('已有系统分类表升级时新增名称自定义标记', () async {
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(db.close);
+    await db.execute('''
+      CREATE TABLE finance_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'expense',
+        icon TEXT NOT NULL DEFAULT '📦',
+        icon_customized INTEGER NOT NULL DEFAULT 0,
+        color_value INTEGER,
+        parent_uuid TEXT,
+        is_system INTEGER NOT NULL DEFAULT 0,
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        pending_sync INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.insert('finance_categories', {
+      'uuid': 'finance-system-category-food',
+      'name': '餐饮',
+      'is_system': 1,
+      'created_at': 1,
+      'updated_at': 1,
+    });
+
+    await DatabaseHelper.ensureFinanceSchema(db);
+
+    final columns = await db.rawQuery('PRAGMA table_info(finance_categories)');
+    expect(columns.map((row) => row['name']), contains('name_customized'));
+    final row = (await db.query('finance_categories')).single;
+    expect(row['name'], '餐饮');
+    expect(row['name_customized'], 0);
   });
 
   test('AI usage schema upgrades existing records with MiMo detail columns',
@@ -326,7 +370,145 @@ void main() {
     expect(row['pending_sync'], 1);
   });
 
-  test('云端系统分类图标覆盖不会被新设备默认值覆盖', () async {
+  test('系统分类自定义名称会保留，旧服务端不会收到该覆盖', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'finance-system-name-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+    await FinanceStorage.ensureReady();
+
+    final food = FinanceCategory.fromMap(
+      (await db.query(
+        'finance_categories',
+        where: 'uuid = ?',
+        whereArgs: ['finance-system-category-food'],
+      ))
+          .single,
+    )
+      ..name = '日常饮食'
+      ..markAsChanged();
+    await FinanceStorage.saveCategory(food);
+    await FinanceStorage.ensureReady();
+
+    final row = (await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: ['finance-system-category-food'],
+    ))
+        .single;
+    expect(row['name'], '日常饮食');
+    expect(row['name_customized'], 1);
+    expect(row['icon_customized'], 0);
+    expect(row['pending_sync'], 1);
+
+    final category = FinanceCategory.fromMap(row).toMap();
+    final legacyServerChanges = FinanceSyncService.buildChangesForTest(
+      {
+        'categories': [category]
+      },
+      cursor: 0,
+      fullSync: true,
+    );
+    expect(legacyServerChanges['categories'], isEmpty);
+
+    final nameCapableServerChanges = FinanceSyncService.buildChangesForTest(
+      {
+        'categories': [category]
+      },
+      cursor: 0,
+      fullSync: true,
+      supportsCategoryNames: true,
+    );
+    expect(nameCapableServerChanges['categories'], hasLength(1));
+    expect(
+      nameCapableServerChanges['categories']!.single['name'],
+      '日常饮食',
+    );
+
+    final firstRequest = await FinanceSyncService.prepare(
+      username: 'finance-system-name-test',
+      forceFullSync: false,
+    );
+    expect(firstRequest.supportsCategoryNames, isFalse);
+    final handshakeResult = await FinanceSyncService.finish(
+      request: firstRequest,
+      supported: true,
+      response: {
+        'server_finance_categories': [
+          FinanceCategory(
+            uuid: 'finance-system-category-food',
+            name: '餐饮',
+            icon: '🥗',
+            isSystem: true,
+            iconCustomized: true,
+            version: 100,
+            createdAt: 1,
+            updatedAt: 1000000000000,
+          ).toMap(),
+        ],
+        'server_finance_payment_methods': <Map<String, dynamic>>[],
+        'server_finance_transactions': <Map<String, dynamic>>[],
+        'server_finance_budgets': <Map<String, dynamic>>[],
+        'server_finance_recurring_rules': <Map<String, dynamic>>[],
+        'server_finance_entry_templates': <Map<String, dynamic>>[],
+        'finance_acknowledged_changes': <Map<String, dynamic>>[],
+        'new_finance_sync_time': 100,
+        'sync_capabilities': {
+          'finance_v1': 1,
+          'finance_category_names_v1': 1,
+        },
+      },
+    );
+    expect(handshakeResult.supported, isTrue);
+    final afterLegacySnapshot = (await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: ['finance-system-category-food'],
+    ))
+        .single;
+    expect(afterLegacySnapshot['name'], '日常饮食');
+    expect(afterLegacySnapshot['pending_sync'], 1);
+    final nextRequest = await FinanceSyncService.prepare(
+      username: 'finance-system-name-test',
+      forceFullSync: false,
+    );
+    expect(nextRequest.supportsCategoryNames, isTrue);
+    expect(
+      nextRequest.payload['finance_categories_changes']
+          .map((item) => item['name']),
+      contains('日常饮食'),
+    );
+
+    final importResult = await FinanceStorage.importBundle({
+      'categories': [
+        FinanceCategory(
+          uuid: 'finance-system-category-food',
+          name: '家庭餐食',
+          icon: '🍜',
+          isSystem: true,
+          nameCustomized: true,
+        ).toMap(),
+      ],
+    });
+    expect(importResult['updated'], 1);
+    await FinanceStorage.ensureReady();
+    final importedRow = (await db.query(
+      'finance_categories',
+      where: 'uuid = ?',
+      whereArgs: ['finance-system-category-food'],
+    ))
+        .single;
+    expect(importedRow['name'], '家庭餐食');
+    expect(importedRow['name_customized'], 1);
+  });
+
+  test('云端系统分类名称和图标覆盖不会被新设备默认值覆盖', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'finance-remote-icon-test',
     });
@@ -343,10 +525,11 @@ void main() {
       'categories': [
         FinanceCategory(
           uuid: 'finance-system-category-food',
-          name: '餐饮',
+          name: '日常饮食',
           icon: '🥗',
           isSystem: true,
           iconCustomized: true,
+          nameCustomized: true,
           version: 2,
           createdAt: 1,
           updatedAt: 1,
@@ -362,6 +545,8 @@ void main() {
     ))
         .single;
     expect(changed, 1);
+    expect(row['name'], '日常饮食');
+    expect(row['name_customized'], 1);
     expect(row['icon'], '🥗');
     expect(row['icon_customized'], 1);
     expect(row['pending_sync'], 0);

@@ -40,6 +40,14 @@ class FinanceCategoryDetailScreen extends StatelessWidget {
     return category != null && _rootFor(category).uuid == root.uuid;
   }
 
+  List<FinanceCategory> _childCategories(FinanceCategory root) =>
+      categories.values
+          .where((category) =>
+              !category.isDeleted &&
+              category.uuid != root.uuid &&
+              _rootFor(category).uuid == root.uuid)
+          .toList();
+
   int _netExpense(Iterable<FinanceTransaction> values) {
     var total = 0;
     for (final transaction in values) {
@@ -64,12 +72,7 @@ class FinanceCategoryDetailScreen extends StatelessWidget {
     final root = _rootCategory;
     if (root == null) return const [];
 
-    final children = categories.values
-        .where((category) =>
-            !category.isDeleted &&
-            category.uuid != root.uuid &&
-            _rootFor(category).uuid == root.uuid)
-        .toList();
+    final children = _childCategories(root);
     final result = <_FinanceCategoryDetailItem>[];
     for (final category in children) {
       final categoryTransactions = matchingTransactions
@@ -93,7 +96,7 @@ class FinanceCategoryDetailScreen extends StatelessWidget {
     if (directAmount > 0) {
       result.add(_FinanceCategoryDetailItem(
         categoryUuid: root.uuid,
-        title: '未细分',
+        title: children.isEmpty ? root.name : '未细分',
         icon: root.icon,
         amountMinor: directAmount,
         transactionCount: directTransactions.length,
@@ -110,6 +113,7 @@ class FinanceCategoryDetailScreen extends StatelessWidget {
     final matchingTransactions = _matchingTransactions;
     final items = _items(matchingTransactions);
     final total = _netExpense(matchingTransactions);
+    final hasSubcategories = root != null && _childCategories(root).isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(title: const Text('支出分类详情')),
@@ -169,7 +173,11 @@ class FinanceCategoryDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           Text(
-            root == null ? '未分类账单' : '小类',
+            root == null
+                ? '未分类账单'
+                : hasSubcategories
+                    ? '小类'
+                    : '分类',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -180,7 +188,11 @@ class FinanceCategoryDetailScreen extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  root == null ? '没有可筛选的分类账单' : '这个大类下暂无可展示的小类账单',
+                  root == null
+                      ? '没有可筛选的分类账单'
+                      : hasSubcategories
+                          ? '这个大类下暂无可展示的小类账单'
+                          : '这个分类下暂无账单',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: colorScheme.onSurfaceVariant),
                 ),
@@ -201,7 +213,7 @@ class FinanceCategoryDetailScreen extends StatelessWidget {
             ),
           const SizedBox(height: 12),
           Text(
-            '点击小类即可查看对应账单',
+            '点击分类即可查看对应账单',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: colorScheme.onSurfaceVariant,

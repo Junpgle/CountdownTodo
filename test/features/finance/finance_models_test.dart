@@ -359,12 +359,15 @@ void main() {
       icon: '🥗',
       isSystem: true,
       iconCustomized: true,
+      nameCustomized: true,
     );
 
     final map = category.toMap();
     expect(map['icon'], '🥗');
     expect(map['icon_customized'], 1);
+    expect(map['name_customized'], 1);
     expect(FinanceCategory.fromMap(map).iconCustomized, isTrue);
+    expect(FinanceCategory.fromMap(map).nameCustomized, isTrue);
   });
 
   test('记账云同步按账号默认关闭并相互隔离', () async {

@@ -1229,8 +1229,10 @@ class FinanceCategory {
   String icon;
 
   /// Only system categories need this marker. Their built-in rows are seeded
-  /// locally and must not be uploaded as user edits until the icon changes.
+  /// locally and must not be uploaded as user edits until a name or icon
+  /// override is explicitly customized.
   bool iconCustomized;
+  bool nameCustomized;
   int? colorValue;
   String? parentUuid;
   bool isSystem;
@@ -1248,6 +1250,7 @@ class FinanceCategory {
     this.type = FinanceCategoryType.expense,
     this.icon = '📦',
     this.iconCustomized = false,
+    this.nameCustomized = false,
     this.colorValue,
     this.parentUuid,
     this.isSystem = false,
@@ -1275,6 +1278,7 @@ class FinanceCategory {
         'type': type.name,
         'icon': icon,
         'icon_customized': iconCustomized ? 1 : 0,
+        'name_customized': nameCustomized ? 1 : 0,
         'color_value': colorValue,
         'parent_uuid': parentUuid,
         'is_system': isSystem ? 1 : 0,
@@ -1296,6 +1300,7 @@ class FinanceCategory {
       type: _categoryType(map['type'] ?? map['category_type']),
       icon: _string(map['icon']) ?? '📦',
       iconCustomized: _bool(map['icon_customized'] ?? map['iconCustomized']),
+      nameCustomized: _bool(map['name_customized'] ?? map['nameCustomized']),
       colorValue: _nullableInt(map['color_value'] ?? map['colorValue']),
       parentUuid: _nullableString(map['parent_uuid'] ?? map['parentUuid']),
       isSystem: _bool(map['is_system'] ?? map['isSystem']),

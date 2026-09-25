@@ -863,7 +863,7 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            tooltip: '自定义${entry.name}图标',
+            tooltip: '自定义${entry.name}名称和图标',
             onPressed: () => _runAction(entry, entry.onEdit),
             icon: const Icon(Icons.edit_outlined, size: 20),
           ),

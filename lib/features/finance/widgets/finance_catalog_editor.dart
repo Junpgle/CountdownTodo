@@ -28,9 +28,9 @@ class FinanceCatalogEditor extends StatefulWidget {
   final bool lockParent;
   final bool isSubcategory;
 
-  /// System categories keep their built-in identity; only their icon can be
-  /// customized and synced.
-  final bool iconOnly;
+  /// System category type and hierarchy are fixed, while its name and icon
+  /// can be customized.
+  final bool systemCategory;
   final Future<void> Function(FinanceCatalogDraft draft) onSave;
 
   const FinanceCatalogEditor({
@@ -44,7 +44,7 @@ class FinanceCatalogEditor extends StatefulWidget {
     this.editingCategoryUuid,
     this.lockParent = false,
     this.isSubcategory = false,
-    this.iconOnly = false,
+    this.systemCategory = false,
     required this.onSave,
   });
 
@@ -252,8 +252,8 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                             Text(
                               _isPayment
                                   ? '付款方式 · 自定义'
-                                  : widget.iconOnly
-                                      ? '${_type!.label}分类 · 仅自定义图标'
+                                  : widget.systemCategory
+                                      ? '系统${_type!.label}分类 · 自定义名称和图标'
                                       : '${_type!.label}分类 · 自定义',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: colors.onSurfaceVariant,
@@ -269,7 +269,7 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                 TextFormField(
                   key: const ValueKey('finance-catalog-name'),
                   controller: _nameController,
-                  enabled: !_isSaving && !widget.iconOnly,
+                  enabled: !_isSaving,
                   maxLength: 30,
                   textInputAction: TextInputAction.done,
                   decoration: InputDecoration(
@@ -288,7 +288,7 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                       ? '请填写$_label名称'
                       : null,
                 ),
-                if (!_isPayment && !widget.iconOnly) ...[
+                if (!_isPayment && !widget.systemCategory) ...[
                   const SizedBox(height: 4),
                   Wrap(
                     spacing: 8,
@@ -321,7 +321,7 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                   const SizedBox(height: 16),
                 ],
                 if (!_isPayment &&
-                    !widget.iconOnly &&
+                    !widget.systemCategory &&
                     (_parentCandidates.isNotEmpty || _parentUuid != null)) ...[
                   DropdownButtonFormField<String>(
                     key: const ValueKey('finance-catalog-parent'),
