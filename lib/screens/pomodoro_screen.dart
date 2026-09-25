@@ -241,8 +241,12 @@ class _PomodoroScreenState extends State<PomodoroScreen>
         _currentPhase == PomodoroPhase.breaking ||
         _currentPhase == PomodoroPhase.remoteWatching;
 
-    // Keep previous readiness gating for AppBar/tab hiding behavior
+    // Keep the existing readiness gating for bottom-tab visibility.
     final isFocusingOrWatching = !_workbenchReady || isTimerRunning;
+    // The idle workbench renders its own settings row at the top. Keep the
+    // page app bar present from the first frame so async initialization cannot
+    // expand it over that row after the workbench becomes ready.
+    final isAppBarCollapsed = isTimerRunning;
 
     // Show the compact landscape stats column only when timer is idle or finished
     final bool showLandscapeStats = _currentPhase == PomodoroPhase.idle ||
@@ -383,13 +387,13 @@ class _PomodoroScreenState extends State<PomodoroScreen>
           bottom: false,
           child: FloatingGlassPinnedHeaderLayout(
             initialHeaderExtent:
-                topInset + (isFocusingOrWatching ? 0.0 : kToolbarHeight),
+                topInset + (isAppBarCollapsed ? 0.0 : kToolbarHeight),
             header: SafeArea(
               top: true,
               bottom: false,
               left: false,
               right: false,
-              child: _buildAppBar(isFocusingOrWatching),
+              child: _buildAppBar(isAppBarCollapsed),
             ),
             bodyBuilder: (context, headerExtent) => Padding(
               padding: EdgeInsets.only(top: headerExtent),
