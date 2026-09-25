@@ -21,6 +21,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   List<FinanceRecurringRule> _rules = const [];
   List<FinanceEntryTemplate> _templates = const [];
   List<FinanceCategory> _categories = const [];
+  List<FinancePaymentMethod> _paymentMethods = const [];
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
@@ -41,6 +42,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
         FinanceStorage.getRecurringRules(includeDeleted: true),
         FinanceStorage.getTemplates(includeDeleted: true),
         FinanceRepository.getCategories(includeArchived: true),
+        FinanceRepository.getPaymentMethods(includeArchived: true),
       ]);
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -58,6 +60,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
             .where((item) => item.isDeleted)
             .toList();
         _categories = values[5] as List<FinanceCategory>;
+        _paymentMethods = values[6] as List<FinancePaymentMethod>;
         _isLoading = false;
         _loadError = null;
       });
@@ -167,6 +170,9 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
     final categories = {
       for (final category in _categories) category.uuid: category
     };
+    final paymentMethods = {
+      for (final method in _paymentMethods) method.uuid: method
+    };
     return [
       for (final item in _transactions)
         FinanceTrashEntry(
@@ -194,14 +200,16 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
         FinanceTrashEntry(
           uuid: item.uuid,
           kind: FinanceTrashKind.budget,
-          title: item.isOverall
-              ? '全部支出预算'
-              : '${categories[item.categoryUuid] == null ? '已归档或未知分类' : financeCategoryDisplayName(categories[item.categoryUuid]!, _categories)}预算',
+          title: item.isPaymentMethod
+              ? '${paymentMethods[item.paymentMethodUuid]?.name ?? '已归档或未知付款方式'}月额度'
+              : item.isOverall
+                  ? '全部支出预算'
+                  : '${categories[item.categoryUuid] == null ? '已归档或未知分类' : financeCategoryDisplayName(categories[item.categoryUuid]!, _categories)}预算',
           details: [
             item.monthKey,
             if (item.note?.isNotEmpty == true) item.note!
           ].join(' · '),
-          amountLabel: '预算额度',
+          amountLabel: item.isPaymentMethod ? '月初金额' : '预算额度',
           amountMinor: item.amountMinor,
           onRestore: () => _restoreBudget(item),
         ),

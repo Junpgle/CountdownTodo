@@ -18,12 +18,15 @@ class FinanceOverviewPanel extends StatefulWidget {
   final DateTime month;
   final FinanceSummary summary;
   final List<FinanceTransaction> transactions;
+  final List<FinancePaymentMethod> paymentMethods;
+  final List<FinanceBudget> paymentBudgets;
   final Map<String, FinanceCategory> categories;
   final VoidCallback onAdd;
   final GlobalKey addActionKey;
   final Future<void> Function() onRefresh;
   final ValueChanged<DateTime>? onMonthChanged;
   final ValueChanged<String>? onCategorySelected;
+  final VoidCallback? onManagePaymentBudgets;
 
   const FinanceOverviewPanel({
     super.key,
@@ -31,12 +34,15 @@ class FinanceOverviewPanel extends StatefulWidget {
     required this.month,
     required this.summary,
     required this.transactions,
+    this.paymentMethods = const [],
+    this.paymentBudgets = const [],
     required this.categories,
     required this.onAdd,
     required this.addActionKey,
     required this.onRefresh,
     this.onMonthChanged,
     this.onCategorySelected,
+    this.onManagePaymentBudgets,
   });
 
   @override
@@ -50,12 +56,15 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   DateTime get month => widget.month;
   FinanceSummary get summary => widget.summary;
   List<FinanceTransaction> get transactions => widget.transactions;
+  List<FinancePaymentMethod> get paymentMethods => widget.paymentMethods;
+  List<FinanceBudget> get paymentBudgets => widget.paymentBudgets;
   Map<String, FinanceCategory> get categories => widget.categories;
   VoidCallback get onAdd => widget.onAdd;
   GlobalKey get addActionKey => widget.addActionKey;
   Future<void> Function() get onRefresh => widget.onRefresh;
   ValueChanged<DateTime>? get onMonthChanged => widget.onMonthChanged;
   ValueChanged<String>? get onCategorySelected => widget.onCategorySelected;
+  VoidCallback? get onManagePaymentBudgets => widget.onManagePaymentBudgets;
 
   @override
   void initState() {
@@ -100,6 +109,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           _buildPeriodNavigator(context),
           const SizedBox(height: 12),
           _buildSummaryCard(context, colorScheme, period),
+          const SizedBox(height: 12),
+          _buildPaymentRemainingCard(context, colorScheme),
           const SizedBox(height: 16),
           FilledButton.tonalIcon(
             key: addActionKey,
@@ -155,6 +166,149 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           ),
           const SizedBox(height: 24),
           _buildInsightCard(context, colorScheme, period),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentRemainingCard(
+    BuildContext context,
+    ColorScheme colorScheme,
+  ) {
+    final from = dateKey(DateTime(month.year, month.month));
+    final to = dateKey(DateTime(month.year, month.month + 1));
+    final monthTransactions = transactions.where((transaction) =>
+        transaction.transactionDate.compareTo(from) >= 0 &&
+        transaction.transactionDate.compareTo(to) < 0);
+    final spentByMethod =
+        FinanceRepository.summarizePaymentMethodSpending(monthTransactions);
+    final budgetByMethod = {
+      for (final budget in paymentBudgets)
+        if (budget.paymentMethodUuid != null) budget.paymentMethodUuid!: budget,
+    };
+    final methods = paymentMethods
+        .where((method) =>
+            !method.isDeleted &&
+            (!method.isArchived || budgetByMethod.containsKey(method.uuid)))
+        .toList(growable: false);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${month.year}年${month.month}月付款方式剩余',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: onManagePaymentBudgets,
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('设置金额'),
+                ),
+              ],
+            ),
+            Text(
+              '月初金额扣除该月支出，退款会加回。',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            if (methods.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                child: Text(
+                  '还没有可用的付款方式',
+                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                ),
+              )
+            else
+              for (var index = 0; index < methods.length; index++) ...[
+                if (index > 0)
+                  Divider(height: 1, color: colorScheme.outlineVariant),
+                _buildPaymentRemainingRow(
+                  context,
+                  colorScheme,
+                  methods[index],
+                  budgetByMethod[methods[index].uuid],
+                  spentByMethod[methods[index].uuid] ?? 0,
+                ),
+              ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentRemainingRow(
+    BuildContext context,
+    ColorScheme colorScheme,
+    FinancePaymentMethod method,
+    FinanceBudget? budget,
+    int recordedSpending,
+  ) {
+    final used = recordedSpending;
+    final remaining = budget == null ? 0 : budget.amountMinor - used;
+    final isOver = budget != null && remaining < 0;
+    final amountColor = isOver ? colorScheme.error : colorScheme.primary;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          SizedBox.square(
+            dimension: 34,
+            child: Center(
+              child: Text(method.icon, textScaler: TextScaler.noScaling),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  method.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  budget == null
+                      ? '尚未设置月初金额'
+                      : used < 0
+                          ? '月初 ${formatFinanceAmount(budget.amountMinor)} · 退款加回 ${formatFinanceAmount(-used)}'
+                          : '月初 ${formatFinanceAmount(budget.amountMinor)} · 净扣减 ${formatFinanceAmount(used)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            budget == null
+                ? '未设置'
+                : isOver
+                    ? '超出 ${formatFinanceAmount(-remaining)}'
+                    : '还剩 ${formatFinanceAmount(remaining)}',
+            textAlign: TextAlign.end,
+            style: TextStyle(
+              color:
+                  budget == null ? colorScheme.onSurfaceVariant : amountColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ],
       ),
     );

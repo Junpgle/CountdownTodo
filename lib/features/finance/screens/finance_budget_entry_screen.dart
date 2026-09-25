@@ -8,11 +8,13 @@ import '../widgets/finance_management_widgets.dart';
 class FinanceBudgetEntryScreen extends StatefulWidget {
   final DateTime month;
   final FinanceBudget? budget;
+  final String? initialPaymentMethodUuid;
 
   const FinanceBudgetEntryScreen({
     super.key,
     required this.month,
     this.budget,
+    this.initialPaymentMethodUuid,
   });
 
   @override
@@ -22,12 +24,15 @@ class FinanceBudgetEntryScreen extends StatefulWidget {
 
 class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
   static const String _overallValue = '__finance_overall_budget__';
+  static const String _categoryPrefix = 'category:';
+  static const String _paymentPrefix = 'payment:';
 
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _amountController;
   late final TextEditingController _noteController;
 
   List<FinanceCategory> _categories = const [];
+  List<FinancePaymentMethod> _paymentMethods = const [];
   String _scopeValue = _overallValue;
   bool _isLoading = true;
   String? _loadError;
@@ -35,11 +40,23 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
 
   bool get _isEditing => widget.budget != null;
 
+  bool get _isPaymentScope => _scopeValue.startsWith(_paymentPrefix);
+
+  String get _screenTitle => _isPaymentScope
+      ? (_isEditing ? '编辑付款额度' : '设置付款额度')
+      : (_isEditing ? '编辑预算' : '新增预算');
+
   @override
   void initState() {
     super.initState();
     final budget = widget.budget;
-    _scopeValue = budget?.categoryUuid ?? _overallValue;
+    _scopeValue = budget?.paymentMethodUuid != null
+        ? '$_paymentPrefix${budget!.paymentMethodUuid}'
+        : budget?.categoryUuid != null
+            ? '$_categoryPrefix${budget!.categoryUuid}'
+            : widget.initialPaymentMethodUuid != null
+                ? '$_paymentPrefix${widget.initialPaymentMethodUuid}'
+                : _overallValue;
     _amountController = TextEditingController(
       text: budget == null
           ? ''
@@ -48,7 +65,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
               .replaceFirst(RegExp(r'\.00$'), ''),
     );
     _noteController = TextEditingController(text: budget?.note ?? '');
-    _loadCategories();
+    _loadScopeOptions();
   }
 
   @override
@@ -58,19 +75,23 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
     super.dispose();
   }
 
-  Future<void> _loadCategories() async {
+  Future<void> _loadScopeOptions() async {
     setState(() {
       _isLoading = true;
       _loadError = null;
     });
     try {
-      final categories = await FinanceRepository.getCategories(
-        type: FinanceCategoryType.expense,
-        includeArchived: true,
-      );
+      final values = await Future.wait<dynamic>([
+        FinanceRepository.getCategories(
+          type: FinanceCategoryType.expense,
+          includeArchived: true,
+        ),
+        FinanceRepository.getPaymentMethods(includeArchived: true),
+      ]);
       if (!mounted) return;
       setState(() {
-        _categories = categories;
+        _categories = values[0] as List<FinanceCategory>;
+        _paymentMethods = values[1] as List<FinancePaymentMethod>;
         _isLoading = false;
       });
     } catch (error) {
@@ -86,12 +107,34 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
     final result = _categories
         .where((item) => !item.isArchived && !item.isDeleted)
         .toList();
-    if (_scopeValue != _overallValue &&
-        result.every((item) => item.uuid != _scopeValue)) {
+    final selectedUuid = _scopeValue.startsWith(_categoryPrefix)
+        ? _scopeValue.substring(_categoryPrefix.length)
+        : null;
+    if (selectedUuid != null &&
+        result.every((item) => item.uuid != selectedUuid)) {
       final selected = _categories.where(
-        (item) => item.uuid == _scopeValue && !item.isDeleted,
+        (item) => item.uuid == selectedUuid && !item.isDeleted,
       );
       result.insertAll(0, selected);
+    }
+    return result;
+  }
+
+  List<FinancePaymentMethod> get _visiblePaymentMethods {
+    final result = _paymentMethods
+        .where((item) => !item.isArchived && !item.isDeleted)
+        .toList();
+    final selectedUuid = _scopeValue.startsWith(_paymentPrefix)
+        ? _scopeValue.substring(_paymentPrefix.length)
+        : null;
+    if (selectedUuid != null &&
+        result.every((item) => item.uuid != selectedUuid)) {
+      result.insertAll(
+        0,
+        _paymentMethods.where(
+          (item) => item.uuid == selectedUuid && !item.isDeleted,
+        ),
+      );
     }
     return result;
   }
@@ -104,9 +147,15 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
       ),
       for (final category in _visibleCategories)
         DropdownMenuItem(
-          value: category.uuid,
+          value: '$_categoryPrefix${category.uuid}',
           child: Text(
-              '${category.icon}  ${financeCategoryDisplayName(category, _categories)}',
+              '${category.icon}  分类 · ${financeCategoryDisplayName(category, _categories)}',
+              overflow: TextOverflow.ellipsis),
+        ),
+      for (final method in _visiblePaymentMethods)
+        DropdownMenuItem(
+          value: '$_paymentPrefix${method.uuid}',
+          child: Text('${method.icon}  付款方式 · ${method.name}',
               overflow: TextOverflow.ellipsis),
         ),
     ];
@@ -115,7 +164,9 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
       items.add(
         DropdownMenuItem(
           value: _scopeValue,
-          child: const Text('🗃️ 已归档或未知分类'),
+          child: Text(_scopeValue.startsWith(_paymentPrefix)
+              ? '💼 已归档或未知付款方式'
+              : '🗃️ 已归档或未知分类'),
         ),
       );
     }
@@ -127,7 +178,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
     FocusScope.of(context).unfocus();
     final amount = parseFinanceAmount(_amountController.text);
     if (amount == null) {
-      _showError('请输入大于 0 且不超过两位小数的预算');
+      _showError('请输入大于 0 且不超过两位小数的金额');
       return;
     }
 
@@ -137,7 +188,12 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
     final budget = FinanceBudget(
       uuid: old?.uuid,
       monthKey: financeMonthKey(widget.month),
-      categoryUuid: _scopeValue == _overallValue ? null : _scopeValue,
+      categoryUuid: _scopeValue.startsWith(_categoryPrefix)
+          ? _scopeValue.substring(_categoryPrefix.length)
+          : null,
+      paymentMethodUuid: _scopeValue.startsWith(_paymentPrefix)
+          ? _scopeValue.substring(_paymentPrefix.length)
+          : null,
       amountMinor: amount,
       currencyCode: old?.currencyCode ?? FinanceDefaults.defaultCurrencyCode,
       note: _emptyToNull(_noteController.text),
@@ -178,7 +234,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
         extendBodyBehindAppBar: true,
         appBar: FloatingGlassAppBar(
           flexibleSpace: const FloatingGlassTopBarBackground(),
-          title: Text(_isEditing ? '编辑预算' : '新增预算'),
+          title: Text(_screenTitle),
         ),
         body: FloatingGlassTopBarContentFade(
           topBarHeight: topBarHeight,
@@ -188,10 +244,10 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
                   ? FinancePageList(topPadding: topBarHeight, children: [
                       FinanceEmptyState(
                         icon: Icons.error_outline_rounded,
-                        title: '预算分类加载失败',
+                        title: '分类或付款方式加载失败',
                         description: '请重新加载后再设置预算。',
                         actionLabel: '重试',
-                        onAction: _loadCategories,
+                        onAction: _loadScopeOptions,
                       ),
                     ])
                   : Column(children: [
@@ -207,27 +263,35 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
                                 FinanceSectionCard(
                                   title:
                                       '${widget.month.year} 年 ${widget.month.month} 月',
-                                  description: '预算按这个月份的账单统计。',
-                                  icon: Icons.calendar_month_outlined,
+                                  description: _isPaymentScope
+                                      ? '录入月初可用金额，之后会随本月支出扣减。'
+                                      : '预算按这个月份的账单统计。',
+                                  icon: _isPaymentScope
+                                      ? Icons.account_balance_wallet_outlined
+                                      : Icons.calendar_month_outlined,
                                   child: FinanceAmountField(
                                     key:
                                         const ValueKey('finance-budget-amount'),
                                     controller: _amountController,
-                                    label: '预算金额',
+                                    label: _isPaymentScope ? '月初可用金额' : '预算金额',
                                   ),
                                 ),
                                 const SizedBox(height: 16),
                                 FinanceSectionCard(
-                                  title: '预算范围',
+                                  title: _isPaymentScope ? '付款方式' : '预算范围',
                                   icon: Icons.track_changes_outlined,
-                                  description: '总预算覆盖全部支出；分类预算独立统计。',
+                                  description: _isPaymentScope
+                                      ? '支出按账单记录的付款方式扣减，退款会加回。'
+                                      : '总预算覆盖全部支出；分类预算和付款方式额度独立统计。',
                                   child: DropdownButtonFormField<String>(
                                     key: ValueKey(
                                         'finance-budget-scope-$_scopeValue'),
                                     initialValue: _scopeValue,
                                     isExpanded: true,
                                     decoration: financeFieldDecoration(context,
-                                        label: '选择支出范围'),
+                                        label: _isPaymentScope
+                                            ? '选择付款方式'
+                                            : '选择支出范围'),
                                     items: _scopeItems,
                                     onChanged: (value) {
                                       if (value != null) {
@@ -255,7 +319,9 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
                         ),
                       ),
                       FinanceFormActions(
-                          isSaving: _isSaving, onSave: _save, label: '保存预算'),
+                          isSaving: _isSaving,
+                          onSave: _save,
+                          label: _isPaymentScope ? '保存额度' : '保存预算'),
                     ]),
         ),
       ),
