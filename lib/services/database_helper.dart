@@ -647,6 +647,7 @@ class DatabaseHelper {
         uuid TEXT NOT NULL UNIQUE,
         month_key TEXT NOT NULL,
         category_uuid TEXT,
+        payment_method_uuid TEXT,
         amount_minor INTEGER NOT NULL DEFAULT 0,
         currency_code TEXT NOT NULL DEFAULT 'CNY',
         note TEXT,
@@ -772,6 +773,13 @@ class DatabaseHelper {
         'ADD COLUMN icon_customized INTEGER NOT NULL DEFAULT 0',
       );
     }
+    final budgetColumns =
+        await db.rawQuery('PRAGMA table_info(finance_budgets)');
+    if (!budgetColumns.any((row) => row['name'] == 'payment_method_uuid')) {
+      await db.execute(
+        'ALTER TABLE finance_budgets ADD COLUMN payment_method_uuid TEXT',
+      );
+    }
     for (final table in financeTables) {
       final columns = await db.rawQuery('PRAGMA table_info($table)');
       var addedPendingColumn = false;
@@ -848,6 +856,10 @@ class DatabaseHelper {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_finance_budgets_month '
       'ON finance_budgets(is_deleted, month_key, category_uuid)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_budgets_payment_method_month '
+      'ON finance_budgets(is_deleted, month_key, payment_method_uuid)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_finance_recurring_rules_active '
@@ -969,6 +981,9 @@ class DatabaseHelper {
               await ensureAiUsageSchema(db);
             }
             if (oldVersion < 53) {
+              await ensureFinanceSchema(db);
+            }
+            if (oldVersion < 54) {
               await ensureFinanceSchema(db);
             }
             if (oldVersion < 44) {

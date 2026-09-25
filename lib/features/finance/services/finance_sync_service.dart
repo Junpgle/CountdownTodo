@@ -52,6 +52,12 @@ class FinanceSyncRequest {
           !_asBool(item['icon_customized'] ?? item['iconCustomized'])) {
         return false;
       }
+      // Payment-method monthly amounts are intentionally local-only until the
+      // server budget contract supports their additional scope column.
+      if (key == 'budgets' &&
+          (item['payment_method_uuid'] ?? item['paymentMethodUuid']) != null) {
+        return false;
+      }
       if (fullSync) return true;
       // After schema V48 the marker is authoritative. This prevents a
       // downloaded row with a future device timestamp from being uploaded

@@ -11,10 +11,18 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 53;
+  static const int currentVersion = 54;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 54,
+      title: '付款方式月度额度',
+      changes: [
+        '支持按月份和付款方式分别设置可用额度。',
+        '为每种付款方式显示本月已用金额和剩余金额。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 53,
       title: '记账分类自定义图标同步',

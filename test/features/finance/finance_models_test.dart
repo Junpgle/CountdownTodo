@@ -168,6 +168,29 @@ void main() {
     expect(financeMonthKey(DateTime(2026, 8, 27)), '2026-08');
   });
 
+  test('付款方式月额度使用独立范围并可在 SQLite/JSON 字段间往返', () {
+    final original = FinanceBudget(
+      uuid: 'payment-budget-1',
+      monthKey: '2026-08',
+      paymentMethodUuid: 'payment-card',
+      amountMinor: 30000,
+    );
+
+    final restored = FinanceBudget.fromMap(original.toJson());
+
+    expect(restored.paymentMethodUuid, 'payment-card');
+    expect(restored.isPaymentMethod, isTrue);
+    expect(restored.isOverall, isFalse);
+    expect(
+      FinanceBudget.stableUuid(
+        '2026-08',
+        null,
+        paymentMethodUuid: 'payment-card',
+      ),
+      isNot(FinanceBudget.stableUuid('2026-08', null)),
+    );
+  });
+
   test('退款会以正向现金流显示，但保留退款类型', () {
     expect(
       formatSignedFinanceAmount(800, FinanceTransactionType.expense),
@@ -242,6 +265,40 @@ void main() {
     expect(summary.expenseByCategory['food'], 3800);
     expect(summary.expenseByDate['2026-09-02'], 5000);
     expect(summary.expenseByDate['2026-09-03'], -1200);
+  });
+
+  test('付款方式净扣减按支出扣除退款并忽略收入', () {
+    final spending = FinanceRepository.summarizePaymentMethodSpending([
+      FinanceTransaction(
+        uuid: 'card-expense',
+        amountMinor: 10000,
+        paymentMethodUuid: 'payment-card',
+        transactionDate: '2026-09-01',
+      ),
+      FinanceTransaction(
+        uuid: 'card-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 2500,
+        paymentMethodUuid: 'payment-card',
+        transactionDate: '2026-09-02',
+      ),
+      FinanceTransaction(
+        uuid: 'wallet-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 4000,
+        paymentMethodUuid: 'payment-wallet',
+        transactionDate: '2026-09-03',
+      ),
+      FinanceTransaction(
+        uuid: 'card-income',
+        type: FinanceTransactionType.income,
+        amountMinor: 9000,
+        paymentMethodUuid: 'payment-card',
+        transactionDate: '2026-09-04',
+      ),
+    ]);
+
+    expect(spending, {'payment-card': 7500, 'payment-wallet': -4000});
   });
 
   test('默认分类和付款方式使用稳定 ID', () {

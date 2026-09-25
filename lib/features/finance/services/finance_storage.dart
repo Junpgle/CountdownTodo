@@ -36,6 +36,15 @@ abstract final class FinanceStorage {
         'pending_sync': 0,
       };
 
+  static Map<String, dynamic> _budgetValues(
+    FinanceBudget budget, {
+    required bool sync,
+  }) =>
+      {
+        ...budget.toMap(),
+        'pending_sync': sync ? 1 : 0,
+      };
+
   static Future<void> ensureReady() async {
     final db = await _database;
     if (identical(_readyDatabase, db)) {
@@ -1117,7 +1126,9 @@ abstract final class FinanceStorage {
       'finance_budgets',
       where: where.isEmpty ? null : where.join(' AND '),
       whereArgs: args,
-      orderBy: 'CASE WHEN category_uuid IS NULL THEN 0 ELSE 1 END, '
+      orderBy:
+          'CASE WHEN category_uuid IS NULL AND payment_method_uuid IS NULL '
+          'THEN 0 WHEN payment_method_uuid IS NULL THEN 1 ELSE 2 END, '
           'updated_at DESC',
     );
     return rows.map(FinanceBudget.fromMap).toList();
@@ -1146,19 +1157,54 @@ abstract final class FinanceStorage {
     if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(budget.monthKey)) {
       throw ArgumentError.value(budget.monthKey, 'monthKey', '月份格式无效');
     }
+    if (budget.categoryUuid != null && budget.paymentMethodUuid != null) {
+      throw ArgumentError('预算只能对应一个分类或付款方式');
+    }
     await ensureReady();
     final db = await _database;
+    var requestSync = !budget.isPaymentMethod;
     await db.transaction((txn) async {
-      final existing = await _findByUuid(
+      final existingByUuid = await _findByUuid(
         txn,
         'finance_budgets',
         budget.uuid,
       );
-      if (existing == null) {
+      var current =
+          existingByUuid == null ? null : FinanceBudget.fromMap(existingByUuid);
+      if (current != null &&
+          (current.monthKey != budget.monthKey ||
+              current.categoryUuid != budget.categoryUuid ||
+              current.paymentMethodUuid != budget.paymentMethodUuid)) {
+        current
+          ..isDeleted = true
+          ..markAsChanged();
+        await txn.update(
+          'finance_budgets',
+          _budgetValues(current, sync: !current.isPaymentMethod),
+          where: 'uuid = ?',
+          whereArgs: [current.uuid],
+        );
+        requestSync = requestSync || !current.isPaymentMethod;
+
+        final now = DateTime.now().millisecondsSinceEpoch;
+        budget
+          ..uuid = FinanceBudget.stableUuid(
+            budget.monthKey,
+            budget.categoryUuid,
+            paymentMethodUuid: budget.paymentMethodUuid,
+          )
+          ..version = 1
+          ..createdAt = now
+          ..updatedAt = now > current.updatedAt ? now : current.updatedAt + 1;
+        current = null;
+      }
+      if (current == null) {
         final stableUuid = FinanceBudget.stableUuid(
           budget.monthKey,
           budget.categoryUuid,
+          paymentMethodUuid: budget.paymentMethodUuid,
         );
+        budget.uuid = stableUuid;
         final stableExisting = await _findByUuid(
           txn,
           'finance_budgets',
@@ -1170,14 +1216,11 @@ abstract final class FinanceStorage {
             throw StateError('该月份的预算范围已经存在');
           }
           budget
-            ..uuid = stableUuid
             ..version = previous.version + 1
             ..createdAt = previous.createdAt
             ..updatedAt = previous.updatedAt >= budget.updatedAt
                 ? previous.updatedAt + 1
                 : budget.updatedAt;
-        } else {
-          budget.uuid = stableUuid;
         }
       }
       final where = <String>[
@@ -1186,11 +1229,19 @@ abstract final class FinanceStorage {
         'uuid != ?',
       ];
       final args = <Object?>[budget.monthKey, budget.uuid];
-      if (budget.categoryUuid == null) {
-        where.add('category_uuid IS NULL');
+      if (budget.paymentMethodUuid != null) {
+        where
+          ..add('category_uuid IS NULL')
+          ..add('payment_method_uuid = ?');
+        args.add(budget.paymentMethodUuid);
       } else {
-        where.add('category_uuid = ?');
-        args.add(budget.categoryUuid);
+        where.add('payment_method_uuid IS NULL');
+        if (budget.categoryUuid == null) {
+          where.add('category_uuid IS NULL');
+        } else {
+          where.add('category_uuid = ?');
+          args.add(budget.categoryUuid);
+        }
       }
       final duplicates = await txn.query(
         'finance_budgets',
@@ -1202,14 +1253,16 @@ abstract final class FinanceStorage {
       if (duplicates.isNotEmpty) {
         throw StateError('该月份的预算范围已经存在');
       }
-      budget.pendingSync = true;
+      // Payment-method monthly limits are local-only until the server budget
+      // contract includes payment_method_uuid.
+      budget.pendingSync = !budget.isPaymentMethod;
       await txn.insert(
         'finance_budgets',
-        _localValues(budget.toMap()),
+        _budgetValues(budget, sync: !budget.isPaymentMethod),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     });
-    _notifyChanged();
+    _notifyChanged(requestSync: requestSync);
   }
 
   static Future<void> deleteBudget(String uuid) async {
@@ -1943,6 +1996,7 @@ abstract final class FinanceStorage {
       final item = FinanceBudget.fromMap(map);
       item.uuid = remap(item.uuid);
       item.categoryUuid = _remapNullable(item.categoryUuid, remap);
+      item.paymentMethodUuid = _remapNullable(item.paymentMethodUuid, remap);
       item.amountMinor = item.amountMinor.abs();
       if (item.amountMinor <= 0 ||
           !RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(item.monthKey)) {
@@ -1961,7 +2015,7 @@ abstract final class FinanceStorage {
         item.uuid = current.uuid;
         await db.update(
           'finance_budgets',
-          _localValues(item.toMap()),
+          _budgetValues(item, sync: !item.isPaymentMethod),
           where: 'uuid = ?',
           whereArgs: [current.uuid],
         );
@@ -1969,13 +2023,13 @@ abstract final class FinanceStorage {
       } else if (existing == null) {
         await db.insert(
           'finance_budgets',
-          _localValues(item.toMap()),
+          _budgetValues(item, sync: !item.isPaymentMethod),
         );
         imported++;
       } else if (item.updatedAt > FinanceBudget.fromMap(existing).updatedAt) {
         await db.update(
           'finance_budgets',
-          _localValues(item.toMap()),
+          _budgetValues(item, sync: !item.isPaymentMethod),
           where: 'uuid = ?',
           whereArgs: [item.uuid],
         );
@@ -2776,6 +2830,7 @@ abstract final class FinanceStorage {
 
   static bool _isValidBudget(FinanceBudget item) {
     return item.uuid.trim().isNotEmpty &&
+        !(item.categoryUuid != null && item.paymentMethodUuid != null) &&
         item.amountMinor > 0 &&
         RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(item.monthKey);
   }
@@ -2832,11 +2887,19 @@ abstract final class FinanceStorage {
   ) async {
     final where = <String>['month_key = ?', 'is_deleted = 0'];
     final args = <Object?>[budget.monthKey];
-    if (budget.categoryUuid == null) {
-      where.add('category_uuid IS NULL');
+    if (budget.paymentMethodUuid != null) {
+      where
+        ..add('category_uuid IS NULL')
+        ..add('payment_method_uuid = ?');
+      args.add(budget.paymentMethodUuid);
     } else {
-      where.add('category_uuid = ?');
-      args.add(budget.categoryUuid);
+      where.add('payment_method_uuid IS NULL');
+      if (budget.categoryUuid == null) {
+        where.add('category_uuid IS NULL');
+      } else {
+        where.add('category_uuid = ?');
+        args.add(budget.categoryUuid);
+      }
     }
     final rows = await db.query(
       'finance_budgets',
@@ -2847,23 +2910,37 @@ abstract final class FinanceStorage {
     return rows.isEmpty ? null : rows.first;
   }
 
-  static String _budgetScopeKey(FinanceBudget budget) =>
-      '${budget.monthKey}\u0000${budget.categoryUuid ?? ''}';
+  static String _budgetScopeKey(FinanceBudget budget) {
+    final scope = budget.paymentMethodUuid == null
+        ? 'category:${budget.categoryUuid ?? ''}'
+        : 'payment:${budget.paymentMethodUuid}';
+    return '${budget.monthKey}\u0000$scope';
+  }
 
   static Future<List<Map<String, dynamic>>> _findAllBudgetsByScope(
     DatabaseExecutor db,
     FinanceBudget budget,
   ) {
+    if (budget.paymentMethodUuid != null) {
+      return db.query(
+        'finance_budgets',
+        where:
+            'month_key = ? AND category_uuid IS NULL AND payment_method_uuid = ?',
+        whereArgs: [budget.monthKey, budget.paymentMethodUuid],
+      );
+    }
     if (budget.categoryUuid == null) {
       return db.query(
         'finance_budgets',
-        where: 'month_key = ? AND category_uuid IS NULL',
+        where:
+            'month_key = ? AND category_uuid IS NULL AND payment_method_uuid IS NULL',
         whereArgs: [budget.monthKey],
       );
     }
     return db.query(
       'finance_budgets',
-      where: 'month_key = ? AND category_uuid = ?',
+      where:
+          'month_key = ? AND category_uuid = ? AND payment_method_uuid IS NULL',
       whereArgs: [budget.monthKey, budget.categoryUuid],
     );
   }
@@ -2872,17 +2949,28 @@ abstract final class FinanceStorage {
     DatabaseExecutor db,
     FinanceBudget budget,
   ) async {
+    if (budget.paymentMethodUuid != null) {
+      await db.delete(
+        'finance_budgets',
+        where:
+            'month_key = ? AND category_uuid IS NULL AND payment_method_uuid = ?',
+        whereArgs: [budget.monthKey, budget.paymentMethodUuid],
+      );
+      return;
+    }
     if (budget.categoryUuid == null) {
       await db.delete(
         'finance_budgets',
-        where: 'month_key = ? AND category_uuid IS NULL',
+        where:
+            'month_key = ? AND category_uuid IS NULL AND payment_method_uuid IS NULL',
         whereArgs: [budget.monthKey],
       );
       return;
     }
     await db.delete(
       'finance_budgets',
-      where: 'month_key = ? AND category_uuid = ?',
+      where:
+          'month_key = ? AND category_uuid = ? AND payment_method_uuid IS NULL',
       whereArgs: [budget.monthKey, budget.categoryUuid],
     );
   }
@@ -2891,17 +2979,28 @@ abstract final class FinanceStorage {
     DatabaseExecutor db,
     FinanceBudget winner,
   ) async {
+    if (winner.paymentMethodUuid != null) {
+      await db.delete(
+        'finance_budgets',
+        where:
+            'month_key = ? AND category_uuid IS NULL AND payment_method_uuid = ? AND uuid != ?',
+        whereArgs: [winner.monthKey, winner.paymentMethodUuid, winner.uuid],
+      );
+      return;
+    }
     if (winner.categoryUuid == null) {
       await db.delete(
         'finance_budgets',
-        where: 'month_key = ? AND category_uuid IS NULL AND uuid != ?',
+        where:
+            'month_key = ? AND category_uuid IS NULL AND payment_method_uuid IS NULL AND uuid != ?',
         whereArgs: [winner.monthKey, winner.uuid],
       );
       return;
     }
     await db.delete(
       'finance_budgets',
-      where: 'month_key = ? AND category_uuid = ? AND uuid != ?',
+      where:
+          'month_key = ? AND category_uuid = ? AND payment_method_uuid IS NULL AND uuid != ?',
       whereArgs: [winner.monthKey, winner.categoryUuid, winner.uuid],
     );
   }

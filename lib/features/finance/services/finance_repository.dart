@@ -122,6 +122,29 @@ abstract final class FinanceRepository {
     );
   }
 
+  /// Returns net monthly spending grouped by payment method; linked refunds
+  /// reduce the amount used by the method they were recorded under.
+  static Map<String, int> summarizePaymentMethodSpending(
+    Iterable<FinanceTransaction> transactions,
+  ) {
+    final spending = <String, int>{};
+    for (final transaction in transactions) {
+      final methodUuid = transaction.paymentMethodUuid;
+      if (methodUuid == null || methodUuid.isEmpty) continue;
+      switch (transaction.type) {
+        case FinanceTransactionType.expense:
+          spending[methodUuid] =
+              (spending[methodUuid] ?? 0) + transaction.amountMinor;
+        case FinanceTransactionType.refund:
+          spending[methodUuid] =
+              (spending[methodUuid] ?? 0) - transaction.amountMinor;
+        case FinanceTransactionType.income:
+          break;
+      }
+    }
+    return spending;
+  }
+
   static Future<void> saveTransaction(FinanceTransaction transaction) async {
     await FinanceStorage.saveTransaction(transaction);
     try {

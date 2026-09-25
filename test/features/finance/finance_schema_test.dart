@@ -3,6 +3,7 @@ library;
 
 import 'package:countdown_todo/features/finance/services/ai_usage_cost_service.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
+import 'package:countdown_todo/features/finance/services/finance_sync_service.dart';
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/services/database_helper.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -83,6 +84,7 @@ void main() {
       containsAll(<Object>{
         'month_key',
         'category_uuid',
+        'payment_method_uuid',
         'amount_minor',
         'is_deleted',
         'version',
@@ -413,6 +415,84 @@ void main() {
     expect(budgets, hasLength(1));
     expect(budgets.single.uuid, 'remote-newer-budget');
     expect(budgets.single.amountMinor, 50000);
+  });
+
+  test('付款方式额度按月和付款方式独立保存且不进入云同步', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'payment-budget-scope-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final card = FinanceBudget(
+      monthKey: '2026-09',
+      paymentMethodUuid: 'payment-card',
+      amountMinor: 50000,
+    );
+    final wallet = FinanceBudget(
+      monthKey: '2026-09',
+      paymentMethodUuid: 'payment-wallet',
+      amountMinor: 20000,
+    );
+    await FinanceStorage.saveBudget(card);
+    await FinanceStorage.saveBudget(wallet);
+
+    expect(
+      card.uuid,
+      FinanceBudget.stableUuid(
+        '2026-09',
+        null,
+        paymentMethodUuid: 'payment-card',
+      ),
+    );
+    expect(wallet.uuid, isNot(card.uuid));
+    expect((await FinanceStorage.getBudget(card.uuid))!.pendingSync, isFalse);
+    expect((await FinanceStorage.getBudget(wallet.uuid))!.pendingSync, isFalse);
+
+    await FinanceStorage.mergeRemoteBundle({
+      'budgets': [
+        {
+          'uuid': 'remote-overall-budget',
+          'month_key': '2026-09',
+          'amount_minor': 100000,
+          'updated_at': 100,
+          'created_at': 100,
+          'version': 1,
+        },
+      ],
+    });
+
+    final budgets = await FinanceStorage.getBudgets(monthKey: '2026-09');
+    expect(budgets, hasLength(3));
+    expect(
+      budgets.map((item) => item.paymentMethodUuid),
+      containsAll(<String?>['payment-card', 'payment-wallet']),
+    );
+
+    final syncChanges = FinanceSyncService.buildChangesForTest(
+      {
+        'budgets': [
+          {...card.toMap(), 'pending_sync': 1},
+          FinanceBudget(
+            uuid: 'overall-budget',
+            monthKey: '2026-09',
+            amountMinor: 100000,
+            pendingSync: true,
+          ).toMap(),
+        ],
+      },
+      cursor: 0,
+      fullSync: true,
+    );
+    expect(
+      syncChanges['budgets']!.map((item) => item['uuid']),
+      ['overall-budget'],
+    );
   });
 
   test('远端较新预算墓碑会压住同范围的历史活动副本', () async {

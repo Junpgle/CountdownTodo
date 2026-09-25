@@ -171,7 +171,9 @@ abstract final class FinanceAiContextService {
         transactions: values[1] as List<FinanceTransaction>,
         categories: catalogData.categories,
         paymentMethods: catalogData.paymentMethods,
-        budgets: values[2] as List<FinanceBudget>,
+        budgets: (values[2] as List<FinanceBudget>)
+            .where((budget) => !budget.isPaymentMethod)
+            .toList(growable: false),
       );
       return [
         if (needsCatalog) catalog,

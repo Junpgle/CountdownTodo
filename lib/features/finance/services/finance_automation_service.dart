@@ -274,6 +274,7 @@ abstract final class FinanceAutomationService {
         prefs.getString(StorageService.keyCurrentUser) ?? 'default';
 
     for (final budget in budgets) {
+      if (budget.isPaymentMethod) continue;
       final used = (budget.categoryUuid == null
               ? summary.netExpenseMinor
               : summary.expenseByCategory[budget.categoryUuid] ?? 0)

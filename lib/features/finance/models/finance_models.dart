@@ -1709,6 +1709,7 @@ class FinanceBudget {
   String uuid;
   String monthKey;
   String? categoryUuid;
+  String? paymentMethodUuid;
   int amountMinor;
   String currencyCode;
   String? note;
@@ -1723,6 +1724,7 @@ class FinanceBudget {
     String? uuid,
     required this.monthKey,
     this.categoryUuid,
+    this.paymentMethodUuid,
     required this.amountMinor,
     this.currencyCode = FinanceDefaults.defaultCurrencyCode,
     this.note,
@@ -1736,17 +1738,25 @@ class FinanceBudget {
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
-  static String stableUuid(String monthKey, String? categoryUuid) {
-    final scope = categoryUuid?.trim().isNotEmpty == true
-        ? categoryUuid!.trim()
-        : 'overall';
+  static String stableUuid(
+    String monthKey,
+    String? categoryUuid, {
+    String? paymentMethodUuid,
+  }) {
+    final scope = paymentMethodUuid?.trim().isNotEmpty == true
+        ? 'payment:${paymentMethodUuid!.trim()}'
+        : categoryUuid?.trim().isNotEmpty == true
+            ? categoryUuid!.trim()
+            : 'overall';
     return const Uuid().v5(
       _uuidNamespace,
       'countdown-todo/finance-budget/v1/$monthKey/$scope',
     );
   }
 
-  bool get isOverall => categoryUuid == null;
+  bool get isPaymentMethod => paymentMethodUuid != null;
+
+  bool get isOverall => categoryUuid == null && paymentMethodUuid == null;
 
   void markAsChanged() {
     version++;
@@ -1759,6 +1769,7 @@ class FinanceBudget {
         'uuid': uuid,
         'month_key': monthKey,
         'category_uuid': categoryUuid,
+        'payment_method_uuid': paymentMethodUuid,
         'amount_minor': amountMinor,
         'currency_code': currencyCode,
         'note': note,
@@ -1779,6 +1790,9 @@ class FinanceBudget {
           financeMonthKey(DateTime.now()),
       categoryUuid:
           _nullableString(map['category_uuid'] ?? map['categoryUuid']),
+      paymentMethodUuid: _nullableString(
+        map['payment_method_uuid'] ?? map['paymentMethodUuid'],
+      ),
       amountMinor: _int(map['amount_minor'] ?? map['amountMinor']).abs(),
       currencyCode: _string(map['currency_code'] ?? map['currencyCode']) ??
           FinanceDefaults.defaultCurrencyCode,
