@@ -16,6 +16,7 @@ import '../widgets/finance_widgets.dart';
 import 'finance_automation_screen.dart';
 import 'ai_usage_cost_screen.dart';
 import 'finance_budget_screen.dart';
+import 'finance_category_detail_screen.dart';
 import 'finance_entry_screen.dart';
 import 'finance_loan_screen.dart';
 import 'finance_settings_screen.dart';
@@ -55,12 +56,15 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   String _keyword = '';
   FinanceTransactionType? _filterType;
   String? _categoryFilterUuid;
+  String? _categoryDrilldownFilterUuid;
   int _selectedIndex = 0;
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
   bool _maintenanceScheduled = false;
   Future<void>? _maintenanceFuture;
+  FinanceCategoryDetailScreen? _categoryDetailReturnPage;
+  GlobalKey? _categoryDetailSourceKey;
   final GlobalKey _overviewAddActionKey = GlobalKey();
   final GlobalKey _bottomAddActionKey = GlobalKey();
 
@@ -71,6 +75,77 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   Map<String, FinancePaymentMethod> get _paymentMethodMap => {
         for (final item in _paymentMethods) item.uuid: item,
       };
+
+  bool get _hasLedgerFilters =>
+      _keyword.trim().isNotEmpty ||
+      _filterType != null ||
+      _categoryFilterUuid != null;
+
+  bool get _handleLedgerBack => _selectedIndex == 1;
+
+  bool get _returnToCategoryDetailBeforePop =>
+      _handleLedgerBack &&
+      _categoryFilterUuid != null &&
+      _categoryFilterUuid == _categoryDrilldownFilterUuid &&
+      _categoryDetailReturnPage != null;
+
+  void _clearLedgerFilters() {
+    if (!_hasLedgerFilters) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _keyword = '';
+      _filterType = null;
+      _categoryFilterUuid = null;
+      _categoryDrilldownFilterUuid = null;
+      _categoryDetailReturnPage = null;
+      _categoryDetailSourceKey = null;
+    });
+  }
+
+  void _returnToOverview() {
+    if (_selectedIndex != 1) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _selectedIndex = 0);
+  }
+
+  void _returnToCategoryDetail() {
+    final returnPage = _categoryDetailReturnPage;
+    final sourceKey = _categoryDetailSourceKey;
+    if (returnPage == null || sourceKey == null) {
+      _clearLedgerFilters();
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    final rootCategoryUuid = returnPage.rootCategoryUuid;
+    final category =
+        rootCategoryUuid == null ? null : _categoryMap[rootCategoryUuid];
+    final colorScheme = Theme.of(context).colorScheme;
+    setState(() {
+      _keyword = '';
+      _filterType = null;
+      _categoryFilterUuid = null;
+      _categoryDrilldownFilterUuid = null;
+      _categoryDetailReturnPage = null;
+      _categoryDetailSourceKey = null;
+      _selectedIndex = 0;
+    });
+    unawaited(
+      PageTransitions.pushFromRect<void>(
+        context: context,
+        page: returnPage,
+        sourceKey: sourceKey,
+        sourceColor: colorScheme.brightness == Brightness.dark
+            ? Colors.black
+            : Colors.white,
+        placeholderBuilder: (_) => Text(
+          category?.icon ?? '💰',
+          style: const TextStyle(fontSize: 30),
+        ),
+        sourceBorderRadius: BorderRadius.circular(12),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -382,9 +457,16 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     _load();
   }
 
-  void _selectCategoryFromOverview(String categoryUuid) {
+  void _selectCategoryFromOverview(
+    String categoryUuid,
+    FinanceCategoryDetailScreen returnPage,
+    GlobalKey sourceKey,
+  ) {
     setState(() {
       _categoryFilterUuid = categoryUuid;
+      _categoryDrilldownFilterUuid = categoryUuid;
+      _categoryDetailReturnPage = returnPage;
+      _categoryDetailSourceKey = sourceKey;
       // 概览中的分类都属于支出，避免沿用“收入”筛选导致下钻后看不到账单。
       _filterType = null;
       _selectedIndex = 1;
@@ -401,6 +483,22 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('记账'),
+        leading: _handleLedgerBack
+            ? IconButton(
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: _returnToCategoryDetailBeforePop
+                    ? '返回支出分类'
+                    : _hasLedgerFilters
+                        ? '返回全部账单'
+                        : '返回概览',
+                onPressed: _returnToCategoryDetailBeforePop
+                    ? _returnToCategoryDetail
+                    : _hasLedgerFilters
+                        ? _clearLedgerFilters
+                        : _returnToOverview,
+                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+              )
+            : null,
         actions: [
           IconButton(
             style: floatingGlassPlainIconButtonStyle(),
@@ -530,8 +628,14 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                                   setState(() => _keyword = value),
                               onFilterChanged: (value) =>
                                   setState(() => _filterType = value),
-                              onCategoryChanged: (value) =>
-                                  setState(() => _categoryFilterUuid = value),
+                              onCategoryChanged: (value) => setState(() {
+                                _categoryFilterUuid = value;
+                                if (value != _categoryDrilldownFilterUuid) {
+                                  _categoryDrilldownFilterUuid = null;
+                                  _categoryDetailReturnPage = null;
+                                  _categoryDetailSourceKey = null;
+                                }
+                              }),
                               onEdit: (transaction) =>
                                   _openEntry(transaction: transaction),
                               onDelete: _deleteTransaction,
@@ -585,12 +689,27 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         },
       ),
     );
+    final guardedScaffold = PopScope<Object?>(
+      canPop: !_handleLedgerBack,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _handleLedgerBack) {
+          if (_returnToCategoryDetailBeforePop) {
+            _returnToCategoryDetail();
+          } else if (_hasLedgerFilters) {
+            _clearLedgerFilters();
+          } else {
+            _returnToOverview();
+          }
+        }
+      },
+      child: scaffold,
+    );
 
     final isDesktop = !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.windows ||
             defaultTargetPlatform == TargetPlatform.macOS ||
             defaultTargetPlatform == TargetPlatform.linux);
-    if (!isDesktop) return scaffold;
+    if (!isDesktop) return guardedScaffold;
     return Shortcuts(
       shortcuts: const {
         SingleActivator(
@@ -615,7 +734,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         },
         child: Focus(
           autofocus: true,
-          child: scaffold,
+          child: guardedScaffold,
         ),
       ),
     );

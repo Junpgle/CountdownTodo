@@ -3,6 +3,7 @@ import 'package:countdown_todo/features/finance/screens/finance_transaction_deta
 import 'package:countdown_todo/features/finance/widgets/finance_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 FinanceTransaction _transaction() => FinanceTransaction(
       uuid: 'transaction-detail-test',
@@ -189,6 +190,7 @@ void main() {
   });
 
   testWidgets('概览按一级分类汇总，点击后展示小类并可选择账单筛选', (tester) async {
+    SharedPreferences.setMockInitialValues({});
     String? selectedCategoryUuid;
     final transactions = [
       FinanceTransaction(
@@ -274,11 +276,19 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey('finance-overview-category-food')),
     );
+    await tester.pump(const Duration(milliseconds: 20));
     await tester.pumpAndSettle();
     expect(find.text('支出分类详情'), findsOneWidget);
     expect(find.text('奶茶'), findsOneWidget);
     expect(find.text('咖啡'), findsOneWidget);
-    expect(find.text('未细分'), findsOneWidget);
+    final directCategoryItem = find.byKey(
+      const ValueKey('finance-category-detail-food'),
+    );
+    expect(
+      find.descendant(of: directCategoryItem, matching: find.text('餐饮')),
+      findsOneWidget,
+    );
+    expect(find.text('未细分'), findsNothing);
 
     await tester.tap(
       find.byKey(const ValueKey('finance-category-detail-milk-tea')),

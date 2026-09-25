@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../widgets/floating_bottom_bar.dart';
+import '../../../utils/page_transitions.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../screens/finance_category_detail_screen.dart';
@@ -13,6 +14,12 @@ double financeBottomContentPaddingFor(BuildContext context) {
 
 enum _FinanceOverviewView { month, week, day }
 
+typedef FinanceCategorySelectionCallback = void Function(
+  String categoryUuid,
+  FinanceCategoryDetailScreen returnPage,
+  GlobalKey sourceKey,
+);
+
 class FinanceOverviewPanel extends StatefulWidget {
   final double topPadding;
   final DateTime month;
@@ -23,7 +30,7 @@ class FinanceOverviewPanel extends StatefulWidget {
   final GlobalKey addActionKey;
   final Future<void> Function() onRefresh;
   final ValueChanged<DateTime>? onMonthChanged;
-  final ValueChanged<String>? onCategorySelected;
+  final FinanceCategorySelectionCallback? onCategorySelected;
 
   const FinanceOverviewPanel({
     super.key,
@@ -46,6 +53,7 @@ class FinanceOverviewPanel extends StatefulWidget {
 class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   _FinanceOverviewView _view = _FinanceOverviewView.month;
   late DateTime _focusedDate;
+  final Map<String, GlobalKey> _categorySourceKeys = {};
 
   DateTime get month => widget.month;
   FinanceSummary get summary => widget.summary;
@@ -55,7 +63,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   GlobalKey get addActionKey => widget.addActionKey;
   Future<void> Function() get onRefresh => widget.onRefresh;
   ValueChanged<DateTime>? get onMonthChanged => widget.onMonthChanged;
-  ValueChanged<String>? get onCategorySelected => widget.onCategorySelected;
+  FinanceCategorySelectionCallback? get onCategorySelected =>
+      widget.onCategorySelected;
 
   @override
   void initState() {
@@ -490,13 +499,18 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     final categoryKey = ValueKey(
       'finance-overview-category-${entry.categoryUuid ?? 'uncategorized'}',
     );
+    final sourceKey = _categorySourceKeys.putIfAbsent(
+      entry.categoryUuid ?? 'uncategorized',
+      GlobalKey.new,
+    );
     return Semantics(
+      key: categoryKey,
       button: true,
       label: '查看$categoryName支出详情',
       child: InkWell(
-        key: categoryKey,
+        key: sourceKey,
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _openCategoryDetail(entry, period),
+        onTap: () => _openCategoryDetail(entry, period, sourceKey),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           child: Row(
@@ -581,19 +595,33 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   Future<void> _openCategoryDetail(
     _FinanceCategoryTotal entry,
     _FinanceOverviewPeriod period,
+    GlobalKey sourceKey,
   ) async {
-    final selectedCategoryUuid = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        builder: (_) => FinanceCategoryDetailScreen(
-          periodTitle: period.title,
-          rootCategoryUuid: entry.categoryUuid,
-          transactions: period.transactions,
-          categories: categories,
-        ),
+    final category =
+        entry.categoryUuid == null ? null : categories[entry.categoryUuid];
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final detailPage = FinanceCategoryDetailScreen(
+      periodTitle: period.title,
+      rootCategoryUuid: entry.categoryUuid,
+      transactions: period.transactions,
+      categories: categories,
+    );
+    final selectedCategoryUuid = await PageTransitions.pushFromRect<String>(
+      context: context,
+      page: detailPage,
+      sourceKey: sourceKey,
+      sourceColor: colorScheme.brightness == Brightness.dark
+          ? Colors.black
+          : Colors.white,
+      placeholderBuilder: (_) => Text(
+        category?.icon ?? '💰',
+        style: const TextStyle(fontSize: 30),
       ),
+      sourceBorderRadius: BorderRadius.circular(12),
     );
     if (selectedCategoryUuid != null && mounted) {
-      onCategorySelected?.call(selectedCategoryUuid);
+      onCategorySelected?.call(selectedCategoryUuid, detailPage, sourceKey);
     }
   }
 
@@ -830,6 +858,7 @@ class FinanceLedgerPanel extends StatefulWidget {
 
 class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   final Map<String, GlobalKey> _cardKeys = {};
+  late final TextEditingController _keywordController;
 
   List<FinanceTransaction> get transactions => widget.transactions;
   Map<String, FinanceCategory> get categories => widget.categories;
@@ -849,6 +878,30 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
 
   GlobalKey _cardKeyFor(FinanceTransaction transaction) {
     return _cardKeys.putIfAbsent(transaction.uuid, GlobalKey.new);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _keywordController = TextEditingController(text: widget.keyword);
+  }
+
+  @override
+  void didUpdateWidget(covariant FinanceLedgerPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.keyword != widget.keyword &&
+        _keywordController.text != widget.keyword) {
+      _keywordController.value = TextEditingValue(
+        text: widget.keyword,
+        selection: TextSelection.collapsed(offset: widget.keyword.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _keywordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -882,6 +935,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         Padding(
           padding: EdgeInsets.fromLTRB(16, widget.topPadding + 12, 16, 4),
           child: TextField(
+            controller: _keywordController,
             onChanged: onKeywordChanged,
             decoration: InputDecoration(
               hintText: '搜索商家、备注或分类',
