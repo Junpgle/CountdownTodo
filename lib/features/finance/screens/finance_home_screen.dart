@@ -410,21 +410,9 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         actions: [
           IconButton(
             style: floatingGlassPlainIconButtonStyle(),
-            tooltip: '文本识别',
-            onPressed: _openTextRecognition,
-            icon: const Icon(Icons.text_snippet_outlined),
-          ),
-          IconButton(
-            style: floatingGlassPlainIconButtonStyle(),
             tooltip: '预算',
             onPressed: _openBudgets,
             icon: const Icon(Icons.track_changes_outlined),
-          ),
-          IconButton(
-            style: floatingGlassPlainIconButtonStyle(),
-            tooltip: '贷款',
-            onPressed: _openLoans,
-            icon: const Icon(Icons.account_balance_outlined),
           ),
           PopupMenuButton<String>(
             style: floatingGlassPlainIconButtonStyle(),
