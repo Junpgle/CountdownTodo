@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 
-class FinanceCategoryDetailScreen extends StatelessWidget {
+class FinanceCategoryDetailScreen extends StatefulWidget {
   final String periodTitle;
   final String? rootCategoryUuid;
   final List<FinanceTransaction> transactions;
   final Map<String, FinanceCategory> categories;
+  final Future<void> Function(String categoryUuid, GlobalKey sourceKey)?
+      onCategorySelected;
 
   const FinanceCategoryDetailScreen({
     super.key,
@@ -15,7 +17,23 @@ class FinanceCategoryDetailScreen extends StatelessWidget {
     required this.rootCategoryUuid,
     required this.transactions,
     required this.categories,
+    this.onCategorySelected,
   });
+
+  @override
+  State<FinanceCategoryDetailScreen> createState() =>
+      _FinanceCategoryDetailScreenState();
+}
+
+class _FinanceCategoryDetailScreenState
+    extends State<FinanceCategoryDetailScreen> {
+  final Map<String, GlobalKey> _itemSourceKeys = {};
+  bool _openingCategoryLedger = false;
+
+  String get periodTitle => widget.periodTitle;
+  String? get rootCategoryUuid => widget.rootCategoryUuid;
+  List<FinanceTransaction> get transactions => widget.transactions;
+  Map<String, FinanceCategory> get categories => widget.categories;
 
   FinanceCategory? get _rootCategory =>
       rootCategoryUuid == null ? null : categories[rootCategoryUuid];
@@ -230,25 +248,46 @@ class FinanceCategoryDetailScreen extends StatelessWidget {
     _FinanceCategoryDetailItem item,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
-    return ListTile(
-      key: ValueKey('finance-category-detail-${item.categoryUuid}'),
-      onTap: () => Navigator.of(context).pop(item.categoryUuid),
-      leading: CircleAvatar(
-        backgroundColor: colorScheme.secondaryContainer,
-        child: Text(item.icon, style: const TextStyle(fontSize: 19)),
-      ),
-      title: Text(item.title),
-      subtitle: Text('${item.transactionCount} 笔账单 · 点击查看'),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            formatFinanceAmount(item.amountMinor),
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(width: 4),
-          const Icon(Icons.chevron_right),
-        ],
+    final sourceKey = _itemSourceKeys.putIfAbsent(
+      item.categoryUuid,
+      GlobalKey.new,
+    );
+    return Padding(
+      key: sourceKey,
+      padding: EdgeInsets.zero,
+      child: ListTile(
+        key: ValueKey('finance-category-detail-${item.categoryUuid}'),
+        onTap: () async {
+          final onSelected = widget.onCategorySelected;
+          if (onSelected == null) {
+            Navigator.of(context).pop(item.categoryUuid);
+            return;
+          }
+          if (_openingCategoryLedger) return;
+          _openingCategoryLedger = true;
+          try {
+            await onSelected(item.categoryUuid, sourceKey);
+          } finally {
+            _openingCategoryLedger = false;
+          }
+        },
+        leading: CircleAvatar(
+          backgroundColor: colorScheme.secondaryContainer,
+          child: Text(item.icon, style: const TextStyle(fontSize: 19)),
+        ),
+        title: Text(item.title),
+        subtitle: Text('${item.transactionCount} 笔账单 · 点击查看'),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              formatFinanceAmount(item.amountMinor),
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
       ),
     );
   }

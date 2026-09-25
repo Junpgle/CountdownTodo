@@ -16,7 +16,6 @@ import '../widgets/finance_widgets.dart';
 import 'finance_automation_screen.dart';
 import 'ai_usage_cost_screen.dart';
 import 'finance_budget_screen.dart';
-import 'finance_category_detail_screen.dart';
 import 'finance_entry_screen.dart';
 import 'finance_loan_screen.dart';
 import 'finance_settings_screen.dart';
@@ -35,12 +34,27 @@ typedef _FinanceHomeData = ({
 class FinanceHomeScreen extends StatefulWidget {
   final String username;
   final bool openQuickEntry;
+  final DateTime? initialMonth;
+  final String? initialCategoryFilterUuid;
+  final _FinanceHomeData? _initialData;
 
   const FinanceHomeScreen({
     super.key,
     required this.username,
     this.openQuickEntry = false,
-  });
+  })  : initialMonth = null,
+        initialCategoryFilterUuid = null,
+        _initialData = null;
+
+  const FinanceHomeScreen._categoryLedger({
+    required this.username,
+    required DateTime month,
+    required String categoryUuid,
+    required _FinanceHomeData initialData,
+  })  : openQuickEntry = false,
+        initialMonth = month,
+        initialCategoryFilterUuid = categoryUuid,
+        _initialData = initialData;
 
   @override
   State<FinanceHomeScreen> createState() => _FinanceHomeScreenState();
@@ -56,15 +70,12 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   String _keyword = '';
   FinanceTransactionType? _filterType;
   String? _categoryFilterUuid;
-  String? _categoryDrilldownFilterUuid;
   int _selectedIndex = 0;
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
   bool _maintenanceScheduled = false;
   Future<void>? _maintenanceFuture;
-  FinanceCategoryDetailScreen? _categoryDetailReturnPage;
-  GlobalKey? _categoryDetailSourceKey;
   final GlobalKey _overviewAddActionKey = GlobalKey();
   final GlobalKey _bottomAddActionKey = GlobalKey();
 
@@ -81,24 +92,25 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       _filterType != null ||
       _categoryFilterUuid != null;
 
-  bool get _handleLedgerBack => _selectedIndex == 1;
+  bool get _isCategoryLedgerRoute => widget.initialCategoryFilterUuid != null;
 
-  bool get _returnToCategoryDetailBeforePop =>
-      _handleLedgerBack &&
-      _categoryFilterUuid != null &&
-      _categoryFilterUuid == _categoryDrilldownFilterUuid &&
-      _categoryDetailReturnPage != null;
+  bool get _hasManualLedgerFilters =>
+      _keyword.trim().isNotEmpty || _filterType != null;
+
+  bool get _clearFiltersBeforePop =>
+      _isCategoryLedgerRoute ? _hasManualLedgerFilters : _hasLedgerFilters;
+
+  bool get _handleLedgerBack =>
+      _selectedIndex == 1 &&
+      (!_isCategoryLedgerRoute || _clearFiltersBeforePop);
 
   void _clearLedgerFilters() {
-    if (!_hasLedgerFilters) return;
+    if (!_clearFiltersBeforePop) return;
     FocusScope.of(context).unfocus();
     setState(() {
       _keyword = '';
       _filterType = null;
-      _categoryFilterUuid = null;
-      _categoryDrilldownFilterUuid = null;
-      _categoryDetailReturnPage = null;
-      _categoryDetailSourceKey = null;
+      if (!_isCategoryLedgerRoute) _categoryFilterUuid = null;
     });
   }
 
@@ -108,49 +120,35 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     setState(() => _selectedIndex = 0);
   }
 
-  void _returnToCategoryDetail() {
-    final returnPage = _categoryDetailReturnPage;
-    final sourceKey = _categoryDetailSourceKey;
-    if (returnPage == null || sourceKey == null) {
+  void _handleBack() {
+    if (_clearFiltersBeforePop) {
       _clearLedgerFilters();
-      return;
+    } else if (_isCategoryLedgerRoute) {
+      unawaited(Navigator.of(context).maybePop());
+    } else {
+      _returnToOverview();
     }
-
-    FocusScope.of(context).unfocus();
-    final rootCategoryUuid = returnPage.rootCategoryUuid;
-    final category =
-        rootCategoryUuid == null ? null : _categoryMap[rootCategoryUuid];
-    final colorScheme = Theme.of(context).colorScheme;
-    setState(() {
-      _keyword = '';
-      _filterType = null;
-      _categoryFilterUuid = null;
-      _categoryDrilldownFilterUuid = null;
-      _categoryDetailReturnPage = null;
-      _categoryDetailSourceKey = null;
-      _selectedIndex = 0;
-    });
-    unawaited(
-      PageTransitions.pushFromRect<void>(
-        context: context,
-        page: returnPage,
-        sourceKey: sourceKey,
-        sourceColor: colorScheme.brightness == Brightness.dark
-            ? Colors.black
-            : Colors.white,
-        placeholderBuilder: (_) => Text(
-          category?.icon ?? '💰',
-          style: const TextStyle(fontSize: 30),
-        ),
-        sourceBorderRadius: BorderRadius.circular(12),
-      ),
-    );
   }
 
   @override
   void initState() {
     super.initState();
-    _load();
+    if (widget.initialMonth != null) _month = widget.initialMonth!;
+    if (_isCategoryLedgerRoute) {
+      _categoryFilterUuid = widget.initialCategoryFilterUuid;
+      _selectedIndex = 1;
+    }
+    final initialData = widget._initialData;
+    if (initialData == null) {
+      _load();
+    } else {
+      _transactions = initialData.transactions;
+      _summary = initialData.summary;
+      _categories = initialData.categories;
+      _paymentMethods = initialData.paymentMethods;
+      _overviewTransactions = initialData.overviewTransactions;
+      _isLoading = false;
+    }
     if (widget.openQuickEntry) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _openEntry();
@@ -158,9 +156,9 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     }
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool showLoading = true}) async {
     final generation = ++_loadGeneration;
-    if (mounted) {
+    if (mounted && showLoading) {
       setState(() {
         _isLoading = true;
         _loadError = null;
@@ -177,13 +175,15 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         _overviewTransactions = data.overviewTransactions;
         _isLoading = false;
       });
-      _startBackgroundMaintenance(generation);
+      if (!_isCategoryLedgerRoute) _startBackgroundMaintenance(generation);
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
-      setState(() {
-        _isLoading = false;
-        _loadError = error.toString();
-      });
+      if (showLoading) {
+        setState(() {
+          _isLoading = false;
+          _loadError = error.toString();
+        });
+      }
     }
   }
 
@@ -457,20 +457,37 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     _load();
   }
 
-  void _selectCategoryFromOverview(
+  Future<void> _pushCategoryLedger(
     String categoryUuid,
-    FinanceCategoryDetailScreen returnPage,
     GlobalKey sourceKey,
-  ) {
-    setState(() {
-      _categoryFilterUuid = categoryUuid;
-      _categoryDrilldownFilterUuid = categoryUuid;
-      _categoryDetailReturnPage = returnPage;
-      _categoryDetailSourceKey = sourceKey;
-      // 概览中的分类都属于支出，避免沿用“收入”筛选导致下钻后看不到账单。
-      _filterType = null;
-      _selectedIndex = 1;
-    });
+  ) async {
+    final category = _categoryMap[categoryUuid];
+    final colorScheme = Theme.of(context).colorScheme;
+    await PageTransitions.pushFromRect<void>(
+      context: context,
+      page: FinanceHomeScreen._categoryLedger(
+        username: widget.username,
+        month: _month,
+        categoryUuid: categoryUuid,
+        initialData: (
+          transactions: _transactions,
+          summary: _summary,
+          categories: _categories,
+          paymentMethods: _paymentMethods,
+          overviewTransactions: _overviewTransactions,
+        ),
+      ),
+      sourceKey: sourceKey,
+      sourceColor: colorScheme.brightness == Brightness.dark
+          ? Colors.black
+          : Colors.white,
+      placeholderBuilder: (_) => Text(
+        category?.icon ?? '💰',
+        style: const TextStyle(fontSize: 30),
+      ),
+      sourceBorderRadius: BorderRadius.circular(12),
+    );
+    if (mounted) await _load(showLoading: false);
   }
 
   @override
@@ -483,19 +500,17 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('记账'),
-        leading: _handleLedgerBack
+        leading: _selectedIndex == 1
             ? IconButton(
                 style: floatingGlassPlainIconButtonStyle(),
-                tooltip: _returnToCategoryDetailBeforePop
-                    ? '返回支出分类'
-                    : _hasLedgerFilters
-                        ? '返回全部账单'
+                tooltip: _clearFiltersBeforePop
+                    ? _isCategoryLedgerRoute
+                        ? '取消附加筛选'
+                        : '返回全部账单'
+                    : _isCategoryLedgerRoute
+                        ? '返回支出分类'
                         : '返回概览',
-                onPressed: _returnToCategoryDetailBeforePop
-                    ? _returnToCategoryDetail
-                    : _hasLedgerFilters
-                        ? _clearLedgerFilters
-                        : _returnToOverview,
+                onPressed: _handleBack,
                 icon: const Icon(Icons.arrow_back_ios_new_rounded),
               )
             : null,
@@ -613,7 +628,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                               addActionKey: _overviewAddActionKey,
                               onRefresh: _load,
                               onMonthChanged: _setMonth,
-                              onCategorySelected: _selectCategoryFromOverview,
+                              onCategorySelected: _pushCategoryLedger,
                             ),
                             FinanceLedgerPanel(
                               topPadding: topBarHeight,
@@ -628,14 +643,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                                   setState(() => _keyword = value),
                               onFilterChanged: (value) =>
                                   setState(() => _filterType = value),
-                              onCategoryChanged: (value) => setState(() {
-                                _categoryFilterUuid = value;
-                                if (value != _categoryDrilldownFilterUuid) {
-                                  _categoryDrilldownFilterUuid = null;
-                                  _categoryDetailReturnPage = null;
-                                  _categoryDetailSourceKey = null;
-                                }
-                              }),
+                              onCategoryChanged: (value) =>
+                                  setState(() => _categoryFilterUuid = value),
                               onEdit: (transaction) =>
                                   _openEntry(transaction: transaction),
                               onDelete: _deleteTransaction,
@@ -693,13 +702,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       canPop: !_handleLedgerBack,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && _handleLedgerBack) {
-          if (_returnToCategoryDetailBeforePop) {
-            _returnToCategoryDetail();
-          } else if (_hasLedgerFilters) {
-            _clearLedgerFilters();
-          } else {
-            _returnToOverview();
-          }
+          _handleBack();
         }
       },
       child: scaffold,

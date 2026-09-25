@@ -192,6 +192,7 @@ void main() {
   testWidgets('概览按一级分类汇总，点击后展示小类并可选择账单筛选', (tester) async {
     SharedPreferences.setMockInitialValues({});
     String? selectedCategoryUuid;
+    GlobalKey? selectedSourceKey;
     final transactions = [
       FinanceTransaction(
         uuid: 'overview-milk-tea',
@@ -260,7 +261,10 @@ void main() {
           onAdd: () {},
           addActionKey: GlobalKey(),
           onRefresh: () async {},
-          onCategorySelected: (value) => selectedCategoryUuid = value,
+          onCategorySelected: (value, sourceKey) async {
+            selectedCategoryUuid = value;
+            selectedSourceKey = sourceKey;
+          },
         ),
       ),
     );
@@ -295,6 +299,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(selectedCategoryUuid, 'milk-tea');
+    expect(selectedSourceKey?.currentContext, isNotNull);
+    expect(find.text('支出分类详情'), findsOneWidget);
   });
 
   testWidgets('账单页按小类精确筛选并支持清除筛选', (tester) async {

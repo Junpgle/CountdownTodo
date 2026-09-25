@@ -14,9 +14,8 @@ double financeBottomContentPaddingFor(BuildContext context) {
 
 enum _FinanceOverviewView { month, week, day }
 
-typedef FinanceCategorySelectionCallback = void Function(
+typedef FinanceCategorySelectionCallback = Future<void> Function(
   String categoryUuid,
-  FinanceCategoryDetailScreen returnPage,
   GlobalKey sourceKey,
 );
 
@@ -606,8 +605,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       rootCategoryUuid: entry.categoryUuid,
       transactions: period.transactions,
       categories: categories,
+      onCategorySelected: onCategorySelected,
     );
-    final selectedCategoryUuid = await PageTransitions.pushFromRect<String>(
+    await PageTransitions.pushFromRect<String>(
       context: context,
       page: detailPage,
       sourceKey: sourceKey,
@@ -620,9 +620,6 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       ),
       sourceBorderRadius: BorderRadius.circular(12),
     );
-    if (selectedCategoryUuid != null && mounted) {
-      onCategorySelected?.call(selectedCategoryUuid, detailPage, sourceKey);
-    }
   }
 
   Widget _buildSpendingChart(
