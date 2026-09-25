@@ -175,21 +175,23 @@ class NotificationService {
 
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {}
 
-  static Future<void> showUpcomingTodoNotification(TodoItem todo) async {
+  static Future<bool> showUpcomingTodoNotification(TodoItem todo) async {
     final todoType = ItemSemanticsService.specialTodoTypeForTitle(todo.title);
     final isSpecialTodo = todoType != 'default' ||
         ItemSemanticsService.domainKindForTodo(todo) == TodoDomainKind.pickup;
     if (isSpecialTodo) {
-      if (!await AppSettingsStorage.isSpecialTodoNotificationEnabled()) return;
+      if (!await AppSettingsStorage.isSpecialTodoNotificationEnabled()) {
+        return false;
+      }
     } else if (!await AppSettingsStorage.isTodoLiveNotificationEnabled()) {
-      return;
+      return false;
     }
     final due = todo.dueDate?.toLocal();
     final timeText = due == null
         ? '即将开始'
         : '${due.month}/${due.day} ${due.hour.toString().padLeft(2, '0')}:${due.minute.toString().padLeft(2, '0')}';
     final remark = todo.remark?.trim();
-    await _showLiveActivityNotification(
+    return _showLiveActivityNotification(
       todo.title,
       remark?.isNotEmpty == true ? '$timeText · $remark' : timeText,
       tag: 'todo-${todo.id}',

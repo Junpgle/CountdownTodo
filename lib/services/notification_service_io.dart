@@ -419,10 +419,14 @@ class NotificationService {
     return '${todo.id}@$dayStr';
   }
 
-  static Future<void> showUpcomingTodoNotification(TodoItem todo) async {
-    if (FocusDoNotDisturbService.isActive) return;
-    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
-    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
+  static Future<bool> showUpcomingTodoNotification(TodoItem todo) async {
+    if (FocusDoNotDisturbService.isActive) return false;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) {
+      return false;
+    }
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) {
+      return false;
+    }
 
     final todoType = ItemSemanticsService.specialTodoTypeForTitle(todo.title);
     final isSpecialTodo = todoType != 'default' ||
@@ -439,10 +443,10 @@ class NotificationService {
             forcePickupContext: true,
           )
         : todo.remark ?? '';
-    if (todo.dueDate == null && !isSpecialTodo) return;
+    if (todo.dueDate == null && !isSpecialTodo) return false;
     if (todo.dueDate != null &&
         !AppTimeFormats.isSameDay(todo.dueDate!.toLocal(), DateTime.now())) {
-      return;
+      return false;
     }
     final isAllDayTodo = _isAllDayTodo(todo);
 
@@ -452,13 +456,17 @@ class NotificationService {
     if (!isSpecialTodo &&
         !isAllDayTodo &&
         !TodoNotificationPolicy.isInsideLiveWindow(todo, DateTime.now())) {
-      return;
+      return false;
     }
 
     if (isSpecialTodo) {
-      if (!await AppSettingsStorage.isSpecialTodoNotificationEnabled()) return;
+      if (!await AppSettingsStorage.isSpecialTodoNotificationEnabled()) {
+        return false;
+      }
     } else {
-      if (!await AppSettingsStorage.isTodoLiveNotificationEnabled()) return;
+      if (!await AppSettingsStorage.isTodoLiveNotificationEnabled()) {
+        return false;
+      }
     }
 
     final dueDate = todo.dueDate?.toLocal();
@@ -491,7 +499,7 @@ class NotificationService {
         );
         if (_windowsTodoNotificationKeys.contains(dedupeKey)) {
 //           debugPrint('⏭️ 跳过重复的桌面端全天待办通知: $dedupeKey');
-          return;
+          return true;
         }
         _windowsTodoNotificationKeys.add(dedupeKey);
       }
@@ -502,7 +510,7 @@ class NotificationService {
         body: '$timeStr\n$displayRemark',
         notificationDetails: _desktopNotificationDetails,
       );
-      return;
+      return true;
     }
 
     try {
@@ -518,10 +526,12 @@ class NotificationService {
         'imagePath': todo.imagePath,
         'originalText': todo.originalText,
       });
+      return true;
 //       debugPrint(
 //           "✅ 通知发送成功: type=${isSpecialTodo ? 'special_todo' : 'upcoming_todo'}, title=${todo.title}, notifId=$notifId");
     } catch (e) {
 //       debugPrint("更新即将开始的待办通知失败: $e");
+      return false;
     }
   }
 

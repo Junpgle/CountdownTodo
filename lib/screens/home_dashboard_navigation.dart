@@ -214,6 +214,26 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     // 将待办数据写入共享文件供 Island 读取
     await _saveTodosToSharedFile(allTodos);
 
+    // 图片识别确认的今日快递/取件待办立即上岛；定时闹钟仍负责之后的
+    // 提前提醒。只在通知服务实际发布后登记活跃 ID，完成时才能可靠撤岛。
+    final now = DateTime.now();
+    for (final todo in newTodos) {
+      if (ItemSemanticsService.specialTodoTypeForTitle(todo.title) ==
+          'default') {
+        continue;
+      }
+      final dueDate = todo.dueDate?.toLocal();
+      if (dueDate == null ||
+          dueDate.year != now.year ||
+          dueDate.month != now.month ||
+          dueDate.day != now.day) {
+        continue;
+      }
+      if (await NotificationService.showUpcomingTodoNotification(todo)) {
+        _activeTodoNotifIds.add(todo.id.hashCode);
+      }
+    }
+
     // 通知 Island 检查提醒并刷新槽位缓存
     FloatWindowService.triggerReminderCheck();
     FloatWindowService.invalidateSlotCache();

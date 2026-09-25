@@ -1204,6 +1204,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   }
 
   Widget _buildCurrentTodoCard(ParsedTodoResult todo) {
+    final colorScheme = Theme.of(context).colorScheme;
     return SingleChildScrollView(
       key: ValueKey(_currentIndex),
       padding: const EdgeInsets.all(16),
@@ -1265,14 +1266,14 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.grey,
+                    color: colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     todo.remark!,
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.grey,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -1289,19 +1290,23 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.green,
+                    color: colorScheme.tertiaryContainer,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.check_circle, size: 16, color: Colors.green),
+                      Icon(
+                        Icons.check_circle,
+                        size: 16,
+                        color: colorScheme.onTertiaryContainer,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         '已添加 ${_confirmedTodos.length} 个待办',
                         style: TextStyle(
                           fontSize: 13,
-                          color: Colors.green,
+                          color: colorScheme.onTertiaryContainer,
                         ),
                       ),
                     ],
@@ -1316,6 +1321,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   }
 
   Widget _buildTimeInfo(ParsedTodoResult todo) {
+    final colorScheme = Theme.of(context).colorScheme;
     String timeText;
     IconData timeIcon;
 
@@ -1360,13 +1366,13 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
 
     return Row(
       children: [
-        Icon(timeIcon, size: 18, color: Colors.grey),
+        Icon(timeIcon, size: 18, color: colorScheme.onSurfaceVariant),
         const SizedBox(width: 8),
         Text(
           timeText,
           style: TextStyle(
             fontSize: 14,
-            color: Colors.grey,
+            color: colorScheme.onSurfaceVariant,
           ),
         ),
       ],

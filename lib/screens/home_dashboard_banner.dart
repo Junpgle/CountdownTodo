@@ -853,10 +853,16 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _checkUpcomingEvents() async {
-    if (_isCheckingUpcomingEvents) return;
+    if (_isCheckingUpcomingEvents) {
+      _upcomingEventsCheckPending = true;
+      return;
+    }
     _isCheckingUpcomingEvents = true;
     try {
-      await _performUpcomingEventsCheck();
+      do {
+        _upcomingEventsCheckPending = false;
+        await _performUpcomingEventsCheck();
+      } while (mounted && _upcomingEventsCheckPending);
     } finally {
       _isCheckingUpcomingEvents = false;
     }
@@ -977,14 +983,19 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
       final int notifId = todo.id.hashCode;
       final desktopEventKey =
           'todo:${todo.id}:${todo.dueDate!.millisecondsSinceEpoch}';
-      if (!_todosWithScheduledAlarms.contains(todo.id)) {
-        newTodoNotifIds.add(notifId);
-        if (!previousTodoIds.contains(notifId) &&
-            !desktopShownKeys.contains(desktopEventKey)) {
-          await NotificationService.showUpcomingTodoNotification(todo);
+      // A scheduled reminder is only the later alarm (usually five minutes
+      // before the deadline). Today's pickup still needs to appear on the
+      // island as soon as it is added, and stay active until completed.
+      var notificationIsActive = previousTodoIds.contains(notifId) ||
+          desktopShownKeys.contains(desktopEventKey);
+      if (!notificationIsActive) {
+        notificationIsActive =
+            await NotificationService.showUpcomingTodoNotification(todo);
+        if (notificationIsActive) {
           await markDesktopNotificationShown(desktopEventKey);
         }
       }
+      if (notificationIsActive) newTodoNotifIds.add(notifId);
     }
 
     // 2. 普通待办 (非全天): 在时间段内（提前 30 分钟直到截止时间）均显示为活动状态

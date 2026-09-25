@@ -202,6 +202,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   String? _activeCourseNotificationKey;
   final Set<int> _activeTodoNotifIds = {};
   bool _isCheckingUpcomingEvents = false;
+  bool _upcomingEventsCheckPending = false;
   Timer? _todoPersistDebounce;
   Completer<void>? _todoPersistDebounceCompleter;
   Future<void> _todoPersistChain = Future.value();
