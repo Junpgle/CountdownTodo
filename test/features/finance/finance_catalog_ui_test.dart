@@ -430,7 +430,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('有小类时，大类直接记账仍归在未细分', (tester) async {
+  testWidgets('有小类时，大类直接记账显示大类名称', (tester) async {
     final root = FinanceCategory(
       uuid: 'food',
       name: '日常饮食',
@@ -458,7 +458,14 @@ void main() {
     ));
 
     expect(find.text('小类'), findsOneWidget);
-    expect(find.text('未细分'), findsOneWidget);
+    final item = find.byKey(
+      const ValueKey('finance-category-detail-food'),
+    );
+    expect(
+      find.descendant(of: item, matching: find.text('日常饮食')),
+      findsOneWidget,
+    );
+    expect(find.text('未细分'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

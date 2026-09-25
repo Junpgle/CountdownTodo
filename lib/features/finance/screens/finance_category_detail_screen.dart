@@ -96,7 +96,7 @@ class FinanceCategoryDetailScreen extends StatelessWidget {
     if (directAmount > 0) {
       result.add(_FinanceCategoryDetailItem(
         categoryUuid: root.uuid,
-        title: children.isEmpty ? root.name : '未细分',
+        title: root.name,
         icon: root.icon,
         amountMinor: directAmount,
         transactionCount: directTransactions.length,
