@@ -1478,6 +1478,15 @@ enum SearchResultType {
   action,
   tag,
   app,
+  finance,
+  journal,
+  fixedSchedule,
+  planBlock,
+  team,
+  chat,
+  habitCheckIn,
+  challengeTask,
+  challengeTemplate,
   recommend,
   history
 }

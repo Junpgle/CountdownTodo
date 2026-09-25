@@ -16,6 +16,7 @@ class FolderManageScreen extends StatefulWidget {
 
   final List<TodoItem> allTodos;
   final ValueChanged<List<TodoItem>> onTodosChanged;
+  final String? initialGroupId;
 
   const FolderManageScreen({
     super.key,
@@ -24,6 +25,7 @@ class FolderManageScreen extends StatefulWidget {
     required this.onGroupsChanged,
     required this.allTodos,
     required this.onTodosChanged,
+    this.initialGroupId,
   });
 
   @override
@@ -47,6 +49,12 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
     super.initState();
     _groups = List.from(widget.todoGroups);
     _todos = List.from(widget.allTodos);
+    for (final group in _groups) {
+      if (group.id == widget.initialGroupId) {
+        _searchController.text = group.name;
+        break;
+      }
+    }
     _loadSettings();
   }
 
@@ -444,6 +452,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
       clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
         key: PageStorageKey('folder-${g.id}'),
+        initiallyExpanded: g.id == widget.initialGroupId,
         shape: const Border(),
         leading: Icon(Icons.folder_outlined, color: scheme.primary),
         title:

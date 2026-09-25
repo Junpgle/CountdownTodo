@@ -2279,7 +2279,6 @@ class DatabaseHelper {
           JOIN todos_fts f ON t.uuid = f.uuid
           WHERE todos_fts MATCH ?
           AND t.is_deleted = 0
-          LIMIT 20
         ''', [ftsQuery]);
 
         for (var r in ftsResults) {
@@ -2290,32 +2289,27 @@ class DatabaseHelper {
       }
     }
 
-    // 2. 补全 LIKE 搜索 (解决中文分词无法匹配中间词的问题)
-    // 如果 FTS 结果不足，或者包含中文字符，则使用 LIKE 增强召回
-    if (resultScores.length < 20) {
-      final likeResults = await db.rawQuery('''
+    // 2. LIKE 补全中间词和团队名，不能因为 FTS 已命中部分记录
+    // 就跳过其余匹配项。
+    final likeResults = await db.rawQuery('''
         SELECT uuid, updated_at FROM todos 
         WHERE is_deleted = 0 
-        AND (content LIKE ? OR remark LIKE ?)
+        AND (content LIKE ? OR remark LIKE ? OR team_name LIKE ?)
         ORDER BY updated_at DESC
-        LIMIT 20
-      ''', ['%$query%', '%$query%']);
+      ''', ['%$query%', '%$query%', '%$query%']);
 
-      for (var r in likeResults) {
-        resultScores[r['uuid'].toString()] = (r['updated_at'] as int?) ?? 0;
-      }
+    for (var r in likeResults) {
+      resultScores[r['uuid'].toString()] = (r['updated_at'] as int?) ?? 0;
     }
 
     if (resultScores.isEmpty) return [];
 
-    final finalResults = await getTodoMaps(
-      includeDeleted: true,
-      uuids: resultScores.keys.toList(),
-    );
+    final finalResults =
+        await _getSearchTodoMaps(db, resultScores.keys.toList());
     // 按更新时间降序排序
     finalResults.sort((a, b) => (resultScores[b['uuid'].toString()] ?? 0)
         .compareTo(resultScores[a['uuid'].toString()] ?? 0));
-    return finalResults.take(20).toList();
+    return finalResults;
   }
 
   Future<void> warmSearchIndex() async {
@@ -2380,7 +2374,6 @@ class DatabaseHelper {
           (created_date >= ? AND created_date < ?)
         )
       ORDER BY updated_at DESC
-      LIMIT 20
     ''', [startInclusive, endExclusive, startInclusive, endExclusive]);
     if (ids.isEmpty) return const [];
 
@@ -2388,12 +2381,27 @@ class DatabaseHelper {
       for (final row in ids)
         row['uuid'].toString(): (row['updated_at'] as num?)?.toInt() ?? 0,
     };
-    final rows = await getTodoMaps(
-      includeDeleted: true,
-      uuids: scoreById.keys.toList(),
-    );
+    final rows = await _getSearchTodoMaps(db, scoreById.keys.toList());
     rows.sort((a, b) => (scoreById[b['uuid'].toString()] ?? 0)
         .compareTo(scoreById[a['uuid'].toString()] ?? 0));
+    return rows;
+  }
+
+  Future<List<Map<String, dynamic>>> _getSearchTodoMaps(
+      Database db, List<String> uuids) async {
+    const batchSize = 400;
+    final rows = <Map<String, dynamic>>[];
+    for (var start = 0; start < uuids.length; start += batchSize) {
+      rows.addAll(await getTodoMaps(
+        includeDeleted: true,
+        uuids: uuids.sublist(
+            start,
+            start + batchSize > uuids.length
+                ? uuids.length
+                : start + batchSize),
+        databaseOverride: db,
+      ));
+    }
     return rows;
   }
 
@@ -2417,7 +2425,6 @@ class DatabaseHelper {
       WHERE is_deleted = 0 
       AND name LIKE ?
       ORDER BY updated_at DESC
-      LIMIT 10
     ''', ['%$query%']);
   }
 
@@ -2428,7 +2435,6 @@ class DatabaseHelper {
       WHERE is_deleted = 0 
       AND (course_name LIKE ? OR teacher_name LIKE ? OR room_name LIKE ?)
       ORDER BY updated_at DESC
-      LIMIT 15
     ''', ['%$query%', '%$query%', '%$query%']);
   }
 
@@ -2439,7 +2445,6 @@ class DatabaseHelper {
       WHERE is_deleted = 0 
       AND (title LIKE ? OR team_name LIKE ?)
       ORDER BY updated_at DESC
-      LIMIT 10
     ''', ['%$query%', '%$query%']);
   }
 
@@ -2450,7 +2455,6 @@ class DatabaseHelper {
       WHERE is_deleted = 0 
       AND (title LIKE ? OR remark LIKE ?)
       ORDER BY start_time DESC
-      LIMIT 15
     ''', ['%$query%', '%$query%']);
   }
 
@@ -2465,7 +2469,6 @@ class DatabaseHelper {
         AND start_time >= ?
         AND start_time < ?
       ORDER BY start_time DESC
-      LIMIT 15
     ''', [startInclusive, endExclusive]);
   }
 

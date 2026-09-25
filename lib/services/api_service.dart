@@ -1408,12 +1408,16 @@ class ApiService {
   }
 
   /// 🚀 Uni-Sync 4.0: 获取团队系统消息流
-  static Future<Map<String, dynamic>> fetchTeamSystemMessages(
-      String teamUuid) async {
+  static Future<Map<String, dynamic>> fetchTeamSystemMessages(String teamUuid,
+      {int? limit, int? offset}) async {
     try {
+      final paging = [
+        if (limit != null) 'limit=$limit',
+        if (offset != null) 'offset=$offset',
+      ].join('&');
       final response = await _request(
         'GET',
-        '/api/teams/system_messages?team_uuid=$teamUuid',
+        '/api/teams/system_messages?team_uuid=$teamUuid${paging.isEmpty ? '' : '&$paging'}',
       );
       return jsonDecode(response.body);
     } catch (e) {

@@ -36,7 +36,12 @@ import 'settings/llm_config_page.dart';
 
 class SettingsPage extends StatefulWidget {
   final String? initialTarget;
-  const SettingsPage({super.key, this.initialTarget});
+  final bool openInitialTargetAsRoot;
+  const SettingsPage({
+    super.key,
+    this.initialTarget,
+    this.openInitialTargetAsRoot = false,
+  });
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -57,6 +62,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   String? _selectedPaneId;
   Widget Function()? _selectedRightPaneBuilder;
+  Widget Function()? _initialTargetRootBuilder;
 
   GlobalKey<NavigatorState> _nestedNavigatorKey = GlobalKey<NavigatorState>();
   final GlobalKey _updateSettingsSectionKey = GlobalKey();
@@ -82,6 +88,12 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _handleInitialTarget(String target) {
+    if (widget.openInitialTargetAsRoot && _username == '加载中...') {
+      _loadSettings().then((_) {
+        if (mounted) _handleInitialTarget(target);
+      });
+      return;
+    }
     if (AppPlatform.isWeb &&
         {
           'permissions',
@@ -218,7 +230,18 @@ class _SettingsPageState extends State<SettingsPage> {
       return; // unknown target
     }
 
-    final isWide = MediaQuery.of(context).size.width >= 800;
+    if (widget.openInitialTargetAsRoot && paneId == 'account') {
+      setState(() {
+        _initialTargetRootBuilder = () => Scaffold(
+              appBar: AppBar(title: const Text('账户与同步')),
+              body: _buildAccountAndAnnouncementsPane(),
+            );
+      });
+      return;
+    }
+
+    final isWide = MediaQuery.of(context).size.width >= 800 &&
+        !widget.openInitialTargetAsRoot;
     if (isWide) {
       setState(() {
         _selectedPaneId = paneId;
@@ -260,7 +283,11 @@ class _SettingsPageState extends State<SettingsPage> {
         pushWidget = const AboutScreen();
       }
 
-      Navigator.push(context, PageTransitions.slideHorizontal(pushWidget));
+      if (widget.openInitialTargetAsRoot) {
+        setState(() => _initialTargetRootBuilder = () => pushWidget);
+      } else {
+        Navigator.push(context, PageTransitions.slideHorizontal(pushWidget));
+      }
     }
   }
 
@@ -753,6 +780,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_initialTargetRootBuilder != null) return _initialTargetRootBuilder!();
     final isWide = MediaQuery.of(context).size.width >= 800;
     final paneTitle = _getPaneTitle();
     final colorScheme = Theme.of(context).colorScheme;

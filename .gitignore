@@ -108,6 +108,8 @@ todo.md
 !/test/llm_config_page_test.dart
 !/test/services/
 /test/services/*
+!/test/services/search_navigation_test.dart
+!/test/services/global_search_extra_service_test.dart
 !/test/services/ai_todo_recurrence_alignment_test.dart
 !/test/services/permission_request_coordinator_test.dart
 !/test/services/ongoing_activity_service_test.dart

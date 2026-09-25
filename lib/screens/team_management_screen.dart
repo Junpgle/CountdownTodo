@@ -2623,6 +2623,38 @@ class _TeamSettingsView extends StatelessWidget {
 }
 
 // ============== 成员列表子视图 ==============
+/// Full-page entry used by search so opening and closing the member list uses
+/// the same container transform as the search result card.
+class TeamMembersSearchScreen extends StatefulWidget {
+  const TeamMembersSearchScreen({super.key, required this.team});
+
+  final Team team;
+
+  @override
+  State<TeamMembersSearchScreen> createState() =>
+      _TeamMembersSearchScreenState();
+}
+
+class _TeamMembersSearchScreenState extends State<TeamMembersSearchScreen> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: Text('${widget.team.name} · 团队成员')),
+        body: _TeamMembersView(
+          team: widget.team,
+          scrollController: _scrollController,
+          onRefresh: () {},
+        ),
+      );
+}
+
 class _TeamMembersView extends StatefulWidget {
   final Team team;
   final ScrollController scrollController;
