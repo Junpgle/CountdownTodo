@@ -28,7 +28,6 @@ typedef _FinanceHomeData = ({
   FinanceSummary summary,
   List<FinanceCategory> categories,
   List<FinancePaymentMethod> paymentMethods,
-  List<FinanceBudget> budgets,
   List<FinanceTransaction> overviewTransactions,
 });
 
@@ -52,7 +51,6 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   List<FinanceTransaction> _overviewTransactions = const [];
   List<FinanceCategory> _categories = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
-  List<FinanceBudget> _budgets = const [];
   FinanceSummary _summary = const FinanceSummary();
   String _keyword = '';
   FinanceTransactionType? _filterType;
@@ -101,7 +99,6 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         _summary = data.summary;
         _categories = data.categories;
         _paymentMethods = data.paymentMethods;
-        _budgets = data.budgets;
         _overviewTransactions = data.overviewTransactions;
         _isLoading = false;
       });
@@ -126,7 +123,6 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       FinanceRepository.getTransactions(from: overviewFrom, to: overviewTo),
       FinanceRepository.getCategories(includeArchived: true),
       FinanceRepository.getPaymentMethods(includeArchived: true),
-      FinanceRepository.getBudgets(monthKey: financeMonthKey(_month)),
     ]);
     final overviewTransactions = values[0] as List<FinanceTransaction>;
     final fromKey = dateKey(from);
@@ -141,7 +137,6 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       summary: FinanceRepository.summarizeTransactions(transactions),
       categories: values[1] as List<FinanceCategory>,
       paymentMethods: values[2] as List<FinancePaymentMethod>,
-      budgets: values[3] as List<FinanceBudget>,
       overviewTransactions: overviewTransactions,
     );
   }
@@ -186,7 +181,6 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         _summary = data.summary;
         _categories = data.categories;
         _paymentMethods = data.paymentMethods;
-        _budgets = data.budgets;
         _overviewTransactions = data.overviewTransactions;
       });
     } catch (_) {
@@ -514,10 +508,6 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                               month: _month,
                               summary: _summary,
                               transactions: _overviewTransactions,
-                              paymentMethods: _paymentMethods,
-                              paymentBudgets: _budgets
-                                  .where((budget) => budget.isPaymentMethod)
-                                  .toList(growable: false),
                               categories: _categoryMap,
                               onAdd: () => _openEntry(
                                 sourceKey: _overviewAddActionKey,
@@ -525,7 +515,6 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                               addActionKey: _overviewAddActionKey,
                               onRefresh: _load,
                               onMonthChanged: _setMonth,
-                              onManagePaymentBudgets: _openBudgets,
                               onCategorySelected: _selectCategoryFromOverview,
                             ),
                             FinanceLedgerPanel(

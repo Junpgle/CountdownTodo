@@ -162,11 +162,12 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   }
 
   Future<void> _deleteBudget(FinanceBudget budget) async {
+    final itemName = budget.isPaymentMethod ? '付款方式余额' : '预算';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除预算？'),
-        content: const Text('删除预算不会影响已有账单。'),
+        title: Text('删除$itemName？'),
+        content: Text('删除$itemName记录不会影响已有账单。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -185,13 +186,13 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('删除预算失败：$error')),
+        SnackBar(content: Text('删除$itemName失败：$error')),
       );
       return;
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('预算已删除')),
+      SnackBar(content: Text('$itemName已删除')),
     );
     await _load();
   }
@@ -216,9 +217,25 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
 
   int _usedFor(FinanceBudget budget) {
     if (budget.paymentMethodUuid != null) {
+      final paymentMethodUuid = budget.paymentMethodUuid!;
+      final snapshotAt = budget.updatedAt;
+      final snapshotDate = dateKey(
+        DateTime.fromMillisecondsSinceEpoch(snapshotAt),
+      );
+      final today = dateKey(DateTime.now());
+      final transactionsAfterSnapshot = _transactions.where((transaction) {
+        if (transaction.paymentMethodUuid != paymentMethodUuid ||
+            transaction.transactionDate.compareTo(today) > 0) {
+          return false;
+        }
+        final dateComparison =
+            transaction.transactionDate.compareTo(snapshotDate);
+        return dateComparison > 0 ||
+            (dateComparison == 0 && transaction.createdAt > snapshotAt);
+      });
       final usage = FinanceRepository.summarizePaymentMethodSpending(
-        _transactions,
-      )[budget.paymentMethodUuid];
+        transactionsAfterSnapshot,
+      )[paymentMethodUuid];
       return usage ?? 0;
     }
     if (budget.isOverall) {
@@ -254,7 +271,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
-        title: const Text('预算与付款额度'),
+        title: const Text('预算与付款余额'),
       ),
       body: FloatingGlassTopBarContentFade(
         topBarHeight: topBarHeight,
@@ -323,7 +340,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                           children: [
                             Expanded(
                               child: Text(
-                                '付款方式月额度',
+                                '付款方式实时余额',
                                 style: Theme.of(context)
                                     .textTheme
                                     .titleMedium
@@ -338,7 +355,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                             ),
                             const SizedBox(width: 4),
                             IconButton(
-                              tooltip: '设置付款额度',
+                              tooltip: '录入付款方式余额',
                               onPressed: _choosePaymentMethodForBudget,
                               icon: const Icon(Icons.add_circle_outline),
                             ),
@@ -364,7 +381,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
           : FloatingGlassActionButton.extended(
               onPressed: () => _openEditor(),
               icon: const Icon(Icons.add),
-              label: const Text('新增预算或额度'),
+              label: const Text('新增预算'),
             ),
     );
   }
@@ -478,7 +495,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         ],
         if (_paymentBudgets.isNotEmpty) ...[
           const SizedBox(height: 12),
-          Text('付款方式月额度单独显示，不计入总额和分类预算。',
+          Text('付款方式实时余额单独显示，不计入总额和分类预算。',
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
@@ -495,6 +512,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     final used = _usedFor(budget);
     final remaining = budget.amountMinor - used;
     final isOver = remaining < 0;
+    final snapshotAt = DateTime.fromMillisecondsSinceEpoch(budget.updatedAt);
     final progress = budget.amountMinor == 0
         ? 0.0
         : (used / budget.amountMinor).clamp(0.0, 1.0).toDouble();
@@ -518,7 +536,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                       ?.copyWith(fontWeight: FontWeight.w700))),
           PopupMenuButton<String>(
             tooltip:
-                '${_budgetTitle(budget)}${budget.isPaymentMethod ? '额度' : '预算'}的更多操作',
+                '${_budgetTitle(budget)}${budget.isPaymentMethod ? '余额' : '预算'}的更多操作',
             onSelected: (value) {
               if (value == 'edit') _openEditor(budget);
               if (value == 'delete') _deleteBudget(budget);
@@ -533,14 +551,16 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         FinanceAdaptiveFields(minChildWidth: 150, children: [
           _budgetMetric(
             budget.isPaymentMethod && used < 0
-                ? '退款净加回'
+                ? '录入后退款净加回'
                 : budget.isPaymentMethod
-                    ? '净扣减'
+                    ? '录入后净扣减'
                     : '已使用',
             budget.isPaymentMethod ? used.abs() : used,
           ),
           _budgetMetric(
-            budget.isPaymentMethod ? '月初金额' : '预算额度',
+            budget.isPaymentMethod
+                ? '${snapshotAt.month}月${snapshotAt.day}日录入时余额'
+                : '预算额度',
             budget.amountMinor,
           ),
         ]),
@@ -554,9 +574,13 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         ),
         const SizedBox(height: 12),
         FinanceStatusBadge(
-          label: isOver
-              ? '超支 ${formatFinanceAmount(-remaining)}'
-              : '剩余 ${formatFinanceAmount(remaining)}',
+          label: budget.isPaymentMethod
+              ? isOver
+                  ? '当前余额不足 ${formatFinanceAmount(-remaining)}'
+                  : '当前余额 ${formatFinanceAmount(remaining)}'
+              : isOver
+                  ? '超支 ${formatFinanceAmount(-remaining)}'
+                  : '剩余 ${formatFinanceAmount(remaining)}',
           isError: isOver,
           highlighted: !isOver,
         ),
@@ -599,9 +623,9 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   Widget _buildPaymentEmptyState(ColorScheme colorScheme) {
     return FinanceEmptyState(
       icon: Icons.account_balance_wallet_outlined,
-      title: '还没有付款方式月额度',
-      description: '月初录入各付款方式的可用金额，之后会根据支出和退款更新剩余金额。',
-      actionLabel: '选择付款方式并设置',
+      title: '还没有付款方式余额记录',
+      description: '录入此刻的剩余金额，之后的支出会扣减，退款会加回。',
+      actionLabel: '选择付款方式并录入余额',
       onAction: _choosePaymentMethodForBudget,
     );
   }

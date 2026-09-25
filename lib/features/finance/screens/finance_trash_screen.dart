@@ -201,15 +201,17 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
           uuid: item.uuid,
           kind: FinanceTrashKind.budget,
           title: item.isPaymentMethod
-              ? '${paymentMethods[item.paymentMethodUuid]?.name ?? '已归档或未知付款方式'}月额度'
+              ? '${paymentMethods[item.paymentMethodUuid]?.name ?? '已归档或未知付款方式'}余额'
               : item.isOverall
                   ? '全部支出预算'
                   : '${categories[item.categoryUuid] == null ? '已归档或未知分类' : financeCategoryDisplayName(categories[item.categoryUuid]!, _categories)}预算',
           details: [
             item.monthKey,
+            if (item.isPaymentMethod)
+              '${DateTime.fromMillisecondsSinceEpoch(item.updatedAt).month}月${DateTime.fromMillisecondsSinceEpoch(item.updatedAt).day}日录入',
             if (item.note?.isNotEmpty == true) item.note!
           ].join(' · '),
-          amountLabel: item.isPaymentMethod ? '月初金额' : '预算额度',
+          amountLabel: item.isPaymentMethod ? '录入时余额' : '预算额度',
           amountMinor: item.amountMinor,
           onRestore: () => _restoreBudget(item),
         ),

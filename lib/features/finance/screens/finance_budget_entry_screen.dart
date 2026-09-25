@@ -43,7 +43,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
   bool get _isPaymentScope => _scopeValue.startsWith(_paymentPrefix);
 
   String get _screenTitle => _isPaymentScope
-      ? (_isEditing ? '编辑付款额度' : '设置付款额度')
+      ? (_isEditing ? '更新付款方式余额' : '记录付款方式余额')
       : (_isEditing ? '编辑预算' : '新增预算');
 
   @override
@@ -211,7 +211,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _isSaving = false);
-      _showError('保存预算失败：$error');
+      _showError('${_isPaymentScope ? '保存付款方式余额失败' : '保存预算失败'}：$error');
     }
   }
 
@@ -264,7 +264,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
                                   title:
                                       '${widget.month.year} 年 ${widget.month.month} 月',
                                   description: _isPaymentScope
-                                      ? '录入月初可用金额，之后会随本月支出扣减。'
+                                      ? '保存时会将金额记为当天的余额快照；之后的支出会扣减，退款会加回。'
                                       : '预算按这个月份的账单统计。',
                                   icon: _isPaymentScope
                                       ? Icons.account_balance_wallet_outlined
@@ -273,7 +273,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
                                     key:
                                         const ValueKey('finance-budget-amount'),
                                     controller: _amountController,
-                                    label: _isPaymentScope ? '月初可用金额' : '预算金额',
+                                    label: _isPaymentScope ? '录入时剩余金额' : '预算金额',
                                   ),
                                 ),
                                 const SizedBox(height: 16),
@@ -282,7 +282,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
                                   icon: Icons.track_changes_outlined,
                                   description: _isPaymentScope
                                       ? '支出按账单记录的付款方式扣减，退款会加回。'
-                                      : '总预算覆盖全部支出；分类预算和付款方式额度独立统计。',
+                                      : '总预算覆盖全部支出；分类预算和付款方式余额独立统计。',
                                   child: DropdownButtonFormField<String>(
                                     key: ValueKey(
                                         'finance-budget-scope-$_scopeValue'),
@@ -321,7 +321,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
                       FinanceFormActions(
                           isSaving: _isSaving,
                           onSave: _save,
-                          label: _isPaymentScope ? '保存额度' : '保存预算'),
+                          label: _isPaymentScope ? '保存余额' : '保存预算'),
                     ]),
         ),
       ),
