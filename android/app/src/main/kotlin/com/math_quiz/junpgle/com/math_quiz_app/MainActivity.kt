@@ -2546,6 +2546,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val timeStr = args["timeStr"] as? String ?: ""
         val todoType = args["todoType"] as? String ?: "default"
         val imagePath = args["imagePath"] as? String
+        val islandTitle =
+            (args["islandTitle"] as? String)?.takeIf { it.isNotBlank() }
+        val islandContent =
+            (args["islandContent"] as? String)?.takeIf { it.isNotBlank() }
         
         // 使用 Number 来接收，避免类型转换问题
         val customNotifId = (args["notificationId"] as? Number)?.toInt()
@@ -2561,17 +2565,19 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             else -> Triple(R.drawable.calendar_clock, 0xFFFF9800.toInt(), "待办")
         }
 
-        val title = todoTitle
-        val text = if (todoRemark.isNotEmpty()) todoRemark else "时间: $timeStr"
+        // HyperOS displays the expanded island from the regular notification
+        // fields on some devices, rather than the custom miui.focus payload.
+        // Prefer the original special-todo text here so pickup codes remain
+        // readable in the island card.
+        val visibleTitle = islandTitle ?: todoTitle
+        val visibleRemark = islandContent ?: todoRemark
+        val title = visibleTitle
+        val text = if (visibleRemark.isNotEmpty()) visibleRemark else "时间: $timeStr"
         val subText = "$typeLabel"
         val shortText = when {
-            todoRemark.isNotEmpty() -> todoRemark
-            else -> todoTitle
+            visibleRemark.isNotEmpty() -> visibleRemark
+            else -> visibleTitle
         }
-        val islandTitle =
-            (args["islandTitle"] as? String)?.takeIf { it.isNotBlank() }
-        val islandContent =
-            (args["islandContent"] as? String)?.takeIf { it.isNotBlank() }
 
         buildAndNotify(
             title = title,
@@ -2595,7 +2601,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         )
 
         // 📳 同步发送到手环
-        bandPlugin?.sendNotificationToBand(title, text, todoType, notifId)
+        // Keep the wearable notification on its existing masked copy.
+        val bandText = if (todoRemark.isNotEmpty()) todoRemark else "时间: $timeStr"
+        bandPlugin?.sendNotificationToBand(todoTitle, bandText, todoType, notifId)
     }
 
     // 负责"全天"待办的汇总显示

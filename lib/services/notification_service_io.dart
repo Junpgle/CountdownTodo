@@ -521,8 +521,9 @@ class NotificationService {
         'timeStr': timeStr,
         'todoType': todoType,
         'notificationId': notifId,
-        // Lock-screen notification text stays masked; HyperOS's expanded
-        // island card gets the original pickup details through these fields.
+        // Android needs the originals for the expanded special-todo card:
+        // HyperOS may render it from the notification's standard text fields
+        // instead of the custom miui.focus payload.
         if (isSpecialTodo) 'islandTitle': todo.title,
         if (isSpecialTodo && todo.remark?.trim().isNotEmpty == true)
           'islandContent': todo.remark!.trim(),
