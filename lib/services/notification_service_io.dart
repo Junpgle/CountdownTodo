@@ -521,6 +521,11 @@ class NotificationService {
         'timeStr': timeStr,
         'todoType': todoType,
         'notificationId': notifId,
+        // Lock-screen notification text stays masked; HyperOS's expanded
+        // island card gets the original pickup details through these fields.
+        if (isSpecialTodo) 'islandTitle': todo.title,
+        if (isSpecialTodo && todo.remark?.trim().isNotEmpty == true)
+          'islandContent': todo.remark!.trim(),
         // Special todos can also originate from image analysis. Keep the
         // source data so Android can expose the corresponding actions.
         'imagePath': todo.imagePath,

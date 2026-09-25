@@ -219,6 +219,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val totalSteps: Int,
         val isTodo: Boolean,
         val shortText: String?,
+        val islandTitle: String?,
+        val islandContent: String?,
         val iconResId: Int,
         val largeIconResId: Int?,
         val channelId: String,
@@ -2566,6 +2568,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             todoRemark.isNotEmpty() -> todoRemark
             else -> todoTitle
         }
+        val islandTitle =
+            (args["islandTitle"] as? String)?.takeIf { it.isNotBlank() }
+        val islandContent =
+            (args["islandContent"] as? String)?.takeIf { it.isNotBlank() }
 
         buildAndNotify(
             title = title,
@@ -2578,6 +2584,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             totalSteps = 0,
             isTodo = true,
             shortText = shortText,
+            islandTitle = islandTitle,
+            islandContent = islandContent,
             iconResId = iconResId,
             largeIconResId = iconResId,
             notificationId = notifId,
@@ -2878,6 +2886,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         totalSteps: Int,
         isTodo: Boolean = false,
         shortText: String? = null,
+        islandTitle: String? = null,
+        islandContent: String? = null,
         iconResId: Int = R.drawable.ic_notification,
         largeIconResId: Int? = null,
         channelId: String = NOTIFICATION_CHANNEL_ID,
@@ -2915,6 +2925,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             totalSteps = totalSteps,
             isTodo = isTodo,
             shortText = shortText,
+            islandTitle = islandTitle,
+            islandContent = islandContent,
             iconResId = iconResId,
             largeIconResId = largeIconResId,
             channelId = channelId,
@@ -3161,15 +3173,20 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // ==========================================
         try {
             if (HyperIslandNotification.isSupported(this)) {
-                val hyperBuilder = HyperIslandNotification.Builder(this, islandBizTag, title)
+                val hyperTitle = islandTitle ?: title
+                val hyperBuilder = HyperIslandNotification.Builder(
+                    this,
+                    islandBizTag,
+                    hyperTitle
+                )
                     .setSmallWindowTarget(MainActivity::class.java.name)
 
                 val islandIcon = HyperPicture("island_icon", this, iconResId)
                 hyperBuilder.addPicture(islandIcon)
 
                 hyperBuilder.setBaseInfo(
-                    title = title,
-                    content = shortText ?: text, // 优先显示短文本（比如教室信息或时间）
+                    title = hyperTitle,
+                    content = islandContent ?: shortText ?: text, // 特殊待办在岛上显示完整取件信息
                     pictureKey = "island_icon"
                 )
 
