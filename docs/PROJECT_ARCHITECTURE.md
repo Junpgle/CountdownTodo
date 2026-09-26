@@ -1,6 +1,6 @@
 # Project architecture
 
-Last reconciled with code: 2026-08-25. Flutter package version: **5.8.3**.
+Last reconciled with code: 2026-09-26. Flutter package version: **6.4.1**.
 
 ## Repository map
 
@@ -49,16 +49,19 @@ as part of normal client work.
 
 ## Local data
 
-- SQLite schema version: **48** in `DatabaseHelper`
+- SQLite schema version: **55** in `DatabaseHelper`
   (`DatabaseSchemaHistory.currentVersion`).
 - Per-user database: `uni_sync_<username>.db`.
 - Main tables include todos, groups, countdowns, courses, plan blocks, time logs,
   Pomodoro records/tags, settings, collaboration data, audit/conflict data,
   search history and medal recommendations.
 - Personal finance tables include transactions, categories, payment methods, monthly
-  budgets, recurring rules and entry templates. They are a personal-only domain;
-  `finance_v1` uses an independent cursor and never carries `team_uuid`.
-- Search initializes FTS5 when available, then FTS4, then falls back to `LIKE`.
+  budgets, recurring rules, entry templates, loans and loan installments. They are
+  a personal-only domain; `finance_v1` uses an independent cursor and never carries
+  `team_uuid`.
+- Global search combines FTS5/FTS4/`LIKE` database search with feature-module and
+  remote catalog adapters. See [`features/global-search.md`](features/global-search.md)
+  for coverage, openable destinations, animation behavior and server limits.
 - SharedPreferences holds lightweight settings and session information; it is
   not the primary store for full synchronized datasets.
 

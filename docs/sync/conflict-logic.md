@@ -1,7 +1,7 @@
 # Current conflict logic
 
-Last verified against the Flutter client and external Alibaba debug server:
-2026-08-27.
+Finance category sync reconciled against the Flutter client and Alibaba server
+source trees: 2026-09-26. Other conflict flows retain their 2026-08-27 review.
 
 ## Two conflict classes
 
@@ -28,15 +28,19 @@ watermark. Team members may edit shared schedule content, but only the database
 owner may clear `team_uuid` or transfer the schedule to another joined team.
 
 Personal finance rows use an independent `finance_v1` capability and cursor.
-Transactions, catalogs, budgets, recurring rules and templates are scoped only
-by authenticated `user_id`; they never enter team sync. The server applies
-`updated_at` first and `version` only for equal timestamps. A stale or invalid
+Transactions, catalogs, budgets, recurring rules, templates, loans and loan
+installments are scoped only by authenticated `user_id`; they never enter team
+sync. The server applies `updated_at` first and `version` only for equal
+timestamps. A stale or invalid
 finance payload returns a finance conflict and a full finance snapshot, while
 the client leaves the finance cursor unchanged until the capability and all
 finance response fields are present. Local finance rows carry a `pending_sync`
 marker and are cleared only by a server acknowledgement for the same request
-version; system categories and payment methods are stable local defaults and are
-not uploaded or overwritten by the server.
+version. Built-in category type and hierarchy remain client-owned, while explicit
+name and icon overrides use `name_customized` and `icon_customized` markers and
+are synchronized when the server advertises the matching capabilities. System
+default payment methods remain local-only; user-created categories sync as full
+records.
 
 Todo comparison includes content/completion/deletion, dates, recurrence and
 `recurrence_series_id`, custom interval/end date, remark/group/team/category,
@@ -87,10 +91,10 @@ the normal LWW rejection path.
   after ignoring sync metadata is not a conflict
   (`lib/features/habits/services/habit_sync_conflict_service.dart`,
   `lib/services/sync_capability_service.dart`).
-- Alibaba debug server: `CDT-server/debug/routes/sync.js`,
-  `CDT-server/debug/services/financeSync.js` and `CDT-server/debug/db/init.js`,
-  plus their shared helper and service modules in the separate checkout. The
-  production `math_quiz_backend/` tree remains unchanged.
+- Alibaba server source: `CDT-server/debug/` and the protected
+  `CDT-server/math_quiz_backend/` trees contain the client-facing sync and
+  finance implementations. The production tree is not the normal development
+  target; this source map does not confirm live deployment state.
 - Compatibility Worker: `math-quiz-backend/src/index.js`.
 
 Any change needs tests for local/local and client/server races, accept-server

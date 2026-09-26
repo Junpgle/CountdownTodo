@@ -1,6 +1,6 @@
 # macOS support
 
-Last reviewed against version 5.8.3: 2026-08-25.
+Last reviewed against version 6.4.1: 2026-09-26.
 
 ## Implemented integrations
 

@@ -1,6 +1,7 @@
 # AI todo agent
 
-Last verified: 2026-07-31.
+Finance assistant protocol reconciled with code: 2026-09-26. General todo action
+families retain their 2026-07-31 review.
 
 The chat screen and `LLMService` support configurable LLM providers and convert
 structured assistant output into previewable actions. The transport protocol
@@ -27,6 +28,22 @@ review for destructive or broad actions.
 `AiTodoActionType` and the parser/executor code are the source of truth for exact
 names and payload fields. The UI should show parsed actions before execution,
 validate IDs/timestamps/enums, and keep partial failures visible.
+
+## Finance assistant actions
+
+Finance uses a separate protocol from the todo action envelope:
+
+- New entries are emitted as drafts inside `[FINANCE_START]...[FINANCE_END]`;
+  the user reviews the draft before it is saved.
+- Read-only summaries and lists, plus requested updates and deletes, use
+  `[FINANCE_ACTION_START]...[FINANCE_ACTION_END]`.
+- Queries are informational. Updates and deletes must reference a real
+  transaction from the supplied finance context and remain pending until the
+  user confirms the operation in the chat UI.
+
+`FinanceAiAction` and `FinanceTextParser` are the source of truth for this
+protocol. They currently support `finance_summary`, `finance_list`,
+`update_finance` and `delete_finance`.
 
 Recurring todos and schedules use real occurrence IDs for mutations. Series IDs
 are validation/grouping metadata and must never be used in place of `todoId` or

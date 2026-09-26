@@ -1,7 +1,8 @@
 # Documentation index
 
-Project Markdown files in this workspace were reviewed against the working tree
-on 2026-08-31. Dependency/build output Markdown is intentionally excluded.
+Index last reconciled: 2026-09-26. Current-state documents keep their own review
+dates; archived plans and incident reports retain their historical dates.
+Dependency/build output Markdown is intentionally excluded.
 
 ## Current references
 
@@ -12,6 +13,8 @@ on 2026-08-31. Dependency/build output Markdown is intentionally excluded.
   `../lib/features/habits/` (check-ins, sleep coaching, widget check-in).
 - `features/plan-blocks.md` — plan-block model and current behavior.
 - `features/finance.md` — personal finance MVP, storage boundary and sync notes.
+- `features/global-search.md` — searchable data sources, result destinations,
+  shared-container navigation and remote-source limits.
 - `features/captcha-verification.md` — Turnstile paths by platform.
 - `features/mac-support.md` — macOS integrations.
 - `features/medal-recommendation.md` — rule and ML recommendation flow.

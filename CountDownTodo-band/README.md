@@ -1,6 +1,6 @@
 # Countdown Todo Xiaomi band companion
 
-Quick App companion source lives under `src/`. Last reviewed: 2026-07-20.
+Quick App companion source lives under `src/`. Last reviewed: 2026-09-26.
 
 ## Current version
 

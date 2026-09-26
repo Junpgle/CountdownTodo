@@ -1,6 +1,6 @@
 # `lib/` source map
 
-Last reviewed: 2026-08-25.
+Last reviewed: 2026-09-26.
 
 - `main.dart`: bootstrap, database/session setup, platform initialization and
   global Liquid Glass theme wiring.
@@ -12,6 +12,8 @@ Last reviewed: 2026-08-25.
 - `widgets/`: reusable and feature-specific presentation.
 - `services/`: database, network, sync, AI, search, calendar, notifications,
   Pomodoro, export/import and platform adapters.
+- Global search combines `services/search_service.dart` with
+  `services/global_search_extra_service.dart`; see `docs/features/global-search.md`.
 - `services/storage/`: extracted settings, sessions, countdown, Pomodoro and
   conflict-cleanup storage responsibilities.
 - `features/`: self-contained feature modules with their own models/services/UI:
