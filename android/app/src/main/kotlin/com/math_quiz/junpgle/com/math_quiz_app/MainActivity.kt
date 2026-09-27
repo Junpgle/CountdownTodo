@@ -262,6 +262,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private var minorModeManager: MinorModeManager? = null
     private var powerSaveModeManager: AndroidPowerSaveModeManager? = null
     private var pendingDeepLink: String? = null
+    private var pendingDeepLinkId: String? = null
     // 保存待处理的番茄钟动作（在methodChannel初始化前）
     private var pendingPomodoroAction: String? = null
     // 保存待处理的待办确认动作（在methodChannel初始化前）
@@ -326,18 +327,28 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             pendingPlanBlockId = savedInstanceState.getString(STATE_PENDING_PLAN_ID)
             pendingPlanBlockTodoId = savedInstanceState.getString(STATE_PENDING_PLAN_TODO_ID)
             pendingShortcut = savedInstanceState.getString(STATE_PENDING_SHORTCUT)
-            pendingDeepLink = savedInstanceState.getString(STATE_PENDING_DEEP_LINK)
-
+            val savedDeepLinkId = savedInstanceState.getString(STATE_PENDING_DEEP_LINK_ID)
+            if (savedDeepLinkId != null && savedDeepLinkId != lastDeliveredDeepLinkId()) {
+                pendingDeepLink = savedInstanceState.getString(STATE_PENDING_DEEP_LINK)
+                pendingDeepLinkId = savedDeepLinkId
+            }
             // 上次已处理过通知 extras，但进程被杀后系统会恢复旧 intent（extras 仍在）。
             // 清除这些 extras 防止重复触发（例如从图标打开 App 时莫名开始专注）。
             clearNotificationExtras(intent)
             Log.d(TAG, "📦 Restored pending state from savedInstanceState")
         }
 
-        // 在 super.onCreate 之前提取 deep link（super 可能替换 intent）
-        val launchDeepLink = extractDeepLinkFromIntent(intent)
+        // 恢复 Activity 时 intent 可能仍是上次从小部件打开的 VIEW intent。
+        // 深链接是一次性导航请求，不能把旧 intent 或 saved state 当成新点击。
+        // 恢复之后真正的新点击仍会通过 onNewIntent 到达。
+        val launchDeepLink = if (savedInstanceState == null) {
+            extractDeepLinkFromIntent(intent)
+        } else {
+            null
+        }
         if (launchDeepLink != null) {
             pendingDeepLink = launchDeepLink
+            pendingDeepLinkId = UUID.randomUUID().toString()
             Log.d(TAG, "🔗 Saved launch deep link before FlutterActivity init")
         }
 
@@ -358,8 +369,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         handleShortcutFromIntent(intent)
 
         // 通知 extras 已提取完毕，现在可以安全清理 deep link 数据
-        if (launchDeepLink != null) {
+        if (extractDeepLinkFromIntent(intent) != null) {
             sanitizeDeepLinkIntent(intent)
+            setIntent(intent)
         }
 
         // 注册 Shizuku 权限请求与生命周期监听器
@@ -537,6 +549,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         outState.putString(STATE_PENDING_PLAN_TODO_ID, pendingPlanBlockTodoId)
         outState.putString(STATE_PENDING_SHORTCUT, pendingShortcut)
         outState.putString(STATE_PENDING_DEEP_LINK, pendingDeepLink)
+        outState.putString(STATE_PENDING_DEEP_LINK_ID, pendingDeepLinkId)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -552,15 +565,17 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         if (deepLink != null) {
             sanitizeDeepLinkIntent(intent)
-            dispatchDeepLink(deepLink)
+            setIntent(intent)
+            val deliveryId = UUID.randomUUID().toString()
+            dispatchDeepLink(deepLink, deliveryId)
             // A Flutter isolate can still be paused while onNewIntent is
             // delivered from the launcher. Retry after the Activity has had
             // time to reach the resumed state; the pending value is cleared
             // by the MethodChannel acknowledgement when the first delivery
             // succeeds.
             Handler(Looper.getMainLooper()).postDelayed({
-                if (pendingDeepLink == deepLink) {
-                    dispatchDeepLink(deepLink)
+                if (pendingDeepLinkId == deliveryId) {
+                    dispatchDeepLink(deepLink, deliveryId)
                 }
             }, 600)
         }
@@ -598,20 +613,31 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         intent.removeExtra("habit_notif_id")
     }
 
-    private fun dispatchDeepLink(data: String) {
+    private fun lastDeliveredDeepLinkId(): String? =
+        getSharedPreferences(DEEP_LINK_DELIVERY_PREFS, MODE_PRIVATE)
+            .getString(LAST_DELIVERED_DEEP_LINK_ID, null)
+
+    private fun finishDeepLinkDelivery(deliveryId: String?) {
+        if (deliveryId == null || pendingDeepLinkId != deliveryId) return
+        getSharedPreferences(DEEP_LINK_DELIVERY_PREFS, MODE_PRIVATE)
+            .edit().putString(LAST_DELIVERED_DEEP_LINK_ID, deliveryId).commit()
+        pendingDeepLink = null
+        pendingDeepLinkId = null
+    }
+
+    private fun dispatchDeepLink(data: String, deliveryId: String) {
         Log.d(TAG, "🔗 dispatchDeepLink: $data")
         // Keep a copy until Flutter acknowledges the message. When the
         // Activity is resumed from the launcher, the Flutter isolate can be
         // paused for a short window and a one-shot platform message may be
         // delivered too early. Dart can fetch this value on resume.
         pendingDeepLink = data
+        pendingDeepLinkId = deliveryId
         val channel = deepLinkChannel
         if (channel != null) {
             channel.invokeMethod("openDeepLink", data, object : MethodChannel.Result {
                 override fun success(result: Any?) {
-                    if (pendingDeepLink == data) {
-                        pendingDeepLink = null
-                    }
+                    finishDeepLinkDelivery(deliveryId)
                 }
 
                 override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
@@ -722,6 +748,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         private const val STATE_PENDING_PLAN_TODO_ID = "pending_plan_todo_id"
         private const val STATE_PENDING_SHORTCUT = "pending_shortcut"
         private const val STATE_PENDING_DEEP_LINK = "pending_deep_link"
+        private const val STATE_PENDING_DEEP_LINK_ID = "pending_deep_link_id"
+        private const val DEEP_LINK_DELIVERY_PREFS = "deep_link_delivery"
+        private const val LAST_DELIVERED_DEEP_LINK_ID = "last_delivered_id"
     }
 
     private fun handleShortcutFromIntent(intent: Intent?) {
@@ -1474,8 +1503,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         deepLinkChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "getInitialDeepLink" -> {
-                    result.success(pendingDeepLink)
-                    pendingDeepLink = null
+                    val deepLink = pendingDeepLink
+                    val deliveryId = pendingDeepLinkId
+                    result.success(deepLink)
+                    if (deepLink != null) finishDeepLinkDelivery(deliveryId)
                 }
                 else -> result.notImplemented()
             }
