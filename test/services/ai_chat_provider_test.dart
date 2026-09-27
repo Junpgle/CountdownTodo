@@ -194,8 +194,11 @@ void main() {
 
   test('migrates stored recognition prompts away from legacy todo fields',
       () async {
-    const legacyTextPrompt =
-        '旧版识别规则\n普通todo使用isAllDay=false、startTime=null、endTime=null\nplan_todos';
+    const legacyTextPrompt = '保留自定义识别偏好\n'
+        '普通todo使用isAllDay=false、startTime=null、endTime=null\n'
+        '旧动作：[CREATE_TODO]\n'
+        '普通待办返回 `todo_list`: []\n'
+        'plan_todos';
     const legacyVisionPrompt = '旧版图片规则\n待办使用startTime和endTime表示时间段';
     SharedPreferences.setMockInitialValues({
       'llm_config': jsonEncode({
@@ -213,8 +216,11 @@ void main() {
 
     expect(config, isNotNull);
     expect(config!.textPrompt, contains('CDT_RECOGNITION_PROTOCOL_V2'));
+    expect(config.textPrompt, contains('保留自定义识别偏好'));
     expect(config.textPrompt, isNot(contains('plan_todos')));
     expect(config.textPrompt, isNot(contains('isAllDay')));
+    expect(config.textPrompt, isNot(contains('[CREATE_TODO]')));
+    expect(config.textPrompt, isNot(contains('`todo_list`')));
     expect(config.visionPrompt, contains('CDT_RECOGNITION_PROTOCOL_V2'));
     expect(config.visionPrompt, isNot(contains('startTime')));
     final prefs = await SharedPreferences.getInstance();
@@ -223,10 +229,14 @@ void main() {
     expect(stored['recognition_prompt_protocol_version'], 2);
 
     final migratedChatPrompt = ChatStorageService.ensureCurrentPromptProtocol(
-      '自定义聊天规则\n普通待办返回 {"todos":[{"title":"事项"}]}\n'
+      '自定义聊天规则 isAllDay=true\n'
+      '旧动作：[cReAtE_tOdO]\n'
+      '普通待办返回 `todo_list`: []\n'
       '待办使用 start_time 和 end_time 表示时间段',
     );
-    expect(migratedChatPrompt, isNot(contains('"todos"')));
+    expect(migratedChatPrompt, contains('自定义聊天规则 isAllDay=true'));
+    expect(migratedChatPrompt, isNot(contains('[cReAtE_tOdO]')));
+    expect(migratedChatPrompt, isNot(contains('`todo_list`')));
     expect(migratedChatPrompt, isNot(contains('start_time')));
   });
 

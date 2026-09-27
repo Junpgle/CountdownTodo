@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/chat_message.dart';
 import 'ai_action_parser.dart';
+import 'legacy_ai_prompt_sanitizer.dart';
 import 'storage/user_session_storage.dart';
 import 'storage/storage_key_scope.dart';
 import 'secure_storage_service.dart';
@@ -119,38 +120,12 @@ class ChatStorageService {
   static String ensureCurrentPromptProtocol(String prompt) {
     final value = prompt.trim();
     if (value.isEmpty) return defaultPrompt;
-    final sanitized = _removeLegacyChatProtocol(prompt);
+    final sanitized = LegacyAiPromptSanitizer.sanitize(
+      prompt,
+      fallback: _defaultPrompt,
+    );
     if (sanitized.contains('CDT_CHAT_PROTOCOL_V2')) return sanitized;
     return '$sanitized\n$_currentPromptProtocol';
-  }
-
-  static String _removeLegacyChatProtocol(String prompt) {
-    final legacyProtocol = RegExp(
-      r'\bplan_todos\b|\[(?:PLAN_TODOS|CREATE_TODO|UPDATE_TODO|'
-      r'COMPLETE_TODO|DELETE_TODO|RESCHEDULE_TODO)\]',
-      caseSensitive: false,
-    );
-    final legacyContainers = RegExp(
-      r'["\x27`]?(?:todos|todo_list|updates|items)["\x27`]?[ \t]*:',
-      caseSensitive: false,
-    );
-    final sanitized = prompt.split('\n').where((line) {
-      if (legacyProtocol.hasMatch(line)) return false;
-
-      final lower = line.toLowerCase();
-      final mentionsTodo = lower.contains('todo') || line.contains('待办');
-      final mentionsLegacyRange = lower.contains('starttime') ||
-          lower.contains('endtime') ||
-          lower.contains('start_time') ||
-          lower.contains('end_time') ||
-          line.contains('起止') ||
-          (line.contains('00:00') && line.contains('23:59'));
-      final mentionsLegacyTodoContainer =
-          legacyContainers.hasMatch(line) && mentionsTodo;
-      return !(mentionsTodo &&
-          (mentionsLegacyRange || mentionsLegacyTodoContainer));
-    }).join('\n').trim();
-    return sanitized.isEmpty ? _defaultPrompt : sanitized;
   }
 
   static String _historyKey(String sessionId) => 'chat_history_$sessionId';

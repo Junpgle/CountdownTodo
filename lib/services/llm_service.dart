@@ -6,6 +6,7 @@ import '../features/finance/services/finance_ai_context_service.dart';
 import '../utils/image_input_reader.dart';
 import 'ai_chat_service.dart';
 import 'ai_multimodal_message_builder.dart';
+import 'legacy_ai_prompt_sanitizer.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
 import 'secure_storage_service.dart';
@@ -578,45 +579,15 @@ class LLMService {
   }) {
     final value = prompt?.trim();
     if (value == null || value.isEmpty) return fallback;
-    final sanitized = _removeLegacyRecognitionProtocol(prompt!);
+    final sanitized = LegacyAiPromptSanitizer.sanitize(
+      prompt!,
+      fallback: LLMConfig.itemSemanticGuardrailPrompt,
+      removeLegacyAllDayFields: true,
+    );
     if (sanitized.contains(LLMConfig.recognitionPromptProtocolMarker)) {
       return sanitized;
     }
     return '$sanitized\n\n${LLMConfig.itemSemanticGuardrailPrompt}';
-  }
-
-  static String _removeLegacyRecognitionProtocol(String prompt) {
-    final legacyAction = RegExp(
-      r'\bplan_todos\b|\[(?:PLAN_TODOS|CREATE_TODO|UPDATE_TODO|'
-      r'COMPLETE_TODO|DELETE_TODO|RESCHEDULE_TODO)\]',
-      caseSensitive: false,
-    );
-    final legacyTodoContainer = RegExp(
-      r'["\x27`]?(?:todos|todo_list|updates|items)["\x27`]?[ \t]*:',
-      caseSensitive: false,
-    );
-    final lines = prompt.split('\n').where((line) {
-      if (legacyAction.hasMatch(line)) return false;
-      if (line.contains('isAllDay') || line.contains('is_all_day')) {
-        return false;
-      }
-      final lower = line.toLowerCase();
-      final mentionsTodo = lower.contains('todo') || line.contains('待办');
-      final mentionsLegacyRange = lower.contains('starttime') ||
-          lower.contains('start_time') ||
-          lower.contains('endtime') ||
-          lower.contains('end_time') ||
-          line.contains('起止') ||
-          (line.contains('00:00') && line.contains('23:59'));
-      final mentionsLegacyTodoContainer =
-          legacyTodoContainer.hasMatch(line) && mentionsTodo;
-      return !(mentionsTodo &&
-          (mentionsLegacyRange || mentionsLegacyTodoContainer));
-    });
-    final sanitized = lines.join('\n').trim();
-    return sanitized.isEmpty
-        ? LLMConfig.itemSemanticGuardrailPrompt
-        : sanitized;
   }
 
   static Future<void> clearConfig() async {
