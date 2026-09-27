@@ -1972,7 +1972,12 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
         <main className="flex-1 max-w-[1600px] mx-auto w-full p-4 sm:p-6 lg:p-8 pb-24 sm:pb-8 flex flex-col min-h-0 overflow-y-auto lg:overflow-hidden">
           {currentTab === 'dashboard' && mobileTab === 'home' && renderDashboard()}
           {mobileTab === 'settings' && renderSettings()}
-          {currentTab === 'screentime' && mobileTab === 'home' && <ScreenTimeView userId={user.id} />}
+          {currentTab === 'screentime' && mobileTab === 'home' && (
+            <ScreenTimeView
+              key={`${ApiService.getBackendKey()}_${user.id}`}
+              userId={user.id}
+            />
+          )}
           {currentTab === 'focus' && mobileTab === 'home' && <PomodoroFocusView userId={user.id} todos={todos} onTodoCompleted={handleTodoCompleted} remotePomActive={remotePomActive} remotePomDisplay={remotePomDisplay} remotePomData={remotePomData} />}
           {currentTab === 'teams' && mobileTab === 'home' && <TeamManagementView user={user} onBack={() => setCurrentTab('dashboard')} />}
         </main>

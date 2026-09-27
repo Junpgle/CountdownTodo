@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   RefreshCw, Monitor, Smartphone, MonitorSmartphone,
   PieChart as PieChartIcon
@@ -11,44 +11,54 @@ import { formatHM, simplifyDeviceName } from './webapp-utils';
 // --------------------------------------------------------
 // 屏幕时间组件
 // --------------------------------------------------------
+const localDateKey = (date: Date): string =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
 export const ScreenTimeView = ({ userId }: { userId: number }) => {
   const [stats, setStats] = useState<ScreenTimeStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pc' | 'mobile'>('all');
   const [selectedDate] = useState(new Date());
+  const dateStr = localDateKey(selectedDate);
+  const requestGeneration = useRef(0);
+
+  const fetchStats = useCallback(async (showLoading = true) => {
+    const generation = ++requestGeneration.current;
+    if (showLoading) setLoading(true);
+    try {
+      const data = await ApiService.request(`/api/screen_time?user_id=${userId}&date=${dateStr}`, { method: 'GET' });
+      if (generation !== requestGeneration.current) return;
+      const result = (Array.isArray(data) ? data : []) as ScreenTimeStat[];
+      setStats(result);
+      void CacheService.setCachedScreenTime(userId, dateStr, result);
+    } catch (e) {
+      if (generation === requestGeneration.current) {
+        console.error("获取屏幕时间失败", e);
+      }
+    } finally {
+      if (showLoading && generation === requestGeneration.current) setLoading(false);
+    }
+  }, [dateStr, userId]);
 
   useEffect(() => {
+    const generationRef = requestGeneration;
+    const generation = ++generationRef.current;
+    setStats([]);
+    setLoading(true);
     const init = async () => {
-      // 1. 先从 IndexedDB 缓存加载
-      const cached = await CacheService.getCachedScreenTime(userId);
+      const cached = await CacheService.getCachedScreenTime(userId, dateStr);
+      if (generation !== generationRef.current) return;
       if (cached && cached.length > 0) {
         setStats(cached);
         setLoading(false);
-        // 有缓存时后台静默刷新
-        fetchStats(false);
+        void fetchStats(false);
       } else {
-        // 无缓存时显示 loading
-        fetchStats(true);
+        void fetchStats(true);
       }
     };
-    init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const fetchStats = async (showLoading = true) => {
-    if (showLoading) setLoading(true);
-    try {
-      const dateStr = selectedDate.toISOString().split('T')[0];
-      const data = await ApiService.request(`/api/screen_time?user_id=${userId}&date=${dateStr}`, { method: 'GET' });
-      const result = (Array.isArray(data) ? data : []) as ScreenTimeStat[];
-      setStats(result);
-      CacheService.setCachedScreenTime(userId, result);
-    } catch (e) {
-      console.error("获取屏幕时间失败", e);
-    } finally {
-      if (showLoading) setLoading(false);
-    }
-  };
+    void init();
+    return () => { generationRef.current++; };
+  }, [dateStr, fetchStats, userId]);
 
   const getFilteredStats = () => {
     return stats.filter(item => {

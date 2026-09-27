@@ -1,8 +1,9 @@
 import type { TodoItem, TodoGroup, CountdownItem, PomodoroRecord, PomodoroTag, Team, TeamAnnouncement, TodoPlanBlock, TimeLogItem } from '../types';
 import type { CourseItem, ScreenTimeStat } from '../pages/webapp-utils';
+import { ApiService } from './api';
 
 const DB_NAME = 'cdt_cache';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 const STORE_TODOS = 'todos';
 const STORE_GROUPS = 'groups';
 const STORE_COUNTDOWNS = 'countdowns';
@@ -15,6 +16,18 @@ const STORE_POMODORO_RECORDS = 'pom_records';
 const STORE_POMODORO_TAGS = 'pom_tags';
 const STORE_TEAMS = 'teams';
 const STORE_ANNOUNCEMENTS = 'announcements';
+
+const COLLECTION_KEY_PATHS: ReadonlyArray<readonly [string, string[]]> = [
+  [STORE_TODOS, ['_key', 'uuid']],
+  [STORE_GROUPS, ['_key', 'uuid']],
+  [STORE_COUNTDOWNS, ['_key', 'uuid']],
+  [STORE_PLAN_BLOCKS, ['_key', 'uuid']],
+  [STORE_TIME_LOGS, ['_key', 'uuid']],
+  [STORE_COURSES, ['_key', 'id']],
+  [STORE_SCREEN_TIME, ['_key', '_cacheIndex']],
+  [STORE_POMODORO_RECORDS, ['_key', 'uuid']],
+  [STORE_POMODORO_TAGS, ['_key', 'uuid']],
+];
 
 interface CacheItem {
   _key: string;
@@ -29,6 +42,10 @@ interface SettingsCacheItem {
 
 let dbInstance: IDBDatabase | null = null;
 
+function cacheUserPrefix(userId: number): string {
+  return ApiService.getUserKey(userId, 'cache');
+}
+
 function openDB(): Promise<IDBDatabase> {
   if (dbInstance) return Promise.resolve(dbInstance);
 
@@ -36,42 +53,30 @@ function openDB(): Promise<IDBDatabase> {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error('Cache database upgrade blocked by another tab'));
     request.onsuccess = () => {
-      dbInstance = request.result;
-      resolve(dbInstance);
+      const db = request.result;
+      db.onversionchange = () => {
+        db.close();
+        if (dbInstance === db) dbInstance = null;
+      };
+      dbInstance = db;
+      resolve(db);
     };
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_TODOS)) {
-        db.createObjectStore(STORE_TODOS, { keyPath: 'uuid' });
-      }
-      if (!db.objectStoreNames.contains(STORE_GROUPS)) {
-        db.createObjectStore(STORE_GROUPS, { keyPath: 'uuid' });
-      }
-      if (!db.objectStoreNames.contains(STORE_COUNTDOWNS)) {
-        db.createObjectStore(STORE_COUNTDOWNS, { keyPath: 'uuid' });
-      }
-      if (!db.objectStoreNames.contains(STORE_PLAN_BLOCKS)) {
-        db.createObjectStore(STORE_PLAN_BLOCKS, { keyPath: 'uuid' });
-      }
-      if (!db.objectStoreNames.contains(STORE_TIME_LOGS)) {
-        db.createObjectStore(STORE_TIME_LOGS, { keyPath: 'uuid' });
-      }
-      if (!db.objectStoreNames.contains(STORE_COURSES)) {
-        db.createObjectStore(STORE_COURSES, { keyPath: 'id' });
+      // Old collection stores used a global item ID. Their backend cannot be
+      // recovered reliably, so discard those cache entries on the v6 upgrade.
+      for (const [storeName, keyPath] of COLLECTION_KEY_PATHS) {
+        if (db.objectStoreNames.contains(storeName)) {
+          if (event.oldVersion >= 6) continue;
+          db.deleteObjectStore(storeName);
+        }
+        db.createObjectStore(storeName, { keyPath });
       }
       if (!db.objectStoreNames.contains(STORE_SETTINGS)) {
         db.createObjectStore(STORE_SETTINGS, { keyPath: '_key' });
-      }
-      if (!db.objectStoreNames.contains(STORE_SCREEN_TIME)) {
-        db.createObjectStore(STORE_SCREEN_TIME, { keyPath: '_key' });
-      }
-      if (!db.objectStoreNames.contains(STORE_POMODORO_RECORDS)) {
-        db.createObjectStore(STORE_POMODORO_RECORDS, { keyPath: 'uuid' });
-      }
-      if (!db.objectStoreNames.contains(STORE_POMODORO_TAGS)) {
-        db.createObjectStore(STORE_POMODORO_TAGS, { keyPath: 'uuid' });
       }
       if (!db.objectStoreNames.contains(STORE_TEAMS)) {
         db.createObjectStore(STORE_TEAMS, { keyPath: '_key' });
@@ -133,32 +138,37 @@ async function clearStoreByPrefix(storeName: string, prefix: string): Promise<vo
   const db = await openDB();
   return new Promise<void>((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite');
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
     const store = tx.objectStore(storeName);
     const request = store.openCursor();
     request.onsuccess = () => {
       const cursor = request.result;
       if (cursor) {
-        if ((cursor.value as CacheItem)._key === prefix) {
+        const key = (cursor.value as { _key?: unknown })._key;
+        if (typeof key === 'string' &&
+            (key === prefix || key.startsWith(`${prefix}_`))) {
           cursor.delete();
         }
         cursor.continue();
-      } else {
-        resolve();
       }
     };
     request.onerror = () => reject(request.error);
   });
 }
 
-async function clearStoreByUser(storeName: string, userId: number): Promise<void> {
-  return clearStoreByPrefix(storeName, `u${userId}`);
+async function clearStoreByUser(storeName: string, scopedPrefix: string, userId: number): Promise<void> {
+  await clearStoreByPrefix(storeName, scopedPrefix);
+  // Remove entries written by older builds before cache keys included backend.
+  await clearStoreByPrefix(storeName, `u${userId}`);
 }
 
 export const CacheService = {
   // Todos
   async getCachedTodos(userId: number): Promise<TodoItem[] | null> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       const all = await getAll<CacheItem>(STORE_TODOS);
       const cached = all.filter(t => t._key === key) as unknown as TodoItem[];
       return cached.length > 0 ? cached : null;
@@ -169,7 +179,7 @@ export const CacheService = {
 
   async setCachedTodos(userId: number, todos: TodoItem[]): Promise<void> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       await clearStoreByPrefix(STORE_TODOS, key);
       const itemsWithKey = todos.map(t => ({ ...t, _key: key }));
       await putAll(STORE_TODOS, itemsWithKey);
@@ -181,7 +191,7 @@ export const CacheService = {
   // Groups
   async getCachedGroups(userId: number): Promise<TodoGroup[] | null> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       const all = await getAll<CacheItem>(STORE_GROUPS);
       const cached = all.filter(g => g._key === key) as unknown as TodoGroup[];
       return cached.length > 0 ? cached : null;
@@ -192,7 +202,7 @@ export const CacheService = {
 
   async setCachedGroups(userId: number, groups: TodoGroup[]): Promise<void> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       await clearStoreByPrefix(STORE_GROUPS, key);
       const itemsWithKey = groups.map(g => ({ ...g, _key: key }));
       await putAll(STORE_GROUPS, itemsWithKey);
@@ -204,7 +214,7 @@ export const CacheService = {
   // Countdowns
   async getCachedCountdowns(userId: number): Promise<CountdownItem[] | null> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       const all = await getAll<CacheItem>(STORE_COUNTDOWNS);
       const cached = all.filter(c => c._key === key) as unknown as CountdownItem[];
       return cached.length > 0 ? cached : null;
@@ -215,7 +225,7 @@ export const CacheService = {
 
   async setCachedCountdowns(userId: number, countdowns: CountdownItem[]): Promise<void> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       await clearStoreByPrefix(STORE_COUNTDOWNS, key);
       const itemsWithKey = countdowns.map(c => ({ ...c, _key: key }));
       await putAll(STORE_COUNTDOWNS, itemsWithKey);
@@ -227,7 +237,7 @@ export const CacheService = {
   // Plan Blocks
   async getCachedPlanBlocks(userId: number): Promise<TodoPlanBlock[] | null> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       const all = await getAll<CacheItem>(STORE_PLAN_BLOCKS);
       const cached = all.filter(p => p._key === key) as unknown as TodoPlanBlock[];
       return cached.length > 0 ? cached : null;
@@ -238,7 +248,7 @@ export const CacheService = {
 
   async setCachedPlanBlocks(userId: number, blocks: TodoPlanBlock[]): Promise<void> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       await clearStoreByPrefix(STORE_PLAN_BLOCKS, key);
       const itemsWithKey = blocks.map(p => ({ ...p, _key: key }));
       await putAll(STORE_PLAN_BLOCKS, itemsWithKey);
@@ -250,7 +260,7 @@ export const CacheService = {
   // Time Logs
   async getCachedTimeLogs(userId: number): Promise<TimeLogItem[] | null> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       const all = await getAll<CacheItem>(STORE_TIME_LOGS);
       const cached = all.filter(l => l._key === key) as unknown as TimeLogItem[];
       return cached.length > 0 ? cached : null;
@@ -261,7 +271,7 @@ export const CacheService = {
 
   async setCachedTimeLogs(userId: number, logs: TimeLogItem[]): Promise<void> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       await clearStoreByPrefix(STORE_TIME_LOGS, key);
       const itemsWithKey = logs.map(l => ({ ...l, _key: key }));
       await putAll(STORE_TIME_LOGS, itemsWithKey);
@@ -273,7 +283,7 @@ export const CacheService = {
   // Courses
   async getCachedCourses(userId: number): Promise<CourseItem[] | null> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       const all = await getAll<CacheItem>(STORE_COURSES);
       const cached = all.filter(c => c._key === key) as unknown as CourseItem[];
       return cached.length > 0 ? cached : null;
@@ -284,7 +294,7 @@ export const CacheService = {
 
   async setCachedCourses(userId: number, courses: CourseItem[]): Promise<void> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       await clearStoreByPrefix(STORE_COURSES, key);
       const itemsWithKey = courses.map(c => ({ ...c, _key: key }));
       await putAll(STORE_COURSES, itemsWithKey);
@@ -296,7 +306,7 @@ export const CacheService = {
   // Semester Start (Settings)
   async getCachedSemesterStart(userId: number): Promise<number | null> {
     try {
-      const cacheKey = `u${userId}_semester`;
+      const cacheKey = `${cacheUserPrefix(userId)}_semester`;
       const cached = await getOne<SettingsCacheItem>(STORE_SETTINGS, cacheKey);
       if (cached && cached.semester_start > 0) {
         return cached.semester_start;
@@ -309,7 +319,7 @@ export const CacheService = {
 
   async setCachedSemesterStart(userId: number, semesterStart: number): Promise<void> {
     try {
-      const cacheKey = `u${userId}_semester`;
+      const cacheKey = `${cacheUserPrefix(userId)}_semester`;
       await putOne(STORE_SETTINGS, {
         _key: cacheKey,
         semester_start: semesterStart,
@@ -321,9 +331,9 @@ export const CacheService = {
   },
 
   // Screen Time
-  async getCachedScreenTime(userId: number): Promise<ScreenTimeStat[] | null> {
+  async getCachedScreenTime(userId: number, date: string): Promise<ScreenTimeStat[] | null> {
     try {
-      const key = `u${userId}`;
+      const key = `${cacheUserPrefix(userId)}_screen_time_${date}`;
       const all = await getAll<CacheItem>(STORE_SCREEN_TIME);
       const cached = all.filter(c => c._key === key) as unknown as ScreenTimeStat[];
       return cached.length > 0 ? cached : null;
@@ -332,11 +342,11 @@ export const CacheService = {
     }
   },
 
-  async setCachedScreenTime(userId: number, stats: ScreenTimeStat[]): Promise<void> {
+  async setCachedScreenTime(userId: number, date: string, stats: ScreenTimeStat[]): Promise<void> {
     try {
-      const key = `u${userId}`;
+      const key = `${cacheUserPrefix(userId)}_screen_time_${date}`;
       await clearStoreByPrefix(STORE_SCREEN_TIME, key);
-      const itemsWithKey = stats.map(s => ({ ...s, _key: key }));
+      const itemsWithKey = stats.map((s, index) => ({ ...s, _key: key, _cacheIndex: index }));
       await putAll(STORE_SCREEN_TIME, itemsWithKey);
     } catch (e) {
       console.warn('CacheService: Failed to cache screen time', e);
@@ -346,7 +356,7 @@ export const CacheService = {
   // Pomodoro Records
   async getCachedPomRecords(userId: number): Promise<PomodoroRecord[] | null> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       const all = await getAll<CacheItem>(STORE_POMODORO_RECORDS);
       const cached = all.filter(r => r._key === key) as unknown as PomodoroRecord[];
       return cached.length > 0 ? cached : null;
@@ -357,7 +367,7 @@ export const CacheService = {
 
   async setCachedPomRecords(userId: number, records: PomodoroRecord[]): Promise<void> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       await clearStoreByPrefix(STORE_POMODORO_RECORDS, key);
       const itemsWithKey = records.map(r => ({ ...r, _key: key }));
       await putAll(STORE_POMODORO_RECORDS, itemsWithKey);
@@ -369,7 +379,7 @@ export const CacheService = {
   // Pomodoro Tags
   async getCachedPomTags(userId: number): Promise<PomodoroTag[] | null> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       const all = await getAll<CacheItem>(STORE_POMODORO_TAGS);
       const cached = all.filter(t => t._key === key) as unknown as PomodoroTag[];
       return cached.length > 0 ? cached : null;
@@ -380,7 +390,7 @@ export const CacheService = {
 
   async setCachedPomTags(userId: number, tags: PomodoroTag[]): Promise<void> {
     try {
-      const key = `u${userId}`;
+      const key = cacheUserPrefix(userId);
       await clearStoreByPrefix(STORE_POMODORO_TAGS, key);
       const itemsWithKey = tags.map(t => ({ ...t, _key: key }));
       await putAll(STORE_POMODORO_TAGS, itemsWithKey);
@@ -392,9 +402,13 @@ export const CacheService = {
   // Teams
   async getCachedTeams(userId: number): Promise<Team[] | null> {
     try {
-      const key = `u${userId}_teams`;
-      const cached = await getOne<Team[]>(STORE_TEAMS, key);
-      return cached ?? null;
+      const key = `${cacheUserPrefix(userId)}_teams`;
+      const cached = await getOne<{
+        _key: string;
+        data: Team[];
+        cached_at: number;
+      }>(STORE_TEAMS, key);
+      return cached?.data ?? null;
     } catch {
       return null;
     }
@@ -402,7 +416,7 @@ export const CacheService = {
 
   async setCachedTeams(userId: number, teams: Team[]): Promise<void> {
     try {
-      const key = `u${userId}_teams`;
+      const key = `${cacheUserPrefix(userId)}_teams`;
       await putOne(STORE_TEAMS, { _key: key, data: teams, cached_at: Date.now() });
     } catch (e) {
       console.warn('CacheService: Failed to cache teams', e);
@@ -412,7 +426,7 @@ export const CacheService = {
   // Announcements
   async getCachedAnnouncements(userId: number): Promise<TeamAnnouncement[] | null> {
     try {
-      const key = `u${userId}_announcements`;
+      const key = `${cacheUserPrefix(userId)}_announcements`;
       const cached = await getOne<{ _key: string; data: TeamAnnouncement[]; cached_at: number }>(STORE_ANNOUNCEMENTS, key);
       if (!cached) return null;
       // TTL: 5 minutes
@@ -425,7 +439,7 @@ export const CacheService = {
 
   async setCachedAnnouncements(userId: number, announcements: TeamAnnouncement[]): Promise<void> {
     try {
-      const key = `u${userId}_announcements`;
+      const key = `${cacheUserPrefix(userId)}_announcements`;
       await putOne(STORE_ANNOUNCEMENTS, { _key: key, data: announcements, cached_at: Date.now() });
     } catch (e) {
       console.warn('CacheService: Failed to cache announcements', e);
@@ -435,7 +449,7 @@ export const CacheService = {
   // Sync Stats
   async getCachedSyncStats(userId: number): Promise<{ sync_count: number; tier: string; sync_limit: number } | null> {
     try {
-      const key = `u${userId}_sync_stats`;
+      const key = `${cacheUserPrefix(userId)}_sync_stats`;
       const cached = await getOne<{ _key: string; data: { sync_count: number; tier: string; sync_limit: number }; cached_at: number }>(STORE_SETTINGS, key);
       if (!cached) return null;
       return cached.data;
@@ -446,7 +460,7 @@ export const CacheService = {
 
   async setCachedSyncStats(userId: number, stats: { sync_count: number; tier: string; sync_limit: number }): Promise<void> {
     try {
-      const key = `u${userId}_sync_stats`;
+      const key = `${cacheUserPrefix(userId)}_sync_stats`;
       await putOne(STORE_SETTINGS, { _key: key, data: stats, cached_at: Date.now() });
     } catch (e) {
       console.warn('CacheService: Failed to cache sync stats', e);
@@ -456,6 +470,7 @@ export const CacheService = {
   // 清除用户缓存
   async clearUserCache(userId: number): Promise<void> {
     try {
+      const scopedPrefix = cacheUserPrefix(userId);
       const stores = [
         STORE_TODOS, STORE_GROUPS, STORE_COUNTDOWNS,
         STORE_PLAN_BLOCKS, STORE_TIME_LOGS,
@@ -465,7 +480,7 @@ export const CacheService = {
       ];
 
       for (const storeName of stores) {
-        await clearStoreByUser(storeName, userId);
+        await clearStoreByUser(storeName, scopedPrefix, userId);
       }
     } catch (e) {
       console.warn('CacheService: Failed to clear cache', e);
