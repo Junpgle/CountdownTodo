@@ -125,12 +125,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   final GlobalKey _portraitModeSwitchKey = GlobalKey();
   final GlobalKey _portraitFocusTagsKey = GlobalKey();
   final GlobalKey _portraitBindTodoKey = GlobalKey();
+  // The idle and active layouts overlap briefly during their transition.
+  final GlobalKey _portraitActiveBindTodoKey = GlobalKey();
   final GlobalKey _landscapeSettingsKey = GlobalKey();
   final GlobalKey _landscapeTagsManagerKey = GlobalKey();
   final GlobalKey _landscapeServerConnKey = GlobalKey();
   final GlobalKey _landscapeModeSwitchKey = GlobalKey();
   final GlobalKey _landscapeFocusTagsKey = GlobalKey();
   final GlobalKey _landscapeBindTodoKey = GlobalKey();
+  final GlobalKey _landscapeActiveBindTodoKey = GlobalKey();
   bool _landscapeLayoutMounted = false;
 
   GlobalKey get settingsKey =>
@@ -146,8 +149,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       : _portraitModeSwitchKey;
   GlobalKey get focusTagsKey =>
       _landscapeLayoutMounted ? _landscapeFocusTagsKey : _portraitFocusTagsKey;
-  GlobalKey get bindTodoKey =>
-      _landscapeLayoutMounted ? _landscapeBindTodoKey : _portraitBindTodoKey;
+  GlobalKey get bindTodoKey {
+    final isIdle =
+        _phase == PomodoroPhase.idle || _phase == PomodoroPhase.finished;
+    if (_landscapeLayoutMounted) {
+      return isIdle ? _landscapeBindTodoKey : _landscapeActiveBindTodoKey;
+    }
+    return isIdle ? _portraitBindTodoKey : _portraitActiveBindTodoKey;
+  }
 
   Timer? _remoteTicker;
   List<String> _remoteTagNames = [];
@@ -718,6 +727,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
       if (mounted) {
         setState(() => _initializing = false);
+        // Reveal the recovered phase and collapse the outer header together.
+        widget.onPhaseChanged(_phase);
         widget.onReady?.call();
         _showLocalFloat();
       }
@@ -1313,6 +1324,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             _pauseIntervals.add(PauseInterval(startMs: now));
           }
         });
+        if (!_initializing) widget.onPhaseChanged(_phase);
         await _setFocusDoNotDisturb(
           saved.phase == PomodoroPhase.focusing &&
               saved.doNotDisturbDuringFocus &&
@@ -1324,7 +1336,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           await PomodoroService.saveRunState(_buildCurrentRunState());
         }
         _syncService.setLocalFocusing(true);
-        widget.onPhaseChanged(_phase);
         _pushPomodoroNotification(overrideRemaining: remaining);
         _showLocalFloat();
         if (isStrictFreeFocus) {
@@ -2849,13 +2860,18 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     return SafeArea(
       top: false,
       bottom: false,
-      child: _initializing
-          ? _buildSkeleton()
-          : AnimatedOpacity(
-              opacity: 1.0,
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeOut,
-              child: OrientationBuilder(
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 360),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: _buildWorkbenchTransition,
+        child: _initializing
+            ? KeyedSubtree(
+                key: const ValueKey('workbench_loading'),
+                child: _buildSkeleton(),
+              )
+            : OrientationBuilder(
+                key: const ValueKey('workbench_ready'),
                 builder: (context, orientation) {
                   final isLandscape = orientation == Orientation.landscape;
                   _landscapeLayoutMounted = isLandscape;
@@ -2871,8 +2887,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                         Expanded(
                           child: AnimatedSwitcher(
                             duration: const Duration(milliseconds: 400),
-                            transitionBuilder: (child, anim) =>
-                                FadeTransition(opacity: anim, child: child),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: _buildWorkbenchTransition,
+                            layoutBuilder: _buildLatestWorkbenchLayout,
                             child: isLandscape
                                 ? _buildLandscapeLayout(isIdle, isFocusing,
                                     isRemoteWatching, contentColor)
@@ -2888,7 +2906,31 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                   );
                 },
               ),
-            ),
+      ),
+    );
+  }
+
+  Widget _buildWorkbenchTransition(Widget child, Animation<double> animation) {
+    return FadeTransition(
+      opacity: animation,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.035),
+          end: Offset.zero,
+        ).animate(animation),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _buildLatestWorkbenchLayout(
+      Widget? currentChild, List<Widget> previousChildren) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (previousChildren.isNotEmpty) previousChildren.last,
+        if (currentChild != null) currentChild,
+      ],
     );
   }
 
@@ -2900,8 +2942,11 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         Expanded(
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 400),
-            transitionBuilder: (child, anim) =>
-                FadeTransition(opacity: anim, child: child),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: _buildWorkbenchTransition,
+            // A rapid phase change keeps only the latest outgoing layout.
+            layoutBuilder: _buildLatestWorkbenchLayout,
             child: isIdle
                 ? _buildIdleLayout(contentColor)
                 : _buildActiveLayout(
@@ -2992,7 +3037,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   Widget _buildLandscapeLayout(
       bool isIdle, bool isFocusing, bool isRemoteWatching, Color contentColor) {
     return Row(
-      key: const ValueKey('landscape_layout'),
+      key: ValueKey(isIdle ? 'landscape_idle' : 'landscape_active'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Left side: Timer + Mode Toggle
@@ -3063,7 +3108,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                         isRemoteWatching: isRemoteWatching,
                         boundTodo: _boundTodo,
                         contentColor: contentColor,
-                        bindKey: _landscapeBindTodoKey,
+                        bindKey: _landscapeActiveBindTodoKey,
                         onTap: () => _showBindTodoDialog(
                             isSwitching: _boundTodo != null),
                       ),
@@ -3072,7 +3117,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                       const SizedBox(height: 32),
                       _buildActions(
                           isIdle, isFocusing, isRemoteWatching, contentColor,
-                          bindTodoKey: _landscapeBindTodoKey),
+                          bindTodoKey: _landscapeActiveBindTodoKey),
                     ],
                   ),
                 ),
@@ -3308,7 +3353,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Widget _buildIdleLayout(Color contentColor) {
-    return Column(children: [
+    return Column(key: const ValueKey('idle_workbench'), children: [
       const Spacer(flex: 2),
       _buildImmersiveTimerWidget(),
       // Place mode toggle under the timer in idle state (portrait)
@@ -3324,25 +3369,29 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   Widget _buildActiveLayout(
       bool isFocusing, bool isRemoteWatching, Color contentColor) {
-    return Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      _buildImmersiveTimerWidget(),
-      const SizedBox(height: 16),
-      _buildTagsList(isRemoteWatching),
-      const SizedBox(height: 16),
-      WorkbenchTaskArea(
-          isIdle: false,
-          isFocusing: isFocusing,
-          isRemoteWatching: isRemoteWatching,
-          boundTodo: _boundTodo,
-          contentColor: contentColor,
-          bindKey: _portraitBindTodoKey,
-          onTap: () => _showBindTodoDialog(isSwitching: _boundTodo != null)),
-      const SizedBox(height: 16),
-      _buildNoteButton(contentColor),
-      const SizedBox(height: 16),
-      _buildActions(false, isFocusing, isRemoteWatching, contentColor,
-          bindTodoKey: _portraitBindTodoKey),
-    ]);
+    return Column(
+        key: const ValueKey('active_workbench'),
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildImmersiveTimerWidget(),
+          const SizedBox(height: 16),
+          _buildTagsList(isRemoteWatching),
+          const SizedBox(height: 16),
+          WorkbenchTaskArea(
+              isIdle: false,
+              isFocusing: isFocusing,
+              isRemoteWatching: isRemoteWatching,
+              boundTodo: _boundTodo,
+              contentColor: contentColor,
+              bindKey: _portraitActiveBindTodoKey,
+              onTap: () =>
+                  _showBindTodoDialog(isSwitching: _boundTodo != null)),
+          const SizedBox(height: 16),
+          _buildNoteButton(contentColor),
+          const SizedBox(height: 16),
+          _buildActions(false, isFocusing, isRemoteWatching, contentColor,
+              bindTodoKey: _portraitActiveBindTodoKey),
+        ]);
   }
 
   Widget _buildNoteButton(Color contentColor) {

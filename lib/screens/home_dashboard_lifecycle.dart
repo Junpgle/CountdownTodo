@@ -767,7 +767,10 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     await PageTransitions.pushFromRect(
       context: context,
       page: PomodoroScreen(username: widget.username),
-      sourceKey: _pomodoroCardKey,
+      // The dashboard card can be hidden or not built by its lazy list when
+      // startup resumes an active timer. The bottom-bar action is always built.
+      sourceKey: _homePomodoroActionKey,
+      placeholderIcon: Icons.timer_outlined,
     );
     if (mounted) {
       _pomodoroRevision.value++;
