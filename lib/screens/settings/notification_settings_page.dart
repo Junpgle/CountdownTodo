@@ -12,6 +12,7 @@ import '../../utils/app_platform.dart';
 import '../../utils/time_utils.dart';
 import '../../widgets/app_sheet_widgets.dart';
 import '../../widgets/app_state_views.dart';
+import '../../widgets/settings_toggle_card.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
 
@@ -950,111 +951,15 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     required bool value,
     required ValueChanged<bool?> onChanged,
   }) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isSelected = value;
-    final iconWidget = AnimatedSwitcher(
-      duration: const Duration(milliseconds: 400),
-      switchInCurve: Curves.easeOutBack,
-      switchOutCurve: Curves.easeInBack,
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return ScaleTransition(
-          scale: animation,
-          child: RotationTransition(
-            turns: Tween<double>(begin: -0.1, end: 0.0).animate(animation),
-            child: child,
-          ),
-        );
-      },
-      child: Icon(
-        icon,
-        key: ValueKey<bool>(isSelected),
-        color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
-        size: isDesktop ? 28 : 32,
-      ),
-    );
-    final switchWidget = SizedBox(
-      height: 24,
-      child: FittedBox(
-        fit: BoxFit.fill,
-        child: LiquidGlassSwitch(
-          value: value,
-          onChanged: onChanged,
-          activeThumbColor: colorScheme.primary,
-        ),
-      ),
-    );
-    final titleWidget = AnimatedDefaultTextStyle(
-      duration: const Duration(milliseconds: 300),
-      style: TextStyle(
-        fontWeight: FontWeight.bold,
-        fontSize: 14,
-        color: isSelected ? colorScheme.primary : colorScheme.onSurface,
-        fontFamily: theme.textTheme.bodyMedium?.fontFamily,
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      child: Text(title),
-    );
-    final subtitleWidget = Text(
-      subtitle,
-      maxLines: isDesktop ? 1 : 2,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-    );
-
-    return GestureDetector(
-      onTap: () => onChanged(!value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-        padding: EdgeInsets.all(isDesktop ? 16 : 12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? colorScheme.primary.withValues(alpha: 0.1)
-              : (theme.brightness == Brightness.dark
-                  ? Colors.grey.shade900
-                  : Colors.grey.shade100),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? colorScheme.primary : Colors.transparent,
-            width: 2,
-          ),
-        ),
-        child: isDesktop
-            ? Row(
-                children: [
-                  iconWidget,
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        titleWidget,
-                        const SizedBox(height: 3),
-                        subtitleWidget,
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  switchWidget,
-                ],
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [iconWidget, switchWidget],
-                  ),
-                  const SizedBox(height: 10),
-                  titleWidget,
-                  const SizedBox(height: 2),
-                  subtitleWidget,
-                ],
-              ),
-      ),
+    return SettingsToggleCard(
+      isDesktop: isDesktop,
+      title: title,
+      subtitle: subtitle,
+      icon: icon,
+      value: value,
+      onChanged: (value) => onChanged(value),
+      unselectedTitleColor: Theme.of(context).colorScheme.onSurface,
+      mobileTopSpacing: 10,
     );
   }
 

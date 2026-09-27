@@ -7,6 +7,7 @@ import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
 import '../../../utils/app_platform.dart';
 import '../../../widgets/app_settings_widgets.dart';
+import '../../../widgets/settings_toggle_card.dart';
 import '../../../widgets/floating_glass_control.dart';
 
 class MinorModeSettingsPage extends StatefulWidget {
@@ -552,93 +553,12 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
     required bool value,
     required ValueChanged<bool?>? onChanged,
   }) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isSelected = value;
-    final iconWidget = AnimatedSwitcher(
-      duration: const Duration(milliseconds: 400),
-      switchInCurve: Curves.easeOutBack,
-      switchOutCurve: Curves.easeInBack,
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return ScaleTransition(
-          scale: animation,
-          child: RotationTransition(
-            turns: Tween<double>(begin: -0.1, end: 0.0).animate(animation),
-            child: child,
-          ),
-        );
-      },
-      child: Icon(
-        icon,
-        key: ValueKey<bool>(isSelected),
-        color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
-        size: 32,
-      ),
-    );
-    final switchWidget = SizedBox(
-      height: 24,
-      child: FittedBox(
-        fit: BoxFit.fill,
-        child: LiquidGlassSwitch(
-          value: value,
-          onChanged: onChanged,
-          activeThumbColor: colorScheme.primary,
-        ),
-      ),
-    );
-    final titleWidget = AnimatedDefaultTextStyle(
-      duration: const Duration(milliseconds: 300),
-      style: TextStyle(
-        fontWeight: FontWeight.bold,
-        fontSize: 14,
-        color: isSelected
-            ? colorScheme.primary
-            : theme.textTheme.bodyMedium?.color,
-        fontFamily: theme.textTheme.bodyMedium?.fontFamily,
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      child: Text(title),
-    );
-    final subtitleWidget = Text(
-      subtitle,
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-    );
-
-    return GestureDetector(
-      onTap: onChanged == null ? null : () => onChanged(!value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? colorScheme.primary.withValues(alpha: 0.1)
-              : (theme.brightness == Brightness.dark
-                  ? Colors.grey.shade900
-                  : Colors.grey.shade100),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? colorScheme.primary : Colors.transparent,
-            width: 2,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [iconWidget, switchWidget],
-            ),
-            const SizedBox(height: 8),
-            titleWidget,
-            const SizedBox(height: 2),
-            subtitleWidget,
-          ],
-        ),
-      ),
+    return SettingsToggleCard(
+      title: title,
+      subtitle: subtitle,
+      icon: icon,
+      value: value,
+      onChanged: onChanged == null ? null : (value) => onChanged(value),
     );
   }
 }
