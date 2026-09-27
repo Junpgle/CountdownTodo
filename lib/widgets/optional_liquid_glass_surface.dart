@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../services/liquid_glass_effect_service.dart';
+import '../utils/app_platform.dart';
 
 @visibleForTesting
 GlassQuality liquidGlassPanelQualityFor(LiquidGlassEffectMode mode) {
@@ -60,7 +61,8 @@ enum OptionalLiquidGlassPanelMode {
   /// A card that follows the user's quality preference.
   ///
   /// Standard mode uses a non-sampling translucent material. Enhanced mode
-  /// promotes the card to the package's standard real-time glass shader.
+  /// promotes the card to a live grouped blur. Android scrollables and wide
+  /// Android layouts use static material to avoid repeated backdrop sampling.
   adaptiveRepeated,
 
   /// A translucent material treatment without backdrop sampling.
@@ -95,9 +97,9 @@ bool _hasUniformRadius(BorderRadiusGeometry radius) {
 
 /// Isolates a glass-heavy scrollable and provides one shared backdrop group.
 ///
-/// Descendant cards and panels keep their live glass treatment at all times;
-/// any grouped backdrop filters in the subtree share the engine's single
-/// backdrop input instead of creating independent captures.
+/// Any grouped backdrop filters in the subtree share the engine's single
+/// backdrop input instead of creating independent captures. Adaptive repeated
+/// cards use static material on Android while this scrollable is active.
 class OptionalLiquidGlassScrollOptimizer extends StatelessWidget {
   const OptionalLiquidGlassScrollOptimizer({
     super.key,
@@ -108,8 +110,22 @@ class OptionalLiquidGlassScrollOptimizer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BackdropGroup(child: child);
+    return BackdropGroup(
+      child: _OptionalGlassScrollableScope(child: child),
+    );
   }
+}
+
+class _OptionalGlassScrollableScope extends InheritedWidget {
+  const _OptionalGlassScrollableScope({required super.child});
+
+  static bool contains(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<
+          _OptionalGlassScrollableScope>() !=
+      null;
+
+  @override
+  bool updateShouldNotify(_OptionalGlassScrollableScope oldWidget) => false;
 }
 
 /// A content-sized glass panel for shared cards, drawers, and compact controls.
@@ -137,6 +153,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
     this.isDark,
     this.clipBehavior = Clip.antiAlias,
     this.mode = OptionalLiquidGlassPanelMode.frosted,
+    this.staticMaterialOpacity,
   });
 
   final Widget child;
@@ -163,6 +180,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
   final bool? isDark;
   final Clip clipBehavior;
   final OptionalLiquidGlassPanelMode mode;
+  final double? staticMaterialOpacity;
 
   @override
   Widget build(BuildContext context) {
@@ -174,6 +192,9 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
         final colorScheme = Theme.of(context).colorScheme;
         final dark = isDark ?? colorScheme.brightness == Brightness.dark;
         final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
+        final useStaticAndroidMaterial = AppPlatform.isAndroid &&
+            (MediaQuery.sizeOf(context).width >= 768.0 ||
+                _OptionalGlassScrollableScope.contains(context));
         final tintSource = tint ?? colorScheme.primary;
         final neutralBase = dark ? colorScheme.scrim : colorScheme.surface;
         final resolvedTint = Color.alphaBlend(
@@ -186,7 +207,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
         final useStaticMaterial =
             mode == OptionalLiquidGlassPanelMode.staticMaterial ||
                 (mode == OptionalLiquidGlassPanelMode.adaptiveRepeated &&
-                    !enhanced);
+                    (!enhanced || useStaticAndroidMaterial));
         // Per-corner radii are only expressible by the tiers that clip with
         // BorderRadius; the superellipse shader shape needs a uniform radius.
         final resolvedRadius =
@@ -195,11 +216,14 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
         if (useStaticMaterial) {
           final isAdaptiveCard =
               mode == OptionalLiquidGlassPanelMode.adaptiveRepeated;
-          final materialOpacity = isAdaptiveCard
-              ? (highContrast
-                  ? liquidGlassHighContrastStaticOpacityFor(isDark: dark)
-                  : liquidGlassAdaptiveStaticOpacityFor(isDark: dark))
-              : (dark ? 0.86 : 0.9);
+          final originalOpacity = staticMaterialOpacity ??
+              (isAdaptiveCard
+                  ? (highContrast
+                      ? liquidGlassHighContrastStaticOpacityFor(isDark: dark)
+                      : liquidGlassAdaptiveStaticOpacityFor(isDark: dark))
+                  : (dark ? 0.86 : 0.9));
+          final materialOpacity =
+              liquidGlassBackerOpacity(originalOpacity, configuration);
           final baseColor = Color.alphaBlend(
             resolvedTint.withValues(alpha: dark ? 0.18 : 0.12),
             neutralBase,
@@ -211,9 +235,12 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             highlightBase.withValues(alpha: dark ? 0.1 : 0.16),
             baseColor.withValues(alpha: 1),
           ).withValues(
-            alpha: (materialOpacity + (dark ? 0.05 : 0.04))
-                .clamp(0.0, 1.0)
-                .toDouble(),
+            alpha: liquidGlassBackerOpacity(
+              (originalOpacity + (dark ? 0.05 : 0.04))
+                  .clamp(0.0, 1.0)
+                  .toDouble(),
+              configuration,
+            ),
           );
           final decoration = BoxDecoration(
             shape: circular ? BoxShape.circle : BoxShape.rectangle,
@@ -260,7 +287,10 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             resolvedTint.withValues(alpha: dark ? 0.2 : 0.14),
             neutralBase,
           ).withValues(
-            alpha: highContrast ? (dark ? 0.5 : 0.6) : (dark ? 0.32 : 0.44),
+            alpha: liquidGlassBackerOpacity(
+              highContrast ? (dark ? 0.5 : 0.6) : (dark ? 0.32 : 0.44),
+              configuration,
+            ),
           );
           final highlightBase = dark
               ? colorScheme.surfaceBright
@@ -269,7 +299,10 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             highlightBase.withValues(alpha: dark ? 0.12 : 0.18),
             baseColor.withValues(alpha: 1),
           ).withValues(
-            alpha: highContrast ? (dark ? 0.56 : 0.68) : (dark ? 0.38 : 0.5),
+            alpha: liquidGlassBackerOpacity(
+              highContrast ? (dark ? 0.56 : 0.68) : (dark ? 0.38 : 0.5),
+              configuration,
+            ),
           );
           final decoration = BoxDecoration(
             shape: circular ? BoxShape.circle : BoxShape.rectangle,
@@ -346,9 +379,12 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
               standardOpacityMultiplier: dark ? 0.62 : 0.5,
               shadowElevation: enhanced ? 1.4 : 0.8,
               backerColor: resolvedTint.withValues(
-                alpha: liquidGlassPanelBackerOpacityFor(
-                  configuration.mode,
-                  isDark: dark,
+                alpha: liquidGlassBackerOpacity(
+                  liquidGlassPanelBackerOpacityFor(
+                    configuration.mode,
+                    isDark: dark,
+                  ),
+                  configuration,
                 ),
               ),
             ),
@@ -425,6 +461,50 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
       builder: (context, configuration, _) {
         if (!configuration.enabled) return fallback;
         final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
+        final useStaticAndroidMaterial = AppPlatform.isAndroid;
+
+        if (useStaticAndroidMaterial) {
+          // Floating controls stay fixed while dashboard content scrolls
+          // behind them. A live glass pass therefore rerasterizes on every
+          // scroll frame even though the controls themselves do not move. Use
+          // the cached material path on Android, retaining a
+          // lighter fill for compact top-bar lenses.
+          final staticShell = OptionalLiquidGlassPanel(
+            height: height,
+            borderRadius: borderRadius,
+            tint: tint,
+            isDark: isDark,
+            mode: OptionalLiquidGlassPanelMode.staticMaterial,
+            staticMaterialOpacity: useTopBarGlass
+                ? (backerOpacity ?? (isDark ? 0.34 : 0.42))
+                : liquidGlassAdaptiveStaticOpacityFor(isDark: isDark),
+            fallback: fallback,
+            child: allowChildOverflow ? const SizedBox.expand() : child,
+          );
+
+          return RepaintBoundary(
+            child: Container(
+              height: height,
+              margin: margin,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(borderRadius),
+                boxShadow: _surfaceHaloShadows(
+                  haloColor: haloColor ?? tint,
+                  shadowColor: Theme.of(context).colorScheme.shadow,
+                  isDark: isDark,
+                  haloOpacity: haloOpacity,
+                ),
+              ),
+              child: allowChildOverflow
+                  ? Stack(
+                      fit: StackFit.expand,
+                      clipBehavior: Clip.none,
+                      children: <Widget>[staticShell, child],
+                    )
+                  : staticShell,
+            ),
+          );
+        }
 
         if (useTopBarGlass) {
           return _TopBarLiquidGlassSurface(
@@ -436,6 +516,7 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
             haloOpacity: haloOpacity,
             isDark: isDark,
             backerOpacity: backerOpacity,
+            configuration: configuration,
             allowChildOverflow: allowChildOverflow,
             child: child,
           );
@@ -455,6 +536,7 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
             haloOpacity: haloOpacity,
             isDark: isDark,
             backerOpacity: backerOpacity,
+            configuration: configuration,
             allowChildOverflow: allowChildOverflow,
             child: child,
           );
@@ -482,13 +564,14 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
             // Keep the refraction, but place a stronger neutral pad behind it
             // so busy wallpapers cannot compete with tab labels/icons.
             backerColor: tint.withValues(
-              alpha: (backerOpacity ??
-                      liquidGlassSurfaceBackerOpacityFor(
-                        configuration.mode,
-                        isDark: isDark,
-                      ))
-                  .clamp(0.0, 1.0)
-                  .toDouble(),
+              alpha: liquidGlassBackerOpacity(
+                backerOpacity ??
+                    liquidGlassSurfaceBackerOpacityFor(
+                      configuration.mode,
+                      isDark: isDark,
+                    ),
+                configuration,
+              ),
             ),
           ),
           useOwnLayer: true,
@@ -541,6 +624,7 @@ class _TopBarLiquidGlassSurface extends StatelessWidget {
     required this.haloOpacity,
     required this.isDark,
     required this.backerOpacity,
+    required this.configuration,
     required this.allowChildOverflow,
     required this.child,
   });
@@ -553,6 +637,7 @@ class _TopBarLiquidGlassSurface extends StatelessWidget {
   final double? haloOpacity;
   final bool isDark;
   final double? backerOpacity;
+  final LiquidGlassEffectConfiguration configuration;
   final bool allowChildOverflow;
   final Widget child;
 
@@ -567,8 +652,10 @@ class _TopBarLiquidGlassSurface extends StatelessWidget {
       pageBase,
     );
     final glassColor = pageTint.withValues(alpha: isDark ? 0.14 : 0.1);
-    final effectiveBackerOpacity =
-        (backerOpacity ?? (isDark ? 0.34 : 0.42)).clamp(0.0, 1.0).toDouble();
+    final effectiveBackerOpacity = liquidGlassBackerOpacity(
+      backerOpacity ?? (isDark ? 0.34 : 0.42),
+      configuration,
+    );
     final backerColor = pageTint.withValues(alpha: effectiveBackerOpacity);
     final glassShell = GlassContainer(
       height: height,
@@ -638,6 +725,7 @@ class _FrostedGlassSurface extends StatelessWidget {
     required this.haloOpacity,
     required this.isDark,
     required this.backerOpacity,
+    required this.configuration,
     required this.allowChildOverflow,
     required this.child,
   });
@@ -650,6 +738,7 @@ class _FrostedGlassSurface extends StatelessWidget {
   final double? haloOpacity;
   final bool isDark;
   final double? backerOpacity;
+  final LiquidGlassEffectConfiguration configuration;
   final bool allowChildOverflow;
   final Widget child;
 
@@ -657,8 +746,10 @@ class _FrostedGlassSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final neutralBase = isDark ? colorScheme.scrim : colorScheme.surface;
-    final baseAlpha =
-        (backerOpacity ?? (isDark ? 0.34 : 0.46)).clamp(0.0, 1.0).toDouble();
+    final baseAlpha = liquidGlassBackerOpacity(
+      backerOpacity ?? (isDark ? 0.34 : 0.46),
+      configuration,
+    );
     final baseColor = Color.alphaBlend(
       tint.withValues(alpha: isDark ? 0.2 : 0.14),
       neutralBase,
@@ -669,7 +760,12 @@ class _FrostedGlassSurface extends StatelessWidget {
     final highlightColor = Color.alphaBlend(
       highlightBase.withValues(alpha: isDark ? 0.12 : 0.18),
       baseColor.withValues(alpha: 1),
-    ).withValues(alpha: isDark ? 0.4 : 0.52);
+    ).withValues(
+      alpha: liquidGlassBackerOpacity(
+        isDark ? 0.4 : 0.52,
+        configuration,
+      ),
+    );
 
     final clippedSurface = ClipRSuperellipse(
       borderRadius: BorderRadius.circular(borderRadius),

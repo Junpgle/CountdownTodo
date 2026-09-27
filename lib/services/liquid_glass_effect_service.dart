@@ -14,24 +14,46 @@ class LiquidGlassEffectConfiguration {
   const LiquidGlassEffectConfiguration({
     required this.enabled,
     required this.mode,
+    this.transparencyPercent = defaultTransparencyPercent,
   });
 
   const LiquidGlassEffectConfiguration.disabled()
       : enabled = false,
-        mode = LiquidGlassEffectMode.standard;
+        mode = LiquidGlassEffectMode.standard,
+        transparencyPercent = defaultTransparencyPercent;
+
+  /// Keeps existing glass colors unchanged until the user moves the slider.
+  static const int defaultTransparencyPercent = 50;
 
   final bool enabled;
   final LiquidGlassEffectMode mode;
+  final int transparencyPercent;
 
   LiquidGlassEffectConfiguration copyWith({
     bool? enabled,
     LiquidGlassEffectMode? mode,
+    int? transparencyPercent,
   }) {
     return LiquidGlassEffectConfiguration(
       enabled: enabled ?? this.enabled,
       mode: mode ?? this.mode,
+      transparencyPercent: transparencyPercent ?? this.transparencyPercent,
     );
   }
+}
+
+/// 0% is opaque, 50% preserves the existing material, and 100% removes the
+/// fill. Refraction, highlights, and foreground content remain unchanged.
+double liquidGlassBackerOpacity(
+  double originalOpacity,
+  LiquidGlassEffectConfiguration configuration,
+) {
+  final base = originalOpacity.clamp(0.0, 1.0).toDouble();
+  final transparency = configuration.transparencyPercent.clamp(0, 100) / 100;
+  if (transparency <= 0.5) {
+    return 1.0 + (base - 1.0) * (transparency * 2);
+  }
+  return base * (1.0 - (transparency - 0.5) * 2);
 }
 
 class _LiquidGlassMutation {
@@ -48,6 +70,7 @@ class LiquidGlassEffectService {
 
   static const String _keyEnabled = 'enable_liquid_glass';
   static const String _keyMode = 'liquid_glass_effect_mode';
+  static const String _keyTransparency = 'liquid_glass_transparency_percent';
   static const String _keyGuideOffered = 'liquid_glass_guide_offered';
 
   static final ValueNotifier<LiquidGlassEffectConfiguration>
@@ -124,6 +147,9 @@ class LiquidGlassEffectService {
     _preferredConfiguration = LiquidGlassEffectConfiguration(
       enabled: enabled,
       mode: mode,
+      transparencyPercent: (prefs.getInt(_keyTransparency) ??
+              LiquidGlassEffectConfiguration.defaultTransparencyPercent)
+          .clamp(0, 100),
     );
     if (enabled && !_systemPowerSaveMode) {
       try {
@@ -134,6 +160,7 @@ class LiquidGlassEffectService {
         _preferredConfiguration = LiquidGlassEffectConfiguration(
           enabled: false,
           mode: mode,
+          transparencyPercent: _preferredConfiguration.transparencyPercent,
         );
         _publishEffectiveConfiguration();
         return;
@@ -177,6 +204,24 @@ class LiquidGlassEffectService {
     });
   }
 
+  /// Updates the appearance while dragging without writing preferences for
+  /// every slider tick. Persist the settled value with [setTransparency].
+  static void previewTransparency(int percent) {
+    _preferredConfiguration = preferredConfiguration.copyWith(
+      transparencyPercent: percent.clamp(0, 100),
+    );
+    _publishEffectiveConfiguration();
+  }
+
+  static Future<void> setTransparency(int percent) {
+    final value = percent.clamp(0, 100);
+    previewTransparency(value);
+    return _enqueueMutation(() async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_keyTransparency, value);
+    });
+  }
+
   /// Temporarily suppresses shader-backed glass while Android Battery Saver is
   /// active. The user's preference remains persisted and is restored when the
   /// system exits Battery Saver.
@@ -211,6 +256,7 @@ class LiquidGlassEffectService {
     _configurationNotifier.value = LiquidGlassEffectConfiguration(
       enabled: preferred.enabled && !_systemPowerSaveMode,
       mode: preferred.mode,
+      transparencyPercent: preferred.transparencyPercent,
     );
   }
 
