@@ -8,6 +8,7 @@
   "scripts": {
     "start": "aiot start --watch",
     "build": "aiot build",
+    "test": "node test/sync_service_test.js",
     "release": "aiot release",
     "lint": "eslint --format stylish --fix --ext .js src/ && node scripts/lint_ux.js"
   },

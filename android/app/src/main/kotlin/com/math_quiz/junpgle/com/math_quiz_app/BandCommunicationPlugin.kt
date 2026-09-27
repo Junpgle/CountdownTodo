@@ -260,8 +260,14 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
         }
     }
 
-    fun sendMessage(data: String) {
-        if (!serviceEnabled) return
+    fun sendMessage(data: String, onResult: (Boolean) -> Unit) {
+        fun complete(sent: Boolean) {
+            mainHandler.post { onResult(sent) }
+        }
+        if (!serviceEnabled) {
+            complete(false)
+            return
+        }
         val node = currentNode
         if (node == null) {
             Log.e(TAG, "发送消息失败: 没有已连接的设备")
@@ -269,6 +275,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
                 "code" to 1006,
                 "message" to "没有已连接的设备"
             ))
+            complete(false)
             return
         }
 
@@ -278,6 +285,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
                 "code" to 1001,
                 "message" to "缺少 DEVICE_MANAGER 权限"
             ))
+            complete(false)
             return
         }
 
@@ -288,18 +296,32 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
                 "code" to 1010,
                 "message" to "发送失败: 消息过大，请减少同步数据"
             ))
+            complete(false)
             return
         }
 
-        messageApi?.sendMessage(node.id, dataBytes)?.addOnSuccessListener {
-            Log.d(TAG, "消息发送成功: ${dataBytes.size} bytes")
-            invokeMethod("onMessageSent", mapOf("success" to true))
-        }?.addOnFailureListener { e ->
-            Log.e(TAG, "消息发送失败", e)
-            invokeMethod("onError", mapOf(
-                "code" to 1000,
-                "message" to "发送失败: ${e.message}"
-            ))
+        val api = messageApi
+        if (api == null) {
+            Log.e(TAG, "发送消息失败: MessageApi 不可用")
+            complete(false)
+            return
+        }
+        try {
+            api.sendMessage(node.id, dataBytes).addOnSuccessListener {
+                Log.d(TAG, "消息发送成功: ${dataBytes.size} bytes")
+                invokeMethod("onMessageSent", mapOf("success" to true))
+                complete(true)
+            }.addOnFailureListener { e ->
+                Log.e(TAG, "消息发送失败", e)
+                invokeMethod("onError", mapOf(
+                    "code" to 1000,
+                    "message" to "发送失败: ${e.message}"
+                ))
+                complete(false)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "发送消息异常", e)
+            complete(false)
         }
     }
 

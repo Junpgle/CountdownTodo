@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -985,10 +984,14 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
         .toList();
     _logs.add('筛选后 ${todoMaps.length} 条待办数据');
 
-    final success = await _sendInChunks('todo', todoMaps, 10);
+    final success = await BandSyncService.syncTodos(todoMaps);
     setState(() {
       _isSyncing = false;
-      _logs.add(success ? '待办同步成功 (${todoMaps.length}条)' : '待办同步失败');
+      _logs.add(success
+          ? (BandSyncService.supportsSyncResult
+              ? '待办同步成功 (${todoMaps.length}条)'
+              : '待办发送完成，手环未提供回执')
+          : '待办同步失败');
     });
   }
 
@@ -1042,10 +1045,14 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     }).toList();
     _logs.add('筛选后 ${courseMaps.length} 条课程数据');
 
-    final success = await _sendInChunks('course', courseMaps, 15);
+    final success = await BandSyncService.syncCourses(courseMaps);
     setState(() {
       _isSyncing = false;
-      _logs.add(success ? '课程同步成功 (${courseMaps.length}条)' : '课程同步失败');
+      _logs.add(success
+          ? (BandSyncService.supportsSyncResult
+              ? '课程同步成功 (${courseMaps.length}条)'
+              : '课程发送完成，手环未提供回执')
+          : '课程同步失败');
     });
   }
 
@@ -1080,7 +1087,11 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     final success = await BandSyncService.syncCountdowns(countdownMaps);
     setState(() {
       _isSyncing = false;
-      _logs.add(success ? '倒计时同步成功 (${countdownMaps.length}条)' : '倒计时同步失败');
+      _logs.add(success
+          ? (BandSyncService.supportsSyncResult
+              ? '倒计时同步成功 (${countdownMaps.length}条)'
+              : '倒计时发送完成，手环未提供回执')
+          : '倒计时同步失败');
     });
   }
 
@@ -1092,7 +1103,8 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
       final runState = await PomodoroService.loadRunState();
       if (runState == null || runState.phase == PomodoroPhase.idle) {
         _logs.add('当前无运行中的番茄钟');
-        await BandSyncService.syncPomodoro([]);
+        final success = await BandSyncService.syncPomodoro([]);
+        if (!success) _logs.add('番茄钟清空同步失败');
         setState(() => _isSyncing = false);
         return;
       }
@@ -1130,55 +1142,16 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
       final success = await BandSyncService.syncPomodoro(pomodoroData);
       setState(() {
         _isSyncing = false;
-        _logs.add(success ? '番茄钟同步成功' : '番茄钟同步失败');
+        _logs.add(success
+            ? (BandSyncService.supportsSyncResult
+                ? '番茄钟同步成功'
+                : '番茄钟发送完成，手环未提供回执')
+            : '番茄钟同步失败');
       });
     } catch (e) {
       _logs.add('番茄钟同步异常: $e');
       setState(() => _isSyncing = false);
     }
-  }
-
-  // 分批发送大数据，避免超过 MessageApi 限制
-  Future<bool> _sendInChunks(
-      String type, List<Map<String, dynamic>> items, int chunkSize) async {
-    if (items.isEmpty) {
-      return await BandSyncService.sendData(type, [],
-          batchNum: 1, totalBatches: 1);
-    }
-
-    // 计算总批次数
-    final totalBatches = (items.length / chunkSize).ceil();
-
-    bool allSuccess = true;
-    for (int i = 0; i < items.length; i += chunkSize) {
-      final end = (i + chunkSize < items.length) ? i + chunkSize : items.length;
-      final chunk = items.sublist(i, end);
-      final batchNum = i ~/ chunkSize + 1;
-      final jsonStr = jsonEncode(chunk);
-      final sizeKb = (jsonStr.length / 1024).toStringAsFixed(1);
-      _logs.add(
-          '发送 $type 第 $batchNum/$totalBatches 批 (${chunk.length}条, ${sizeKb}KB)...');
-
-      bool success = false;
-      int retries = 2;
-      while (retries >= 0 && !success) {
-        success = await BandSyncService.sendData(type, chunk,
-            batchNum: batchNum, totalBatches: totalBatches);
-        if (!success && retries > 0) {
-          _logs.add('第 $batchNum 批发送失败，重试...');
-          await Future.delayed(const Duration(seconds: 1));
-        }
-        retries--;
-      }
-
-      if (!success) {
-        allSuccess = false;
-        _logs.add('第 $batchNum 批发送失败');
-      }
-      // 批次间间隔，避免 SDK 处理不过来
-      await Future.delayed(const Duration(seconds: 1));
-    }
-    return allSuccess;
   }
 
   Future<void> _syncAll() async {

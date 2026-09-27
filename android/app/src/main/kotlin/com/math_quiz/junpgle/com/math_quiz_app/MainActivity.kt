@@ -2146,8 +2146,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 "sendMessage" -> {
                     val data = call.argument<String>("data")
                     if (data != null) {
-                        plugin?.sendMessage(data)
-                        result.success(true)
+                        val bandPlugin = plugin
+                        if (bandPlugin == null) {
+                            result.success(false)
+                        } else {
+                            bandPlugin.sendMessage(data) { sent -> result.success(sent) }
+                        }
                     } else {
                         result.error("INVALID_ARGS", "data is required", null)
                     }

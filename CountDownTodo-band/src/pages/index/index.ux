@@ -386,7 +386,7 @@ export default {
         prompt.showToast({ message: '超时:' + SyncService.getDiagMsg(), duration: 3000 })
         self.resetSyncStatus()
       }
-    }, 20000)
+    }, 95000)
 
     SyncService.syncAll(function(results) {
       clearTimeout(timeoutId)
