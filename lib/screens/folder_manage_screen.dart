@@ -16,6 +16,7 @@ class FolderManageScreen extends StatefulWidget {
 
   final List<TodoItem> allTodos;
   final ValueChanged<List<TodoItem>> onTodosChanged;
+  final String? initialGroupId;
 
   const FolderManageScreen({
     super.key,
@@ -24,6 +25,7 @@ class FolderManageScreen extends StatefulWidget {
     required this.onGroupsChanged,
     required this.allTodos,
     required this.onTodosChanged,
+    this.initialGroupId,
   });
 
   @override
@@ -47,6 +49,12 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
     super.initState();
     _groups = List.from(widget.todoGroups);
     _todos = List.from(widget.allTodos);
+    for (final group in _groups) {
+      if (group.id == widget.initialGroupId) {
+        _searchController.text = group.name;
+        break;
+      }
+    }
     _loadSettings();
   }
 
@@ -356,77 +364,82 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
     final query = _searchController.text.trim().toLowerCase();
     final visible =
         active.where((g) => g.name.toLowerCase().contains(query)).toList();
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('文件夹管理'),
       ),
-      body: ManagementPage(children: [
-        const ManagementIntro(
-            icon: Icons.folder_copy_outlined,
-            title: '给待办一个位置',
-            description: '按项目或生活场景整理待办，展开文件夹即可管理其中的任务。'),
-        Card(
-          elevation: 0,
-          margin: EdgeInsets.zero,
-          color: scheme.surfaceContainerLow,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          child: ExpansionTile(
-            shape: const Border(),
-            leading: Icon(Icons.view_quilt_outlined, color: scheme.primary),
-            title: const Text('首页展示方式'),
-            subtitle: Text(_folderModeLabel(_folderDisplayMode)),
-            childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-            children: [
-              RadioGroup<String>(
-                groupValue: _folderDisplayMode,
-                onChanged: (value) {
-                  if (value != null) _setFolderDisplayMode(value);
-                },
-                child: Column(
-                    children: ['inline', 'separate', 'urgentFirst', 'hidden']
-                        .map((mode) => RadioListTile<String>(
-                              value: mode,
-                              title: Text(_folderModeLabel(mode)),
-                              subtitle: Text(_folderModeSubtitle(mode)),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                            ))
-                        .toList()),
-              ),
-            ],
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: ManagementPage(topPadding: topBarHeight, children: [
+          const ManagementIntro(
+              icon: Icons.folder_copy_outlined,
+              title: '给待办一个位置',
+              description: '按项目或生活场景整理待办，展开文件夹即可管理其中的任务。'),
+          Card(
+            elevation: 0,
+            margin: EdgeInsets.zero,
+            color: scheme.surfaceContainerLow,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            child: ExpansionTile(
+              shape: const Border(),
+              leading: Icon(Icons.view_quilt_outlined, color: scheme.primary),
+              title: const Text('首页展示方式'),
+              subtitle: Text(_folderModeLabel(_folderDisplayMode)),
+              childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+              children: [
+                RadioGroup<String>(
+                  groupValue: _folderDisplayMode,
+                  onChanged: (value) {
+                    if (value != null) _setFolderDisplayMode(value);
+                  },
+                  child: Column(
+                      children: ['inline', 'separate', 'urgentFirst', 'hidden']
+                          .map((mode) => RadioListTile<String>(
+                                value: mode,
+                                title: Text(_folderModeLabel(mode)),
+                                subtitle: Text(_folderModeSubtitle(mode)),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12)),
+                              ))
+                          .toList()),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 24),
-        Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 16,
-            runSpacing: 8,
-            children: [
-              Text('我的文件夹 · ${active.length}',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700)),
-              FilledButton.icon(
-                  onPressed: () => _showCreateOrEditDialog(),
-                  icon: const Icon(Icons.create_new_folder_outlined),
-                  label: const Text('新建文件夹')),
-            ]),
-        const SizedBox(height: 16),
-        ManagementSearchField(
-            controller: _searchController,
-            hintText: '搜索文件夹名称',
-            onChanged: (_) => setState(() {})),
-        const SizedBox(height: 16),
-        if (visible.isEmpty)
-          ManagementEmptyState(
-              icon: Icons.folder_open_rounded,
-              title: query.isEmpty ? '暂无文件夹' : '没有找到匹配的文件夹',
-              description:
-                  query.isEmpty ? '新建一个文件夹，把相关待办放在一起。' : '试试其他名称，或清空搜索。'),
-        ...visible.map((g) => _buildFolder(g, scheme)),
-      ]),
+          const SizedBox(height: 24),
+          Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 16,
+              runSpacing: 8,
+              children: [
+                Text('我的文件夹 · ${active.length}',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700)),
+                FilledButton.icon(
+                    onPressed: () => _showCreateOrEditDialog(),
+                    icon: const Icon(Icons.create_new_folder_outlined),
+                    label: const Text('新建文件夹')),
+              ]),
+          const SizedBox(height: 16),
+          ManagementSearchField(
+              controller: _searchController,
+              hintText: '搜索文件夹名称',
+              onChanged: (_) => setState(() {})),
+          const SizedBox(height: 16),
+          if (visible.isEmpty)
+            ManagementEmptyState(
+                icon: Icons.folder_open_rounded,
+                title: query.isEmpty ? '暂无文件夹' : '没有找到匹配的文件夹',
+                description:
+                    query.isEmpty ? '新建一个文件夹，把相关待办放在一起。' : '试试其他名称，或清空搜索。'),
+          ...visible.map((g) => _buildFolder(g, scheme)),
+        ]),
+      ),
     );
   }
 
@@ -439,6 +452,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
       clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
         key: PageStorageKey('folder-${g.id}'),
+        initiallyExpanded: g.id == widget.initialGroupId,
         shape: const Border(),
         leading: Icon(Icons.folder_outlined, color: scheme.primary),
         title:

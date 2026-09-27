@@ -76,27 +76,33 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
   Future<void> _openRecognizedFinanceDrafts(
     List<FinanceEntryDraft> drafts,
   ) async {
-    if (drafts.isEmpty) return;
-    var savedCount = 0;
-    for (final draft in drafts) {
-      if (!mounted) return;
-      final saved = await Navigator.of(context).push<FinanceTransaction>(
-        PageTransitions.slideHorizontal(
-          FinanceEntryScreen(initialDraft: draft),
-        ),
-      );
-      if (saved != null) {
-        draft.isAdded = true;
-        savedCount++;
-      } else {
-        draft.isIgnored = true;
+    if (drafts.isEmpty || _isOpeningFinanceDrafts) return;
+    _isOpeningFinanceDrafts = true;
+    try {
+      var savedCount = 0;
+      for (final draft in drafts) {
+        if (!mounted) return;
+        if (draft.isAdded || draft.isIgnored) continue;
+        final saved = await Navigator.of(context).push<FinanceTransaction>(
+          PageTransitions.slideHorizontal(
+            FinanceEntryScreen(initialDraft: draft),
+          ),
+        );
+        if (saved != null) {
+          draft.isAdded = true;
+          savedCount++;
+        } else {
+          draft.isIgnored = true;
+        }
       }
-    }
-    await ExternalShareHandler.clearPendingFinanceRecognized();
-    if (mounted && savedCount > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已保存 $savedCount 笔识别账单')),
-      );
+      await ExternalShareHandler.clearPendingFinanceRecognized();
+      if (mounted && savedCount > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已保存 $savedCount 笔识别账单')),
+        );
+      }
+    } finally {
+      _isOpeningFinanceDrafts = false;
     }
   }
 
@@ -208,6 +214,26 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     // 将待办数据写入共享文件供 Island 读取
     await _saveTodosToSharedFile(allTodos);
 
+    // 图片识别确认的今日快递/取件待办立即上岛；定时闹钟仍负责之后的
+    // 提前提醒。只在通知服务实际发布后登记活跃 ID，完成时才能可靠撤岛。
+    final now = DateTime.now();
+    for (final todo in newTodos) {
+      if (ItemSemanticsService.specialTodoTypeForTitle(todo.title) ==
+          'default') {
+        continue;
+      }
+      final dueDate = todo.dueDate?.toLocal();
+      if (dueDate == null ||
+          dueDate.year != now.year ||
+          dueDate.month != now.month ||
+          dueDate.day != now.day) {
+        continue;
+      }
+      if (await NotificationService.showUpcomingTodoNotification(todo)) {
+        _activeTodoNotifIds.add(todo.id.hashCode);
+      }
+    }
+
     // 通知 Island 检查提醒并刷新槽位缓存
     FloatWindowService.triggerReminderCheck();
     FloatWindowService.invalidateSlotCache();
@@ -242,13 +268,8 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
               .where((draft) => !draft.isAdded && !draft.isIgnored)
               .toList()
           : const <FinanceEntryDraft>[];
-      if (financeDrafts.isNotEmpty && !_isOpeningPendingFinance) {
-        _isOpeningPendingFinance = true;
-        try {
-          await _openRecognizedFinanceDrafts(financeDrafts);
-        } finally {
-          _isOpeningPendingFinance = false;
-        }
+      if (financeDrafts.isNotEmpty) {
+        await _openRecognizedFinanceDrafts(financeDrafts);
         pendingData = await ExternalShareHandler.getPendingTodoConfirm();
         if (!mounted) return;
         if (pendingData == null) return;
@@ -326,7 +347,7 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
 
   /// 将已有的 PomodoroScreen 带到前台，或 push 新的。
   /// 用 remove + push 代替 popUntil，避免破坏栈中其他路由。
-  void _navigateToPomodoro() {
+  void _navigateToPomodoro({String? notificationAction}) {
     if (!mounted || _navigatingToPomodoro) return;
     // 🚀 去重：如果已在番茄钟页，直接返回
     if (_pomodoroRoute != null && _pomodoroRoute!.isCurrent) return;
@@ -350,7 +371,10 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     // push 新的番茄钟页
     _navigatingToPomodoro = true;
     final route = PageTransitions.material(
-      builder: (_) => PomodoroScreen(username: widget.username),
+      builder: (_) => PomodoroScreen(
+        username: widget.username,
+        initialNotificationAction: notificationAction,
+      ),
       settings: const RouteSettings(name: 'pomodoro'),
     );
     _pomodoroRoute = route;

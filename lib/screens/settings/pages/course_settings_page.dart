@@ -1,14 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../services/course_service.dart';
-import '../../../services/database_helper.dart';
 import '../../../services/reminder_schedule_service.dart';
 import '../../../storage_service.dart';
 import '../../../services/api_service.dart';
 import '../../../course_import/handlers/course_import_handler.dart';
+import '../../../course_import/course_import_preflight.dart';
+import '../../../course_import/course_schedule_semantics.dart';
 import '../../../course_import/widgets/course_adaptation_screen.dart';
+import '../../../course_import/widgets/course_time_repair_dialog.dart';
 import '../../course_calendar_adjustment_screen.dart';
 import '../../../models.dart';
 import '../../../utils/app_platform.dart';
@@ -58,6 +62,12 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
   late CourseImportHandler _courseImportHandler;
 
+  bool _loadingDialogOpen = false;
+  Route<void>? _loadingDialogRoute;
+  Future<void>? _loadingDialogFuture;
+  Future<void>? _loadingDialogReady;
+  NavigatorState? _loadingDialogNavigator;
+
   @override
   void initState() {
     super.initState();
@@ -67,6 +77,24 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         _scrollToTarget(widget.initialTarget!);
       });
     }
+  }
+
+  @override
+  void dispose() {
+    final route = _loadingDialogRoute;
+    final navigator = _loadingDialogNavigator;
+    if (route != null &&
+        navigator != null &&
+        navigator.mounted &&
+        route.isActive) {
+      navigator.removeRoute(route);
+    }
+    _loadingDialogOpen = false;
+    _loadingDialogRoute = null;
+    _loadingDialogFuture = null;
+    _loadingDialogReady = null;
+    _loadingDialogNavigator = null;
+    super.dispose();
   }
 
   void _scrollToTarget(String target) {
@@ -108,15 +136,11 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     _courseImportHandler = CourseImportHandler(
       context: context,
       username: _username,
-      semesterStart: sStart,
       onRescheduleReminders: _rescheduleReminders,
       showMessage: (msg) {
         if (!mounted) return;
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(msg)));
-      },
-      onSemesterStartChanged: (date) {
-        if (mounted) setState(() => _semesterStart = date);
       },
     );
 
@@ -138,17 +162,24 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     try {
       final todos = await StorageService.getTodos(_username);
       final courses = await CourseService.getAllCourses(_username);
-      await ReminderScheduleService.scheduleAll(todos: todos, courses: courses);
+      await ReminderScheduleService.scheduleAll(
+        todos: todos,
+        courses: courses,
+        expectedUsername: _username,
+        force: true,
+      );
     } catch (e) {
       debugPrint('[CourseSettings] 重新调度课程提醒失败: $e');
     }
   }
 
-  void _showLoadingDialog(BuildContext context, String message) {
-    showDialog(
+  void _showLoadingDialog(String message) {
+    if (!mounted || _loadingDialogOpen) return;
+
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final route = DialogRoute<void>(
       context: context,
       barrierDismissible: false,
-      useRootNavigator: true,
       builder: (ctx) => AlertDialog(
         content: Row(
           children: [
@@ -159,26 +190,63 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         ),
       ),
     );
+
+    _loadingDialogOpen = true;
+    _loadingDialogRoute = route;
+    _loadingDialogNavigator = navigator;
+    _loadingDialogReady = Future<void>.delayed(Duration.zero);
+    final dialogFuture = navigator.push<void>(route);
+    _loadingDialogFuture = dialogFuture;
+    unawaited(_observeLoadingDialog(route, dialogFuture));
   }
 
-  void _closeLoadingDialog(BuildContext context) {
-    if (Navigator.of(context, rootNavigator: true).canPop()) {
-      Navigator.of(context, rootNavigator: true).pop();
+  Future<void> _observeLoadingDialog(
+      Route<void> route, Future<void> dialogFuture) async {
+    try {
+      await dialogFuture;
+    } catch (error, stackTrace) {
+      debugPrint('⚠️ 课表设置进度弹窗异常结束: $error\n$stackTrace');
+    } finally {
+      if (identical(_loadingDialogRoute, route)) {
+        _loadingDialogOpen = false;
+        _loadingDialogRoute = null;
+        _loadingDialogFuture = null;
+        _loadingDialogReady = null;
+        _loadingDialogNavigator = null;
+      }
+    }
+  }
+
+  Future<void> _closeLoadingDialog() async {
+    if (!_loadingDialogOpen) return;
+
+    final route = _loadingDialogRoute;
+    final dialogFuture = _loadingDialogFuture;
+    final ready = _loadingDialogReady;
+    if (route == null) return;
+    if (ready != null) await ready;
+
+    final navigator = _loadingDialogNavigator;
+    if (identical(_loadingDialogRoute, route) &&
+        navigator != null &&
+        navigator.mounted &&
+        route.isActive) {
+      navigator.removeRoute(route);
+    }
+
+    if (dialogFuture != null) {
+      try {
+        await dialogFuture;
+      } catch (_) {
+        // The observer records unexpected route failures.
+      }
     }
   }
 
   Future<void> _uploadCoursesToCloud() async {
-    if (_userId == null) {
+    if (_userId == null || _username.isEmpty) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('请先登录账号')));
-      return;
-    }
-
-    final allCourses = await CourseService.getAllCourses(_username);
-    if (!mounted) return;
-    if (allCourses.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('当前没有课表数据可上传')));
       return;
     }
 
@@ -201,44 +269,70 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
     if (!confirm || !mounted) return;
 
-    _showLoadingDialog(context, "正在同步到云端...");
+    _showLoadingDialog("正在同步到云端...");
 
-    final result = await CourseService.syncCoursesToCloud(_username, _userId!);
-    if (!mounted) return;
+    try {
+      final result =
+          await CourseService.syncCoursesToCloud(_username, _userId!);
+      if (!mounted) return;
 
-    if (result['success'] == true) {
-      final startMs = _semesterStart != null
-          ? DateTime(_semesterStart!.year, _semesterStart!.month,
-                  _semesterStart!.day)
-              .millisecondsSinceEpoch
-          : null;
-      final endMs = _semesterEnd != null
-          ? DateTime(_semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day)
-              .millisecondsSinceEpoch
-          : null;
+      if (result['success'] == true) {
+        final startMs = _semesterStart != null
+            ? DateTime(_semesterStart!.year, _semesterStart!.month,
+                    _semesterStart!.day)
+                .millisecondsSinceEpoch
+            : null;
+        final endMs = _semesterEnd != null
+            ? DateTime(
+                    _semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day)
+                .millisecondsSinceEpoch
+            : null;
 
-      // 准备多学期数据
-      final semestersData = _semesters.map((s) => s.toCloudJson()).toList();
+        final semestersData = _semesters.map((s) => s.toCloudJson()).toList();
+        final settingsUploaded = await ApiService.uploadUserSettings(
+            semesterStartMs: startMs,
+            semesterEndMs: endMs,
+            semesters: semestersData);
+        if (!settingsUploaded) {
+          result['success'] = false;
+          result['message'] = '课表已上传，但学期设置同步失败';
+        }
+      }
 
-      await ApiService.uploadUserSettings(
-          semesterStartMs: startMs,
-          semesterEndMs: endMs,
-          semesters: semestersData);
+      if (!mounted) return;
+      if (result['success'] == true) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('✅ 课表已成功同步到云端')));
+      } else if (result['isLimitExceeded'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(result['message'] ?? '今日同步次数已达上限')));
+      } else {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(result['message'] ?? '同步失败')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('同步失败: $e')));
+      }
+    } finally {
+      await _closeLoadingDialog();
     }
+  }
 
-    if (!mounted) return;
-    _closeLoadingDialog(context);
+  int? _readCloudInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
 
-    if (result['success'] == true) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('✅ 课表已成功同步到云端')));
-    } else if (result['isLimitExceeded'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message'] ?? '今日同步次数已达上限')));
-    } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(result['message'] ?? '同步失败')));
+  DateTime? _readCloudDate(dynamic value) {
+    final milliseconds = _readCloudInt(value);
+    if (milliseconds != null && milliseconds > 0) {
+      return DateTime.fromMillisecondsSinceEpoch(milliseconds);
     }
+    if (value is String) return DateTime.tryParse(value);
+    return null;
   }
 
   Future<void> _fetchCoursesFromCloud() async {
@@ -248,137 +342,263 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       return;
     }
 
-    _showLoadingDialog(context, "正在获取云端数据...");
+    _showLoadingDialog("正在获取云端数据...");
 
     try {
-      final userSettingsFuture = ApiService.fetchUserSettings();
-      final coursesFuture = ApiService.fetchCourses(_userId!);
-
-      final results = await Future.wait([userSettingsFuture, coursesFuture]);
-      final Map<String, dynamic>? userSettings =
-          results[0] as Map<String, dynamic>?;
-      final List<dynamic> data = results[1] as List<dynamic>;
+      final userSettings = await ApiService.fetchUserSettings();
+      final data = await ApiService.fetchCoursesForSemesters(
+        _userId!,
+        ApiService.semesterIdsFromSettings(userSettings),
+      );
 
       if (!mounted) return;
 
+      DateTime? importedStart = _semesterStart;
+      DateTime? importedEnd = _semesterEnd;
+      var importedSemesters = List<SemesterInfo>.from(_semesters);
+      var hasCloudSemesterList = false;
+
+      // 先在内存中校验和准备云端学期设置。用户确认导入方式并且课程写入
+      // 成功之前，不改变本地设置，避免取消导入后留下半套同步结果。
       if (userSettings != null) {
-        final prefs = await SharedPreferences.getInstance();
-        if (userSettings['semester_start'] != null) {
-          _semesterStart = DateTime.fromMillisecondsSinceEpoch(
-              userSettings['semester_start']);
-          await prefs.setString(StorageService.keySemesterStart,
-              _semesterStart!.toIso8601String());
-        }
-        if (userSettings['semester_end'] != null) {
-          _semesterEnd =
-              DateTime.fromMillisecondsSinceEpoch(userSettings['semester_end']);
-          await prefs.setString(
-              StorageService.keySemesterEnd, _semesterEnd!.toIso8601String());
-        }
+        final cloudStart = _readCloudDate(userSettings['semester_start']);
+        final cloudEnd = _readCloudDate(userSettings['semester_end']);
+        if (cloudStart != null) importedStart = cloudStart;
+        if (cloudEnd != null) importedEnd = cloudEnd;
 
-        // 处理多学期数据
-        if (userSettings['semesters'] != null &&
-            userSettings['semesters'] is List) {
-          final semestersList = userSettings['semesters'] as List;
-          final cloudSemesters = semestersList
-              .map((s) =>
-                  SemesterInfo.fromCloudJson(Map<String, dynamic>.from(s)))
-              .toList();
-
-          if (cloudSemesters.isNotEmpty) {
-            await StorageService.saveSemesters(cloudSemesters);
-            if (!mounted) return;
-            setState(() {
-              _semesters = cloudSemesters;
-            });
+        final rawSemesters = userSettings['semesters'];
+        if (rawSemesters is List) {
+          final cloudSemesters = <SemesterInfo>[];
+          for (final rawSemester in rawSemesters) {
+            if (rawSemester is! Map) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('❌ 云端学期设置格式错误，未导入课表')),
+              );
+              return;
+            }
+            final semester = SemesterInfo.fromCloudJson(
+              Map<String, dynamic>.from(rawSemester),
+            );
+            cloudSemesters.add(semester);
           }
+          importedSemesters = cloudSemesters;
+          hasCloudSemesterList = true;
         }
-        if (!mounted) return;
-        setState(() {});
       }
 
-      if (!mounted) return;
-      _closeLoadingDialog(context);
-
-      if (data.isNotEmpty) {
-        // 检查是否有学期数据
-        if (_semesters.isEmpty && _semesterStart == null) {
+      // Validate both the cloud list and the local fallback list. A cloud
+      // `semesters: []` is an explicit configuration, not a reason to reuse
+      // stale local semesters; duplicate IDs would otherwise collapse in the
+      // startsBySemester map and leave ambiguous course ownership.
+      final importedSemesterIds = <String>{};
+      for (final semester in importedSemesters) {
+        final semesterId =
+            CourseScheduleSemantics.canonicalSemesterId(semester.id);
+        if (!CourseImportPreflight.hasUsableSemester(semester) ||
+            !importedSemesterIds.add(semesterId)) {
           ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('⚠️ 云端与本地均未配置开学日期，无法计算课表具体日期')));
+            const SnackBar(content: Text('❌ 存在无效或重复的学期设置，请修正后再导入')),
+          );
           return;
         }
+      }
 
-        final courses = data
-            .map<CourseItem?>((c) {
-              final int weekIndex = (c['week_index'] as num?)?.toInt() ?? 1;
-              final int weekday = (c['weekday'] as num?)?.toInt() ?? 1;
-              final String semesterId = c['semester'] ?? 'default';
-
-              // 根据学期ID找到对应的开学日期
-              DateTime? semesterStartForCourse;
-              for (final s in _semesters) {
-                if (s.id == semesterId) {
-                  semesterStartForCourse = s.startDate;
-                  break;
-                }
-              }
-              // 如果找不到对应的学期，使用当前的开学日期
-              semesterStartForCourse ??= _semesterStart;
-
-              if (semesterStartForCourse == null) return null;
-
-              final DateTime semesterMonday = semesterStartForCourse
-                  .subtract(Duration(days: semesterStartForCourse.weekday - 1));
-
-              final DateTime courseDate = semesterMonday
-                  .add(Duration(days: (weekIndex - 1) * 7 + (weekday - 1)));
-              final String dateStr =
-                  DateFormat('yyyy-MM-dd').format(courseDate);
-
-              return CourseItem(
-                courseName: c['course_name'] ?? '',
-                roomName: c['room_name'] ?? '',
-                teacherName: c['teacher_name'] ?? '',
-                startTime: (c['start_time'] as num?)?.toInt() ?? 0,
-                endTime: (c['end_time'] as num?)?.toInt() ?? 0,
-                weekday: weekday,
-                weekIndex: weekIndex,
-                lessonType: c['lesson_type'] ?? '',
-                date: dateStr,
-                semesterId: semesterId, // 使用课程本身的学期ID
-              );
-            })
-            .whereType<CourseItem>()
-            .toList();
-
-        // 检测冲突并让用户选择导入模式
-        final conflicts =
-            await CourseService.detectTimeConflicts(_username, courses);
-        if (!mounted) return;
-        final ImportMode? mode = await _askCloudImportMode(courses, conflicts);
-        if (mode == null) return;
-
-        if (mode == ImportMode.merge) {
-          await CourseService.mergeCoursesToSql(_username, courses);
-        } else {
-          await CourseService.saveCourses(_username, courses);
-        }
-
-        if (!mounted) return;
-        _rescheduleReminders();
-        final modeText = mode == ImportMode.merge ? '合并' : '同步';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('✅ 成功从云端$modeText ${courses.length} 条课程与学期设置')));
-      } else {
+      if (data.isEmpty) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('❌ 获取失败，云端暂无课表数据')));
+        return;
       }
+
+      final startsBySemester = <String, DateTime>{};
+      for (final semester in importedSemesters) {
+        startsBySemester.putIfAbsent(
+          CourseScheduleSemantics.canonicalSemesterId(semester.id),
+          () => semester.startDate,
+        );
+      }
+      if (importedStart != null) {
+        startsBySemester.putIfAbsent('default', () => importedStart!);
+      }
+
+      int skippedCourses = 0;
+      var courses = <CourseItem>[];
+      for (final rawCourse in data) {
+        if (rawCourse is! Map) {
+          skippedCourses++;
+          continue;
+        }
+
+        final course = Map<String, dynamic>.from(rawCourse);
+        final courseName = (course['course_name'] ?? course['courseName'])
+                ?.toString()
+                .trim() ??
+            '';
+        if (courseName.isEmpty) {
+          skippedCourses++;
+          continue;
+        }
+
+        final semesterId = CourseScheduleSemantics.canonicalSemesterId(
+          (course['semester'] ??
+                  course['semester_id'] ??
+                  course['semesterId'] ??
+                  'default')
+              .toString(),
+        );
+        final weekIndex = (_readCloudInt(
+                  course['week_index'] ?? course['weekIndex'],
+                ) ??
+                1)
+            .clamp(1, 1000)
+            .toInt();
+        final weekday = (_readCloudInt(course['weekday']) ?? 1)
+            .clamp(DateTime.monday, DateTime.sunday)
+            .toInt();
+        final semesterStartForCourse = startsBySemester[semesterId];
+        final cloudDate = (course['date']?.toString() ?? '').trim();
+
+        // A course must reference a configured semester. Accepting an unknown
+        // semester merely because it has a concrete date creates an orphan
+        // row which the semester-based UI cannot select later.
+        if (semesterStartForCourse == null ||
+            (cloudDate.isNotEmpty && DateTime.tryParse(cloudDate) == null)) {
+          skippedCourses++;
+          continue;
+        }
+
+        final date = CourseScheduleSemantics.dateFor(
+          semesterStart: semesterStartForCourse,
+          weekIndex: weekIndex,
+          weekday: weekday,
+        );
+        courses.add(
+          CourseItem(
+            uuid: (course['uuid'] ?? course['id'])?.toString(),
+            courseName: courseName,
+            roomName:
+                (course['room_name'] ?? course['roomName'])?.toString() ?? '',
+            teacherName:
+                (course['teacher_name'] ?? course['teacherName'])?.toString() ??
+                    '',
+            startTime: _readCloudInt(
+                  course['start_time'] ?? course['startTime'],
+                ) ??
+                0,
+            endTime: _readCloudInt(
+                  course['end_time'] ?? course['endTime'],
+                ) ??
+                0,
+            weekday: weekday,
+            weekIndex: weekIndex,
+            lessonType:
+                (course['lesson_type'] ?? course['lessonType'])?.toString(),
+            date: date,
+            semesterId: semesterId,
+          ),
+        );
+      }
+
+      if (skippedCourses > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '⚠️ 云端有 $skippedCourses 条课程无法确定所属学期开学日期或数据格式，已全部取消导入；请先配置学期',
+            ),
+          ),
+        );
+        return;
+      }
+      if (courses.isEmpty) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('❌ 云端课表没有可导入的课程')));
+        return;
+      }
+
+      if (courses
+          .any((course) => !CourseScheduleSemantics.hasUsableTime(course))) {
+        await _closeLoadingDialog();
+        if (!mounted) return;
+        final repaired = await CourseTimeRepairDialog.show(context, courses);
+        if (repaired == null || !mounted) return;
+        courses = repaired;
+        if (courses
+            .any((course) => !CourseScheduleSemantics.hasUsableTime(course))) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('❌ 仍有课程缺少有效时间，已取消导入')));
+          return;
+        }
+      }
+
+      await _closeLoadingDialog();
+
+      // 检测冲突并让用户选择导入模式。确认前不执行任何本地写入。
+      final conflicts =
+          await CourseService.detectTimeConflicts(_username, courses);
+      if (!mounted) return;
+      final ImportMode? mode = await _askCloudImportMode(courses, conflicts);
+      if (mode == null || !mounted) return;
+
+      if (mode == ImportMode.merge) {
+        await CourseService.mergeCoursesToSql(_username, courses);
+      } else {
+        await CourseService.replaceCoursesForSemesters(_username, courses);
+      }
+
+      var settingsSyncFailed = false;
+      try {
+        if (userSettings != null) {
+          if (userSettings.containsKey('semester_start') &&
+              importedStart != null) {
+            await StorageService.saveAppSetting(
+              StorageService.keySemesterStart,
+              importedStart.toIso8601String(),
+            );
+          }
+          if (userSettings.containsKey('semester_end') && importedEnd != null) {
+            await StorageService.saveAppSetting(
+              StorageService.keySemesterEnd,
+              importedEnd.toIso8601String(),
+            );
+          }
+          if (hasCloudSemesterList) {
+            await StorageService.saveSemesters(importedSemesters);
+            final currentSemester = importedSemesters.where((s) => s.isCurrent);
+            if (currentSemester.isNotEmpty) {
+              await StorageService.setActiveSemesterId(
+                currentSemester.first.id,
+              );
+            }
+          }
+        }
+      } catch (error) {
+        settingsSyncFailed = true;
+        debugPrint('[CourseSettings] 保存云端学期设置失败: $error');
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _semesterStart = importedStart;
+        _semesterEnd = importedEnd;
+        if (hasCloudSemesterList) _semesters = importedSemesters;
+        final currentSemester = importedSemesters.where((s) => s.isCurrent);
+        if (currentSemester.isNotEmpty) {
+          _activeSemesterId = currentSemester.first.id;
+        }
+      });
+      await _rescheduleReminders();
+      if (!mounted) return;
+
+      final modeText = mode == ImportMode.merge ? '合并' : '同步';
+      final suffix = settingsSyncFailed ? '，但学期设置保存失败' : '';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('✅ 成功从云端$modeText ${courses.length} 条课程$suffix')));
     } catch (e) {
       if (mounted) {
-        _closeLoadingDialog(context);
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('❌ 发生错误: $e')));
       }
+    } finally {
+      await _closeLoadingDialog();
     }
   }
 
@@ -709,8 +929,11 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                       color: Colors.grey)),
             ),
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              padding: const EdgeInsets.only(
+                left: 16.0,
+                right: 16.0,
+                bottom: 8.0,
+              ),
               child: GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -1143,12 +1366,14 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     await StorageService.saveSemesters(updatedSemesters);
     await StorageService.setActiveSemesterId(semester.id);
 
-    setState(() {
-      _semesters = updatedSemesters;
-      _activeSemesterId = semester.id;
-      _semesterStart = semester.startDate;
-      _semesterEnd = semester.endDate;
-    });
+    if (mounted) {
+      setState(() {
+        _semesters = updatedSemesters;
+        _activeSemesterId = semester.id;
+        _semesterStart = semester.startDate;
+        _semesterEnd = semester.endDate;
+      });
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1197,8 +1422,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                             firstDate: DateTime(2020),
                             lastDate: DateTime(2100),
                           );
-                          if (picked != null) {
-                            setState(() => startDate = picked);
+                          if (picked != null && context.mounted) {
+                            setState(() => startDate =
+                                CourseScheduleSemantics.mondayOf(picked));
                           }
                         },
                       ),
@@ -1221,7 +1447,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                             firstDate: DateTime(2020),
                             lastDate: DateTime(2100),
                           );
-                          if (picked != null) {
+                          if (picked != null && context.mounted) {
                             setState(() => endDate = picked);
                           }
                         },
@@ -1243,12 +1469,14 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                       );
                       return;
                     }
+                    final normalizedStart =
+                        CourseScheduleSemantics.mondayOf(startDate!);
                     Navigator.pop(
                       ctx,
                       SemesterInfo(
                         id: semester.id,
                         name: nameController.text,
-                        startDate: startDate!,
+                        startDate: normalizedStart,
                         endDate: endDate,
                         isCurrent: semester.isCurrent,
                       ),
@@ -1271,13 +1499,15 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
       await StorageService.saveSemesters(updatedSemesters);
 
-      setState(() {
-        _semesters = updatedSemesters;
-        if (result.isCurrent) {
-          _semesterStart = result.startDate;
-          _semesterEnd = result.endDate;
-        }
-      });
+      if (mounted) {
+        setState(() {
+          _semesters = updatedSemesters;
+          if (result.isCurrent) {
+            _semesterStart = result.startDate;
+            _semesterEnd = result.endDate;
+          }
+        });
+      }
 
       // 自动同步到服务器
       await _syncSemestersToServer();
@@ -1316,9 +1546,11 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           _semesters.where((s) => s.id != semester.id).toList();
       await StorageService.saveSemesters(updatedSemesters);
 
-      setState(() {
-        _semesters = updatedSemesters;
-      });
+      if (mounted) {
+        setState(() {
+          _semesters = updatedSemesters;
+        });
+      }
 
       // 自动同步到服务器
       await _syncSemestersToServer();
@@ -1408,12 +1640,14 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                             lastDate: DateTime(2100),
                             helpText: '选择开学日期',
                           );
-                          if (picked != null) {
+                          if (picked != null && context.mounted) {
+                            final normalizedStart =
+                                CourseScheduleSemantics.mondayOf(picked);
                             setState(() {
-                              startDate = picked;
+                              startDate = normalizedStart;
                               // 自动生成学期名称
                               nameController.text =
-                                  _generateSemesterName(picked);
+                                  _generateSemesterName(normalizedStart);
                             });
                           }
                         },
@@ -1439,7 +1673,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                             lastDate: DateTime(2100),
                             helpText: '选择放假日期',
                           );
-                          if (picked != null) {
+                          if (picked != null && context.mounted) {
                             setState(() => endDate = picked);
                           }
                         },
@@ -1470,13 +1704,16 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                       );
                       return;
                     }
-                    final id = 'semester_${startDate!.millisecondsSinceEpoch}';
+                    final normalizedStart =
+                        CourseScheduleSemantics.mondayOf(startDate!);
+                    final id =
+                        'semester_${normalizedStart.millisecondsSinceEpoch}';
                     Navigator.pop(
                       ctx,
                       SemesterInfo(
                         id: id,
                         name: nameController.text,
-                        startDate: startDate!,
+                        startDate: normalizedStart,
                         endDate: endDate,
                       ),
                     );
@@ -1494,9 +1731,11 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       final updatedSemesters = [..._semesters, result];
       await StorageService.saveSemesters(updatedSemesters);
 
-      setState(() {
-        _semesters = updatedSemesters;
-      });
+      if (mounted) {
+        setState(() {
+          _semesters = updatedSemesters;
+        });
+      }
 
       // 自动同步到服务器
       await _syncSemestersToServer();
@@ -1615,12 +1854,11 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
     // 执行清除
     try {
-      final db = await DatabaseHelper.instance.database;
-      await db.delete(
-        'courses',
-        where: 'semester_id = ?',
-        whereArgs: [selectedSemester.id],
+      await CourseService.clearCoursesForSemester(
+        _username,
+        selectedSemester.id,
       );
+      await _rescheduleReminders();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

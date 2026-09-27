@@ -214,7 +214,7 @@ export const CourseView = ({ userId, todos, countdowns, planBlocks, timeLogs }: 
 
         if (Array.isArray(serverCourses)) {
           // 将服务器返回的 semester 字段映射为 semester_id
-          courseData = (serverCourses as any[]).map(c => ({
+          courseData = (serverCourses as Array<CourseItem & { semester?: string }>).map(c => ({
             ...c,
             semester_id: c.semester || 'default'
           })) as CourseItem[];
@@ -233,7 +233,7 @@ export const CourseView = ({ userId, todos, countdowns, planBlocks, timeLogs }: 
           
           // 处理多学期数据
           if (settings.semesters && Array.isArray(settings.semesters)) {
-            const semestersList = (settings.semesters as any[]).map(s => ({
+            const semestersList = (settings.semesters as Array<Partial<SemesterInfo> & { start_ms?: number; end_ms?: number }>).map(s => ({
               id: s.id || '',
               name: s.name || '',
               start_date: s.start_date || (s.start_ms ? new Date(s.start_ms).toISOString() : ''),
@@ -376,7 +376,7 @@ export const CourseView = ({ userId, todos, countdowns, planBlocks, timeLogs }: 
   }, [todos, countdowns, weekDates]);
 
   // 获取当前周次的学期信息
-  const currentWeekInfo = useMemo(() => {
+  const currentWeekInfo = (() => {
     // 计算当前周次对应的周一日期
     const currentWeekMonday = new Date(semesterMonday);
     currentWeekMonday.setDate(semesterMonday.getDate() + (currentWeek - 1) * 7);
@@ -419,7 +419,7 @@ export const CourseView = ({ userId, todos, countdowns, planBlocks, timeLogs }: 
       label: `${formatDate(currentWeekMonday)}-${formatDate(currentWeekSunday)}`,
       isInRange: false,
     };
-  }, [semesters, semesterMonday, currentWeek]);
+  })();
 
   // 根据当前周次找到对应的学期，并过滤课程
   const weekCourses = useMemo(() => {

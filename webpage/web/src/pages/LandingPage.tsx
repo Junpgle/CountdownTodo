@@ -7,7 +7,6 @@ import { Hero } from './landing/Hero';
 import { Features } from './landing/Features';
 import { WindowsShowcase } from './landing/WindowsShowcase';
 import { AndroidShowcase } from './landing/AndroidShowcase';
-import { WebShowcase } from './landing/WebShowcase';
 import { TimetableShowcase } from './landing/TimetableShowcase';
 import { LiveUpdatesShowcase } from './landing/LiveUpdatesShowcase';
 import { WindowsIslandShowcase } from './landing/WindowsIslandShowcase';
@@ -32,23 +31,21 @@ interface PlatformData {
   changelog: ChangelogEntry[];
 }
 
-export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
+export const LandingPage = () => {
   const [androidData, setAndroidData] = useState<PlatformData & { macUrl?: string }>({ info: { version: '', url: '', desc: '' }, changelog: [] });
   const [windowsLiteData, setWindowsLiteData] = useState<PlatformData>({ info: { version: '', url: '', desc: '' }, changelog: [] });
-  const [webData, setWebData] = useState<PlatformData>({ info: { version: '', url: '', desc: '' }, changelog: [] });
   const [bandData, setBandData] = useState<PlatformData>({ info: { version: '', url: '', desc: '' }, changelog: [] });
   const [showInstallGuide, setShowInstallGuide] = useState(false);
 
   useEffect(() => {
     const fetchManifests = async () => {
       try {
-        const [aRes, wRes, webRes, bandRes] = await Promise.all([
+        const [aRes, wRes, bandRes] = await Promise.all([
           fetch('https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json'),
           fetch('https://raw.githubusercontent.com/Junpgle/CountDownTodoLite/refs/heads/master/update_manifest.json'),
-          fetch('https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/webpage/web/update_manifest.json'),
           fetch('https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/CountDownTodo-band/update_manifest.json')
         ]);
-        const [aData, wData, webData, bandData] = await Promise.all([aRes.json(), wRes.json(), webRes.json(), bandRes.json()]);
+        const [aData, wData, bandData] = await Promise.all([aRes.json(), wRes.json(), bandRes.json()]);
 
         setAndroidData({
           info: {
@@ -67,15 +64,6 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
             desc: wData.update_info.description
           },
           changelog: wData.changelog_history || []
-        });
-
-        setWebData({
-          info: {
-            version: webData.version_name,
-            url: '',
-            desc: webData.update_info.description
-          },
-          changelog: webData.changelog_history || []
         });
 
         setBandData({
@@ -112,7 +100,6 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
           <LANSyncShowcase />
           <WindowsShowcase />
           <AndroidShowcase />
-          <WebShowcase onOpenWeb={onOpenWeb} />
           <TimetableShowcase />
           <LiveUpdatesShowcase />
           <WindowsIslandShowcase imageSrc="./island_screenshot.webp" />
@@ -126,14 +113,11 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
             windowsProInfo={androidData.info}
             windowsProChangelog={androidData.changelog}
             macInfo={{ ...androidData.info, url: androidData.macUrl || '' }}
-            webInfo={webData.info}
-            webChangelog={webData.changelog}
             bandInfo={bandData.info}
             bandChangelog={bandData.changelog}
-            onOpenWeb={onOpenWeb}
             onShowInstallGuide={() => setShowInstallGuide(true)}
           />
-          <Footer onOpenWeb={onOpenWeb} />
+          <Footer />
         </>
       )}
     </div>

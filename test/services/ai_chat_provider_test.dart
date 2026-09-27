@@ -148,6 +148,98 @@ void main() {
     expect(usage!.cachedPromptTokens, 600);
   });
 
+  test('图片识别和聊天共用流式多模态请求协议', () {
+    final content = [
+      {'type': 'text', 'text': '识别账单'},
+      {
+        'type': 'image_url',
+        'image_url': {'url': 'data:image/png;base64,AQID'},
+      },
+    ];
+    final body = AiChatService.buildStreamingRequestBody(
+      apiUrl: 'https://api.example.com/v1/chat/completions',
+      model: 'vision-model',
+      provider: 'custom',
+      deepThinking: false,
+      temperature: 0.1,
+      messages: [
+        {'role': 'user', 'content': content},
+      ],
+    );
+
+    expect(body['stream'], isTrue);
+    expect(body['stream_options'], {'include_usage': true});
+    expect(body['thinking'], {'type': 'disabled'});
+    expect(body['max_tokens'], 2000);
+    expect(body['messages'], [
+      {'role': 'user', 'content': content},
+    ]);
+  });
+
+  test('provider协议字段仍由统一请求构造器决定', () {
+    final body = AiChatService.buildStreamingRequestBody(
+      apiUrl: AiChatService.mimoApiBaseUrl,
+      model: 'mimo-v2.5',
+      provider: 'mimo',
+      deepThinking: false,
+      messages: const [
+        {'role': 'user', 'content': '看看图片'},
+      ],
+    );
+
+    expect(body['max_completion_tokens'], 2000);
+    expect(body.containsKey('max_tokens'), isFalse);
+    expect(body['stream'], isTrue);
+  });
+
+  test('migrates stored recognition prompts away from legacy todo fields',
+      () async {
+    const legacyTextPrompt = '保留自定义识别偏好\n'
+        '普通todo使用isAllDay=false、startTime=null、endTime=null\n'
+        '旧动作：[CREATE_TODO]\n'
+        '普通待办返回 `todo_list`: []\n'
+        'plan_todos';
+    const legacyVisionPrompt = '旧版图片规则\n待办使用startTime和endTime表示时间段';
+    SharedPreferences.setMockInitialValues({
+      'llm_config': jsonEncode({
+        'provider': 'zhipu',
+        'api_key': 'recognition-key',
+        'model': 'test-model',
+        'vision_model': 'test-vision-model',
+        'api_url': 'https://example.com/v1/chat/completions',
+        'text_prompt': legacyTextPrompt,
+        'vision_prompt': legacyVisionPrompt,
+      }),
+    });
+
+    final config = await LLMService.getConfig();
+
+    expect(config, isNotNull);
+    expect(config!.textPrompt, contains('CDT_RECOGNITION_PROTOCOL_V2'));
+    expect(config.textPrompt, contains('保留自定义识别偏好'));
+    expect(config.textPrompt, isNot(contains('plan_todos')));
+    expect(config.textPrompt, isNot(contains('isAllDay')));
+    expect(config.textPrompt, isNot(contains('[CREATE_TODO]')));
+    expect(config.textPrompt, isNot(contains('`todo_list`')));
+    expect(config.visionPrompt, contains('CDT_RECOGNITION_PROTOCOL_V2'));
+    expect(config.visionPrompt, isNot(contains('startTime')));
+    final prefs = await SharedPreferences.getInstance();
+    final stored =
+        jsonDecode(prefs.getString('llm_config')!) as Map<String, dynamic>;
+    expect(stored['recognition_prompt_protocol_version'], 2);
+
+    final migratedChatPrompt = ChatStorageService.ensureCurrentPromptProtocol(
+      '自定义聊天规则 isAllDay=true\n'
+      '旧动作：[cReAtE_tOdO]\n'
+      '普通待办返回 `todo_list`: []\n'
+      '待办使用 start_time 和 end_time 表示时间段',
+    );
+    expect(migratedChatPrompt, contains('自定义聊天规则 isAllDay=true'));
+    expect(migratedChatPrompt, isNot(contains('[cReAtE_tOdO]')));
+    expect(migratedChatPrompt, isNot(contains('`todo_list`')));
+    expect(migratedChatPrompt, isNot(contains('start_time')));
+  });
+
   test('keeps LLM API keys out of SharedPreferences', () async {
     SharedPreferences.setMockInitialValues({});
 
@@ -196,6 +288,30 @@ void main() {
 
     expect(await ChatStorageService.loadHistory(firstSession.id), hasLength(2));
     expect(await ChatStorageService.loadHistory(secondSession.id), isEmpty);
+  });
+
+  test('migrates legacy action blocks out of assistant history', () async {
+    const sessionId = 'legacy-history-session';
+    SharedPreferences.setMockInitialValues({
+      'chat_history_$sessionId': jsonEncode([
+        {
+          'id': 'legacy-message',
+          'role': 'assistant',
+          'content': '[ACTION_START][{"action":"plan_todos"}][ACTION_END]',
+          'timestamp': 0,
+        },
+      ]),
+    });
+
+    final history = await ChatStorageService.loadHistory(sessionId);
+
+    expect(history, hasLength(1));
+    expect(history.single.content, isEmpty);
+    final prefs = await SharedPreferences.getInstance();
+    expect(
+      prefs.getString('chat_history_$sessionId'),
+      isNot(contains('[ACTION_START]')),
+    );
   });
 
   test('cancelling before response headers closes the pending request',

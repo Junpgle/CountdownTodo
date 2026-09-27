@@ -168,10 +168,14 @@ class ManagementLoadError extends StatelessWidget {
 /// See docs/ui/management_components.md for composition examples.
 class ManagementPage extends StatelessWidget {
   const ManagementPage(
-      {super.key, required this.children, this.maxWidth = 960});
+      {super.key,
+      required this.children,
+      this.maxWidth = 960,
+      this.topPadding = 0});
 
   final List<Widget> children;
   final double maxWidth;
+  final double topPadding;
 
   @override
   Widget build(BuildContext context) => SafeArea(
@@ -182,7 +186,7 @@ class ManagementPage extends StatelessWidget {
           return ListView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(inset, 16, inset, 32),
+            padding: EdgeInsets.fromLTRB(inset, topPadding + 16, inset, 32),
             children: children,
           );
         }),

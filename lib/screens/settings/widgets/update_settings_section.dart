@@ -36,6 +36,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
   double _downloadProgress = 0;
   String? _downloadKind;
   String? _downloadedPackagePath;
+  String? _downloadedPackageVersion;
   bool _isForceDownloading = false;
   double _forceDownloadProgress = 0;
   bool _isLatestChangelogExpanded = false;
@@ -51,6 +52,26 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
 
   String _cleanVersion(String version) =>
       version.trim().split('+').first.split('-').first;
+
+  String? _versionFromPackagePath(String? path) {
+    if (path == null || path.isEmpty) return null;
+    final fileName = path.replaceAll('\\', '/').split('/').last;
+    final match = RegExp(
+      r'^CountdownTodo_v(.+)\.(?:apk|exe|zip)(?:\.zip)?$',
+      caseSensitive: false,
+    ).firstMatch(fileName);
+    return match?.group(1);
+  }
+
+  Future<String?> _resolveDownloadedPackageVersion(
+    String? path, {
+    String? fallbackVersion,
+  }) async {
+    if (path == null || path.isEmpty) return null;
+    final embeddedVersion =
+        await UpdateService.readDownloadedPackageVersion(path);
+    return embeddedVersion ?? _versionFromPackagePath(path) ?? fallbackVersion;
+  }
 
   int _compareVersions(String left, String right) {
     final a = _cleanVersion(left)
@@ -156,6 +177,10 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
           ? null
           : await UpdateService.isPackageAlreadyDownloaded(
               manifest.versionName);
+      final downloadedPackageVersion = await _resolveDownloadedPackageVersion(
+        downloadedPackagePath,
+        fallbackVersion: manifest?.versionName,
+      );
 
       if (!mounted) return;
       setState(() {
@@ -168,6 +193,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         _architectureLabel = architectureLabel;
         _hasDeltaPackage = hasDelta;
         _downloadedPackagePath = downloadedPackagePath;
+        _downloadedPackageVersion = downloadedPackageVersion;
         _errorMessage = manifest == null ? '暂时无法获取更新信息' : null;
         _isLoading = false;
         _isRefreshing = false;
@@ -186,15 +212,8 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                 _downloadProgress = progress;
               });
             },
-            onComplete: (path) {
-              if (!mounted) return;
-              setState(() {
-                _isDownloading = false;
-                _downloadProgress = 1;
-                _downloadKind = null;
-                _downloadedPackagePath = path;
-              });
-            },
+            onComplete: (path) =>
+                unawaited(_finishAutoDownload(path, manifest.versionName)),
             onError: (_) {
               if (!mounted) return;
               setState(() {
@@ -357,24 +376,52 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
   }
 
   Future<void> _finishForceDownload(String path) async {
+    final packageVersion = await _resolveDownloadedPackageVersion(
+      path,
+      fallbackVersion: _manifest?.versionName,
+    );
     if (!mounted) return;
     setState(() {
       _isForceDownloading = false;
       _forceDownloadProgress = 1;
       _downloadedPackagePath = path;
+      _downloadedPackageVersion = packageVersion;
     });
     await _promptInstall(path);
   }
 
   Future<void> _finishDownload(String path) async {
+    final packageVersion = await _resolveDownloadedPackageVersion(
+      path,
+      fallbackVersion: _manifest?.versionName,
+    );
     if (!mounted) return;
     setState(() {
       _isDownloading = false;
       _downloadProgress = 1;
       _downloadKind = null;
       _downloadedPackagePath = path;
+      _downloadedPackageVersion = packageVersion;
     });
     await _promptInstall(path);
+  }
+
+  Future<void> _finishAutoDownload(
+    String path,
+    String fallbackVersion,
+  ) async {
+    final packageVersion = await _resolveDownloadedPackageVersion(
+      path,
+      fallbackVersion: fallbackVersion,
+    );
+    if (!mounted) return;
+    setState(() {
+      _isDownloading = false;
+      _downloadProgress = 1;
+      _downloadKind = null;
+      _downloadedPackagePath = path;
+      _downloadedPackageVersion = packageVersion;
+    });
   }
 
   Future<void> _installDownloadedPackage() async {
@@ -1038,6 +1085,11 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
   Widget _buildForceDownloadTile() {
     final colorScheme = Theme.of(context).colorScheme;
     final packageReady = _downloadedPackagePath != null;
+    final downloadedVersion = _downloadedPackageVersion;
+    final downloadedVersionLabel =
+        downloadedVersion == null || downloadedVersion.trim().isEmpty
+            ? '最新版'
+            : 'v$downloadedVersion';
     return Material(
       color: Colors.transparent,
       child: ListTile(
@@ -1052,9 +1104,10 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
           child: Icon(Icons.download_rounded,
               color: colorScheme.onPrimaryContainer),
         ),
-        title: Text(packageReady ? '立即安装最新版' : '强制下载最新版完整包'),
+        title:
+            Text(packageReady ? '立即安装 $downloadedVersionLabel' : '强制下载最新版完整包'),
         subtitle: packageReady
-            ? const Text('完整安装包已下载完成，确认后开始安装')
+            ? Text('完整安装包 $downloadedVersionLabel 已下载完成，确认后开始安装')
             : _isForceDownloading
                 ? Text(
                     '下载中 ${(_forceDownloadProgress * 100).toStringAsFixed(0)}%',

@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../course_import/course_schedule_semantics.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/pomodoro_service.dart';
@@ -391,6 +392,8 @@ class LanSyncService {
     await _server?.close(force: true);
     _server = null;
     _devices.clear();
+    _pendingRequests.clear();
+    _pendingTokens.clear();
     _emitDevices();
     _emitStatus('已停止');
   }
@@ -515,8 +518,12 @@ class LanSyncService {
 
     if (action == 'confirm') {
       final pendingDevice = _pendingRequests[remoteDeviceId];
+      final pendingToken = _pendingTokens[remoteDeviceId];
+      final receivedToken = data['token']?.toString();
 
-      if (pendingDevice == null) {
+      if (pendingDevice == null ||
+          pendingToken == null ||
+          receivedToken != pendingToken) {
         req.response.headers.contentType = ContentType.json;
         final err = jsonEncode({'error': 'no pending request'});
         req.response.write(jsonEncode({
@@ -528,6 +535,7 @@ class LanSyncService {
       }
 
       _pendingRequests.remove(remoteDeviceId);
+      _pendingTokens.remove(remoteDeviceId);
 
       _emitProgress('正在接收数据...');
       _emitProgressValue(0.1);
@@ -770,24 +778,37 @@ class LanSyncService {
   Future<void> _mergeCourses(String username, List<Map<String, dynamic>> remote,
       Function(int) onChanged) async {
     if (remote.isEmpty) return;
-    final local = await CourseService.getAllCourses(username);
-    final Map<String, CourseItem> merged = {};
-    for (var c in local) {
-      final key = '${c.courseName}_${c.date}_${c.startTime}';
-      merged[key] = c;
-    }
-    bool changed = false;
-    for (var r in remote) {
-      final remoteCourse = CourseItem.fromJson(r);
-      final key =
-          '${remoteCourse.courseName}_${remoteCourse.date}_${remoteCourse.startTime}';
-      if (!merged.containsKey(key)) {
-        merged[key] = remoteCourse;
-        changed = true;
-      }
-    }
+    final local = await CourseService.getAllCourses(
+      username,
+      applyCalendarAdjustments: false,
+    );
+    final remoteCourses = remote.map(CourseItem.fromJson).toList();
+    final merged = CourseScheduleSemantics.mergeBySlot(local, remoteCourses);
+    final localByUuid = {for (final course in local) course.uuid: course};
+
+    bool sameCourse(CourseItem left, CourseItem right) =>
+        left.courseName == right.courseName &&
+        left.teacherName == right.teacherName &&
+        left.date == right.date &&
+        left.weekday == right.weekday &&
+        left.startTime == right.startTime &&
+        left.endTime == right.endTime &&
+        left.weekIndex == right.weekIndex &&
+        left.roomName == right.roomName &&
+        left.lessonType == right.lessonType &&
+        left.semesterId == right.semesterId &&
+        left.teamUuid == right.teamUuid &&
+        left.version == right.version &&
+        left.updatedAt == right.updatedAt &&
+        left.isDeleted == right.isDeleted;
+
+    final changed = merged.length != local.length ||
+        merged.any((course) {
+          final old = localByUuid[course.uuid];
+          return old == null || !sameCourse(old, course);
+        });
     if (changed) {
-      await CourseService.saveCourses(username, merged.values.toList());
+      await CourseService.saveCourses(username, merged);
       onChanged(merged.length);
     }
   }
@@ -921,12 +942,16 @@ class LanSyncService {
     if (_isSyncing) return LanSyncResult(success: false, message: '同步进行中');
     _isSyncing = true;
     _currentConfig = config ?? LanSyncConfig();
+    // A retry must never inherit the previous request's confirmation token.
+    _pendingRequests.remove(device.deviceId);
+    _pendingTokens.remove(device.deviceId);
     _emitProgressValue(0);
+    HttpClient? client;
 
     try {
       _emitProgress('正在请求连接 ${device.deviceName}...');
 
-      final client = HttpClient();
+      client = HttpClient();
       client.badCertificateCallback = (cert, host, port) => true;
 
       final requestPayload = {
@@ -956,20 +981,32 @@ class LanSyncService {
         final decryptedBody = _decrypt(responseData['payload']);
         final data = jsonDecode(decryptedBody) as Map<String, dynamic>;
         if (data['pending'] == true) {
-          _emitProgress('等待对方确认...');
-          return LanSyncResult(success: false, message: '等待对方确认');
+          final token = data['token']?.toString();
+          if (token == null || token.isEmpty) {
+            errorMsg = '连接失败: 对方返回的确认令牌无效';
+          } else {
+            // The receiver stores the incoming request under our device ID.
+            // Mirror that pending state here so the receiver's later
+            // `confirm` request can be accepted by this device's server.
+            _pendingRequests[device.deviceId] = device.copyWith(
+              pendingApproval: true,
+            );
+            _pendingTokens[device.deviceId] = token;
+            _emitProgress('等待对方确认...');
+            return LanSyncResult(success: false, message: '等待对方确认');
+          }
         }
         if (data['error'] != null) {
           errorMsg = data['error'];
         }
       }
 
-      client.close();
-      _isSyncing = false;
       return LanSyncResult(success: false, message: errorMsg);
     } catch (e) {
-      _isSyncing = false;
       return LanSyncResult(success: false, message: '连接失败: $e');
+    } finally {
+      client?.close(force: true);
+      _isSyncing = false;
     }
   }
 
@@ -979,10 +1016,14 @@ class LanSyncService {
   Future<LanSyncResult> confirmAndSync(LanDevice device,
       {LanSyncConfig? config}) async {
     if (_isSyncing) return LanSyncResult(success: false, message: '同步进行中');
+    if (_pendingTokens[device.deviceId] == null) {
+      return LanSyncResult(success: false, message: '确认令牌已失效，请重新发起同步');
+    }
     _isSyncing = true;
     _currentConfig = config ?? LanSyncConfig();
     _currentPendingToken = _pendingTokens[device.deviceId];
     _emitProgressValue(0);
+    HttpClient? client;
 
     try {
       _emitProgress('正在连接 ${device.deviceName}...');
@@ -1014,7 +1055,7 @@ class LanSyncService {
       _emitProgress('正在发送加密数据...');
       _emitProgressValue(0.1);
 
-      final client = HttpClient();
+      client = HttpClient();
       client.badCertificateCallback = (cert, host, port) => true;
 
       final encryptedPayload = _encrypt(jsonEncode(payload));
@@ -1034,7 +1075,6 @@ class LanSyncService {
           jsonDecode(encryptedBody) as Map<String, dynamic>;
 
       if (encryptedResponseData['encrypted'] != true) {
-        _isSyncing = false;
         return LanSyncResult(
             success: false,
             message:
@@ -1045,7 +1085,6 @@ class LanSyncService {
       final responseData = jsonDecode(decryptedBody) as Map<String, dynamic>;
 
       if (responseData['success'] != true) {
-        _isSyncing = false;
         return LanSyncResult(
             success: false, message: '同步失败: ${responseData['error']}');
       }
@@ -1097,8 +1136,8 @@ class LanSyncService {
       await _mergeCourses(
           username, remoteCourses, (count) => coursesSynced = count);
       _emitProgressValue(1.0);
-
-      client.close();
+      _pendingRequests.remove(device.deviceId);
+      _pendingTokens.remove(device.deviceId);
 
       return LanSyncResult(
         success: true,
@@ -1112,9 +1151,9 @@ class LanSyncService {
         progress: 1.0,
       );
     } catch (e) {
-      _isSyncing = false;
       return LanSyncResult(success: false, message: '连接失败: $e');
     } finally {
+      client?.close(force: true);
       _isSyncing = false;
     }
   }
@@ -1176,12 +1215,13 @@ class LanSyncService {
     if (_isSyncing) return LanSyncResult(success: false, message: '同步进行中');
     _isSyncing = true;
     _emitProgressValue(0);
+    HttpClient? client;
 
     try {
       final fileName = p.basename(file.path);
       _emitProgress('正在发送文件到 ${device.deviceName}: $fileName');
 
-      final client = HttpClient();
+      client = HttpClient();
       client.connectionTimeout = const Duration(seconds: 10);
 
       final uri = Uri.parse('http://${device.ip}:${device.port}/file').replace(
@@ -1203,7 +1243,6 @@ class LanSyncService {
       }));
 
       final response = await request.close();
-      _isSyncing = false;
 
       if (response.statusCode == HttpStatus.ok) {
         _emitProgressValue(1.0);
@@ -1214,8 +1253,10 @@ class LanSyncService {
             success: false, message: '服务器响应错误: ${response.statusCode}');
       }
     } catch (e) {
-      _isSyncing = false;
       return LanSyncResult(success: false, message: '发送失败: $e');
+    } finally {
+      client?.close(force: true);
+      _isSyncing = false;
     }
   }
 

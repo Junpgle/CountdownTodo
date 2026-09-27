@@ -1015,7 +1015,7 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
       context: context,
       initialTime: TimeOfDay.fromDateTime(start ? _start : _end),
     );
-    if (value == null) return;
+    if (value == null || !mounted) return;
     setState(() {
       if (start) {
         _start = DateTime(
@@ -1287,7 +1287,7 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
     final t = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.fromDateTime(isStart ? _start : _end));
-    if (t == null) return;
+    if (t == null || !mounted) return;
     setState(() {
       if (isStart) {
         _start =
@@ -1304,7 +1304,7 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
         initialDate: isStart ? _start : _end,
         firstDate: DateTime(2020),
         lastDate: DateTime.now().add(const Duration(days: 1)));
-    if (d == null) return;
+    if (d == null || !mounted) return;
     setState(() {
       if (isStart) {
         _start = DateTime(d.year, d.month, d.day, _start.hour, _start.minute);

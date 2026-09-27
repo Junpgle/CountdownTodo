@@ -85,6 +85,45 @@ class DatabaseHelper {
     return _database!;
   }
 
+  /// Returns the database for the active account and rejects stale callers.
+  ///
+  /// The database file is selected from `current_login_user`, while most
+  /// storage APIs also receive a username argument.  Keeping the check here
+  /// prevents an async operation that started for one account from silently
+  /// reading or writing the database opened for another account.
+  Future<Database> databaseForUser(String username) async {
+    if (username.isEmpty) {
+      throw ArgumentError.value(username, 'username', '账户名不能为空');
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final activeUsername = prefs.getString('current_login_user');
+    final hasActiveUsername =
+        activeUsername != null && activeUsername.isNotEmpty;
+    if (hasActiveUsername && activeUsername != username) {
+      throw StateError(
+        '账户已切换，拒绝使用旧账户数据: expected=$activeUsername, requested=$username',
+      );
+    }
+
+    final db = await database;
+    final latestActiveUsername =
+        (await SharedPreferences.getInstance()).getString('current_login_user');
+    final latestHasActiveUsername =
+        latestActiveUsername != null && latestActiveUsername.isNotEmpty;
+    if (latestHasActiveUsername && latestActiveUsername != username) {
+      throw StateError(
+        '账户已切换，拒绝使用旧账户数据: expected=$latestActiveUsername, requested=$username',
+      );
+    }
+    if ((hasActiveUsername || latestHasActiveUsername) &&
+        _activeUsername != username) {
+      throw StateError(
+        '账户数据库已切换，拒绝使用旧账户数据: active=$_activeUsername, requested=$username',
+      );
+    }
+    return db;
+  }
+
   /// 🚀 Uni-Sync: 强制关闭并重置数据库连接（用于登出或切换用户）
   Future<void> closeDatabase() async {
     final opening = _openingDatabase;
@@ -542,6 +581,8 @@ class DatabaseHelper {
         name TEXT NOT NULL,
         type TEXT NOT NULL DEFAULT 'expense',
         icon TEXT NOT NULL DEFAULT '📦',
+        icon_customized INTEGER NOT NULL DEFAULT 0,
+        name_customized INTEGER NOT NULL DEFAULT 0,
         color_value INTEGER,
         parent_uuid TEXT,
         is_system INTEGER NOT NULL DEFAULT 0,
@@ -607,6 +648,7 @@ class DatabaseHelper {
         uuid TEXT NOT NULL UNIQUE,
         month_key TEXT NOT NULL,
         category_uuid TEXT,
+        payment_method_uuid TEXT,
         amount_minor INTEGER NOT NULL DEFAULT 0,
         currency_code TEXT NOT NULL DEFAULT 'CNY',
         note TEXT,
@@ -724,6 +766,27 @@ class DatabaseHelper {
       'finance_loans',
       'finance_loan_installments',
     ];
+    final categoryColumns =
+        await db.rawQuery('PRAGMA table_info(finance_categories)');
+    if (!categoryColumns.any((row) => row['name'] == 'icon_customized')) {
+      await db.execute(
+        'ALTER TABLE finance_categories '
+        'ADD COLUMN icon_customized INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+    if (!categoryColumns.any((row) => row['name'] == 'name_customized')) {
+      await db.execute(
+        'ALTER TABLE finance_categories '
+        'ADD COLUMN name_customized INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+    final budgetColumns =
+        await db.rawQuery('PRAGMA table_info(finance_budgets)');
+    if (!budgetColumns.any((row) => row['name'] == 'payment_method_uuid')) {
+      await db.execute(
+        'ALTER TABLE finance_budgets ADD COLUMN payment_method_uuid TEXT',
+      );
+    }
     for (final table in financeTables) {
       final columns = await db.rawQuery('PRAGMA table_info($table)');
       var addedPendingColumn = false;
@@ -800,6 +863,10 @@ class DatabaseHelper {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_finance_budgets_month '
       'ON finance_budgets(is_deleted, month_key, category_uuid)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_budgets_payment_method_month '
+      'ON finance_budgets(is_deleted, month_key, payment_method_uuid)',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_finance_recurring_rules_active '
@@ -920,7 +987,10 @@ class DatabaseHelper {
             if (oldVersion < 52) {
               await ensureAiUsageSchema(db);
             }
-            if (oldVersion < 51) {
+            if (oldVersion < 53) {
+              await ensureFinanceSchema(db);
+            }
+            if (oldVersion < 54) {
               await ensureFinanceSchema(db);
             }
             if (oldVersion < 44) {
@@ -1533,6 +1603,7 @@ class DatabaseHelper {
 
   /// 记录本地审计日志
   Future<void> insertLocalAuditLog({
+    Database? databaseOverride,
     String? teamUuid,
     required int userId,
     required String targetTable,
@@ -1542,7 +1613,7 @@ class DatabaseHelper {
     Map<String, dynamic>? afterData,
     String? operatorName,
   }) async {
-    final db = await database;
+    final db = databaseOverride ?? await database;
     await db.insert('local_audit_logs', {
       'team_uuid': teamUuid,
       'user_id': userId,
@@ -2208,7 +2279,6 @@ class DatabaseHelper {
           JOIN todos_fts f ON t.uuid = f.uuid
           WHERE todos_fts MATCH ?
           AND t.is_deleted = 0
-          LIMIT 20
         ''', [ftsQuery]);
 
         for (var r in ftsResults) {
@@ -2219,32 +2289,27 @@ class DatabaseHelper {
       }
     }
 
-    // 2. 补全 LIKE 搜索 (解决中文分词无法匹配中间词的问题)
-    // 如果 FTS 结果不足，或者包含中文字符，则使用 LIKE 增强召回
-    if (resultScores.length < 20) {
-      final likeResults = await db.rawQuery('''
+    // 2. LIKE 补全中间词和团队名，不能因为 FTS 已命中部分记录
+    // 就跳过其余匹配项。
+    final likeResults = await db.rawQuery('''
         SELECT uuid, updated_at FROM todos 
         WHERE is_deleted = 0 
-        AND (content LIKE ? OR remark LIKE ?)
+        AND (content LIKE ? OR remark LIKE ? OR team_name LIKE ?)
         ORDER BY updated_at DESC
-        LIMIT 20
-      ''', ['%$query%', '%$query%']);
+      ''', ['%$query%', '%$query%', '%$query%']);
 
-      for (var r in likeResults) {
-        resultScores[r['uuid'].toString()] = (r['updated_at'] as int?) ?? 0;
-      }
+    for (var r in likeResults) {
+      resultScores[r['uuid'].toString()] = (r['updated_at'] as int?) ?? 0;
     }
 
     if (resultScores.isEmpty) return [];
 
-    final finalResults = await getTodoMaps(
-      includeDeleted: true,
-      uuids: resultScores.keys.toList(),
-    );
+    final finalResults =
+        await _getSearchTodoMaps(db, resultScores.keys.toList());
     // 按更新时间降序排序
     finalResults.sort((a, b) => (resultScores[b['uuid'].toString()] ?? 0)
         .compareTo(resultScores[a['uuid'].toString()] ?? 0));
-    return finalResults.take(20).toList();
+    return finalResults;
   }
 
   Future<void> warmSearchIndex() async {
@@ -2309,7 +2374,6 @@ class DatabaseHelper {
           (created_date >= ? AND created_date < ?)
         )
       ORDER BY updated_at DESC
-      LIMIT 20
     ''', [startInclusive, endExclusive, startInclusive, endExclusive]);
     if (ids.isEmpty) return const [];
 
@@ -2317,17 +2381,42 @@ class DatabaseHelper {
       for (final row in ids)
         row['uuid'].toString(): (row['updated_at'] as num?)?.toInt() ?? 0,
     };
-    final rows = await getTodoMaps(
-      includeDeleted: true,
-      uuids: scoreById.keys.toList(),
-    );
+    final rows = await _getSearchTodoMaps(db, scoreById.keys.toList());
     rows.sort((a, b) => (scoreById[b['uuid'].toString()] ?? 0)
         .compareTo(scoreById[a['uuid'].toString()] ?? 0));
     return rows;
   }
 
-  Future<int> countOverdueTodos(int beforeExclusive) async {
+  Future<List<Map<String, dynamic>>> _getSearchTodoMaps(
+      Database db, List<String> uuids) async {
+    const batchSize = 400;
+    final rows = <Map<String, dynamic>>[];
+    for (var start = 0; start < uuids.length; start += batchSize) {
+      rows.addAll(await getTodoMaps(
+        includeDeleted: true,
+        uuids: uuids.sublist(
+            start,
+            start + batchSize > uuids.length
+                ? uuids.length
+                : start + batchSize),
+        databaseOverride: db,
+      ));
+    }
+    return rows;
+  }
+
+  Future<int> countOverdueTodos(
+    int beforeExclusive, {
+    Set<String> excludedRecurrenceSeriesIds = const <String>{},
+  }) async {
     final db = await instance.database;
+    final excludedSeriesIds = excludedRecurrenceSeriesIds
+        .where((seriesId) => seriesId.isNotEmpty)
+        .toList(growable: false);
+    final excludedSeriesClause = excludedSeriesIds.isEmpty
+        ? ''
+        : 'AND (recurrence_series_id IS NULL OR recurrence_series_id NOT IN '
+            '(${List.filled(excludedSeriesIds.length, '?').join(', ')}))';
     return Sqflite.firstIntValue(await db.rawQuery('''
       SELECT COUNT(*)
       FROM todos
@@ -2336,7 +2425,8 @@ class DatabaseHelper {
         AND due_date IS NOT NULL
         AND due_date != 0
         AND due_date < ?
-    ''', [beforeExclusive])) ?? 0;
+        $excludedSeriesClause
+    ''', [beforeExclusive, ...excludedSeriesIds])) ?? 0;
   }
 
   Future<List<Map<String, dynamic>>> searchTodoGroups(String query) async {
@@ -2346,7 +2436,6 @@ class DatabaseHelper {
       WHERE is_deleted = 0 
       AND name LIKE ?
       ORDER BY updated_at DESC
-      LIMIT 10
     ''', ['%$query%']);
   }
 
@@ -2357,7 +2446,6 @@ class DatabaseHelper {
       WHERE is_deleted = 0 
       AND (course_name LIKE ? OR teacher_name LIKE ? OR room_name LIKE ?)
       ORDER BY updated_at DESC
-      LIMIT 15
     ''', ['%$query%', '%$query%', '%$query%']);
   }
 
@@ -2368,7 +2456,6 @@ class DatabaseHelper {
       WHERE is_deleted = 0 
       AND (title LIKE ? OR team_name LIKE ?)
       ORDER BY updated_at DESC
-      LIMIT 10
     ''', ['%$query%', '%$query%']);
   }
 
@@ -2379,7 +2466,6 @@ class DatabaseHelper {
       WHERE is_deleted = 0 
       AND (title LIKE ? OR remark LIKE ?)
       ORDER BY start_time DESC
-      LIMIT 15
     ''', ['%$query%', '%$query%']);
   }
 
@@ -2394,7 +2480,6 @@ class DatabaseHelper {
         AND start_time >= ?
         AND start_time < ?
       ORDER BY start_time DESC
-      LIMIT 15
     ''', [startInclusive, endExclusive]);
   }
 
@@ -2487,8 +2572,12 @@ class DatabaseHelper {
     int? limit,
     bool inlineTextColumns = false,
     bool includeConflictData = false,
+    Database? databaseOverride,
   }) async {
-    final db = await instance.database;
+    // Callers that already captured a user-scoped database must keep using
+    // that handle.  Re-opening the current database here creates a window in
+    // which an account switch can make the read come from another user.
+    final db = databaseOverride ?? await instance.database;
     final prefs = await SharedPreferences.getInstance();
     final int userId = prefs.getInt('current_user_id') ?? 0;
 

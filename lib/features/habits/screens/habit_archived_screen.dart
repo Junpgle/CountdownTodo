@@ -108,48 +108,57 @@ class _HabitArchivedScreenState extends State<HabitArchivedScreen> {
     final visible = _goals
         .where((goal) => goal.name.toLowerCase().contains(query))
         .toList();
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('已归档习惯'),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadData,
-              child: ManagementPage(maxWidth: 840, children: [
-                const ManagementIntro(
-                    icon: Icons.inventory_2_outlined,
-                    title: '暂时收起，随时继续',
-                    description: '归档只隐藏日常入口，习惯与历史记录仍会保留。恢复后可继续追踪。'),
-                if (_loadFailed) ...[
-                  ManagementLoadError(
-                      title: '暂时无法加载习惯',
-                      description: '请稍后重试，已保存的记录不会受影响。',
-                      onRetry: _loadData),
-                ] else ...[
-                  ManagementSearchField(
-                      controller: _searchController,
-                      hintText: '搜索已归档习惯',
-                      onChanged: (_) => setState(() {})),
-                  const SizedBox(height: 16),
-                  Text('已归档 · ${_goals.length}',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleSmall
-                          ?.copyWith(color: scheme.onSurfaceVariant)),
-                  const SizedBox(height: 12),
-                  if (visible.isEmpty)
-                    ManagementEmptyState(
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadData,
+                child: ManagementPage(
+                  topPadding: topBarHeight,
+                  maxWidth: 840,
+                  children: [
+                    const ManagementIntro(
                         icon: Icons.inventory_2_outlined,
-                        title: query.isEmpty ? '暂无已归档习惯' : '没有找到匹配的习惯',
-                        description: query.isEmpty
-                            ? '不再需要每日追踪的习惯，可以先归档在这里。'
-                            : '试试其他名称，或清空搜索。'),
-                  ...visible.map((goal) => _buildGoalTile(goal, scheme)),
-                ],
-              ]),
-            ),
+                        title: '暂时收起，随时继续',
+                        description: '归档只隐藏日常入口，习惯与历史记录仍会保留。恢复后可继续追踪。'),
+                    if (_loadFailed) ...[
+                      ManagementLoadError(
+                          title: '暂时无法加载习惯',
+                          description: '请稍后重试，已保存的记录不会受影响。',
+                          onRetry: _loadData),
+                    ] else ...[
+                      ManagementSearchField(
+                          controller: _searchController,
+                          hintText: '搜索已归档习惯',
+                          onChanged: (_) => setState(() {})),
+                      const SizedBox(height: 16),
+                      Text('已归档 · ${_goals.length}',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(color: scheme.onSurfaceVariant)),
+                      const SizedBox(height: 12),
+                      if (visible.isEmpty)
+                        ManagementEmptyState(
+                            icon: Icons.inventory_2_outlined,
+                            title: query.isEmpty ? '暂无已归档习惯' : '没有找到匹配的习惯',
+                            description: query.isEmpty
+                                ? '不再需要每日追踪的习惯，可以先归档在这里。'
+                                : '试试其他名称，或清空搜索。'),
+                      ...visible.map((goal) => _buildGoalTile(goal, scheme)),
+                    ],
+                  ],
+                ),
+              ),
+      ),
     );
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import '../../models.dart';
+import '../course_schedule_semantics.dart';
 
 class XidianScheduleParser {
   /// 传入 ICS 字符串和 本学期第一周的周一日期
@@ -15,10 +16,6 @@ class XidianScheduleParser {
     String? location;
     DateTime? dtStart;
     DateTime? dtEnd;
-
-    // 将开学日期统一归零时分秒，以确保计算周差准确
-    DateTime semStart = DateTime(
-        semesterStartDate.year, semesterStartDate.month, semesterStartDate.day);
 
     for (var line in lines) {
       line = line.trim();
@@ -68,10 +65,10 @@ class XidianScheduleParser {
           int endTime = localEnd.hour * 100 + localEnd.minute;
 
           // 4. 计算是第几周
-          DateTime eventStartDay =
-              DateTime(localStart.year, localStart.month, localStart.day);
-          int daysDiff = eventStartDay.difference(semStart).inDays;
-          int weekIndex = (daysDiff ~/ 7) + 1;
+          int weekIndex = CourseScheduleSemantics.weekIndexForDate(
+            semesterStartDate,
+            localStart,
+          );
 
           if (weekIndex < 1) weekIndex = 1; // 容错
 

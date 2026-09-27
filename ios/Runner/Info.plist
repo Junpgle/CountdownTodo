@@ -26,6 +26,20 @@
 	<true/>
 	<key>NSMotionUsageDescription</key>
 	<string>严格自由专注需要使用手机运动传感器来检测翻转状态。</string>
+	<!-- The settings page offers an explicit Aliyun HTTP direct route. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>101.200.13.100</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>CountDownTodo 需要访问照片，以便将图片添加到你的本地日记中。</string>
 	<key>NSCameraUsageDescription</key>

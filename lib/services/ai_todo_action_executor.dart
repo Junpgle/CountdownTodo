@@ -194,6 +194,14 @@ class AiTodoActionExecutor {
         continue;
       }
 
+      // plan_todos is retained only as a parser compatibility alias. It has
+      // no safe standalone creation semantics: the parser must first resolve
+      // it to create_plan_block with a real existing todoId. Keep this guard
+      // here as a second barrier for manually imported or persisted actions.
+      if (action.type == AiTodoActionType.planTodos) {
+        continue;
+      }
+
       if (action.isCountdownAction) {
         final countdown = _buildCountdown(action, existingCountdowns);
         if (countdown != null) {

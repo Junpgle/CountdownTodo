@@ -1,5 +1,6 @@
 import '../models.dart';
 import '../models/widget_snapshot.dart';
+import '../services/todo_recurrence_date_service.dart';
 
 const int _pastOccurrenceLimit = 8;
 const int _futureOccurrenceLimit = 40;
@@ -46,8 +47,10 @@ List<WidgetRecurrenceSeriesItem> buildWidgetRecurrenceSeries(
             59,
             999,
           );
-    final isActive = ruleAnchor.recurrence != RecurrenceType.none &&
-        (recurrenceEndDay == null || !recurrenceEndDay.isBefore(current));
+    final isActive =
+        TodoRecurrenceDateService.nextDate(_startOf(ruleAnchor), ruleAnchor) !=
+                null &&
+            (recurrenceEndDay == null || !recurrenceEndDay.isBefore(current));
 
     var completedCount = 0;
     var overdueCount = 0;
@@ -171,7 +174,10 @@ List<WidgetRecurrenceOccurrenceItem> _buildOccurrenceWindow(
           isProjected: true,
         ),
       );
-      projectedStart = _nextRecurrenceStart(projectedStart, ruleAnchor);
+      final nextStart =
+          TodoRecurrenceDateService.nextDate(projectedStart, ruleAnchor);
+      if (nextStart == null) break;
+      projectedStart = nextStart;
     }
   }
 
@@ -184,89 +190,6 @@ List<WidgetRecurrenceOccurrenceItem> _buildOccurrenceWindow(
     ...past.skip((past.length - _pastOccurrenceLimit).clamp(0, past.length)),
     ...future.take(_futureOccurrenceLimit),
   ];
-}
-
-DateTime _nextRecurrenceStart(DateTime current, TodoItem todo) {
-  switch (todo.recurrence) {
-    case RecurrenceType.daily:
-      return DateTime(
-        current.year,
-        current.month,
-        current.day + 1,
-        current.hour,
-        current.minute,
-        current.second,
-        current.millisecond,
-      );
-    case RecurrenceType.customDays:
-      return DateTime(
-        current.year,
-        current.month,
-        current.day + (todo.customIntervalDays ?? 1).clamp(1, 3650),
-        current.hour,
-        current.minute,
-        current.second,
-        current.millisecond,
-      );
-    case RecurrenceType.weekly:
-      return DateTime(
-        current.year,
-        current.month,
-        current.day + 7,
-        current.hour,
-        current.minute,
-        current.second,
-        current.millisecond,
-      );
-    case RecurrenceType.weekdays:
-      var next = DateTime(
-        current.year,
-        current.month,
-        current.day + 1,
-        current.hour,
-        current.minute,
-        current.second,
-        current.millisecond,
-      );
-      while (next.weekday == DateTime.saturday ||
-          next.weekday == DateTime.sunday) {
-        next = DateTime(
-          next.year,
-          next.month,
-          next.day + 1,
-          next.hour,
-          next.minute,
-          next.second,
-          next.millisecond,
-        );
-      }
-      return next;
-    case RecurrenceType.monthly:
-      final targetMonth = DateTime(current.year, current.month + 1);
-      final lastDay = DateTime(targetMonth.year, targetMonth.month + 1, 0).day;
-      return DateTime(
-        targetMonth.year,
-        targetMonth.month,
-        current.day.clamp(1, lastDay),
-        current.hour,
-        current.minute,
-        current.second,
-        current.millisecond,
-      );
-    case RecurrenceType.yearly:
-      final lastDay = DateTime(current.year + 1, current.month + 1, 0).day;
-      return DateTime(
-        current.year + 1,
-        current.month,
-        current.day.clamp(1, lastDay),
-        current.hour,
-        current.minute,
-        current.second,
-        current.millisecond,
-      );
-    case RecurrenceType.none:
-      return current;
-  }
 }
 
 DateTime _startOf(TodoItem todo) => todo.effectiveStartTime;

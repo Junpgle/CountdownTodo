@@ -30,7 +30,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         isDarkMode ? Brightness.dark : Brightness.light;
 
     final mainScreen = Scaffold(
-      extendBody: !isTablet,
+      // 让宽屏底栏叠在页面背景上，壁纸不会被 Scaffold 的底栏槽位截断。
+      extendBody: true,
       resizeToAvoidBottomInset: !_isSearchOpen, // 🚀 关键：搜索时锁定背景，防止位移卡顿
       backgroundColor: (showWallpaper && !AppPlatform.isWindows)
           ? Colors.transparent
@@ -39,55 +40,61 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         children: [
           if (showWallpaper)
             Positioned.fill(
-              child: _wallpaperUrl!.startsWith('assets/')
-                  ? Builder(
-                      builder: (context) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (_wallpaperDominantColor == null) {
-                            _extractColorFromProvider(
-                                AssetImage(_wallpaperUrl!), _wallpaperUrl!);
-                          }
-                        });
-                        return Image.asset(
-                          _wallpaperUrl!,
-                          fit: BoxFit.cover,
-                        );
-                      },
-                    )
-                  : _isLocalFilePath(_wallpaperUrl!) &&
-                          localImageProvider(_wallpaperUrl!) != null
-                      ? Builder(
-                          builder: (context) {
-                            final provider =
-                                localImageProvider(_wallpaperUrl!)!;
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (_wallpaperDominantColor == null) {
-                                _extractColorFromProvider(
-                                    provider, _wallpaperUrl!);
-                              }
-                            });
-                            return Image(
-                              image: provider,
-                              fit: BoxFit.cover,
-                            );
-                          },
-                        )
-                      : _WallpaperNetworkImage(
-                          url: _wallpaperUrl!,
-                          onImageProvider: (provider) {
-                            _extractColorFromProvider(provider, _wallpaperUrl!);
-                          },
-                          onSuccess: () {
-                            _wallpaperRetryCount = 0;
-                          },
-                          onError: () {
-                            _handleWallpaperError();
-                          },
-                        ),
+              child: RepaintBoundary(
+                // Darken the image in its draw pass. A separate full-screen
+                // scrim adds another alpha-blended pass on every GPU frame.
+                child: _wallpaperUrl!.startsWith('assets/')
+                    ? Builder(
+                        builder: (context) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (_wallpaperDominantColor == null) {
+                              _extractColorFromProvider(
+                                  AssetImage(_wallpaperUrl!), _wallpaperUrl!);
+                            }
+                          });
+                          return Image.asset(
+                            _wallpaperUrl!,
+                            fit: BoxFit.cover,
+                            color: const Color(0x66000000),
+                            colorBlendMode: BlendMode.srcOver,
+                          );
+                        },
+                      )
+                    : _isLocalFilePath(_wallpaperUrl!) &&
+                            localImageProvider(_wallpaperUrl!) != null
+                        ? Builder(
+                            builder: (context) {
+                              final provider =
+                                  localImageProvider(_wallpaperUrl!)!;
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (_wallpaperDominantColor == null) {
+                                  _extractColorFromProvider(
+                                      provider, _wallpaperUrl!);
+                                }
+                              });
+                              return Image(
+                                image: provider,
+                                fit: BoxFit.cover,
+                                color: const Color(0x66000000),
+                                colorBlendMode: BlendMode.srcOver,
+                              );
+                            },
+                          )
+                        : _WallpaperNetworkImage(
+                            url: _wallpaperUrl!,
+                            onImageProvider: (provider) {
+                              _extractColorFromProvider(
+                                  provider, _wallpaperUrl!);
+                            },
+                            onSuccess: () {
+                              _wallpaperRetryCount = 0;
+                            },
+                            onError: () {
+                              _handleWallpaperError();
+                            },
+                          ),
+              ),
             ),
-          if (showWallpaper)
-            Positioned.fill(
-                child: Container(color: Colors.black.withValues(alpha: 0.4))),
           SafeArea(
             // 仅避让顶部状态栏。列表需要继续绘制到 Android 手势导航区
             // 后方，末尾的滚动余量再保证卡片操作不会被底栏遮挡。
@@ -673,12 +680,99 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
 
                                       final showFocusTab = _selectedTabIndex ==
                                           _homeFocusTabIndex;
-                                      final activeWidgets = showFocusTab
-                                          ? tab3Widgets
-                                          : tab1Widgets;
                                       final hasCopyright =
                                           _wallpaperCopyright?.isNotEmpty ??
                                               false;
+
+                                      Widget buildMobileList(
+                                        bool focusPage,
+                                        double listHeaderExtent,
+                                      ) {
+                                        final widgets = focusPage
+                                            ? tab3Widgets
+                                            : tab1Widgets;
+                                        return RepaintBoundary(
+                                          key: ValueKey<String>(focusPage
+                                              ? 'home-focus-tab-content'
+                                              : 'home-main-tab-content'),
+                                          child:
+                                              OptionalLiquidGlassScrollOptimizer(
+                                            child: ListView.builder(
+                                              key: PageStorageKey<String>(
+                                                focusPage
+                                                    ? 'home-focus-sections'
+                                                    : 'home-main-sections',
+                                              ),
+                                              padding: EdgeInsets.fromLTRB(
+                                                16,
+                                                listHeaderExtent + 16,
+                                                16,
+                                                16,
+                                              ),
+                                              itemCount: widgets.length +
+                                                  (hasCopyright ? 1 : 0) +
+                                                  1,
+                                              itemBuilder: (context, index) {
+                                                if (index < widgets.length) {
+                                                  return widgets[index];
+                                                }
+                                                if (hasCopyright &&
+                                                    index == widgets.length) {
+                                                  return _buildWallpaperCopyright(
+                                                      isLight);
+                                                }
+                                                return SizedBox(
+                                                  // The header overlays the list, so
+                                                  // reserve it at the trailing edge
+                                                  // to keep short pages scrollable.
+                                                  height:
+                                                      homeDashboardPhoneScrollTailExtent(
+                                                    headerExtent:
+                                                        listHeaderExtent,
+                                                    bottomInset:
+                                                        bottomSystemInset,
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        );
+                                      }
+
+                                      if (AppPlatform.isAndroid) {
+                                        if (showFocusTab) {
+                                          _lastFocusHeaderExtent = headerExtent;
+                                        } else {
+                                          _lastHomeHeaderExtent = headerExtent;
+                                        }
+                                        // Keep each visited list mounted so a
+                                        // tab switch can reuse its painted card
+                                        // layers and scroll position. The hidden
+                                        // list neither paints nor runs tickers.
+                                        return Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            Offstage(
+                                              offstage: showFocusTab,
+                                              child: TickerMode(
+                                                enabled: !showFocusTab,
+                                                child: buildMobileList(false,
+                                                    _lastHomeHeaderExtent),
+                                              ),
+                                            ),
+                                            if (_focusTabVisited)
+                                              Offstage(
+                                                offstage: !showFocusTab,
+                                                child: TickerMode(
+                                                  enabled: showFocusTab,
+                                                  child: buildMobileList(true,
+                                                      _lastFocusHeaderExtent),
+                                                ),
+                                              ),
+                                          ],
+                                        );
+                                      }
+
                                       return AnimatedSwitcher(
                                         duration:
                                             const Duration(milliseconds: 280),
@@ -701,69 +795,22 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                           final focusPage = child.key ==
                                               const ValueKey<String>(
                                                   'home-focus-tab-content');
+                                          final enteringPage = SlideTransition(
+                                            position: Tween<Offset>(
+                                              begin: Offset(
+                                                  focusPage ? 0.035 : -0.035,
+                                                  0),
+                                              end: Offset.zero,
+                                            ).animate(animation),
+                                            child: child,
+                                          );
                                           return FadeTransition(
                                             opacity: animation,
-                                            child: SlideTransition(
-                                              position: Tween<Offset>(
-                                                begin: Offset(
-                                                    focusPage ? 0.035 : -0.035,
-                                                    0),
-                                                end: Offset.zero,
-                                              ).animate(animation),
-                                              child: child,
-                                            ),
+                                            child: enteringPage,
                                           );
                                         },
-                                        child: RepaintBoundary(
-                                          key: ValueKey<String>(showFocusTab
-                                              ? 'home-focus-tab-content'
-                                              : 'home-main-tab-content'),
-                                          child:
-                                              OptionalLiquidGlassScrollOptimizer(
-                                            child: ListView.builder(
-                                              key: PageStorageKey<String>(
-                                                showFocusTab
-                                                    ? 'home-focus-sections'
-                                                    : 'home-main-sections',
-                                              ),
-                                              padding: EdgeInsets.fromLTRB(
-                                                16,
-                                                headerExtent + 16,
-                                                16,
-                                                16,
-                                              ),
-                                              itemCount: activeWidgets.length +
-                                                  (hasCopyright ? 1 : 0) +
-                                                  1,
-                                              itemBuilder: (context, index) {
-                                                if (index <
-                                                    activeWidgets.length) {
-                                                  return activeWidgets[index];
-                                                }
-                                                if (hasCopyright &&
-                                                    index ==
-                                                        activeWidgets.length) {
-                                                  return _buildWallpaperCopyright(
-                                                      isLight);
-                                                }
-                                                return SizedBox(
-                                                  // The header is an overlay rather
-                                                  // than a ListView inset. Reserve it
-                                                  // at the trailing edge too, so a
-                                                  // short home page can actually move
-                                                  // past the fixed header instead of
-                                                  // springing back at offset zero.
-                                                  height:
-                                                      homeDashboardPhoneScrollTailExtent(
-                                                    headerExtent: headerExtent,
-                                                    bottomInset:
-                                                        bottomSystemInset,
-                                                  ),
-                                                );
-                                              },
-                                            ),
-                                          ),
-                                        ),
+                                        child: buildMobileList(
+                                            showFocusTab, headerExtent),
                                       );
                                     }
 
@@ -797,17 +844,30 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               (_sectionVisibility[key] ??
                                                   true) &&
                                               sectionsMap.containsKey(key))
-                                          .map((key) => AppSystemUiRegion(
-                                                backgroundBrightness:
-                                                    cardBackgroundBrightness,
-                                                child: Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                          bottom: 24.0),
-                                                  child: sectionsMap[key]!,
-                                                ),
-                                              ))
-                                          .toList();
+                                          .map((key) {
+                                        final section = sectionsMap[key]!;
+                                        final isolateTabletSection = isTablet &&
+                                            const <String>{
+                                              'courses',
+                                              'countdowns',
+                                              'todos',
+                                              'timeline',
+                                            }.contains(key);
+                                        return AppSystemUiRegion(
+                                          backgroundBrightness:
+                                              cardBackgroundBrightness,
+                                          child: Padding(
+                                            padding: const EdgeInsets.only(
+                                              bottom: 24.0,
+                                            ),
+                                            child: isolateTabletSection
+                                                ? RepaintBoundary(
+                                                    child: section,
+                                                  )
+                                                : section,
+                                          ),
+                                        );
+                                      }).toList();
                                     }
 
                                     List<Widget> leftWidgets =
@@ -821,7 +881,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                           isTablet ? 32 : 16,
                                           headerExtent + 16,
                                           isTablet ? 32 : 16,
-                                          16 + bottomSystemInset,
+                                          16 +
+                                              bottomSystemInset +
+                                              (isTablet ? 100.0 : 0.0),
                                         ),
                                         child: Align(
                                           alignment: Alignment.topCenter,
@@ -894,60 +956,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
           ),
         ],
       ),
-      // Scaffold 的底部槽位负责悬浮层的布局，避免自绘 Positioned 把
-      // 底栏锁在内容 Stack 内并遮挡最后一张卡片。
-      bottomNavigationBar:
-          !isTablet ? _buildCustomBottomBar(isDarkMode, isLight) : null,
-      // 手机端的新增与番茄钟入口已收进底栏，避免首页右下角堆叠多个悬浮按钮。
-      // 平板保留原有快捷入口，因为平板布局不显示手机底栏。
-      floatingActionButton: isTablet
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                HomeQuickActionButton.compact(
-                  key: _homePomodoroActionKey,
-                  heroTag: 'fab_pomodoro',
-                  onPressed: () {
-                    _openHomePomodoro(sourceKey: _homePomodoroActionKey);
-                  },
-                  tooltip: '番茄钟',
-                  tint: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.primary,
-                  isDark: isDarkMode,
-                  child: const Text('🍅', style: TextStyle(fontSize: 18)),
-                ),
-                const SizedBox(height: 8),
-                HomeQuickActionButton.compact(
-                  key: _homeFinanceActionKey,
-                  heroTag: 'fab_finance',
-                  onPressed: () {
-                    _openHomeFinanceQuickEntry();
-                  },
-                  tooltip: '记一笔',
-                  tint: Theme.of(context).colorScheme.secondary,
-                  foregroundColor: Theme.of(context).colorScheme.secondary,
-                  isDark: isDarkMode,
-                  child: const Icon(Icons.add_card_outlined, size: 20),
-                ),
-                const SizedBox(height: 8),
-                HomeQuickActionButton.extended(
-                  key: _homeAddActionKey,
-                  heroTag: 'fab_todo',
-                  onPressed: () {
-                    _openHomeTodo(sourceKey: _homeAddActionKey);
-                  },
-                  tooltip: '记待办',
-                  tint: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.primary,
-                  isDark: isDarkMode,
-                  icon: const Icon(Icons.add_task),
-                  label: const Text("记待办"),
-                ),
-                const SizedBox(height: 100), // 避开平板页面的悬浮导航栏
-              ],
-            )
-          : null,
+      // Scaffold 的底部槽位负责底栏的布局，避免自绘 Positioned 把
+      // 底栏锁在内容 Stack 内并遮挡最后一张卡片。所有屏幕尺寸统一使用
+      // 底栏，宽屏不再额外堆叠番茄钟、记待办和记账悬浮按钮。
+      bottomNavigationBar: _buildCustomBottomBar(isDarkMode, isLight, isTablet),
+      floatingActionButton: null,
     );
 
     return ZoomDrawer(
@@ -1256,10 +1269,12 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _openHomeFinanceQuickEntry() async {
-    await Navigator.of(context).push<FinanceTransaction>(
-      PageTransitions.slideHorizontal(
-        const FinanceEntryScreen(),
-      ),
+    await PageTransitions.pushFromRect<FinanceTransaction>(
+      context: context,
+      page: const FinanceEntryScreen(),
+      sourceKey: _homeAddActionKey,
+      placeholderIcon: Icons.account_balance_wallet_outlined,
+      sourceBorderRadius: const BorderRadius.all(Radius.circular(22)),
     );
   }
 
@@ -1363,6 +1378,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     required IconData icon,
     required String title,
     required String subtitle,
+    void Function(ModalRoute<_HomeAddAction>?)? onBeforeSelect,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     return Material(
@@ -1371,7 +1387,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         key: key,
-        onTap: () => Navigator.of(context).pop(action),
+        onTap: () {
+          onBeforeSelect?.call(ModalRoute.of<_HomeAddAction>(context));
+          Navigator.of(context).pop(action);
+        },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
           child: Column(
@@ -1417,6 +1436,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _openHomeAddMenu() async {
+    ModalRoute<_HomeAddAction>? menuRoute;
     final action = await showModalBottomSheet<_HomeAddAction>(
       context: context,
       showDragHandle: true,
@@ -1471,6 +1491,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                       icon: Icons.account_balance_wallet_outlined,
                       title: '记账',
                       subtitle: '收入或支出',
+                      onBeforeSelect: (route) => menuRoute = route,
                     ),
                   ),
                 ],
@@ -1482,6 +1503,12 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     );
     if (!mounted || action == null) return;
 
+    if (action == _HomeAddAction.finance) {
+      // The sheet result arrives before its exit animation finishes.
+      await menuRoute?.completed;
+      if (!mounted) return;
+    }
+
     switch (action) {
       case _HomeAddAction.todo:
         await _openHomeTodo(sourceKey: _homeAddActionKey);
@@ -1492,7 +1519,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     }
   }
 
-  Widget _buildCustomBottomBar(bool isDarkMode, bool isLight) {
+  Widget _buildCustomBottomBar(
+    bool isDarkMode,
+    bool isLight,
+    bool isWide,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     final Color primaryColor = homeBottomBarPrimaryColor(
       colorScheme: colorScheme,
@@ -1515,7 +1546,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         60.0 + (bottomPadding > 0 ? bottomPadding * 0.5 : 6.0);
     final margin = floatingBottomNavigationMarginFor(
       context,
-      itemCount: 5,
+      itemCount: isWide ? 3 : 5,
     );
 
     final glassTint = Color.alphaBlend(
@@ -1531,12 +1562,18 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       weeklyButtonKey: _courseCenterKey,
       addButtonKey: _homeAddActionKey,
       pomodoroButtonKey: _homePomodoroActionKey,
+      isWide: isWide,
       height: height,
       margin: margin,
       isDarkMode: isDarkMode,
       glassTint: glassTint,
       onTabSelected: (index) {
-        setState(() => _selectedTabIndex = index);
+        setState(() {
+          _selectedTabIndex = index;
+          if (index == _homeFocusTabIndex) {
+            _focusTabVisited = true;
+          }
+        });
         if (index == _homeFocusTabIndex) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _checkFocusTabCoachMarks();
@@ -1681,6 +1718,7 @@ class _HomeDashboardBottomBar extends StatelessWidget {
     required this.weeklyButtonKey,
     required this.addButtonKey,
     required this.pomodoroButtonKey,
+    required this.isWide,
     required this.onTabSelected,
     required this.onWeeklyPressed,
     required this.onAddPressed,
@@ -1698,6 +1736,7 @@ class _HomeDashboardBottomBar extends StatelessWidget {
   final Key weeklyButtonKey;
   final Key addButtonKey;
   final Key pomodoroButtonKey;
+  final bool isWide;
   final ValueChanged<int> onTabSelected;
   final VoidCallback onWeeklyPressed;
   final VoidCallback onAddPressed;
@@ -1709,53 +1748,73 @@ class _HomeDashboardBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FloatingBottomNavigationBar(
-      items: [
-        const FloatingBottomNavigationItem(
-          icon: Icons.dashboard_rounded,
-          label: '首页',
-        ),
-        FloatingBottomNavigationItem(
-          key: weeklyButtonKey,
-          label: '周视图',
-          icon: Icons.calendar_today_rounded,
-          selectable: false,
-          onPressed: onWeeklyPressed,
-          semanticsLabel: '周视图',
-        ),
-        FloatingBottomNavigationItem(
-          label: '新增',
-          selectable: false,
-          onPressed: onAddPressed,
-          builder: (context, selectedLayer, interactive) => Center(
-            child: HomeBottomNavigationActionButton(
-              buttonKey: selectedLayer ? null : addButtonKey,
-              primaryColor: primaryColor,
-              interactive: interactive,
-              onPressed: onAddPressed,
-              semanticsLabel: '新增',
-              child: Icon(
-                Icons.add_rounded,
-                color: Theme.of(context).colorScheme.onPrimary,
-                size: 28,
-              ),
+    FloatingBottomNavigationItem buildWeeklyItem() {
+      return FloatingBottomNavigationItem(
+        key: weeklyButtonKey,
+        label: '周视图',
+        icon: Icons.calendar_today_rounded,
+        selectable: false,
+        onPressed: onWeeklyPressed,
+        semanticsLabel: '周视图',
+      );
+    }
+
+    FloatingBottomNavigationItem buildAddItem() {
+      return FloatingBottomNavigationItem(
+        label: '新增',
+        selectable: false,
+        onPressed: onAddPressed,
+        builder: (context, selectedLayer, interactive) => Center(
+          child: HomeBottomNavigationActionButton(
+            buttonKey: selectedLayer ? null : addButtonKey,
+            primaryColor: primaryColor,
+            interactive: interactive,
+            onPressed: onAddPressed,
+            semanticsLabel: '新增',
+            child: Icon(
+              Icons.add_rounded,
+              color: Theme.of(context).colorScheme.onPrimary,
+              size: 28,
             ),
           ),
         ),
-        FloatingBottomNavigationItem(
-          key: pomodoroButtonKey,
-          label: '番茄钟',
-          iconWidget: const Text('🍅', style: TextStyle(fontSize: 20)),
-          selectable: false,
-          onPressed: onPomodoroPressed,
-          semanticsLabel: '番茄钟',
-        ),
-        const FloatingBottomNavigationItem(
-          icon: Icons.adjust_rounded,
-          label: '专注',
-        ),
-      ],
-      selectedIndex: selectedIndex,
+      );
+    }
+
+    FloatingBottomNavigationItem buildPomodoroItem() {
+      return FloatingBottomNavigationItem(
+        key: pomodoroButtonKey,
+        label: '番茄钟',
+        iconWidget: const Text('🍅', style: TextStyle(fontSize: 20)),
+        selectable: false,
+        onPressed: onPomodoroPressed,
+        semanticsLabel: '番茄钟',
+      );
+    }
+
+    final items = isWide
+        ? <FloatingBottomNavigationItem>[
+            buildWeeklyItem(),
+            buildAddItem(),
+            buildPomodoroItem(),
+          ]
+        : <FloatingBottomNavigationItem>[
+            const FloatingBottomNavigationItem(
+              icon: Icons.dashboard_rounded,
+              label: '首页',
+            ),
+            buildWeeklyItem(),
+            buildAddItem(),
+            buildPomodoroItem(),
+            const FloatingBottomNavigationItem(
+              icon: Icons.adjust_rounded,
+              label: '专注',
+            ),
+          ];
+
+    return FloatingBottomNavigationBar(
+      items: items,
+      selectedIndex: isWide ? 0 : selectedIndex,
       primaryColor: primaryColor,
       inactiveColor: inactiveColor,
       selectedBackgroundColor: selectedBackgroundColor,
@@ -1766,6 +1825,7 @@ class _HomeDashboardBottomBar extends StatelessWidget {
       haloColor: primaryColor,
       isDark: isDarkMode,
       mobilePortraitOnly: false,
+      showSelectionLens: !isWide,
       keyPrefix: 'home-bottom',
     );
   }

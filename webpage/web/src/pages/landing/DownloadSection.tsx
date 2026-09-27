@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Monitor, Smartphone, Globe, ChevronRight, ArrowRight, HelpCircle, ExternalLink, Watch, MessageCircle, ChevronDown, ChevronUp, History, Command } from 'lucide-react';
+import { Monitor, Smartphone, Globe, ChevronRight, HelpCircle, ExternalLink, Watch, MessageCircle, ChevronDown, ChevronUp, History, Command } from 'lucide-react';
 import type { AppInfo } from '../../types';
 
 interface ChangelogEntry {
@@ -16,11 +16,8 @@ interface DownloadSectionProps {
   windowsProInfo: AppInfo;
   windowsProChangelog: ChangelogEntry[];
   macInfo?: AppInfo;
-  webInfo: AppInfo;
-  webChangelog: ChangelogEntry[];
   bandInfo: AppInfo;
   bandChangelog: ChangelogEntry[];
-  onOpenWeb: () => void;
   onShowInstallGuide: () => void;
 }
 
@@ -125,11 +122,8 @@ export const DownloadSection = ({
   windowsLiteChangelog,
   windowsProInfo,
   macInfo,
-  webInfo,
-  webChangelog,
   bandInfo,
   bandChangelog,
-  onOpenWeb,
   onShowInstallGuide
 }: DownloadSectionProps) => (
   <section id="download" className="py-24 sm:py-48 bg-slate-50 text-center relative overflow-hidden">
@@ -215,6 +209,9 @@ export const DownloadSection = ({
                   <div className="flex items-center justify-between mt-2 px-1">
                     <span className="text-[11px] text-blue-700 font-bold">云端同步，免安装</span>
                   </div>
+                  <button onClick={onShowInstallGuide} className="flex items-center justify-center gap-2 w-full mt-3 py-2 rounded-lg font-bold text-xs text-blue-700 bg-white/70 hover:bg-white border border-blue-100 transition">
+                    <HelpCircle className="w-3.5 h-3.5" /> 如何安装为 App？
+                  </button>
                 </div>
               </div>
             </div>
@@ -227,7 +224,7 @@ export const DownloadSection = ({
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-slate-100 text-slate-500 rounded-lg text-xs font-bold uppercase tracking-widest mb-6">
           轻量端 & 穿戴设备
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left items-stretch">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left items-stretch max-w-5xl mx-auto">
           {/* Windows Lite */}
           <div className="p-8 sm:p-10 bg-white rounded-[3rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-blue-500 transition-all group flex flex-col relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl group-hover:bg-blue-500/10 transition pointer-events-none"></div>
@@ -244,24 +241,6 @@ export const DownloadSection = ({
                   <span>依赖 Tai 核心服务</span>
                   <a href="https://github.com/Planshit/Tai/releases/download/1.5.0.6/Tai1.5.0.6.zip" target="_blank" rel="noreferrer" className="underline hover:text-blue-900">立即前往</a>
                </div>
-            </div>
-          </div>
-
-          {/* Web */}
-          <div className="p-8 sm:p-10 bg-white rounded-[3rem] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-indigo-500 transition-all group flex flex-col relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl group-hover:bg-indigo-500/10 transition pointer-events-none"></div>
-            <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:-rotate-3 transition duration-500 shadow-sm"><Globe className="w-7 h-7" /></div>
-            <h3 className="text-2xl font-black mb-3 text-slate-900 tracking-tight">Web Station</h3>
-            <p className="text-slate-500 text-sm sm:text-base leading-relaxed whitespace-pre-line">
-               v{webInfo.version || '1.0.0'} <br/>
-               {webInfo.desc || '云端仪表盘，免安装即开即用。深度同步课表与待办，您的跨平台数据中枢。'}
-            </p>
-            <ChangelogHistory changelog={webChangelog} accentColor="text-indigo-500 hover:text-indigo-700" />
-            <div className="space-y-4 mt-4">
-              <button onClick={onOpenWeb} className="flex items-center justify-center gap-3 bg-indigo-600 text-white w-full py-4 rounded-xl font-black text-lg hover:bg-indigo-700 transition shadow-xl shadow-indigo-500/30">立即开启 <ArrowRight className="w-6 h-6" /></button>
-              <button onClick={onShowInstallGuide} className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-bold text-sm text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 transition">
-                <HelpCircle className="w-4 h-4" /> 如何把网页作为 App 安装？
-              </button>
             </div>
           </div>
 

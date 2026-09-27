@@ -19,6 +19,11 @@ class SyncCapabilityService {
   static const String finance = 'finance_v1';
   static const int financeVersion = 1;
 
+  /// User-overridden names on built-in finance categories are supported only
+  /// after the server advertises this capability.
+  static const String financeCategoryNames = 'finance_category_names_v1';
+  static const int financeCategoryNamesVersion = 1;
+
   static bool supportsFixedSchedules(dynamic rawCapabilities) =>
       capabilityVersion(rawCapabilities, fixedSchedules) >=
       fixedSchedulesVersion;
@@ -44,6 +49,10 @@ class SyncCapabilityService {
 
   static bool supportsFinance(dynamic rawCapabilities) =>
       capabilityVersion(rawCapabilities, finance) >= financeVersion;
+
+  static bool supportsFinanceCategoryNames(dynamic rawCapabilities) =>
+      capabilityVersion(rawCapabilities, financeCategoryNames) >=
+      financeCategoryNamesVersion;
 
   static bool shouldAcknowledgeFinanceChanges({
     required bool syncEnabled,

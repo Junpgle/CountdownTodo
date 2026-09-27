@@ -12,6 +12,7 @@ class CourseMonthView extends StatelessWidget {
   final Map<String, List<TodoItem>> crossDayTodoMap;
   final Map<String, List<TimeLogItem>> logMap;
   final Map<String, List<PomodoroRecord>> pomMap;
+  final Map<String, List<FixedScheduleItem>> fixedScheduleMap;
   final Map<String, List<DeviceCalendarEvent>> deviceCalendarMap;
   final List<PomodoroTag> pomodoroTags;
   final Set<String> activeDataViews;
@@ -34,6 +35,7 @@ class CourseMonthView extends StatelessWidget {
     required this.crossDayTodoMap,
     required this.logMap,
     required this.pomMap,
+    this.fixedScheduleMap = const {},
     this.deviceCalendarMap = const {},
     required this.pomodoroTags,
     required this.activeDataViews,
@@ -92,6 +94,10 @@ class CourseMonthView extends StatelessWidget {
     }
     if (activeDataViews.contains('pomodoros')) {
       pomMap.forEach((date, list) => addDensity(date, 2 * list.length));
+    }
+    if (activeDataViews.contains('fixedSchedules')) {
+      fixedScheduleMap
+          .forEach((date, list) => addDensity(date, 3 * list.length));
     }
     if (activeDataViews.contains('deviceCalendar')) {
       deviceCalendarMap
@@ -159,6 +165,17 @@ class CourseMonthView extends StatelessWidget {
         for (var c in (courseMap[dStr] ?? [])) {
           weekBars
               .add({'course': c, 'start': i, 'end': i, 'title': c.courseName});
+        }
+      }
+
+      if (activeDataViews.contains('fixedSchedules')) {
+        for (final schedule in (fixedScheduleMap[dStr] ?? [])) {
+          weekBars.add({
+            'fixedSchedule': schedule,
+            'start': i,
+            'end': i,
+            'title': schedule.title,
+          });
         }
       }
 
@@ -289,6 +306,10 @@ class CourseMonthView extends StatelessWidget {
                     activeDataViews.contains('pomodoros')
                         ? (pomMap[dStr] ?? [])
                         : [];
+                final List<FixedScheduleItem> dayFixedSchedules =
+                    activeDataViews.contains('fixedSchedules')
+                        ? (fixedScheduleMap[dStr] ?? [])
+                        : [];
 
                 return Expanded(
                   child: RepaintBoundary(
@@ -303,7 +324,8 @@ class CourseMonthView extends StatelessWidget {
                           dayCourses,
                           dayTodos,
                           dayLogs,
-                          dayPoms),
+                          dayPoms,
+                          dayFixedSchedules),
                     ),
                   ),
                 );
@@ -350,6 +372,8 @@ class CourseMonthView extends StatelessWidget {
                             children: rowGroup.map((bar) {
                               final todo = bar['todo'] as TodoItem?;
                               final course = bar['course'] as CourseItem?;
+                              final fixedSchedule =
+                                  bar['fixedSchedule'] as FixedScheduleItem?;
                               final timeLog = bar['timeLog'] as TimeLogItem?;
                               final pomodoro =
                                   bar['pomodoro'] as PomodoroRecord?;
@@ -368,6 +392,7 @@ class CourseMonthView extends StatelessWidget {
                                 bar,
                                 isDark,
                                 Theme.of(context).colorScheme.tertiary,
+                                Theme.of(context).colorScheme.primary,
                               );
                               final Color textColor =
                                   _barTextColor(bar, isDark);
@@ -383,6 +408,8 @@ class CourseMonthView extends StatelessWidget {
                                       onDeviceCalendarTap?.call(
                                           deviceCalendarEvent, sourceKey);
                                     } else if (course != null) {
+                                      onDayTapped(weekDays[start]);
+                                    } else if (fixedSchedule != null) {
                                       onDayTapped(weekDays[start]);
                                     } else if (todo != null) {
                                       onGanttTodoTap?.call(todo);
@@ -482,6 +509,7 @@ class CourseMonthView extends StatelessWidget {
     final todo = bar['todo'] as TodoItem?;
     if (todo != null) return todo.isDone ? 4 : 0;
     if (bar['course'] != null) return 1;
+    if (bar['fixedSchedule'] != null) return 1;
     if (bar['deviceCalendar'] != null) return 2;
     if (bar['timeLog'] != null) return 2;
     if (bar['pomodoro'] != null) return 3;
@@ -489,7 +517,7 @@ class CourseMonthView extends StatelessWidget {
   }
 
   Color _barColor(Map<String, dynamic> bar, bool isDark,
-      [Color? deviceCalendarFallback]) {
+      [Color? deviceCalendarFallback, Color? fixedScheduleFallback]) {
     final todo = bar['todo'] as TodoItem?;
     final log = bar['timeLog'] as TimeLogItem?;
     final pomodoro = bar['pomodoro'] as PomodoroRecord?;
@@ -497,6 +525,10 @@ class CourseMonthView extends StatelessWidget {
 
     if (bar['course'] != null) {
       return Colors.blue.withValues(alpha: 0.85);
+    }
+    if (bar['fixedSchedule'] != null) {
+      return (fixedScheduleFallback ?? deviceCalendarFallback ?? Colors.indigo)
+          .withValues(alpha: 0.86);
     }
     if (todo != null) {
       final isTeam = todo.teamUuid != null;
@@ -578,7 +610,8 @@ class CourseMonthView extends StatelessWidget {
       List<CourseItem> courses,
       List<TodoItem> todos,
       List<TimeLogItem> logs,
-      List<PomodoroRecord> poms) {
+      List<PomodoroRecord> poms,
+      List<FixedScheduleItem> fixedSchedules) {
     bool isToday = DateUtils.isSameDay(day, DateTime.now());
     bool isCurrentMonth = day.month == selectedMonth.month;
 
@@ -678,6 +711,28 @@ class CourseMonthView extends StatelessWidget {
                         Colors.redAccent.withValues(alpha: 0.4),
                         height);
                   }),
+                  ...fixedSchedules
+                      .where((item) => item.startTime != null)
+                      .map((item) {
+                    final start =
+                        DateTime.fromMillisecondsSinceEpoch(item.startTime!);
+                    final end = item.endTime == null
+                        ? start.add(const Duration(hours: 1))
+                        : DateTime.fromMillisecondsSinceEpoch(item.endTime!);
+                    final startTime = start.hour * 100 + start.minute;
+                    final endTime = end.day == start.day
+                        ? end.hour * 100 + end.minute
+                        : 2400;
+                    return _buildVerticalBar(
+                      startTime,
+                      endTime,
+                      Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.55),
+                      height,
+                    );
+                  }),
                 ],
               ),
             ),
@@ -693,6 +748,8 @@ class CourseMonthView extends StatelessWidget {
                 if (logs.isNotEmpty)
                   _buildMiniDot(Theme.of(context).colorScheme.secondary),
                 if (poms.isNotEmpty) _buildMiniDot(Colors.redAccent),
+                if (fixedSchedules.isNotEmpty)
+                  _buildMiniDot(Theme.of(context).colorScheme.primary),
               ]),
             ),
         ],

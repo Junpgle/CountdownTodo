@@ -42,6 +42,12 @@ double floatingBottomBarHeightFor(BuildContext context) {
   return 60.0 + (bottomInset > 0 ? bottomInset * 0.5 : 6.0);
 }
 
+/// Leaves enough scrollable room for the shared bottom navigation capsule and
+/// its bottom margin when the page body extends behind it.
+double floatingBottomNavigationContentPaddingFor(BuildContext context) {
+  return floatingBottomBarHeightFor(context) + 48.0;
+}
+
 /// Resolves the homepage's phone margins for the shared navigation bar.
 EdgeInsets floatingBottomBarMarginFor(BuildContext context) {
   return floatingBottomNavigationMarginFor(context, itemCount: 3);
@@ -128,7 +134,7 @@ class FloatingBottomBar extends StatelessWidget {
 }
 
 /// Complete shared navigation bar with the homepage's spring lens and liquid
-/// glass interaction. Use this for phone portrait tab navigation; use
+/// glass interaction. Use this for tab navigation on any form factor; use
 /// [FloatingBottomBar] directly for a non-tab action strip.
 class FloatingBottomNavigationBar extends StatefulWidget {
   const FloatingBottomNavigationBar({
@@ -146,6 +152,7 @@ class FloatingBottomNavigationBar extends StatefulWidget {
     this.haloColor,
     this.isDark,
     this.mobilePortraitOnly = true,
+    this.showSelectionLens = true,
     this.keyPrefix = 'floating-bottom',
   });
 
@@ -162,6 +169,7 @@ class FloatingBottomNavigationBar extends StatefulWidget {
   final Color? haloColor;
   final bool? isDark;
   final bool mobilePortraitOnly;
+  final bool showSelectionLens;
   final String keyPrefix;
 
   @override
@@ -210,6 +218,7 @@ class _FloatingBottomNavigationBarState
       inactiveColor: inactiveColor,
       selectedBackgroundColor: selectedBackgroundColor,
       onTabSelected: widget.onTabSelected,
+      showSelectionLens: widget.showSelectionLens,
       onDragStretchChanged: (stretch) => _stretchNotifier.value = stretch,
       keyPrefix: widget.keyPrefix,
       borderRadius: widget.borderRadius,

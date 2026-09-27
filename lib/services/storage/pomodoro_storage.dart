@@ -33,7 +33,7 @@ class PomodoroStorage {
     required void Function(String username) requestSync,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    final db = await DatabaseHelper.instance.database;
+    final db = await DatabaseHelper.instance.databaseForUser(username);
     final Map<String, TimeLogItem> dedupeMap = {};
 
     for (var item in items) {
@@ -114,7 +114,7 @@ class PomodoroStorage {
         }
         await prefs.setBool(migrationKey, true);
       } else {
-        final db = await dbHelper.database;
+        final db = await dbHelper.databaseForUser(username);
         final countRows =
             await db.rawQuery('SELECT COUNT(*) as cnt FROM time_logs');
         final hasSqlRows = (countRows.first['cnt'] as int? ?? 0) > 0;
@@ -134,7 +134,7 @@ class PomodoroStorage {
         }
       }
 
-      final db = await dbHelper.database;
+      final db = await dbHelper.databaseForUser(username);
       final List<Map<String, dynamic>> maps = await db.query(
         'time_logs',
         where: 'is_deleted = 0',

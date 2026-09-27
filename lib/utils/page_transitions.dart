@@ -8,6 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_performance_monitor.dart';
 
 const _pageLayerCurve = Cubic(0.4, 0.65, 0.25, 1.0);
+// The route animation runs from 1.0 to 0.0 while a container transform
+// closes. An ease-in curve in route coordinates therefore makes the visible
+// collapse start decisively and settle into the source container.
+const _containerTransformReverseCurve = Cubic(0.5, 0.0, 0.75, 0.0);
 const _defaultPageLayerBackgroundScale = 0.875;
 const _defaultPageLayerBackgroundMask = 0.24;
 const _defaultPageLayerMaxBlur = 12.0;
@@ -942,9 +946,12 @@ class _ContainerTransformWidget extends StatefulWidget {
 
 class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
   bool _contentVisible = false;
+  bool _entranceCompleted = false;
   BorderRadius _screenCornerRadii = BorderRadius.zero;
   late final CurvedAnimation _forwardCurve;
   late final CurvedAnimation _backgroundCurve;
+  late final Listenable _mergedAnimation;
+  late final SnapshotController _contentSnapshot;
 
   @override
   void initState() {
@@ -952,20 +959,30 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
     _forwardCurve = CurvedAnimation(
       parent: widget.animation,
       curve: _pageLayerCurve,
-      reverseCurve: _pageLayerCurve,
+      reverseCurve: _containerTransformReverseCurve,
     );
     _backgroundCurve = CurvedAnimation(
       parent: widget.secondaryAnimation,
       curve: _pageLayerCurve,
-      reverseCurve: _pageLayerCurve,
+      reverseCurve: _containerTransformReverseCurve,
+    );
+    _mergedAnimation = Listenable.merge(
+      <Listenable>[_forwardCurve, _backgroundCurve],
+    );
+    _contentSnapshot = SnapshotController();
+    widget.animation.addStatusListener(_handleAnimationStatus);
+    _predictiveBackGestureProgress.addListener(
+      _handlePredictiveBackGestureProgress,
     );
     if (_AnimSettings.lazyLoad) {
       // 懒加载：容器变换动画期间只显示来源色遮罩盒（类似启动遮罩），
       // 入场动画完成后一次性揭示页面内容。
       _contentVisible = false;
       widget.animation.addStatusListener(_revealOnEntranceCompleted);
+      widget.animation.addStatusListener(_handleLazyLoadAnimationStatus);
     } else {
       _contentVisible = true;
+      _entranceCompleted = true;
     }
   }
 
@@ -979,13 +996,63 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
 
   void _revealOnEntranceCompleted(AnimationStatus status) {
     if (status != AnimationStatus.completed) return;
+    _entranceCompleted = true;
     widget.animation.removeStatusListener(_revealOnEntranceCompleted);
-    if (mounted) setState(() => _contentVisible = true);
+    _setContentVisible(true);
+  }
+
+  void _handleAnimationStatus(AnimationStatus status) {
+    if (status == AnimationStatus.reverse) {
+      _contentSnapshot.allowSnapshotting = true;
+    } else if (status == AnimationStatus.forward) {
+      _contentSnapshot.allowSnapshotting = false;
+    }
+  }
+
+  void _setContentVisible(bool visible) {
+    if (!mounted || _contentVisible == visible) return;
+    setState(() => _contentVisible = visible);
+  }
+
+  void _handleLazyLoadAnimationStatus(AnimationStatus status) {
+    if (status == AnimationStatus.reverse) {
+      if (_entranceCompleted) {
+        _setContentVisible(false);
+        _contentSnapshot.allowSnapshotting = false;
+      }
+    } else if (status == AnimationStatus.forward) {
+      if (_entranceCompleted) {
+        _setContentVisible(true);
+      }
+    } else if (status == AnimationStatus.completed) {
+      _entranceCompleted = true;
+    }
+  }
+
+  void _handlePredictiveBackGestureProgress() {
+    if (ModalRoute.of(context)?.isCurrent != true) return;
+    if (_predictiveBackGestureProgress.value > 0.0) {
+      // Keep the page mounted throughout an interactive back gesture. The
+      // lazy-load mask is only shown after the gesture commits and the route
+      // animation enters [AnimationStatus.reverse]; unmounting here would
+      // rebuild the page when the gesture is cancelled.
+      if (_entranceCompleted) {
+        _contentSnapshot.allowSnapshotting = true;
+      }
+    } else if (widget.animation.status != AnimationStatus.reverse) {
+      _contentSnapshot.allowSnapshotting = false;
+    }
   }
 
   @override
   void dispose() {
     widget.animation.removeStatusListener(_revealOnEntranceCompleted);
+    widget.animation.removeStatusListener(_handleAnimationStatus);
+    widget.animation.removeStatusListener(_handleLazyLoadAnimationStatus);
+    _predictiveBackGestureProgress.removeListener(
+      _handlePredictiveBackGestureProgress,
+    );
+    _contentSnapshot.dispose();
     _forwardCurve.dispose();
     _backgroundCurve.dispose();
     super.dispose();
@@ -994,56 +1061,101 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
+    final begin = widget.sourceRect;
+    final end = widget.targetRect ??
+        Rect.fromLTWH(0, 0, screenSize.width, screenSize.height);
+    final dLeft = end.left - begin.left;
+    final dTop = end.top - begin.top;
+    final dWidth = end.width - begin.width;
+    final dHeight = end.height - begin.height;
+
+    final beginR = widget.sourceBorderRadius;
+    final endR = widget.targetBorderRadius ??
+        (widget.targetRect == null ? _screenCornerRadii : BorderRadius.zero);
+    final dRTLX = endR.topLeft.x - beginR.topLeft.x;
+    final dRTLY = endR.topLeft.y - beginR.topLeft.y;
+    final dRTRX = endR.topRight.x - beginR.topRight.x;
+    final dRTRY = endR.topRight.y - beginR.topRight.y;
+    final dRBLX = endR.bottomLeft.x - beginR.bottomLeft.x;
+    final dRBLY = endR.bottomLeft.y - beginR.bottomLeft.y;
+    final dRBRX = endR.bottomRight.x - beginR.bottomRight.x;
+    final dRBRY = endR.bottomRight.y - beginR.bottomRight.y;
+
+    final useLazyLoad = _AnimSettings.lazyLoad;
+    final contentStart = useLazyLoad
+        ? _AnimSettings.contentStart
+        : _defaultContainerContentStart;
+    final inverseContentRange = 1.0 / (1.0 - contentStart);
+    final backgroundMask = _AnimSettings.backgroundMask;
+    final screenWidth = screenSize.width;
+    final screenHeight = screenSize.height;
+
+    // Keep the page at a stable full-screen size while the outer container
+    // changes dimensions. This prevents the page from being laid out again
+    // for every reverse-animation frame.
+    final cachedContent = OverflowBox(
+      alignment: Alignment.topLeft,
+      maxWidth: screenWidth,
+      maxHeight: screenHeight,
+      child: SizedBox(
+        width: screenWidth,
+        height: screenHeight,
+        child: SnapshotWidget(
+          controller: _contentSnapshot,
+          mode: SnapshotMode.permissive,
+          child: RepaintBoundary(child: widget.child),
+        ),
+      ),
+    );
 
     return AnimatedBuilder(
-      animation: Listenable.merge(
-        <Listenable>[widget.animation, widget.secondaryAnimation],
-      ),
+      animation: _mergedAnimation,
+      child: cachedContent,
       builder: (context, child) {
         final t = _forwardCurve.value.clamp(0.0, 1.0);
         final backgroundProgress = _backgroundCurve.value.clamp(0.0, 1.0);
 
-        final begin = widget.sourceRect;
-        final end = widget.targetRect ??
-            Rect.fromLTWH(0, 0, screenSize.width, screenSize.height);
+        final left = begin.left + dLeft * t;
+        final top = begin.top + dTop * t;
+        final width = begin.width + dWidth * t;
+        final height = begin.height + dHeight * t;
 
-        final left = ui.lerpDouble(begin.left, end.left, t)!;
-        final top = ui.lerpDouble(begin.top, end.top, t)!;
-        final width = ui.lerpDouble(begin.width, end.width, t)!;
-        final height = ui.lerpDouble(begin.height, end.height, t)!;
-
-        final beginR = widget.sourceBorderRadius;
-        final endR = widget.targetBorderRadius ??
-            (widget.targetRect == null
-                ? _screenCornerRadii
-                : BorderRadius.zero);
         final borderRadius = BorderRadius.only(
-          topLeft: Radius.lerp(beginR.topLeft, endR.topLeft, t)!,
-          topRight: Radius.lerp(beginR.topRight, endR.topRight, t)!,
-          bottomLeft: Radius.lerp(beginR.bottomLeft, endR.bottomLeft, t)!,
-          bottomRight: Radius.lerp(beginR.bottomRight, endR.bottomRight, t)!,
+          topLeft: Radius.elliptical(
+            beginR.topLeft.x + dRTLX * t,
+            beginR.topLeft.y + dRTLY * t,
+          ),
+          topRight: Radius.elliptical(
+            beginR.topRight.x + dRTRX * t,
+            beginR.topRight.y + dRTRY * t,
+          ),
+          bottomLeft: Radius.elliptical(
+            beginR.bottomLeft.x + dRBLX * t,
+            beginR.bottomLeft.y + dRBLY * t,
+          ),
+          bottomRight: Radius.elliptical(
+            beginR.bottomRight.x + dRBRX * t,
+            beginR.bottomRight.y + dRBRY * t,
+          ),
         );
 
-        final contentStart = _AnimSettings.lazyLoad
-            ? _AnimSettings.contentStart
-            : _defaultContainerContentStart;
         final contentProgress =
-            ((t - contentStart) / (1 - contentStart)).clamp(0.0, 1.0);
-        final fadeIn = _AnimSettings.lazyLoad ? contentProgress : 1.0;
-        final maskOpacity = ui.lerpDouble(
-            0.0, _AnimSettings.backgroundMask, backgroundProgress)!;
+            ((t - contentStart) * inverseContentRange).clamp(0.0, 1.0);
+        final fadeIn = useLazyLoad ? contentProgress : 1.0;
+        final maskOpacity = backgroundMask * backgroundProgress;
 
-        Widget content = RepaintBoundary(child: widget.child);
+        Widget content = child ?? const SizedBox.shrink();
 
         // Morph into the button's shape for both opening and closing animations.
         // We scale the content so its width exactly matches the current box width.
-        final scaleX = width / screenSize.width;
-
-        content = Transform.scale(
-          scale: scaleX,
-          alignment: Alignment.topCenter,
-          child: content,
-        );
+        final scaleX = width / screenWidth;
+        if ((scaleX - 1.0).abs() > _epsilon) {
+          content = Transform.scale(
+            scale: scaleX,
+            alignment: Alignment.topCenter,
+            child: content,
+          );
+        }
 
         if (fadeIn < 1.0 - _epsilon) {
           content = Opacity(opacity: fadeIn, child: content);
@@ -1064,6 +1176,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
               width: width,
               height: height,
               child: ClipRRect(
+                clipBehavior: Clip.hardEdge,
                 borderRadius: borderRadius,
                 child: ColoredBox(
                   color: widget.sourceColor,
@@ -1072,11 +1185,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
                       ? Center(child: _buildPlaceholder(context))
                       : IgnorePointer(
                           ignoring: fadeIn < 1.0,
-                          child: SizedBox(
-                            width: screenSize.width,
-                            height: screenSize.height,
-                            child: content,
-                          ),
+                          child: content,
                         ),
                 ),
               ),

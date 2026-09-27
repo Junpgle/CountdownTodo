@@ -4,6 +4,7 @@ import 'package:countdown_todo/services/ai_action_parser.dart';
 import 'package:countdown_todo/services/ai_todo_action_executor.dart';
 import 'package:countdown_todo/services/ai_todo_chat_launcher.dart';
 import 'package:countdown_todo/services/ai_todo_context_builder.dart';
+import 'package:countdown_todo/services/chat_storage_service.dart';
 import 'package:countdown_todo/services/llm_service.dart';
 import 'package:countdown_todo/services/todo_classification_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,6 +57,7 @@ void main() {
       expect(futureMap['recurrenceSeriesId'], 'series-water');
       expect(futureMap['recurrenceRole'], 'occurrence');
       expect(futureMap['timeMode'], 'dateOnly');
+      expect(futureMap['dueDate'], endsWith('23:59'));
 
       final prompt = AiTodoContextBuilder.buildSystemPrompt(
         customPrompt: '{todos}',
@@ -67,6 +69,8 @@ void main() {
       expect(prompt, contains('期次todoId: occurrence-future'));
       expect(prompt, contains('系列ID: series-water'));
       expect(prompt, contains('系列规则: daily'));
+      expect(prompt, contains('目标日期: 2026-07-20'));
+      expect(prompt, isNot(contains('日期锚点:')));
     });
 
     test('parser preserves explicit null and recurrence scope patch intent',
@@ -328,6 +332,87 @@ void main() {
       expect(result.newPlanBlocks.single.todoId, 'todo-math');
     });
 
+    test('unmatched legacy plan_todos cannot create a duplicate todo', () {
+      const response = '''
+[ACTION_START]
+[{"action":"plan_todos","todos":[{"title":"复习高数（今晚）","startTime":"2026-07-20 19:00","dueDate":"2026-07-20 20:00"}]}]
+[ACTION_END]
+''';
+
+      final actions = AiActionParser.extractTodoActions(
+        response,
+        originalText: '帮我规划今天的待办',
+        existingTodoTitles: const {'todo-math': '复习高数'},
+      );
+
+      expect(actions, isEmpty);
+    });
+
+    test('actionless planning payload resolves an exact existing todo only',
+        () {
+      const response = '''
+[ACTION_START]
+[{"todos":[{"title":"复习高数","startTime":"2026-07-20 19:00","endTime":"2026-07-20 20:00"}]}]
+[ACTION_END]
+''';
+
+      final actions = AiActionParser.extractTodoActions(
+        response,
+        originalText: '帮我规划今天的待办',
+        existingTodoTitles: const {'todo-math': '复习高数'},
+      );
+      final result = AiTodoActionExecutor.execute(
+        actions: actions,
+        existingTodos: const [
+          {'id': 'todo-math', 'title': '复习高数'},
+        ],
+      );
+
+      expect(actions.single.type, AiTodoActionType.createPlanBlock);
+      expect(actions.single.todoId, 'todo-math');
+      expect(result.newTodos, isEmpty);
+      expect(result.newPlanBlocks, hasLength(1));
+    });
+
+    test('actionless todo payload is rejected instead of creating a todo', () {
+      const response = '''
+[ACTION_START]
+[{"todos":[{"title":"买牛奶","timeMode":"unscheduled","dueDate":null}]}]
+[ACTION_END]
+''';
+
+      final actions = AiActionParser.extractTodoActions(
+        response,
+        originalText: '帮我新增买牛奶',
+      );
+      final result = AiTodoActionExecutor.execute(
+        actions: actions,
+        existingTodos: const [],
+      );
+
+      expect(actions, isEmpty);
+      expect(result.newTodos, isEmpty);
+    });
+
+    test(
+        'executor rejects a legacy plan_todos action without a resolved target',
+        () {
+      final action = AiTodoAction(
+        type: AiTodoActionType.planTodos,
+        title: '复习高数',
+        startTime: '2026-07-20 19:00',
+        dueDate: '2026-07-20 20:00',
+      );
+
+      final result = AiTodoActionExecutor.execute(
+        actions: [action],
+        existingTodos: const [],
+      );
+
+      expect(result.newTodos, isEmpty);
+      expect(action.isAdded, isFalse);
+    });
+
     test('action protocol documents recurrence occurrence safety', () {
       final prompt = AiTodoContextBuilder.buildActionProtocolPrompt('修改循环待办');
 
@@ -342,7 +427,8 @@ void main() {
           AiTodoContextBuilder.buildActionProtocolPrompt('帮我规划今天的待办');
 
       expect(prompt, contains('- create_plan_block:'));
-      expect(prompt, contains('禁止用plan_todos或create_todo复制已有待办'));
+      expect(prompt, contains('禁止用create_todo复制已有待办'));
+      expect(prompt, isNot(contains('plan_todos')));
       expect(prompt, isNot(contains('- create_todo:')));
       expect(prompt, isNot(contains('- create_schedule:')));
     });
@@ -410,7 +496,8 @@ void main() {
       final prompt = AiTodoContextBuilder.buildActionProtocolPrompt('创建每天喝水');
 
       expect(prompt, contains('要创建成习惯，还是循环待办'));
-      expect(prompt, contains('不要输出create_habit、create_todo或plan_todos动作'));
+      expect(prompt, contains('不要输出任何创建动作'));
+      expect(prompt, isNot(contains('plan_todos')));
       expect(prompt, isNot(contains('- create_habit:')));
       expect(prompt, isNot(contains('- create_todo:')));
     });
@@ -624,15 +711,27 @@ void main() {
       expect(LLMConfig.defaultTextPrompt, contains('location'));
       expect(LLMConfig.defaultTextPrompt, contains('不得默认今天'));
       expect(LLMConfig.defaultTextPrompt, contains('fixedSchedule默认15'));
+      expect(
+          LLMConfig.defaultTextPrompt, contains('普通todo只输出timeMode和dueDate'));
+      expect(
+          LLMConfig.defaultTextPrompt, isNot(contains('普通todo禁止输出startTime')));
       expect(LLMConfig.defaultVisionPrompt, contains('保留recurrence'));
       expect(
         LLMConfig.itemSemanticGuardrailPrompt,
         allOf(
+          contains('CDT_RECOGNITION_PROTOCOL_V2'),
           contains('优先于前文'),
           contains('禁止默认今天'),
           contains('fixedSchedule地点使用location字段'),
         ),
       );
+      expect(ChatStorageService.defaultPrompt, isNot(contains('plan_todos')));
+      final migratedPrompt = ChatStorageService.ensureCurrentPromptProtocol(
+        '自定义提示词：请帮助用户安排事项\n旧协议：plan_todos',
+      );
+      expect(migratedPrompt, contains('CDT_CHAT_PROTOCOL_V2'));
+      expect(migratedPrompt, contains('create_plan_block'));
+      expect(migratedPrompt, isNot(contains('plan_todos')));
     });
   });
 }

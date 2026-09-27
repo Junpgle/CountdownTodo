@@ -71,6 +71,39 @@ abstract final class FinanceRepository {
     );
   }
 
+  /// Builds the same summary used by the overview from an already loaded list.
+  ///
+  /// Keeping this computation separate lets callers that already need the
+  /// overview range avoid issuing a second database query for the month.
+  static FinanceSummary summarizeTransactions(
+    Iterable<FinanceTransaction> transactions,
+  ) {
+    return FinanceSummary.fromTransactions(transactions);
+  }
+
+  /// Returns net monthly spending grouped by payment method; linked refunds
+  /// reduce the amount used by the method they were recorded under.
+  static Map<String, int> summarizePaymentMethodSpending(
+    Iterable<FinanceTransaction> transactions,
+  ) {
+    final spending = <String, int>{};
+    for (final transaction in transactions) {
+      final methodUuid = transaction.paymentMethodUuid;
+      if (methodUuid == null || methodUuid.isEmpty) continue;
+      switch (transaction.type) {
+        case FinanceTransactionType.expense:
+          spending[methodUuid] =
+              (spending[methodUuid] ?? 0) + transaction.amountMinor;
+        case FinanceTransactionType.refund:
+          spending[methodUuid] =
+              (spending[methodUuid] ?? 0) - transaction.amountMinor;
+        case FinanceTransactionType.income:
+          break;
+      }
+    }
+    return spending;
+  }
+
   static Future<void> saveTransaction(FinanceTransaction transaction) async {
     await FinanceStorage.saveTransaction(transaction);
     try {
@@ -307,7 +340,9 @@ abstract final class FinanceRepository {
           transaction.type.label,
           (amount / 100).toStringAsFixed(2),
           sanitizeFinanceCsvText(
-            category == null ? '未分类' : '${category.icon} ${category.name}',
+            category == null
+                ? '未分类'
+                : '${category.icon} ${financeCategoryDisplayName(category, categories.values)}',
           ),
           sanitizeFinanceCsvText(
             payment == null ? '未指定' : '${payment.icon} ${payment.name}',

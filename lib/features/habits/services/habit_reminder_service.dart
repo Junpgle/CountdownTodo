@@ -1,4 +1,5 @@
 import '../../../services/notification_service.dart';
+import '../../../services/scheduled_reminder_registry.dart';
 import '../../../services/storage/habit_storage.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
@@ -50,15 +51,10 @@ abstract final class HabitReminderService {
   ///
   /// 打卡 / 达标 / 删除等操作后调用，实现「达标后取消当天剩余提醒」。
   static Future<void> rescheduleFor(String habitUuid) async {
-    final goals = await HabitStorage.getHabitGoals(includeArchived: false);
-    final goal = goals.where((g) => g.uuid == habitUuid).firstOrNull;
-    if (goal == null) return;
-    final rules = await HabitStorage.getRuleRevisions(
-      habitUuid: habitUuid,
-      includeDeleted: false,
-    );
-    if (rules.isEmpty) return;
-    await _reschedule([goal], {goal.uuid: rules});
+    // Rebuilding only one goal used to cancel reminders belonging to every
+    // other habit. Rebuild the owned collection instead; the source merge
+    // keeps todo/course/pomodoro reminders intact.
+    await rescheduleAll();
   }
 
   /// 重新调度全部活跃习惯今天剩余时间的提醒。
@@ -66,7 +62,6 @@ abstract final class HabitReminderService {
   /// 应用启动 / 规则编辑后调用，覆盖跨天后的固定时刻提醒。
   static Future<void> rescheduleAll() async {
     final goals = await HabitStorage.getHabitGoals(includeArchived: false);
-    if (goals.isEmpty) return;
     final rules = await HabitStorage.getRuleRevisions(includeDeleted: false);
     final rulesByHabit = <String, List<HabitGoalRuleRevision>>{};
     for (final goal in goals) {
@@ -75,21 +70,16 @@ abstract final class HabitReminderService {
             (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''));
       if (list.isNotEmpty) rulesByHabit[goal.uuid] = list;
     }
-    if (rulesByHabit.isEmpty) return;
     await _reschedule(goals, rulesByHabit);
   }
 
   /// 取消今日已注册但尚未触发的习惯提醒（达标后调用）。
   static Future<void> cancelHabitReminders() async {
-    final scheduled = await NotificationService.getScheduledReminders();
-    final habitIds = scheduled
-        .map((r) => (r['notifId'] as num?)?.toInt())
-        .whereType<int>()
-        .where(isHabitNotificationId)
-        .toSet();
-    for (final id in habitIds) {
-      await NotificationService.cancelReminder(id);
-    }
+    await NotificationService.scheduleReminders(
+      const [],
+      clearFirst: false,
+      replaceSource: ScheduledReminderSources.habit,
+    );
   }
 
   // ── 内部 ─────────────────────────────────────────────
@@ -178,11 +168,17 @@ abstract final class HabitReminderService {
       }
     }
 
-    // 全量重排：先取消旧的区间内提醒，再增量注册新提醒，
-    // 避免 clearFirst 清掉待办/课程等其他模块的提醒。
-    await cancelHabitReminders();
-    if (reminders.isEmpty) return;
-    await NotificationService.scheduleReminders(reminders, clearFirst: false);
+    final ownedReminders = reminders
+        .map((reminder) => ScheduledReminderRegistry.withSource(
+              reminder,
+              ScheduledReminderSources.habit,
+            ))
+        .toList(growable: false);
+    await NotificationService.scheduleReminders(
+      ownedReminders,
+      clearFirst: false,
+      replaceSource: ScheduledReminderSources.habit,
+    );
   }
 
   /// 数量型：固定提醒 + 进度提醒。

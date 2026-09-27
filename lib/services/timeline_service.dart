@@ -18,7 +18,7 @@ class TimelineService {
 
   Future<List<TimelineEvent>> getEventsForDay(
       String username, DateTime date) async {
-    final db = await DatabaseHelper.instance.database;
+    final db = await DatabaseHelper.instance.databaseForUser(username);
     final startOfDay = DateTime(date.year, date.month, date.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
     final startOfDayMs = startOfDay.millisecondsSinceEpoch;
@@ -333,7 +333,7 @@ class TimelineService {
 
   Future<TimelineSummary> getSummaryForRange(
       String username, DateTime start, DateTime end) async {
-    final db = await DatabaseHelper.instance.database;
+    final db = await DatabaseHelper.instance.databaseForUser(username);
     final startMs = start.millisecondsSinceEpoch;
     final endMs = end.millisecondsSinceEpoch;
 

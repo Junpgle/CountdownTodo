@@ -32,9 +32,10 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
     // 如果有预填充的大模型数据，解析并设置
     if (llmResults != null && llmResults.isNotEmpty) {
       parsedResults = llmResults.map((rawResult) {
-        final result = imagePath != null
-            ? RecognizedTodoAdapter.normalizeImageResult(rawResult)
-            : Map<String, dynamic>.from(rawResult);
+        final result = RecognizedTodoAdapter.normalizeResult(
+          rawResult,
+          promoteSpecialTodo: imagePath != null,
+        );
         final startTime = RecognizedTodoAdapter.parseDateTime(
           result['startTime'] ??
               result['start_time'] ??
@@ -655,56 +656,14 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                       return;
                                     }
 
-                                    final parsedResultsList = results.map((
-                                      result,
-                                    ) {
-                                      return ParsedTodoResult(
-                                        title:
-                                            result['title'] ?? recognitionInput,
-                                        remark: result['remark'],
-                                        location:
-                                            result['location']?.toString(),
-                                        isAllDay: result['isAllDay'] ?? false,
-                                        startTime: result['startTime'] != null
-                                            ? DateTime.tryParse(
-                                                result['startTime'],
-                                              )
-                                            : null,
-                                        endTime: result['endTime'] != null
-                                            ? DateTime.tryParse(
-                                                result['endTime'],
-                                              )
-                                            : null,
-                                        timeSemantics: _parseTimeSemantics(
-                                          result['timeMode'],
-                                          isAllDay: result['isAllDay'] ?? false,
-                                          startTime: result['startTime'] != null
-                                              ? DateTime.tryParse(
-                                                  result['startTime'],
-                                                )
-                                              : null,
-                                          endTime: result['endTime'] != null
-                                              ? DateTime.tryParse(
-                                                  result['endTime'],
-                                                )
-                                              : null,
-                                        ),
-                                        recurrence: _parseRecurrenceType(
-                                          result['recurrence'],
-                                        ),
-                                        customIntervalDays:
-                                            result['customIntervalDays'],
-                                        recurrenceEndDate: DateTime.tryParse(
-                                          (result['recurrenceEndDate'] ?? '')
-                                              .toString(),
-                                        ),
-                                        reminderMinutes:
-                                            result['reminderMinutes'],
-                                        itemKind:
-                                            result['itemKind']?.toString(),
-                                        originalText: recognitionInput,
-                                      );
-                                    }).toList();
+                                    final parsedResultsList = results
+                                        .map(
+                                          (result) => _parseRecognizedResult(
+                                            result,
+                                            recognitionInput,
+                                          ),
+                                        )
+                                        .toList();
 
                                     setDialogState(() {
                                       parsedResults = parsedResultsList;
@@ -894,57 +853,14 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                       return;
                                     }
 
-                                    final parsedResultsList = results.map((
-                                      result,
-                                    ) {
-                                      return ParsedTodoResult(
-                                        title:
-                                            result['title'] ?? recognitionInput,
-                                        remark: result['remark'],
-                                        location:
-                                            result['location']?.toString(),
-                                        isAllDay: result['isAllDay'] ?? false,
-                                        startTime: result['startTime'] != null
-                                            ? DateTime.tryParse(
-                                                result['startTime'],
-                                              )
-                                            : null,
-                                        endTime: result['endTime'] != null
-                                            ? DateTime.tryParse(
-                                                result['endTime'],
-                                              )
-                                            : null,
-                                        timeSemantics: _parseTimeSemantics(
-                                          result['timeMode'],
-                                          isAllDay: result['isAllDay'] ?? false,
-                                          startTime: result['startTime'] != null
-                                              ? DateTime.tryParse(
-                                                  result['startTime'],
-                                                )
-                                              : null,
-                                          endTime: result['endTime'] != null
-                                              ? DateTime.tryParse(
-                                                  result['endTime'],
-                                                )
-                                              : null,
-                                        ),
-                                        recurrence: _parseRecurrenceType(
-                                          result['recurrence'],
-                                        ),
-                                        customIntervalDays:
-                                            result['customIntervalDays'],
-                                        recurrenceEndDate: DateTime.tryParse(
-                                          (result['recurrenceEndDate'] ?? '')
-                                              .toString(),
-                                        ),
-                                        reminderMinutes:
-                                            result['reminderMinutes'],
-                                        itemKind:
-                                            result['itemKind']?.toString(),
-                                        originalText:
-                                            recognitionInput, // 📄 保存原始输入文字
-                                      );
-                                    }).toList();
+                                    final parsedResultsList = results
+                                        .map(
+                                          (result) => _parseRecognizedResult(
+                                            result,
+                                            recognitionInput,
+                                          ),
+                                        )
+                                        .toList();
 
                                     setDialogState(() {
                                       parsedResults = parsedResultsList;
@@ -1566,6 +1482,62 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
       default:
         return RecurrenceType.none;
     }
+  }
+
+  ParsedTodoResult _parseRecognizedResult(
+    Map<String, dynamic> rawResult,
+    String fallbackTitle,
+  ) {
+    final result = RecognizedTodoAdapter.normalizeResult(rawResult);
+    final startTime = RecognizedTodoAdapter.parseDateTime(
+      result['startTime'] ??
+          result['start_time'] ??
+          result['createdDate'] ??
+          result['created_date'],
+    );
+    final endTime = RecognizedTodoAdapter.parseDateTime(
+      result['endTime'] ??
+          result['end_time'] ??
+          result['dueDate'] ??
+          result['due_date'],
+    );
+    final isAllDay = RecognizedTodoAdapter.parseBool(
+      result['isAllDay'] ?? result['is_all_day'],
+    );
+    return ParsedTodoResult(
+      title: result['title']?.toString() ?? fallbackTitle,
+      remark:
+          (result['remark'] ?? result['notes'] ?? result['note'])?.toString(),
+      location: result['location']?.toString(),
+      isAllDay: isAllDay,
+      startTime: startTime,
+      endTime: endTime,
+      timeSemantics: _parseTimeSemantics(
+        result['timeMode'] ?? result['time_mode'],
+        isAllDay: isAllDay,
+        startTime: startTime,
+        endTime: endTime,
+      ),
+      recurrence: _parseRecurrenceType(
+        result['recurrence']?.toString(),
+      ),
+      customIntervalDays: _parseNullableInt(
+        result['customIntervalDays'] ?? result['custom_interval_days'],
+      ),
+      recurrenceEndDate: RecognizedTodoAdapter.parseDateTime(
+        result['recurrenceEndDate'] ?? result['recurrence_end_date'],
+      ),
+      reminderMinutes: _parseNullableInt(
+        result['reminderMinutes'] ?? result['reminder_minutes'],
+      ),
+      itemKind: (result['itemKind'] ?? result['item_kind'])?.toString(),
+      originalText: fallbackTitle,
+    );
+  }
+
+  int? _parseNullableInt(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
   }
 
   ParsedTimeSemantics _parseTimeSemantics(

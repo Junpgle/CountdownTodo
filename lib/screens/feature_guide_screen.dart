@@ -20,6 +20,7 @@ import 'personal_timeline_screen.dart';
 import '../widgets/global_search_overlay.dart';
 import 'settings/pages/preference_settings_page.dart';
 import '../services/course_service.dart';
+import '../course_import/course_schedule_semantics.dart';
 import '../services/permission_request_coordinator.dart';
 import '../services/minor_mode_service.dart';
 import '../services/liquid_glass_effect_service.dart';
@@ -27,7 +28,7 @@ import '../models/minor_mode_state.dart';
 import '../models.dart';
 import '../features/finance/screens/finance_home_screen.dart';
 import '../features/habits/screens/habit_center_screen.dart';
-import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
+import '../features/thirty_day_challenge/screens/challenge_center_screen.dart';
 import '../widgets/app_settings_widgets.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
@@ -133,7 +134,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           scheme.primary,
           '30天找到全新自我',
           '设置->帮助与反馈->30天找到全新自我',
-          destinationBuilder: () => const ThirtyDayChallengeScreen(),
+          destinationBuilder: () => const ChallengeCenterScreen(),
         ),
         _RecentFeature(
           Icons.track_changes_rounded,
@@ -203,7 +204,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         scheme.primary,
         '30天找到全新自我',
         '设置->帮助与反馈->30天找到全新自我',
-        destinationBuilder: () => const ThirtyDayChallengeScreen(),
+        destinationBuilder: () => const ChallengeCenterScreen(),
       ),
       _RecentFeature(
         Icons.track_changes_rounded,
@@ -491,7 +492,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     }
 
     final results = await Future.wait([
-      ApiService.fetchCourses(userId),
+      ApiService.fetchAllCourses(userId),
       ApiService.fetchUserSettings(),
     ]).timeout(const Duration(seconds: 5), onTimeout: () => [null, null]);
 
@@ -500,9 +501,16 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
     List<CourseItem>? courses;
     if (cloudCoursesRaw != null && cloudCoursesRaw.isNotEmpty) {
-      courses = cloudCoursesRaw
-          .map((e) => CourseItem.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+      courses = cloudCoursesRaw.map((e) {
+        final map = Map<String, dynamic>.from(e as Map);
+        // The API uses `semester`, while CourseItem accepts the local storage
+        // name `semester_id`; preserve it before deserializing.
+        map['semester_id'] = map['semester_id'] ??
+            map['semester'] ??
+            map['semesterId'] ??
+            'default';
+        return CourseItem.fromJson(map);
+      }).toList();
     }
 
     DateTime? semStart;
@@ -534,7 +542,10 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     if (_cloudCourses == null || _cloudCourses!.isEmpty) return;
     setState(() => _importingCourses = true);
     try {
-      await CourseService.saveCourses(widget.loggedInUser!, _cloudCourses!);
+      await CourseService.replaceCoursesForSemesters(
+        widget.loggedInUser!,
+        _cloudCourses!,
+      );
       if (mounted) {
         setState(() => _hasCloudCourses = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -559,14 +570,19 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     if (_cloudSemesterStart == null || _cloudSemesterEnd == null) return;
     setState(() => _importingSemester = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(StorageService.keySemesterStart,
-          _cloudSemesterStart!.toIso8601String());
-      await prefs.setString(
-          StorageService.keySemesterEnd, _cloudSemesterEnd!.toIso8601String());
+      await StorageService.saveAppSetting(
+        StorageService.keySemesterStart,
+        CourseScheduleSemantics.mondayOf(_cloudSemesterStart!)
+            .toIso8601String(),
+      );
+      await StorageService.saveAppSetting(
+        StorageService.keySemesterEnd,
+        _cloudSemesterEnd!.toIso8601String(),
+      );
       if (mounted) {
         setState(() {
-          _semesterStart = _cloudSemesterStart;
+          _semesterStart =
+              CourseScheduleSemantics.mondayOf(_cloudSemesterStart!);
           _semesterEnd = _cloudSemesterEnd;
           _hasCloudSemester = false;
         });
@@ -2015,9 +2031,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                       allowedExtensions: ['db'],
                       dialogTitle: '选择 Tai 的 data.db 文件',
                     );
+                    if (!mounted) return;
                     if (result != null && result.files.single.path != null) {
                       String path = result.files.single.path!;
                       bool isValid = await TaiService.validateDb(path);
+                      if (!mounted) return;
                       if (isValid) {
                         await TaiService.saveDbPath(path);
                         setState(() => _taiDbPath = path);
@@ -2038,10 +2056,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                   label: const Text('尝试自动检测默认安装路径'),
                   onPressed: () async {
                     final path = await TaiService.detectDefaultPath();
+                    if (!mounted) return;
                     if (path != null) {
                       await TaiService.saveDbPath(path);
-                      setState(() => _taiDbPath = path);
                       if (!mounted) return;
+                      setState(() => _taiDbPath = path);
                       ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('✅ 自动检测并绑定成功！')));
                     } else {

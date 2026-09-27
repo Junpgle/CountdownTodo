@@ -17,15 +17,42 @@ import '../features/finance/models/finance_models.dart';
 import '../features/finance/services/finance_text_parser.dart';
 import 'llm_service.dart';
 import 'notification_service.dart';
+import 'reminder_schedule_service.dart';
 import 'recognized_todo_adapter.dart';
 import 'todo_recognition_state.dart';
 import 'ai_recognition_chat_bridge.dart';
+import '../utils/persistent_image_storage.dart';
+import '../course_import/course_import_preflight.dart';
+import '../course_import/handlers/course_import_handler.dart';
+import '../course_import/widgets/course_time_repair_dialog.dart';
+import '../course_import/widgets/zf_time_config_dialog.dart';
+
+class _ExternalShareRequest {
+  const _ExternalShareRequest({
+    required this.context,
+    required this.files,
+    required this.onSuccess,
+    this.onTodoRecognized,
+    this.onFinanceRecognized,
+    this.fromInitial = false,
+  });
+
+  final BuildContext context;
+  final List<SharedMediaFile> files;
+  final Function onSuccess;
+  final Function(List<Map<String, dynamic>>, String?)? onTodoRecognized;
+  final FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
+      onFinanceRecognized;
+  final bool fromInitial;
+}
 
 class ExternalShareHandler {
   static StreamSubscription? _intentDataStreamSubscription;
   static bool _isProcessing = false;
+  static bool _isRetryingTodoRecognition = false;
   static final List<String> _processedFileKeys = [];
   static final Set<String> _processingFileKeys = <String>{};
+  static final List<_ExternalShareRequest> _queuedRequests = [];
   static const int _maxProcessedKeys = 50;
   static final String _recognitionSessionId =
       'recognition_${DateTime.now().microsecondsSinceEpoch}';
@@ -68,7 +95,37 @@ class ExternalShareHandler {
             onFinanceRecognized: onFinanceRecognized,
             fromInitial: true);
       },
+      onError: (Object error, StackTrace stack) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('无法接收分享内容，请重试: $error')),
+          );
+        }
+      },
     );
+  }
+
+  static void _drainQueuedRequests() {
+    if (_isProcessing || _queuedRequests.isEmpty) return;
+    final request = _queuedRequests.removeAt(0);
+    if (!request.context.mounted) {
+      _drainQueuedRequests();
+      return;
+    }
+    _processSharedFiles(
+      request.context,
+      request.files,
+      request.onSuccess,
+      onTodoRecognized: request.onTodoRecognized,
+      onFinanceRecognized: request.onFinanceRecognized,
+      fromInitial: request.fromInitial,
+    );
+  }
+
+  static void _finishCurrentRequest() {
+    ReceiveSharingIntent.instance.reset();
+    _isProcessing = false;
+    scheduleMicrotask(_drainQueuedRequests);
   }
 
   static void _processSharedFiles(
@@ -81,15 +138,57 @@ class ExternalShareHandler {
     bool fromInitial = false,
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
-    if (files.isEmpty || _isProcessing) return;
+    if (files.isEmpty) return;
+    final request = _ExternalShareRequest(
+      context: context,
+      files: List<SharedMediaFile>.unmodifiable(files),
+      onSuccess: onSuccess,
+      onTodoRecognized: onTodoRecognized,
+      onFinanceRecognized: onFinanceRecognized,
+      fromInitial: fromInitial,
+    );
+    if (_isProcessing) {
+      _queuedRequests.add(request);
+      return;
+    }
     _isProcessing = true;
+
+    // ACTION_SEND_MULTIPLE is delivered as one list. Process every item in
+    // order so additional files are not silently discarded. Keeping each
+    // item as a request also lets every course file show its own import-mode
+    // dialog without overlapping navigation routes.
+    for (final additionalFile in files.skip(1)) {
+      _queuedRequests.add(_ExternalShareRequest(
+        context: context,
+        files: [additionalFile],
+        onSuccess: onSuccess,
+        onTodoRecognized: onTodoRecognized,
+        onFinanceRecognized: onFinanceRecognized,
+        fromInitial: fromInitial,
+      ));
+    }
 
     await Future.delayed(const Duration(milliseconds: 500));
 
     final media = files.first;
-    final firstPath = media.path.trim();
-    final isSharedText =
-        await ExternalSharePayloadClassifier.isInlineText(media);
+    final firstPath = _normalizeSharedFilePath(media.path.trim());
+    final requestedMode = ExternalSharePayloadClassifier.modeFor(media);
+    bool isInlineText;
+    try {
+      isInlineText = await ExternalSharePayloadClassifier.isInlineText(media)
+          .timeout(const Duration(seconds: 3));
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('无法读取分享内容，请重试: $error')),
+        );
+      }
+      _finishCurrentRequest();
+      return;
+    }
+    final isSharedText = requestedMode == ExternalShareMode.financeImport
+        ? isInlineText
+        : requestedMode == ExternalShareMode.automatic && isInlineText;
     if (isSharedText) {
       try {
         final text = _sharedTextPayload(media);
@@ -107,105 +206,204 @@ class ExternalShareHandler {
           );
         }
       } finally {
-        ReceiveSharingIntent.instance.reset();
-        _isProcessing = false;
+        _finishCurrentRequest();
       }
       return;
     }
 
+    final hasExplicitFileMode = requestedMode != ExternalShareMode.automatic;
     final isValidFile = firstPath.isNotEmpty &&
-        (firstPath.contains('.') ||
+        (hasExplicitFileMode ||
+            firstPath.contains('.') ||
             media.type == SharedMediaType.image ||
             media.mimeType?.toLowerCase().startsWith('image/') == true) &&
         !firstPath.startsWith('countdowntodo://');
     if (!isValidFile) {
       // debugPrint('ExternalShareHandler: skip non-file intent: $firstPath');
-      ReceiveSharingIntent.instance.reset();
-      _isProcessing = false;
+      _finishCurrentRequest();
       return;
     }
 
     if (!context.mounted) {
-      _isProcessing = false;
+      _finishCurrentRequest();
       return;
     }
 
-    ValueNotifier<String> statusNotifier = ValueNotifier("处理中...");
+    String filePath = firstPath;
+    final ext = filePath.split('.').last.toLowerCase();
+    const imageExtensions = {
+      'jpg',
+      'jpeg',
+      'png',
+      'gif',
+      'webp',
+      'bmp',
+      'heic',
+      'heif',
+      'avif',
+      'tif',
+      'tiff',
+    };
+    final isImage = requestedMode == ExternalShareMode.imageRecognition ||
+        (requestedMode == ExternalShareMode.automatic &&
+            (media.type == SharedMediaType.image ||
+                imageExtensions.contains(ext) ||
+                media.mimeType?.toLowerCase().startsWith('image/') == true));
+    final isFinanceImport = requestedMode == ExternalShareMode.financeImport;
+    final needsCourseImport = !isImage && !isFinanceImport;
+
+    // 图片分享走识图流程，不需要课表学期；其余文件在任何读取、去重和
+    // 解析之前先完成登录与目标学期校验。
+    SemesterInfo? targetSemester;
+    String? courseUsername;
+    if (needsCourseImport) {
+      try {
+        courseUsername = await StorageService.getLoginSession();
+        if (!context.mounted) {
+          _finishCurrentRequest();
+          return;
+        }
+        if (courseUsername == null || courseUsername.trim().isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('请先登录账号，再导入课表')),
+          );
+          _finishCurrentRequest();
+          return;
+        }
+        targetSemester =
+            await CourseImportPreflight.selectTargetSemester(context);
+        if (!context.mounted) {
+          _finishCurrentRequest();
+          return;
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('导入准备失败，请先检查登录和学期设置: $e')),
+          );
+        }
+        _finishCurrentRequest();
+        return;
+      }
+      if (targetSemester == null) {
+        _finishCurrentRequest();
+        return;
+      }
+    }
+    if (!context.mounted) {
+      _finishCurrentRequest();
+      return;
+    }
+
+    ValueNotifier<String> statusNotifier = ValueNotifier("正在准备分享内容...");
     NavigatorState? dialogNavigator;
     var isDialogOpen = false;
+    var closeRequestedBeforeBuild = false;
 
     void closeDialogSafely() {
       final navigator = dialogNavigator;
-      if (!isDialogOpen || navigator == null || !navigator.mounted) return;
+      if (!isDialogOpen || navigator == null || !navigator.mounted) {
+        // showDialog installs its route on the next frame. Remember an early
+        // failure instead of accidentally popping the page underneath it.
+        closeRequestedBeforeBuild = true;
+        return;
+      }
       isDialogOpen = false;
       navigator.pop();
     }
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      useRootNavigator: true,
-      builder: (ctx) {
-        dialogNavigator = Navigator.of(ctx, rootNavigator: true);
-        isDialogOpen = true;
-        return AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          content: Row(
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(width: 20),
-              Expanded(
-                child: ValueListenableBuilder<String>(
-                  valueListenable: statusNotifier,
-                  builder: (context, value, child) {
-                    return Text(
-                      value,
-                      style: const TextStyle(fontSize: 15, height: 1.4),
-                    );
-                  },
+    try {
+      unawaited(showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        useRootNavigator: true,
+        builder: (ctx) {
+          dialogNavigator = Navigator.of(ctx, rootNavigator: true);
+          isDialogOpen = true;
+          if (closeRequestedBeforeBuild) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              closeDialogSafely();
+            });
+          }
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            content: Row(
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: statusNotifier,
+                    builder: (context, value, child) {
+                      return Text(
+                        value,
+                        style: const TextStyle(fontSize: 15, height: 1.4),
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          );
+        },
+      ));
+    } catch (error) {
+      statusNotifier.dispose();
+      _finishCurrentRequest();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('无法打开分享处理窗口: $error')),
         );
-      },
-    );
+      }
+      return;
+    }
 
     String? claimedFileKey;
     AiRecognitionHandle? recognitionHandle;
     try {
+      statusNotifier.value = isImage
+          ? "正在准备图片..."
+          : isFinanceImport
+              ? "正在准备记账内容..."
+              : "正在等待分享课表文件...";
       await Future.delayed(const Duration(milliseconds: 400));
 
-      String filePath = media.path;
-      File file = File(filePath);
-      String ext = filePath.split('.').last.toLowerCase();
+      File file = await _waitForReadableFile(filePath);
+      statusNotifier.value = "正在校验分享文件...";
 
       // 生成文件唯一标识。getInitialMedia 和 getMediaStream 可能同时返回
       // 同一份分享内容，因此两条入口必须使用同一套去重规则。
       final fileKey = await _generateFileKey(filePath);
-      if (await _isShareAlreadyHandled(fileKey, filePath)) {
-        // debugPrint("文件已处理或正在处理，跳过: $filePath");
+      // 课表分享是一次明确的“导入”操作。同一份文件重新分享时，仍然
+      // 必须让用户选择“共存/替换”，不能被上次失败或取消前留下的状态
+      // 静默吞掉；识图和记账仍保留跨进程去重保护。
+      final shouldDeduplicate = !needsCourseImport;
+      if (shouldDeduplicate &&
+          await _isShareAlreadyHandled(fileKey, filePath)) {
+        statusNotifier.value = "分享内容已经处理过";
+        await Future.delayed(const Duration(milliseconds: 600));
         closeDialogSafely();
-        ReceiveSharingIntent.instance.reset();
-        _isProcessing = false;
         return;
       }
       if (!_processingFileKeys.add(fileKey)) {
+        statusNotifier.value = "分享内容正在处理中";
+        await Future.delayed(const Duration(milliseconds: 600));
         closeDialogSafely();
-        ReceiveSharingIntent.instance.reset();
-        _isProcessing = false;
         return;
       }
       claimedFileKey = fileKey;
 
-      // 检测是否为图片
-      final imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
-      final isImage = media.type == SharedMediaType.image ||
-          imageExtensions.contains(ext) ||
-          media.mimeType?.toLowerCase().startsWith('image/') == true;
-
       if (isImage) {
+        if (requestedMode == ExternalShareMode.imageRecognition &&
+            !await _isLikelyImageFile(file, media, imageExtensions)) {
+          statusNotifier.value = "❌ 识别图片仅支持图片文件";
+          await Future.delayed(const Duration(seconds: 2));
+          closeDialogSafely();
+          return;
+        }
+
         // 图片处理：调用大模型识别事项并保留类型声明
         statusNotifier.value = "识别到图片\n正在压缩图片...";
 
@@ -227,10 +425,19 @@ class ExternalShareHandler {
           return;
         }
 
+        // 分享插件返回的通常是临时缓存文件。把它复制到应用自己的持久
+        // 目录后再进入识别/聊天镜像，避免分享扩展退出或系统清理缓存时，
+        // 首轮读取失败、只能靠聊天框重新选图才成功。
+        filePath = await _materializeSharedImage(filePath);
+        file = File(filePath);
+
         // 压缩图片
         String compressedPath = await _compressImage(filePath);
 
         final compressedFile = File(compressedPath);
+        if (!await compressedFile.exists()) {
+          throw Exception('图片压缩结果不可读取');
+        }
         final compressedSize = await compressedFile.length();
         statusNotifier.value =
             "图片已压缩 (${(compressedSize / 1024).toStringAsFixed(0)}KB)\n正在调用大模型分析...";
@@ -375,138 +582,67 @@ class ExternalShareHandler {
             closeDialogSafely();
           }
         }
-      } else {
-        // 文件处理：课表导入
-        statusNotifier.value = "获取课表文件中...";
-
-        String content = await _safeReadFile(file);
-        final username = await StorageService.getLoginSession();
-        if (username == null || username.isEmpty) {
-          statusNotifier.value = "❌ 未登录\n请先登录后再导入课表";
+      } else if (isFinanceImport) {
+        statusNotifier.value = "正在读取记账文本...";
+        final content =
+            await _safeReadFile(file).timeout(const Duration(seconds: 20));
+        final drafts = FinanceTextParser.parse(
+          content,
+          source: FinanceEntrySource.import,
+        );
+        if (drafts.isEmpty) {
+          statusNotifier.value = "❌ 未识别到记账内容";
           await Future.delayed(const Duration(seconds: 2));
           closeDialogSafely();
           return;
         }
+        statusNotifier.value = "✅ 已识别 ${drafts.length} 笔账单";
+        await _markFileProcessed(fileKey);
+        await Future.delayed(const Duration(milliseconds: 800));
+        closeDialogSafely();
+        if (context.mounted) {
+          await onFinanceRecognized?.call(drafts, filePath);
+        }
+      } else {
+        // 文件处理：课表导入
+        statusNotifier.value = "获取课表文件中...";
+
+        String content =
+            await _safeReadFile(file).timeout(const Duration(seconds: 20));
+        final username = courseUsername!;
 
         await Future.delayed(const Duration(milliseconds: 400));
+        final targetSemesterId = targetSemester!.id;
 
-        // 让用户选择目标学期
-        final semesters = await StorageService.getSemesters();
-        String targetSemesterId = 'default';
+        Future<List<CourseItem>?> repairMissingTimes(
+            List<CourseItem> courses) async {
+          if (!context.mounted) return null;
+          statusNotifier.value = "部分课程缺少有效时间\n请补全后继续导入";
+          return CourseTimeRepairDialog.show(context, courses);
+        }
 
-        if (semesters.length > 1) {
+        var importModeCancelled = false;
+        if (!context.mounted) {
           closeDialogSafely();
-          if (!context.mounted) return;
+          return;
+        }
+        final courseImportHandler = CourseImportHandler(
+          context: context,
+          username: username,
+          onRescheduleReminders: ReminderScheduleService.scheduleCurrentUser,
+          showMessage: (_) {},
+        );
 
-          final selectedSemester = await showDialog<SemesterInfo>(
-            context: context,
-            builder: (ctx) {
-              final colorScheme = Theme.of(ctx).colorScheme;
-              return AlertDialog(
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                title: Row(
-                  children: [
-                    Icon(Icons.school_outlined, color: colorScheme.primary),
-                    const SizedBox(width: 10),
-                    const Text('选择导入到哪个学期'),
-                  ],
-                ),
-                content: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: semesters.map((semester) {
-                      return InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => Navigator.pop(ctx, semester),
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          margin: const EdgeInsets.only(bottom: 8),
-                          decoration: BoxDecoration(
-                            border:
-                                Border.all(color: colorScheme.outlineVariant),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.school_outlined,
-                                  color: colorScheme.primary),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      semester.name,
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '开学: ${semester.startDate.month}/${semester.startDate.day}',
-                                      style: TextStyle(
-                                          fontSize: 12,
-                                          color: colorScheme.onSurfaceVariant),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('取消'),
-                  ),
-                ],
-              );
-            },
-          );
-
-          if (selectedSemester == null) {
-            return;
+        Future<bool?> selectImportMode(List<CourseItem> courses) async {
+          statusNotifier.value = "解析完成\n请选择导入方式";
+          final mode = await courseImportHandler.askImportMode(courses);
+          if (mode == null) {
+            importModeCancelled = true;
+            return null;
           }
-          targetSemesterId = selectedSemester.id;
-          if (!context.mounted) return;
-
-          // 重新显示进度对话框
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            useRootNavigator: true,
-            builder: (ctx) {
-              dialogNavigator = Navigator.of(ctx, rootNavigator: true);
-              isDialogOpen = true;
-              return AlertDialog(
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                content: Row(
-                  children: [
-                    const CircularProgressIndicator(),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      child: ValueListenableBuilder<String>(
-                        valueListenable: statusNotifier,
-                        builder: (context, value, child) {
-                          return Text(value,
-                              style:
-                                  const TextStyle(fontSize: 15, height: 1.4));
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
-          statusNotifier.value = "正在导入课表...";
-        } else if (semesters.isNotEmpty) {
-          targetSemesterId = semesters.first.id;
+          statusNotifier.value =
+              mode == ImportMode.merge ? "正在合并课表..." : "正在替换原课表...";
+          return mode == ImportMode.merge;
         }
 
         bool success = false;
@@ -516,47 +652,54 @@ class ExternalShareHandler {
           sourceName = "西安电子科技大学";
           statusNotifier.value = "识别到: $sourceName\n正在导入...";
 
-          DateTime? semStart = await StorageService.getSemesterStart();
-          if (semStart == null) {
-            statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
-            await Future.delayed(const Duration(seconds: 2));
-            closeDialogSafely();
-            return;
-          }
           success = await CourseService.importXidianScheduleFromIcs(
-              username, content, semStart,
-              semesterId: targetSemesterId);
+              username, content, targetSemester.startDate,
+              semesterId: targetSemesterId,
+              repairMissingTimes: repairMissingTimes,
+              selectImportMode: selectImportMode);
         } else if (content.contains('timetable_con') ||
-            content.contains('id="table1"')) {
-          sourceName = "正方教务系统";
+            content.contains('id="table1"') ||
+            content.contains('kbgrid_table') ||
+            content.toLowerCase().contains('huel')) {
+          sourceName =
+              content.toLowerCase().contains('huel') ? "河南财经政法大学" : "正方教务系统";
           statusNotifier.value = "识别到: $sourceName\n正在深度解析...";
 
-          DateTime? semStart = await StorageService.getSemesterStart();
-          if (semStart == null) {
-            statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
-            await Future.delayed(const Duration(seconds: 2));
+          if (!context.mounted) {
             closeDialogSafely();
             return;
           }
+          final customTimes = await showDialog<Map<int, Map<String, int>>>(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => const ZfTimeConfigDialog(),
+          );
+          if (customTimes == null) {
+            closeDialogSafely();
+            return;
+          }
+          statusNotifier.value = "识别到: $sourceName\n正在深度解析...";
+
           success = await CourseService.importZfSoftScheduleFromHtml(
-              username, content, semStart,
-              semesterId: targetSemesterId);
-        } else if (['mhtml', 'html', 'htm'].contains(ext) ||
-            content.contains('quoted-printable') ||
-            content.toLowerCase().contains('<html')) {
+              username, content, targetSemester.startDate,
+              customTimes: customTimes,
+              semesterId: targetSemesterId,
+              repairMissingTimes: repairMissingTimes,
+              selectImportMode: selectImportMode);
+        } else if ((['mhtml', 'html', 'htm'].contains(ext) ||
+                content.contains('quoted-printable') ||
+                content.toLowerCase().contains('<html')) &&
+            (content.contains('XMUSTUDENT') ||
+                content.contains('class="arrage') ||
+                content.contains('class="arrange'))) {
           sourceName = "厦门大学";
           statusNotifier.value = "识别到: $sourceName\n正在深度解码导入...";
 
-          DateTime? semStart = await StorageService.getSemesterStart();
-          if (semStart == null) {
-            statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
-            await Future.delayed(const Duration(seconds: 2));
-            closeDialogSafely();
-            return;
-          }
           success = await CourseService.importXmuScheduleFromHtml(
-              username, content, semStart,
-              semesterId: targetSemesterId);
+              username, content, targetSemester.startDate,
+              semesterId: targetSemesterId,
+              repairMissingTimes: repairMissingTimes,
+              selectImportMode: selectImportMode);
         } else if (['json', 'txt'].contains(ext) ||
             content.trim().startsWith('[') ||
             content.trim().startsWith('{')) {
@@ -564,7 +707,10 @@ class ExternalShareHandler {
           statusNotifier.value = "识别到: $sourceName\n正在导入...";
           success = await CourseService.importScheduleFromJson(
               username, content,
-              semesterId: targetSemesterId);
+              semesterStart: targetSemester.startDate,
+              semesterId: targetSemesterId,
+              repairMissingTimes: repairMissingTimes,
+              selectImportMode: selectImportMode);
         } else {
           statusNotifier.value = "❌ 未知的文件格式\n暂不支持解析该文件";
           await Future.delayed(const Duration(seconds: 2));
@@ -578,7 +724,16 @@ class ExternalShareHandler {
           await _markFileProcessed(fileKey);
           await Future.delayed(const Duration(milliseconds: 800));
           closeDialogSafely();
+          try {
+            await ReminderScheduleService.scheduleCurrentUser();
+          } catch (error) {
+            // The course data has already been saved. Keep a notification
+            // refresh failure from hiding a successful share import.
+            debugPrint('⚠️ 分享课表后刷新提醒失败: $error');
+          }
           if (context.mounted) onSuccess();
+        } else if (importModeCancelled) {
+          closeDialogSafely();
         } else {
           statusNotifier.value = "❌ 导入失败\n课表解析错误或文件已损坏";
           await Future.delayed(const Duration(seconds: 2));
@@ -591,12 +746,11 @@ class ExternalShareHandler {
       await Future.delayed(const Duration(seconds: 2));
       closeDialogSafely();
     } finally {
-      ReceiveSharingIntent.instance.reset();
       if (claimedFileKey != null) {
         _processingFileKeys.remove(claimedFileKey);
       }
-      _isProcessing = false;
       statusNotifier.dispose();
+      _finishCurrentRequest();
     }
   }
 
@@ -639,8 +793,9 @@ class ExternalShareHandler {
       [...results.first, ...results.last],
       source: FinanceEntrySource.import,
     );
-    if (todoResults.isEmpty && financeDrafts.isEmpty && errors.isNotEmpty) {
-      throw Exception('图片识别失败：${errors.first}');
+    if (todoResults.isEmpty && financeDrafts.isEmpty) {
+      final detail = errors.isNotEmpty ? ': ${errors.first}' : '';
+      throw Exception('图片识别未返回可识别内容$detail');
     }
     return _ImageRecognitionResult(
       todoResults: todoResults,
@@ -684,6 +839,154 @@ class ExternalShareHandler {
     return result.path;
   }
 
+  static Future<bool> _isLikelyImageFile(
+    File file,
+    SharedMediaFile media,
+    Set<String> imageExtensions,
+  ) async {
+    if (media.type == SharedMediaType.image ||
+        media.mimeType?.toLowerCase().startsWith('image/') == true) {
+      return true;
+    }
+
+    final fileName = file.path.split(RegExp(r'[\\/]')).last.toLowerCase();
+    final dot = fileName.lastIndexOf('.');
+    if (dot >= 0 && imageExtensions.contains(fileName.substring(dot + 1))) {
+      return true;
+    }
+
+    try {
+      final header = await file.openRead(0, 12).fold<List<int>>(
+        <int>[],
+        (bytes, chunk) => bytes..addAll(chunk),
+      );
+      if (header.length >= 3 &&
+          header[0] == 0xff &&
+          header[1] == 0xd8 &&
+          header[2] == 0xff) {
+        return true; // JPEG
+      }
+      if (header.length >= 8 &&
+          header[0] == 0x89 &&
+          header[1] == 0x50 &&
+          header[2] == 0x4e &&
+          header[3] == 0x47 &&
+          header[4] == 0x0d &&
+          header[5] == 0x0a &&
+          header[6] == 0x1a &&
+          header[7] == 0x0a) {
+        return true; // PNG
+      }
+      if (header.length >= 6 &&
+          header[0] == 0x47 &&
+          header[1] == 0x49 &&
+          header[2] == 0x46 &&
+          header[3] == 0x38) {
+        return true; // GIF
+      }
+      if (header.length >= 2 && header[0] == 0x42 && header[1] == 0x4d) {
+        return true; // BMP
+      }
+      if (header.length >= 4 &&
+          ((header[0] == 0x49 &&
+                  header[1] == 0x49 &&
+                  header[2] == 0x2a &&
+                  header[3] == 0x00) ||
+              (header[0] == 0x4d &&
+                  header[1] == 0x4d &&
+                  header[2] == 0x00 &&
+                  header[3] == 0x2a))) {
+        return true; // TIFF
+      }
+      if (header.length >= 12 &&
+          header[0] == 0x52 &&
+          header[1] == 0x49 &&
+          header[2] == 0x46 &&
+          header[3] == 0x46 &&
+          header[8] == 0x57 &&
+          header[9] == 0x45 &&
+          header[10] == 0x42 &&
+          header[11] == 0x50) {
+        return true; // WEBP
+      }
+      if (header.length >= 12 &&
+          header[4] == 0x66 &&
+          header[5] == 0x74 &&
+          header[6] == 0x79 &&
+          header[7] == 0x70) {
+        final brand = String.fromCharCodes(header.sublist(8, 12));
+        return const {'heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1', 'avif'}
+            .contains(brand);
+      }
+    } catch (_) {
+      return false;
+    }
+    return false;
+  }
+
+  /// 等待分享扩展完成文件复制。部分来源会先发送 intent，再异步写入
+  /// 缓存文件；直接 File.length/readAsBytes 会把这类正常分享误判成失败。
+  static Future<File> _waitForReadableFile(String path) async {
+    final normalizedPath = _normalizeSharedFilePath(path);
+    final uri = Uri.tryParse(normalizedPath);
+    if (uri?.scheme.toLowerCase() == 'content') {
+      throw Exception('Android 分享文件仍是 content URI，暂时无法读取，请重新分享');
+    }
+    final file = File(normalizedPath);
+    int? previousSize;
+    var stableReads = 0;
+    Object? lastError;
+    for (var attempt = 0; attempt < 12; attempt++) {
+      try {
+        if (await file.exists()) {
+          final size = await file.length();
+          if (size > 0) {
+            if (size == previousSize) {
+              stableReads++;
+            } else {
+              previousSize = size;
+              stableReads = 1;
+            }
+            if (stableReads >= 2) return file;
+          }
+        }
+      } catch (error) {
+        lastError = error;
+      }
+      await Future.delayed(
+        Duration(milliseconds: attempt == 0 ? 100 : 250),
+      );
+    }
+    final detail = lastError == null ? '' : ': $lastError';
+    throw Exception('分享文件暂不可读取$detail');
+  }
+
+  static Future<String> _materializeSharedImage(String sourcePath) async {
+    try {
+      final persistedPath = await persistImagePath(
+        sourcePath,
+        'analysis_images',
+      );
+      if (persistedPath != null && persistedPath.isNotEmpty) {
+        return persistedPath;
+      }
+    } catch (_) {
+      // 复制失败时仍尝试使用插件路径；当前进程内它通常仍然可读。
+    }
+    return sourcePath;
+  }
+
+  /// receive_sharing_intent normally copies Android content URIs to its cache
+  /// directory before they reach Dart.  Some iOS/share-extension versions can
+  /// still return a file URI, which File(path) does not understand.
+  static String _normalizeSharedFilePath(String path) {
+    final uri = Uri.tryParse(path);
+    if (uri?.scheme.toLowerCase() == 'file') {
+      return File.fromUri(uri!).path;
+    }
+    return path;
+  }
+
   static Future<String> _safeReadFile(File file) async {
     try {
       return await file.readAsString();
@@ -700,9 +1003,16 @@ class ExternalShareHandler {
   /// getInitialMedia/getMediaStream 两条回调稳定去重。
   static Future<String> _generateFileKey(String filePath) async {
     try {
-      final file = File(filePath);
+      final normalizedPath = _normalizeSharedFilePath(filePath);
+      final file = File(normalizedPath);
       if (!await file.exists()) return 'path:$filePath';
-      final digest = sha256.convert(await file.readAsBytes());
+      // Stream the digest instead of loading a potentially large MHTML/file
+      // share into memory. A full read here used to leave the UI on the
+      // initial “处理中...” state for large external shares.
+      final digest = await sha256
+          .bind(file.openRead())
+          .first
+          .timeout(const Duration(seconds: 30));
       return 'sha256:${digest.toString()}';
     } catch (e) {
       return 'path:$filePath';
@@ -1056,6 +1366,23 @@ class ExternalShareHandler {
   /// 重试图片识别
   /// [onTodoRecognized] 事项识别成功回调（名称为旧接口兼容保留）
   static Future<void> retryTodoRecognition({
+    Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
+    FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
+        onFinanceRecognized,
+  }) async {
+    if (_isRetryingTodoRecognition) return;
+    _isRetryingTodoRecognition = true;
+    try {
+      await _retryTodoRecognition(
+        onTodoRecognized: onTodoRecognized,
+        onFinanceRecognized: onFinanceRecognized,
+      );
+    } finally {
+      _isRetryingTodoRecognition = false;
+    }
+  }
+
+  static Future<void> _retryTodoRecognition({
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
     FutureOr<void> Function(List<FinanceEntryDraft>, String?)?
         onFinanceRecognized,

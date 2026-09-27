@@ -3,8 +3,11 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../course_import/course_schedule_semantics.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import '../utils/calendar_date_math.dart';
+import 'storage/storage_key_scope.dart';
 
 class CourseDayTransfer {
   final String fromDate;
@@ -247,7 +250,7 @@ class CourseCalendarAdjustmentService {
 
   static Future<CourseCalendarAdjustment> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_prefsKey);
+    final raw = await _readScopedValue(_prefsKey, prefs);
     if (raw == null || raw.isEmpty) return CourseCalendarAdjustment.empty();
 
     try {
@@ -262,7 +265,10 @@ class CourseCalendarAdjustmentService {
 
   static Future<void> save(CourseCalendarAdjustment adjustment) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefsKey, jsonEncode(adjustment.toJson()));
+    await prefs.setString(
+      _scopedKey(_prefsKey, prefs),
+      jsonEncode(adjustment.toJson()),
+    );
     StorageService.triggerRefresh(const {
       DataRefreshDomain.courses,
       DataRefreshDomain.fixedSchedules,
@@ -297,9 +303,9 @@ class CourseCalendarAdjustmentService {
           .map((date) => _df.parseStrict(date))
           .toList()
         ..sort();
-      final first = dates.first
-          .subtract(const Duration(days: _officialHolidayPromptLeadDays));
-      final last = dates.last.add(const Duration(days: 7));
+      final first = CalendarDateMath.addDays(
+          dates.first, -_officialHolidayPromptLeadDays);
+      final last = CalendarDateMath.addDays(dates.last, 7);
       if (!current.isBefore(first) &&
           !current.isAfter(last) &&
           !await _isOfficialHolidaySnoozedToday(window.key, current)) {
@@ -313,7 +319,7 @@ class CourseCalendarAdjustmentService {
     if (key.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-      _officialHolidaySnoozeTodayKey,
+      _scopedKey(_officialHolidaySnoozeTodayKey, prefs),
       _officialHolidaySnoozeValue(key),
     );
   }
@@ -323,8 +329,34 @@ class CourseCalendarAdjustmentService {
     DateTime now,
   ) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_officialHolidaySnoozeTodayKey) ==
-        _officialHolidaySnoozeValue(key, now);
+    final stored =
+        await _readScopedValue(_officialHolidaySnoozeTodayKey, prefs);
+    return stored == _officialHolidaySnoozeValue(key, now);
+  }
+
+  static String _scopedKey(String baseKey, SharedPreferences prefs) {
+    return StorageKeyScope.scoped(
+      baseKey,
+      prefs.getString(StorageService.keyCurrentUser)?.trim(),
+    );
+  }
+
+  /// Migrates the pre-account-isolation value once to the active account.
+  /// Anonymous use continues to read the legacy key for compatibility.
+  static Future<String?> _readScopedValue(
+    String baseKey,
+    SharedPreferences prefs,
+  ) async {
+    final scopedKey = _scopedKey(baseKey, prefs);
+    var value = prefs.getString(scopedKey);
+    if (value == null && scopedKey != baseKey) {
+      value = prefs.getString(baseKey);
+      if (value != null) {
+        await prefs.setString(scopedKey, value);
+        await prefs.remove(baseKey);
+      }
+    }
+    return value;
   }
 
   static String _officialHolidaySnoozeValue(String key, [DateTime? now]) =>
@@ -353,7 +385,26 @@ class CourseCalendarAdjustmentService {
       return rawCourses;
     }
 
-    final semesterMonday = await _resolveSemesterMonday(rawCourses);
+    final fallbackSemesterMonday =
+        await _resolveFallbackSemesterMonday(rawCourses);
+    final semesterMondayCache = <String, DateTime?>{};
+
+    Future<DateTime?> semesterMondayFor(CourseItem course) async {
+      final semesterId = course.semesterId;
+      if (semesterMondayCache.containsKey(semesterId)) {
+        return semesterMondayCache[semesterId];
+      }
+
+      final start = semesterId.isNotEmpty
+          ? await StorageService.getSemesterStartById(semesterId)
+          : null;
+      final monday = start == null
+          ? fallbackSemesterMonday
+          : CourseScheduleSemantics.mondayOf(start);
+      semesterMondayCache[semesterId] = monday;
+      return monday;
+    }
+
     final byDate = <String, List<CourseItem>>{};
     for (final course in rawCourses) {
       final date = course.date.trim();
@@ -371,11 +422,15 @@ class CourseCalendarAdjustmentService {
       if (sourceCourses.isEmpty) continue;
       final targetDate = _df.parseStrict(transfer.toDate);
       final targetWeekday = targetDate.weekday;
-      final targetWeekIndex = semesterMonday == null
-          ? sourceCourses.first.weekIndex
-          : targetDate.difference(semesterMonday).inDays ~/ 7 + 1;
 
       for (final course in sourceCourses) {
+        final semesterMonday = await semesterMondayFor(course);
+        final targetWeekIndex = semesterMonday == null
+            ? course.weekIndex
+            : CourseScheduleSemantics.weekIndexForDate(
+                semesterMonday,
+                targetDate,
+              );
         adjusted.add(_copyCourseForDate(
           course,
           date: transfer.toDate,
@@ -393,12 +448,11 @@ class CourseCalendarAdjustmentService {
     return _dedupe(adjusted);
   }
 
-  static Future<DateTime?> _resolveSemesterMonday(
+  static Future<DateTime?> _resolveFallbackSemesterMonday(
       List<CourseItem> courses) async {
     final semStart = await StorageService.getSemesterStart();
     if (semStart != null) {
-      final normalized = DateTime(semStart.year, semStart.month, semStart.day);
-      return normalized.subtract(Duration(days: normalized.weekday - 1));
+      return CourseScheduleSemantics.mondayOf(semStart);
     }
 
     final dated = courses.where((c) => c.date.isNotEmpty).toList()
@@ -407,9 +461,10 @@ class CourseCalendarAdjustmentService {
     try {
       final first = dated.first;
       final firstDate = _df.parseStrict(first.date);
-      return DateTime(firstDate.year, firstDate.month, firstDate.day)
-          .subtract(Duration(days: first.weekday - 1))
-          .subtract(Duration(days: (first.weekIndex - 1) * 7));
+      return CalendarDateMath.addDays(
+        CalendarDateMath.dateOnly(firstDate),
+        -(first.weekday - 1) - (first.weekIndex - 1) * 7,
+      );
     } catch (_) {
       return null;
     }
@@ -432,6 +487,7 @@ class CourseCalendarAdjustmentService {
       weekIndex: weekIndex,
       roomName: course.roomName,
       lessonType: course.lessonType,
+      semesterId: course.semesterId,
       teamUuid: course.teamUuid,
       version: course.version,
       updatedAt: course.updatedAt,
@@ -445,7 +501,7 @@ class CourseCalendarAdjustmentService {
     final result = <CourseItem>[];
     for (final course in courses) {
       final key =
-          '${course.date}|${course.courseName}|${course.roomName}|${course.startTime}|${course.endTime}';
+          '${course.semesterId}|${course.date}|${course.courseName}|${course.roomName}|${course.startTime}|${course.endTime}';
       if (seen.add(key)) result.add(course);
     }
     return result;

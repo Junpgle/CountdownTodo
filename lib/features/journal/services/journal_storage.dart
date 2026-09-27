@@ -29,7 +29,7 @@ class JournalStorage {
     int offset = 0,
     String? searchQuery,
   }) async {
-    final db = await DatabaseHelper.instance.database;
+    final db = await DatabaseHelper.instance.databaseForUser(accountId);
     await _reconcileMediaIfNeeded(db, accountId);
     final query = searchQuery?.trim() ?? '';
     final hasQuery = query.isNotEmpty;
@@ -70,8 +70,10 @@ class JournalStorage {
         .toList();
   }
 
-  Future<JournalEntry?> loadEntry(String id) async {
-    final db = await DatabaseHelper.instance.database;
+  Future<JournalEntry?> loadEntry(String id, {String? accountId}) async {
+    final db = accountId == null
+        ? await DatabaseHelper.instance.database
+        : await DatabaseHelper.instance.databaseForUser(accountId);
     final rows = await db.query(
       'journal_entries',
       where: 'uuid = ? AND is_deleted = 0',
@@ -93,8 +95,11 @@ class JournalStorage {
 
   /// Retrieves one attachment's bytes when a web preview becomes visible.
   /// Native previews use the local path and do not need this query.
-  Future<JournalAttachment?> loadAttachment(String id) async {
-    final db = await DatabaseHelper.instance.database;
+  Future<JournalAttachment?> loadAttachment(String id,
+      {String? accountId}) async {
+    final db = accountId == null
+        ? await DatabaseHelper.instance.database
+        : await DatabaseHelper.instance.databaseForUser(accountId);
     final rows = await db.query(
       'journal_attachments',
       where: 'uuid = ?',
@@ -105,10 +110,11 @@ class JournalStorage {
   }
 
   Future<void> saveEntry(
-    JournalEntry entry,
-    List<JournalAttachment> attachments,
-  ) async {
-    final db = await DatabaseHelper.instance.database;
+      JournalEntry entry, List<JournalAttachment> attachments,
+      {String? accountId}) async {
+    final db = accountId == null
+        ? await DatabaseHelper.instance.database
+        : await DatabaseHelper.instance.databaseForUser(accountId);
     await db.transaction((txn) async {
       await txn.insert(
         'journal_entries',
@@ -134,8 +140,13 @@ class JournalStorage {
     });
   }
 
-  Future<List<JournalAttachment>> deleteEntry(String id) async {
-    final db = await DatabaseHelper.instance.database;
+  Future<List<JournalAttachment>> deleteEntry(
+    String id, {
+    String? accountId,
+  }) async {
+    final db = accountId == null
+        ? await DatabaseHelper.instance.database
+        : await DatabaseHelper.instance.databaseForUser(accountId);
     final rows = await db.query(
       'journal_attachments',
       where: 'entry_uuid = ?',

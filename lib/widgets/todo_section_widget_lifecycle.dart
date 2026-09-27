@@ -14,15 +14,8 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
 
   Future<void> _loadHabitDisplaySettings() async {
     try {
-      final goals = await HabitRepository.getActiveGoals();
-      final seriesIds = <String>{};
-      for (final goal in goals) {
-        if (goal.sourceType != HabitSourceType.recurringTodo ||
-            goal.displayMode != HabitDisplayMode.habitOnly) {
-          continue;
-        }
-        seriesIds.addAll(goal.sourceIds.where((id) => id.isNotEmpty));
-      }
+      final seriesIds =
+          await HabitRepository.getHabitOnlyRecurringTodoSeriesIds();
       if (!mounted) return;
       setState(() {
         _habitOnlyRecurringSeriesIds = seriesIds;

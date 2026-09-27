@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart';
-import 'package:intl/intl.dart';
 import '../../models.dart';
+import '../course_schedule_semantics.dart';
 
 class ZfSoftScheduleParser {
   /// 传入 正方系统导出的 MHTML/HTML 字符串以及学期开始日期
@@ -20,10 +20,6 @@ class ZfSoftScheduleParser {
     // 2. 核心逻辑：获取页面中所有的课程节点块
     // 🚀 修复：不限表格 ID (适配 kbgrid_table_0, table1 等)，确保能抓取到所有课程
     var courseNodes = document.querySelectorAll('.timetable_con');
-
-    // 🚀 预处理：对齐学期周一，确保日期推算不跨周
-    DateTime semesterMonday = semesterStartDate
-        .subtract(Duration(days: semesterStartDate.weekday - 1));
 
     for (var node in courseNodes) {
       // 获取课程名称：兼容 u 和 span 两种标题包装方式
@@ -117,9 +113,11 @@ class ZfSoftScheduleParser {
         debugPrint('[$title] timeStr=$timeStr weeks=$weeks');
 
         for (int week in weeks) {
-          DateTime courseDate = semesterMonday
-              .add(Duration(days: (week - 1) * 7 + (weekday - 1)));
-          String dateStr = DateFormat('yyyy-MM-dd').format(courseDate);
+          final dateStr = CourseScheduleSemantics.dateFor(
+            semesterStart: semesterStartDate,
+            weekIndex: week,
+            weekday: weekday,
+          );
 
           courses.add(CourseItem(
             courseName: title,
@@ -139,7 +137,8 @@ class ZfSoftScheduleParser {
     // 全局去重：防止因扫描多个表格导致的课程冲突
     final seen = <String>{};
     return courses.where((c) {
-      final key = "${c.date}-${c.startTime}-${c.courseName}";
+      final key =
+          "${c.date}-${c.weekday}-${c.startTime}-${c.endTime}-${c.courseName}-${c.teacherName}-${c.roomName}";
       if (seen.contains(key)) return false;
       seen.add(key);
       return true;

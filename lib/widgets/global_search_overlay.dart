@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models.dart';
 import '../services/search_service.dart';
+import '../services/global_search_extra_service.dart';
+import '../storage_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/theme_color_tokens.dart';
 import 'app_state_views.dart';
@@ -45,6 +47,18 @@ const _typeMeta = <SearchResultType, _TypeMeta>{
   SearchResultType.challenge: _TypeMeta('挑战', Icons.auto_awesome_rounded),
   SearchResultType.app: _TypeMeta('屏幕使用', Icons.smartphone_rounded),
   SearchResultType.log: _TypeMeta('时间日志', Icons.history_edu_rounded),
+  SearchResultType.finance: _TypeMeta('记账', Icons.receipt_long_rounded),
+  SearchResultType.journal: _TypeMeta('私密日记', Icons.auto_stories_outlined),
+  SearchResultType.fixedSchedule:
+      _TypeMeta('固定日程', Icons.event_available_outlined),
+  SearchResultType.planBlock: _TypeMeta('规划块', Icons.view_timeline_outlined),
+  SearchResultType.team: _TypeMeta('团队', Icons.groups_rounded),
+  SearchResultType.chat: _TypeMeta('AI 对话', Icons.forum_outlined),
+  SearchResultType.habitCheckIn: _TypeMeta('习惯打卡', Icons.task_alt_rounded),
+  SearchResultType.challengeTask:
+      _TypeMeta('挑战任务', Icons.auto_awesome_outlined),
+  SearchResultType.challengeTemplate:
+      _TypeMeta('挑战模板', Icons.auto_awesome_motion_rounded),
   SearchResultType.setting: _TypeMeta('设置', Icons.settings_rounded),
   SearchResultType.action: _TypeMeta('快捷操作', Icons.bolt_rounded),
   SearchResultType.recommend: _TypeMeta('猜你想搜', Icons.auto_awesome_outlined),
@@ -64,6 +78,15 @@ const _groupOrder = [
   SearchResultType.tag,
   SearchResultType.app,
   SearchResultType.log,
+  SearchResultType.fixedSchedule,
+  SearchResultType.planBlock,
+  SearchResultType.finance,
+  SearchResultType.journal,
+  SearchResultType.habitCheckIn,
+  SearchResultType.challengeTask,
+  SearchResultType.challengeTemplate,
+  SearchResultType.team,
+  SearchResultType.chat,
   SearchResultType.setting,
   SearchResultType.action,
 ];
@@ -93,6 +116,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
 
   // 记录每个类型是否已展开（默认只显示前 3 条）
   final Map<SearchResultType, bool> _expanded = {};
+  final Map<String, GlobalKey> _resultKeys = {};
+  bool _resultRouteOpen = false;
 
   Color _typeColor(SearchResultType type, ColorScheme colorScheme) {
     return switch (type) {
@@ -105,6 +130,15 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       SearchResultType.challenge => colorScheme.secondary,
       SearchResultType.app => colorScheme.secondary,
       SearchResultType.log => colorScheme.primary,
+      SearchResultType.finance => colorScheme.tertiary,
+      SearchResultType.journal => colorScheme.secondary,
+      SearchResultType.fixedSchedule => colorScheme.primary,
+      SearchResultType.planBlock => colorScheme.secondary,
+      SearchResultType.team => colorScheme.tertiary,
+      SearchResultType.chat => colorScheme.primary,
+      SearchResultType.habitCheckIn => colorScheme.cdtSuccess,
+      SearchResultType.challengeTask => colorScheme.secondary,
+      SearchResultType.challengeTemplate => colorScheme.secondary,
       SearchResultType.setting => colorScheme.onSurfaceVariant,
       SearchResultType.action => colorScheme.primary,
       SearchResultType.recommend => colorScheme.secondary,
@@ -124,9 +158,19 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     _animController.forward();
 
     Future.delayed(const Duration(milliseconds: 50), () {
+      if (!mounted) return;
       _inputFocusNode.requestFocus();
       _onQueryChanged(''); // 🚀 初始化触发“猜你想搜”
     });
+    _warmupRemoteResults();
+  }
+
+  Future<void> _warmupRemoteResults() async {
+    final username = await StorageService.getLoginSession() ?? 'default';
+    await GlobalSearchExtraService.warmupRemote(username);
+    if (mounted && !_resultRouteOpen && _currentQuery.trim().isNotEmpty) {
+      _executeSearch(_currentQuery);
+    }
   }
 
   @override
@@ -158,11 +202,13 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   Future<void> _executeSearch(String query) async {
     setState(() => _isSearching = true);
     final results = await SearchService.instance.search(query);
-    if (mounted && query == _currentQuery) {
+    if (mounted && !_resultRouteOpen && query == _currentQuery) {
       setState(() {
         _results = results.cast<SearchResult>();
         _isSearching = false;
         _expanded.clear();
+        final ids = _results.map((result) => result.id).toSet();
+        _resultKeys.removeWhere((id, _) => !ids.contains(id));
       });
     }
   }
@@ -183,7 +229,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     });
   }
 
-  void _handleResultClick(SearchResult result) {
+  Future<void> _handleResultClick(SearchResult result) async {
     final data = result.extraData;
     final action = data?['action'] as String?;
 
@@ -200,15 +246,32 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       }
     }
 
+    if (_resultRouteOpen) return;
+    setState(() => _resultRouteOpen = true);
     FocusManager.instance.primaryFocus?.unfocus();
-    final navigator = Navigator.of(context);
-    _animController.reverse().then((_) {
+    final sourceKey = _resultKeys[result.id];
+    if (sourceKey == null) {
+      setState(() => _resultRouteOpen = false);
+      return;
+    }
+    try {
+      await SearchNavigationHandler.handle(
+        context,
+        result,
+        sourceKey: sourceKey,
+      );
+    } catch (error) {
       if (mounted) {
-        navigator.pop(); // 关闭搜索蒙层
-        SearchNavigationHandler.handle(
-            navigator.context, result); // 用父级 context 导航
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('打开搜索结果失败：$error')),
+        );
       }
-    });
+    } finally {
+      if (mounted) {
+        setState(() => _resultRouteOpen = false);
+        _executeSearch(_currentQuery);
+      }
+    }
   }
 
   // ────────────────────────────────── 分组 ──────────────────────────────────
@@ -300,7 +363,9 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                       builder: (context, constraints) {
                         final maxHeight = constraints.maxHeight;
                         final topMargin =
-                            isCompact && keyboardInset > 0 ? 16.0 : 60.0;
+                            isCompact && (keyboardInset > 0 || _resultRouteOpen)
+                                ? 16.0
+                                : 60.0;
                         const horizontalMargin = 20.0;
                         const bottomMargin = 20.0;
                         const minPanelHeight = 200.0;
@@ -436,6 +501,11 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       '时间日志',
       '屏幕时间',
       '团队',
+      '记账',
+      '日记',
+      '固定日程',
+      '规划块',
+      'AI 对话',
       '设置',
     ];
     return Padding(
@@ -765,6 +835,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     final isCompleted = item.extraData?['is_completed'] == 1;
 
     return Material(
+      key: _resultKeys.putIfAbsent(item.id, GlobalKey.new),
       color: Colors.transparent,
       child: InkWell(
         onTap: () => _handleResultClick(item),

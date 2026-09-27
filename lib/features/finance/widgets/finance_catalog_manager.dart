@@ -14,6 +14,7 @@ class FinanceCatalogManager extends StatefulWidget {
   final List<FinancePaymentMethod> paymentMethods;
   final Future<FinanceCategory?> Function(FinanceCategoryType type)
       onAddCategory;
+  final Future<void> Function(FinanceCategory parent)? onAddSubcategory;
   final Future<bool> Function() onAddPaymentMethod;
   final Future<void> Function(FinanceCategory category) onEditCategory;
   final Future<void> Function(FinanceCategory category) onArchiveCategory;
@@ -29,6 +30,7 @@ class FinanceCatalogManager extends StatefulWidget {
     required this.categories,
     required this.paymentMethods,
     required this.onAddCategory,
+    this.onAddSubcategory,
     required this.onAddPaymentMethod,
     required this.onEditCategory,
     required this.onArchiveCategory,
@@ -47,49 +49,85 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
   final _busyItems = <String>{};
   _CatalogSection _section = _CatalogSection.expense;
   _CatalogFilter _filter = _CatalogFilter.active;
+  final _expandedCategoryUuids = <String>{};
   bool _isAdding = false;
 
   bool get _isPayment => _section == _CatalogSection.payment;
-  String get _itemLabel => _isPayment ? '付款方式' : '分类';
+  String get _itemLabel => _isPayment ? '付款方式' : '一级分类';
+  String get _lockedItemLabel => _isPayment ? '付款方式' : '分类';
   String get _sectionLabel => switch (_section) {
         _CatalogSection.expense => '支出分类',
         _CatalogSection.income => '收入分类',
         _CatalogSection.payment => '付款方式',
       };
 
-  List<_CatalogEntry> get _entries => _isPayment
-      ? [
-          for (final method in widget.paymentMethods)
-            if (!method.isDeleted)
-              _CatalogEntry(
-                uuid: method.uuid,
-                name: method.name,
-                icon: method.icon,
-                isSystem: method.isSystem,
-                isArchived: method.isArchived,
-                onEdit: () => widget.onEditPaymentMethod(method),
-                onArchive: () => widget.onArchivePaymentMethod(method),
-                onRestore: () => widget.onRestorePaymentMethod(method),
-              ),
-        ]
-      : [
-          for (final category in widget.categories)
-            if (!category.isDeleted &&
-                category.type ==
-                    (_section == _CatalogSection.expense
-                        ? FinanceCategoryType.expense
-                        : FinanceCategoryType.income))
-              _CatalogEntry(
-                uuid: category.uuid,
-                name: category.name,
-                icon: category.icon,
-                isSystem: category.isSystem,
-                isArchived: category.isArchived,
-                onEdit: () => widget.onEditCategory(category),
-                onArchive: () => widget.onArchiveCategory(category),
-                onRestore: () => widget.onRestoreCategory(category),
-              ),
-        ];
+  List<_CatalogEntry> get _entries {
+    if (_isPayment) {
+      return [
+        for (final method in widget.paymentMethods)
+          if (!method.isDeleted)
+            _CatalogEntry(
+              uuid: method.uuid,
+              name: method.name,
+              icon: method.icon,
+              isSystem: method.isSystem,
+              isArchived: method.isArchived,
+              onEdit: () => widget.onEditPaymentMethod(method),
+              onArchive: () => widget.onArchivePaymentMethod(method),
+              onRestore: () => widget.onRestorePaymentMethod(method),
+            ),
+      ];
+    }
+
+    final categoriesByUuid = <String, FinanceCategory>{
+      for (final category in widget.categories) category.uuid: category,
+    };
+    final type = _section == _CatalogSection.expense
+        ? FinanceCategoryType.expense
+        : FinanceCategoryType.income;
+    final entries = <_CatalogEntry>[];
+    for (final category in widget.categories) {
+      if (category.isDeleted || category.type != type) continue;
+      entries.add(
+        _CatalogEntry(
+          uuid: category.uuid,
+          name: category.name,
+          icon: category.icon,
+          isSystem: category.isSystem,
+          isArchived: category.isArchived,
+          parentUuid: category.parentUuid,
+          searchName: _categorySearchName(category, categoriesByUuid),
+          onEdit: () => widget.onEditCategory(category),
+          onArchive: () => widget.onArchiveCategory(category),
+          onRestore: () => widget.onRestoreCategory(category),
+          onAddSubcategory: category.parentUuid?.trim().isNotEmpty == true ||
+                  category.isArchived ||
+                  widget.onAddSubcategory == null
+              ? null
+              : () => widget.onAddSubcategory!(category),
+        ),
+      );
+    }
+    return entries;
+  }
+
+  String _categorySearchName(
+    FinanceCategory category,
+    Map<String, FinanceCategory> categoriesByUuid,
+  ) {
+    final names = <String>[];
+    final visited = <String>{};
+    FinanceCategory? current = category;
+    while (current != null && visited.add(current.uuid)) {
+      names.insert(0, current.name);
+      final parentUuid = current.parentUuid?.trim();
+      if (parentUuid == null || parentUuid.isEmpty) break;
+      final parent = categoriesByUuid[parentUuid];
+      if (parent == null || parent.type != current.type) break;
+      current = parent;
+    }
+    return names.join(' - ');
+  }
 
   bool _matchesFilter(_CatalogEntry entry, _CatalogFilter filter) =>
       switch (filter) {
@@ -97,6 +135,13 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
         _CatalogFilter.custom => !entry.isArchived && !entry.isSystem,
         _CatalogFilter.archived => entry.isArchived,
       };
+
+  bool _matchesSearch(_CatalogEntry entry, String query) {
+    if (query.isEmpty) return true;
+    return entry.name.toLowerCase().contains(query) ||
+        entry.icon.contains(query) ||
+        entry.searchName.toLowerCase().contains(query);
+  }
 
   @override
   void dispose() {
@@ -110,6 +155,15 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
       _section = section;
       _filter = _CatalogFilter.active;
       _searchController.clear();
+      _expandedCategoryUuids.clear();
+    });
+  }
+
+  void _toggleCategoryExpanded(String uuid) {
+    setState(() {
+      if (!_expandedCategoryUuids.add(uuid)) {
+        _expandedCategoryUuids.remove(uuid);
+      }
     });
   }
 
@@ -173,10 +227,7 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
     final query = _searchController.text.trim().toLowerCase();
     final visible = entries
         .where((entry) =>
-            _matchesFilter(entry, _filter) &&
-            (query.isEmpty ||
-                entry.name.toLowerCase().contains(query) ||
-                entry.icon.contains(query)))
+            _matchesFilter(entry, _filter) && _matchesSearch(entry, query))
         .toList();
     final personal = visible.where((entry) => !entry.isSystem).toList();
     final system = visible.where((entry) => entry.isSystem).toList();
@@ -336,17 +387,326 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
         const SizedBox(height: 16),
         if (visible.isEmpty)
           _buildEmptyState(context, query)
-        else if (_filter == _CatalogFilter.archived)
+        else if (_isPayment && _filter == _CatalogFilter.archived)
           _buildGroup(context, '已归档', '恢复后可在新账单中继续使用', visible)
-        else ...[
+        else if (_isPayment) ...[
           if (personal.isNotEmpty)
             _buildGroup(context, '我的$_itemLabel', '点击卡片即可编辑', personal),
           if (personal.isNotEmpty && system.isNotEmpty)
             const SizedBox(height: 24),
           if (system.isNotEmpty)
             _buildGroup(context, '系统预设', '内置常用项目，随时可用', system),
+        ] else ...[
+          _buildCategoryGroups(context, entries, visible, query),
         ],
       ],
+    );
+  }
+
+  Widget _buildCategoryGroups(
+    BuildContext context,
+    List<_CatalogEntry> entries,
+    List<_CatalogEntry> visible,
+    String query,
+  ) {
+    final roots = entries
+        .where((entry) => entry.parentUuid?.trim().isNotEmpty != true)
+        .toList();
+    final childrenByParent = <String, List<_CatalogEntry>>{};
+    for (final entry in entries) {
+      final parentUuid = entry.parentUuid?.trim();
+      if (parentUuid == null || parentUuid.isEmpty) continue;
+      childrenByParent
+          .putIfAbsent(parentUuid, () => <_CatalogEntry>[])
+          .add(entry);
+    }
+    final visibleUuids = visible.map((entry) => entry.uuid).toSet();
+    final groups = <_CategoryGroup>[];
+    final assigned = <String>{};
+
+    for (final root in roots) {
+      final children = [
+        for (final child
+            in childrenByParent[root.uuid] ?? const <_CatalogEntry>[])
+          if (_matchesFilter(child, _filter)) child,
+      ];
+      final rootMatches = visibleUuids.contains(root.uuid);
+      final matchingChildren =
+          children.where((entry) => visibleUuids.contains(entry.uuid)).toList();
+      if (!rootMatches && matchingChildren.isEmpty) continue;
+
+      final showAllChildren = query.isEmpty || rootMatches;
+      groups.add(_CategoryGroup(
+        parent: root,
+        children: showAllChildren ? children : matchingChildren,
+      ));
+      assigned.add(root.uuid);
+      assigned.addAll(children.map((entry) => entry.uuid));
+    }
+
+    final orphans = visible
+        .where((entry) =>
+            entry.parentUuid?.trim().isNotEmpty == true &&
+            !assigned.contains(entry.uuid))
+        .toList();
+    if (orphans.isNotEmpty) {
+      groups.add(_CategoryGroup(parent: null, children: orphans));
+    }
+
+    final rootCount = groups.where((group) => group.parent != null).length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildCatalogHeading(
+          context,
+          title: '一级分类 · $rootCount',
+          subtitle: query.isEmpty ? '二级分类已收在所属一级分类下' : '匹配到的二级分类会保留所属一级分类作为上下文',
+        ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+            final columns =
+                (constraints.maxWidth / (280 * math.max(1, textScale)))
+                    .floor()
+                    .clamp(1, 3);
+            final width = (constraints.maxWidth - (columns - 1) * 12) / columns;
+            return Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final group in groups)
+                  SizedBox(
+                    width: width,
+                    child: _buildCategoryGroup(context, group, query),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCatalogHeading(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+  }) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(title,
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          Text(subtitle,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryGroup(
+      BuildContext context, _CategoryGroup group, String query) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final parent = group.parent;
+    if (parent == null) {
+      return Material(
+        color: colors.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side:
+              BorderSide(color: colors.outlineVariant.withValues(alpha: 0.45)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('未归类的二级分类',
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text('上级一级分类已不存在，历史数据仍可继续管理',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: colors.onSurfaceVariant)),
+              const SizedBox(height: 8),
+              for (final child in group.children)
+                _buildSubcategoryTile(context, child),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final expanded = _expandedCategoryUuids.contains(parent.uuid) ||
+        (query.isNotEmpty &&
+            group.children.any((child) => _matchesSearch(child, query)));
+
+    return Material(
+      key: ValueKey('finance-catalog-item-${parent.uuid}'),
+      color: colors.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.45)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: group.children.isEmpty
+                ? null
+                : () => _toggleCategoryExpanded(parent.uuid),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 10, 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildIconBadge(context, parent),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(parent.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 4),
+                        Text(
+                          parent.isArchived
+                              ? '已归档 · ${group.children.length} 个二级分类'
+                              : '${parent.isSystem ? '系统预设' : '自定义'} · ${group.children.length} 个二级分类',
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: colors.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (group.children.isNotEmpty)
+                    Tooltip(
+                      message: expanded ? '收起二级分类' : '展开二级分类',
+                      child: Semantics(
+                        label: expanded ? '收起二级分类' : '展开二级分类',
+                        child: AnimatedRotation(
+                          key:
+                              ValueKey('finance-catalog-expand-${parent.uuid}'),
+                          turns: expanded ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 160),
+                          curve: Curves.easeOutCubic,
+                          child: Icon(Icons.expand_more_rounded,
+                              color: colors.onSurfaceVariant),
+                        ),
+                      ),
+                    ),
+                  _buildEntryActions(context, parent),
+                ],
+              ),
+            ),
+          ),
+          if (group.children.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(70, 0, 14, 12),
+              child: Text(
+                parent.isArchived ? '归档后不会在新账单中显示' : '还没有二级分类',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: colors.onSurfaceVariant),
+              ),
+            )
+          else
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: expanded
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                      child: Column(
+                        children: [
+                          Divider(
+                              height: 1,
+                              color:
+                                  colors.outlineVariant.withValues(alpha: 0.5)),
+                          const SizedBox(height: 2),
+                          for (final child in group.children)
+                            _buildSubcategoryTile(context, child),
+                        ],
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubcategoryTile(BuildContext context, _CatalogEntry entry) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Material(
+      key: ValueKey('finance-catalog-item-${entry.uuid}'),
+      color: colors.surface.withValues(alpha: 0),
+      child: InkWell(
+        onTap: (entry.isSystem && _isPayment) || _busyItems.contains(entry.uuid)
+            ? null
+            : () => _runAction(entry, entry.onEdit),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Row(
+            children: [
+              Container(
+                width: 3,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: colors.primary.withValues(alpha: 0.28),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: colors.secondaryContainer.withValues(alpha: 0.65),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Text(entry.icon.isEmpty ? '📦' : entry.icon,
+                    textScaler: TextScaler.noScaling,
+                    style: const TextStyle(fontSize: 16)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(entry.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(fontWeight: FontWeight.w600)),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                  entry.isArchived
+                      ? '已归档'
+                      : entry.isSystem
+                          ? '系统'
+                          : '自定义',
+                  style: theme.textTheme.labelSmall
+                      ?.copyWith(color: colors.onSurfaceVariant)),
+              _buildEntryActions(context, entry),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -398,11 +758,6 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final busy = _busyItems.contains(entry.uuid);
-    final tint = switch (_section) {
-      _CatalogSection.expense => colors.primaryContainer,
-      _CatalogSection.income => colors.tertiaryContainer,
-      _CatalogSection.payment => colors.secondaryContainer,
-    };
     return Material(
       key: ValueKey('finance-catalog-item-${entry.uuid}'),
       color: colors.surfaceContainerLow,
@@ -412,7 +767,7 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: entry.isSystem || busy
+        onTap: (entry.isSystem && _isPayment) || busy
             ? null
             : () => _runAction(entry, entry.onEdit),
         child: Padding(
@@ -422,65 +777,9 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
             children: [
               Row(
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: entry.isArchived
-                          ? colors.surfaceContainerHighest
-                          : tint.withValues(alpha: 0.65),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(6),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(entry.icon.isEmpty ? '📦' : entry.icon,
-                            textScaler: TextScaler.noScaling,
-                            style: const TextStyle(fontSize: 24)),
-                      ),
-                    ),
-                  ),
+                  _buildIconBadge(context, entry),
                   const Spacer(),
-                  if (busy)
-                    const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                  else if (entry.isSystem)
-                    Tooltip(
-                        message: '系统预设$_itemLabel不可编辑或归档',
-                        child: Icon(Icons.lock_outline_rounded,
-                            size: 16, color: colors.onSurfaceVariant))
-                  else if (entry.isArchived)
-                    IconButton(
-                      tooltip: '恢复${entry.name}',
-                      onPressed: () => _runAction(entry, entry.onRestore),
-                      icon: const Icon(Icons.unarchive_outlined, size: 20),
-                    )
-                  else
-                    PopupMenuButton<String>(
-                      tooltip: '管理${entry.name}',
-                      icon: Icon(Icons.more_horiz_rounded,
-                          color: colors.onSurfaceVariant),
-                      onSelected: (action) => _runAction(entry,
-                          action == 'edit' ? entry.onEdit : entry.onArchive),
-                      itemBuilder: (_) => [
-                        const PopupMenuItem(
-                            value: 'edit',
-                            child: ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                leading: Icon(Icons.edit_outlined),
-                                title: Text('编辑'))),
-                        const PopupMenuItem(
-                            value: 'archive',
-                            child: ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                leading: Icon(Icons.archive_outlined),
-                                title: Text('归档'))),
-                      ],
-                    ),
+                  _buildEntryActions(context, entry),
                 ],
               ),
               const SizedBox(height: 14),
@@ -508,6 +807,112 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildIconBadge(BuildContext context, _CatalogEntry entry) {
+    final colors = Theme.of(context).colorScheme;
+    final tint = switch (_section) {
+      _CatalogSection.expense => colors.primaryContainer,
+      _CatalogSection.income => colors.tertiaryContainer,
+      _CatalogSection.payment => colors.secondaryContainer,
+    };
+    return Container(
+      width: 44,
+      height: 44,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: entry.isArchived
+            ? colors.surfaceContainerHighest
+            : tint.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(entry.icon.isEmpty ? '📦' : entry.icon,
+              textScaler: TextScaler.noScaling,
+              style: const TextStyle(fontSize: 24)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEntryActions(BuildContext context, _CatalogEntry entry) {
+    final colors = Theme.of(context).colorScheme;
+    final busy = _busyItems.contains(entry.uuid);
+    if (busy) {
+      return const SizedBox(
+          width: 40,
+          height: 40,
+          child: Padding(
+            padding: EdgeInsets.all(10),
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ));
+    }
+    if (entry.isSystem && _isPayment) {
+      return Tooltip(
+        message: '系统预设$_lockedItemLabel不可编辑或归档',
+        child: Icon(Icons.lock_outline_rounded,
+            size: 16, color: colors.onSurfaceVariant),
+      );
+    }
+    if (entry.isSystem) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: '自定义${entry.name}名称和图标',
+            onPressed: () => _runAction(entry, entry.onEdit),
+            icon: const Icon(Icons.edit_outlined, size: 20),
+          ),
+          if (entry.onAddSubcategory != null)
+            IconButton(
+              tooltip: '新增${entry.name}下的小类',
+              onPressed: () => _runAction(entry, entry.onAddSubcategory!),
+              icon: const Icon(Icons.add_rounded, size: 20),
+            ),
+        ],
+      );
+    }
+    if (entry.isArchived) {
+      return IconButton(
+        tooltip: '恢复${entry.name}',
+        onPressed: () => _runAction(entry, entry.onRestore),
+        icon: const Icon(Icons.unarchive_outlined, size: 20),
+      );
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (entry.onAddSubcategory != null)
+          IconButton(
+            tooltip: '新增${entry.name}下的小类',
+            onPressed: () => _runAction(entry, entry.onAddSubcategory!),
+            icon: const Icon(Icons.add_rounded, size: 20),
+          ),
+        PopupMenuButton<String>(
+          tooltip: '管理${entry.name}',
+          icon: Icon(Icons.more_horiz_rounded, color: colors.onSurfaceVariant),
+          onSelected: (action) => _runAction(
+              entry, action == 'edit' ? entry.onEdit : entry.onArchive),
+          itemBuilder: (_) => [
+            const PopupMenuItem(
+                value: 'edit',
+                child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.edit_outlined),
+                    title: Text('编辑'))),
+            const PopupMenuItem(
+                value: 'archive',
+                child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.archive_outlined),
+                    title: Text('归档'))),
+          ],
+        ),
+      ],
     );
   }
 
@@ -587,9 +992,12 @@ class _CatalogEntry {
   final String icon;
   final bool isSystem;
   final bool isArchived;
+  final String? parentUuid;
+  final String searchName;
   final Future<void> Function() onEdit;
   final Future<void> Function() onArchive;
   final Future<void> Function() onRestore;
+  final Future<void> Function()? onAddSubcategory;
 
   const _CatalogEntry({
     required this.uuid,
@@ -597,8 +1005,18 @@ class _CatalogEntry {
     required this.icon,
     required this.isSystem,
     required this.isArchived,
+    this.parentUuid,
+    this.searchName = '',
     required this.onEdit,
     required this.onArchive,
     required this.onRestore,
+    this.onAddSubcategory,
   });
+}
+
+class _CategoryGroup {
+  final _CatalogEntry? parent;
+  final List<_CatalogEntry> children;
+
+  const _CategoryGroup({required this.parent, required this.children});
 }

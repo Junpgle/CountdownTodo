@@ -6,12 +6,16 @@ import 'package:flutter/services.dart';
 
 import '../models.dart';
 import 'storage/app_settings_storage.dart';
+import 'item_semantics_service.dart';
+import 'scheduled_reminder_registry.dart';
+import 'focus_do_not_disturb_service.dart';
 
 class NotificationService {
   static final StreamController<MethodCall> _eventCtrl =
       StreamController<MethodCall>.broadcast();
   static final Map<int, Timer> _reminderTimers = {};
   static final Map<int, Map<String, dynamic>> _scheduledReminders = {};
+  static Future<void> _scheduleQueue = Future<void>.value();
 
   // ignore: constant_identifier_names
   static const int NOTIF_ID_TODO_RECOGNIZE = 9001;
@@ -96,8 +100,24 @@ class NotificationService {
     String title,
     String body, {
     String? tag,
+    bool bypassDoNotDisturb = false,
   }) async {
+    if (!bypassDoNotDisturb && FocusDoNotDisturbService.isActive) {
+      return false;
+    }
     if (!await AppSettingsStorage.isNormalNotificationEnabled()) return false;
+    return _showBrowserNotification(title, body, tag: tag);
+  }
+
+  static Future<bool> _showLiveActivityNotification(
+    String title,
+    String body, {
+    String? tag,
+  }) async {
+    if (FocusDoNotDisturbService.isActive) return false;
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) {
+      return false;
+    }
     return _showBrowserNotification(title, body, tag: tag);
   }
 
@@ -107,8 +127,9 @@ class NotificationService {
     required String timeStr,
     required String teacher,
   }) async {
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isCourseNotificationEnabled()) return;
-    await _showNormalNotification(
+    await _showLiveActivityNotification(
       '上课提醒: $courseName',
       [
         if (timeStr.isNotEmpty) timeStr,
@@ -127,8 +148,9 @@ class NotificationService {
     int score = 0,
   }) async {
     if (!isOver) return;
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isQuizNotificationEnabled()) return;
-    await _showNormalNotification(
+    await _showLiveActivityNotification(
       '测验完成',
       totalCount > 0 ? '得分 $score / $totalCount' : '本次测验已结束',
       tag: 'quiz-finished',
@@ -153,14 +175,23 @@ class NotificationService {
 
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {}
 
-  static Future<void> showUpcomingTodoNotification(TodoItem todo) async {
-    if (!await AppSettingsStorage.isReminderNotificationEnabled()) return;
+  static Future<bool> showUpcomingTodoNotification(TodoItem todo) async {
+    final todoType = ItemSemanticsService.specialTodoTypeForTitle(todo.title);
+    final isSpecialTodo = todoType != 'default' ||
+        ItemSemanticsService.domainKindForTodo(todo) == TodoDomainKind.pickup;
+    if (isSpecialTodo) {
+      if (!await AppSettingsStorage.isSpecialTodoNotificationEnabled()) {
+        return false;
+      }
+    } else if (!await AppSettingsStorage.isTodoLiveNotificationEnabled()) {
+      return false;
+    }
     final due = todo.dueDate?.toLocal();
     final timeText = due == null
         ? '即将开始'
         : '${due.month}/${due.day} ${due.hour.toString().padLeft(2, '0')}:${due.minute.toString().padLeft(2, '0')}';
     final remark = todo.remark?.trim();
-    await _showNormalNotification(
+    return _showLiveActivityNotification(
       todo.title,
       remark?.isNotEmpty == true ? '$timeText · $remark' : timeText,
       tag: 'todo-${todo.id}',
@@ -190,7 +221,12 @@ class NotificationService {
     final body = todoTitle?.isNotEmpty == true
         ? '"$todoTitle" 阶段已结束'
         : (isBreak ? '准备开始下一轮专注' : '请休息一下吧');
-    await _showNormalNotification(title, body, tag: alertKey);
+    await _showNormalNotification(
+      title,
+      body,
+      tag: alertKey,
+      bypassDoNotDisturb: true,
+    );
   }
 
   static Future<void> cancelNotification() async {}
@@ -200,16 +236,46 @@ class NotificationService {
   }
 
   static Future<void> scheduleReminders(List<Map<String, dynamic>> reminders,
-      {bool clearFirst = true, bool forceReschedule = false}) async {
-    if (clearFirst) {
-      _clearScheduledReminders();
-    }
+      {bool clearFirst = true,
+      bool forceReschedule = false,
+      String? replaceSource}) {
+    final operation = _scheduleQueue.then<void>(
+      (_) => _scheduleReminders(
+        reminders,
+        clearFirst: clearFirst,
+        forceReschedule: forceReschedule,
+        replaceSource: replaceSource,
+      ),
+    );
+    _scheduleQueue = operation.then<void>((_) {}, onError: (_, __) {});
+    return operation;
+  }
 
-    if (reminders.isEmpty) return;
-    if (!await AppSettingsStorage.isNormalNotificationEnabled()) return;
-    if (!await AppSettingsStorage.isReminderNotificationEnabled()) return;
+  static Future<void> _scheduleReminders(
+    List<Map<String, dynamic>> reminders, {
+    required bool clearFirst,
+    required bool forceReschedule,
+    required String? replaceSource,
+  }) async {
+    if (reminders.isEmpty && !clearFirst && replaceSource == null) return;
 
-    for (final reminder in reminders) {
+    final existing = ScheduledReminderRegistry.retainActive(
+      await getScheduledReminders(),
+    );
+    final normalEnabled =
+        await AppSettingsStorage.isNormalNotificationEnabled();
+    final incoming = normalEnabled
+        ? await _filterScheduledReminders(reminders)
+        : <Map<String, dynamic>>[];
+    final merged = ScheduledReminderRegistry.merge(
+      existing: existing,
+      incoming: ScheduledReminderRegistry.retainActive(incoming),
+      replaceSource: replaceSource,
+      replaceAll: clearFirst && replaceSource == null,
+    );
+
+    _clearScheduledReminders();
+    for (final reminder in merged) {
       _scheduleReminder(reminder);
     }
   }
@@ -231,6 +297,11 @@ class NotificationService {
     _scheduledReminders.remove(notifId);
   }
 
+  /// Kept for API parity with native platforms. Browser reminder callbacks
+  /// re-check the current DND state at fire time, so no timer recreation is
+  /// necessary when the state changes.
+  static Future<void> reconcileScheduledRemindersForDoNotDisturb() async {}
+
   static Future<bool> checkExactAlarmPermission() async => true;
 
   static Future<void> openExactAlarmSettings() async {}
@@ -240,8 +311,9 @@ class NotificationService {
     required int maxAttempts,
     required String status,
   }) async {
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
-    await _showNormalNotification(
+    await _showLiveActivityNotification(
       '图片识别事项中',
       '第$currentAttempt/$maxAttempts次尝试 | $status',
       tag: 'todo-recognize',
@@ -251,8 +323,9 @@ class NotificationService {
   static Future<void> showTodoRecognizeSuccess({
     required int todoCount,
   }) async {
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
-    await _showNormalNotification(
+    await _showLiveActivityNotification(
       '图片识别完成',
       '发现$todoCount个事项',
       tag: 'todo-recognize',
@@ -262,10 +335,11 @@ class NotificationService {
   static Future<void> showTodoRecognizeFailed({
     required String errorMsg,
   }) async {
+    if (!await AppSettingsStorage.isLiveActivityNotificationEnabled()) return;
     if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     final body =
         errorMsg.length > 80 ? '${errorMsg.substring(0, 80)}...' : errorMsg;
-    await _showNormalNotification(
+    await _showLiveActivityNotification(
       '图片识别失败',
       body,
       tag: 'todo-recognize',
@@ -332,18 +406,58 @@ class NotificationService {
     Map<String, dynamic> reminder,
   ) async {
     if (!await AppSettingsStorage.isNormalNotificationEnabled()) return false;
-    if (!await AppSettingsStorage.isReminderNotificationEnabled()) {
-      return false;
-    }
+    return (await _filterScheduledReminders([reminder])).isNotEmpty;
+  }
 
-    switch (reminder['type']?.toString()) {
-      case 'course':
-        return AppSettingsStorage.isCourseNotificationEnabled();
-      case 'special_todo':
-        return AppSettingsStorage.isSpecialTodoNotificationEnabled();
-      default:
-        return true;
-    }
+  static Future<List<Map<String, dynamic>>> _filterScheduledReminders(
+    Iterable<Map<String, dynamic>> reminders,
+  ) async {
+    final liveActivityEnabled =
+        await AppSettingsStorage.isLiveActivityNotificationEnabled();
+    final reminderEnabled =
+        await AppSettingsStorage.isReminderNotificationEnabled();
+    final courseEnabled =
+        await AppSettingsStorage.isCourseNotificationEnabled();
+    final todoLiveEnabled =
+        await AppSettingsStorage.isTodoLiveNotificationEnabled();
+    final specialTodoEnabled =
+        await AppSettingsStorage.isSpecialTodoNotificationEnabled();
+    final financeEnabled =
+        await AppSettingsStorage.isFinanceBudgetAlertEnabled();
+    final pomodoroEndEnabled =
+        await AppSettingsStorage.isPomodoroEndNotificationEnabled();
+
+    return reminders
+        .where((reminder) {
+          final source = ScheduledReminderRegistry.sourceOf(reminder);
+          final type = reminder['type']?.toString();
+          if (FocusDoNotDisturbService.isActive &&
+              source != ScheduledReminderSources.pomodoro &&
+              type != 'pomodoro' &&
+              type != 'pomodoro_end') {
+            return false;
+          }
+          if (source == ScheduledReminderSources.pomodoro ||
+              type == 'pomodoro' ||
+              type == 'pomodoro_end') {
+            return pomodoroEndEnabled;
+          }
+          if (!reminderEnabled) return false;
+          switch (type) {
+            case 'course':
+              return liveActivityEnabled && courseEnabled;
+            case 'upcoming_todo':
+              return liveActivityEnabled && todoLiveEnabled;
+            case 'special_todo':
+              return liveActivityEnabled && specialTodoEnabled;
+            case 'finance_recurring':
+              return financeEnabled;
+            default:
+              return true;
+          }
+        })
+        .map(Map<String, dynamic>.from)
+        .toList(growable: false);
   }
 
   static int? _readInt(dynamic value) {

@@ -19,15 +19,14 @@ import '../widgets/habit_adaptation_panel.dart';
 import '../widgets/habit_time_point_chart.dart';
 import '../widgets/habit_water_progress_card.dart';
 import '../widgets/habit_sleep_coaching_card.dart';
-import '../../../screens/pomodoro_screen.dart';
-import '../../../services/pomodoro_control_service.dart';
-import '../../../services/pomodoro_service.dart';
 import '../../../storage_service.dart';
+import '../../../services/pomodoro_service.dart';
 import '../../../utils/page_transitions.dart';
 import 'habit_edit_screen.dart';
 import 'habit_history_screen.dart';
 import '../services/habit_sleep_log_migration_service.dart';
 import '../services/habit_sleep_duration_service.dart';
+import '../services/habit_focus_launcher.dart';
 import '../services/habit_sleep_coaching_service.dart';
 
 /// 习惯详情：今日进度 + 今日打卡记录 + 目标信息 + 管理操作。
@@ -375,8 +374,10 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final topBarHeight = floatingGlassTopBarHeight(context);
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(_goal.name),
@@ -408,11 +409,14 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
           ),
         ],
       ),
-      body: _buildBody(colorScheme),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _buildBody(colorScheme, topBarHeight),
+      ),
     );
   }
 
-  Widget _buildBody(ColorScheme colorScheme) {
+  Widget _buildBody(ColorScheme colorScheme, double topPadding) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -429,7 +433,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
             child: ListView(
               padding: EdgeInsets.fromLTRB(
                 horizontalPadding,
-                16,
+                topPadding + 16,
                 horizontalPadding,
                 32,
               ),
@@ -1761,44 +1765,14 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   }
 
   /// 时长型：启动专注并跳转番茄钟，默认时长为习惯设置的默认时长。
-  Future<void> _startFocus() async {
-    final goal = _goal;
-    final tagUuids = goal.sourceType == HabitSourceType.pomodoroTag
-        ? goal.sourceIds
-        : const <String>[];
-    final running = await PomodoroService.loadRunState();
-    if (running != null &&
-        (running.phase == PomodoroPhase.focusing ||
-            running.phase == PomodoroPhase.breaking)) {
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        PageTransitions.material(
-          builder: (_) => PomodoroScreen(username: widget.username),
-        ),
+  Future<void> _startFocus() => HabitFocusLauncher.open(
+        context: context,
+        username: widget.username,
+        goal: _goal,
+        onReturned: () {
+          _loadData();
+        },
       );
-      return;
-    }
-    try {
-      final settings = await PomodoroService.getSettings();
-      await PomodoroControlService.startFocus(
-        settings: settings,
-        tagUuids: tagUuids,
-        durationMinutes: goal.defaultFocusMinutes,
-      );
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        PageTransitions.material(
-          builder: (_) => PomodoroScreen(username: widget.username),
-        ),
-      );
-      if (mounted) _loadData();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('启动专注失败: $e')),
-      );
-    }
-  }
 
   // ── 目标信息 ────────────────────────────────────────
   Widget _buildRuleSection(ColorScheme colorScheme) {

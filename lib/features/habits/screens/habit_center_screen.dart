@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
-import '../../../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
+import '../../../features/thirty_day_challenge/screens/challenge_center_screen.dart';
 import '../../../models.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../services/feature_tip_service.dart';
@@ -53,7 +53,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    // Listen to tab controller to update navigation rail selection
+    // Listen to tab controller to update the shared bottom navigation.
     _tabController.addListener(() {
       if (!mounted) return;
       setState(() {});
@@ -84,7 +84,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
   Future<void> _openChallengePromotion() async {
     await Navigator.of(context).push(
       PageTransitions.material(
-        builder: (_) => const ThirtyDayChallengeScreen(),
+        builder: (_) => const ChallengeCenterScreen(),
       ),
     );
     if (mounted) _loadChallengePromotion();
@@ -611,6 +611,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 600;
+        final topBarHeight = floatingGlassTopBarHeight(context);
 
         final actions = [
           IconButton(
@@ -629,6 +630,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
 
         final bodyTabs = [
           HabitTodayTab(
+            topPadding: 0,
             username: widget.username,
             coachTargetKey: _todayContentKey,
             reloadTick: _reloadTick,
@@ -636,89 +638,17 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
             onChanged: () => setState(() => _reloadTick++),
           ),
           HabitCalendarTab(
+            topPadding: 0,
             username: widget.username,
             reloadTick: _reloadTick,
           ),
           HabitAnalysisTab(
+            topPadding: 0,
             username: widget.username,
             reloadTick: _reloadTick,
           ),
         ];
 
-        if (isWide) {
-          return Scaffold(
-            appBar: FloatingGlassAppBar(
-              flexibleSpace: const FloatingGlassTopBarBackground(),
-              title: const Text('习惯中心'),
-              centerTitle: false,
-              actions: actions,
-            ),
-            floatingActionButton: Padding(
-              padding: const EdgeInsets.only(bottom: 32.0, right: 32.0),
-              child: FloatingGlassActionButton.extended(
-                key: _createActionKey,
-                onPressed: _openCreateHabit,
-                tooltip: '新建习惯',
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('新建习惯'),
-              ),
-            ),
-            body: Row(
-              children: [
-                NavigationRail(
-                  key: _navigationKey,
-                  selectedIndex: _tabController.index,
-                  onDestinationSelected: (index) {
-                    _tabController.animateTo(index);
-                  },
-                  labelType: NavigationRailLabelType.all,
-                  destinations: const [
-                    NavigationRailDestination(
-                      icon: Icon(Icons.today_outlined),
-                      selectedIcon: Icon(Icons.today),
-                      label: Text('今日'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(Icons.calendar_month_outlined),
-                      selectedIcon: Icon(Icons.calendar_month),
-                      label: Text('日历'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(Icons.analytics_outlined),
-                      selectedIcon: Icon(Icons.analytics),
-                      label: Text('分析'),
-                    ),
-                  ],
-                ),
-                VerticalDivider(
-                    thickness: 1,
-                    width: 1,
-                    color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: bodyTabs,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        // Narrow screen (mobile)
-        final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
-        final mobileTabBar = TabBar(
-          key: _navigationKey,
-          controller: _tabController,
-          indicatorSize: TabBarIndicatorSize.tab,
-          dividerColor: colorScheme.outlineVariant.withValues(alpha: 0.5),
-          labelStyle: const TextStyle(fontWeight: FontWeight.w700),
-          tabs: const [
-            Tab(text: '今日'),
-            Tab(text: '日历'),
-            Tab(text: '分析'),
-          ],
-        );
         final floatingNavigation = FloatingBottomNavigationBar(
           key: _navigationKey,
           mobilePortraitOnly: false,
@@ -741,25 +671,15 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
         );
 
         return Scaffold(
-          extendBody: useFloatingBottomBar,
+          extendBody: true,
+          extendBodyBehindAppBar: true,
           appBar: FloatingGlassAppBar(
             flexibleSpace: const FloatingGlassTopBarBackground(),
             title: const Text('习惯中心'),
             centerTitle: false,
             actions: actions,
-            bottom: useFloatingBottomBar
-                ? null
-                : PreferredSize(
-                    preferredSize: const Size.fromHeight(48),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 600),
-                        child: mobileTabBar,
-                      ),
-                    ),
-                  ),
           ),
-          bottomNavigationBar: useFloatingBottomBar ? floatingNavigation : null,
+          bottomNavigationBar: floatingNavigation,
           floatingActionButton: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -771,12 +691,21 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
                 icon: const Icon(Icons.add_rounded),
                 label: const Text('新建习惯'),
               ),
-              SizedBox(height: useFloatingBottomBar ? 8 : 100),
+              SizedBox(height: isWide ? 100 : 8),
             ],
           ),
-          body: TabBarView(
-            controller: _tabController,
-            children: bodyTabs,
+          body: FloatingGlassTopBarContentFade(
+            topBarHeight: topBarHeight,
+            tailExtent: 0,
+            child: Padding(
+              // The tab pages share one transparent top bar, so reserve its
+              // space once here rather than once per tab.
+              padding: EdgeInsets.only(top: topBarHeight),
+              child: TabBarView(
+                controller: _tabController,
+                children: bodyTabs,
+              ),
+            ),
           ),
         );
       },

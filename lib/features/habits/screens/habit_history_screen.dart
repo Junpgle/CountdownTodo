@@ -134,34 +134,39 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final topBarHeight = floatingGlassTopBarHeight(context);
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text('${widget.goal.name} · 历史'),
         centerTitle: false,
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 840),
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                  children: [
-                    if (widget.goal.sourceType == HabitSourceType.pomodoroTag)
-                      _buildFocusRecordSection(colorScheme)
-                    else if (widget.goal.sourceType ==
-                        HabitSourceType.recurringTodo)
-                      _buildRecurringTodoSection(colorScheme)
-                    else
-                      _buildCheckInSection(colorScheme),
-                    const SizedBox(height: 24),
-                    _buildRuleHistorySection(colorScheme),
-                  ],
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 840),
+                  child: ListView(
+                    padding: EdgeInsets.fromLTRB(16, topBarHeight + 8, 16, 32),
+                    children: [
+                      if (widget.goal.sourceType == HabitSourceType.pomodoroTag)
+                        _buildFocusRecordSection(colorScheme)
+                      else if (widget.goal.sourceType ==
+                          HabitSourceType.recurringTodo)
+                        _buildRecurringTodoSection(colorScheme)
+                      else
+                        _buildCheckInSection(colorScheme),
+                      const SizedBox(height: 24),
+                      _buildRuleHistorySection(colorScheme),
+                    ],
+                  ),
                 ),
               ),
-            ),
+      ),
     );
   }
 

@@ -108,6 +108,8 @@ todo.md
 !/test/llm_config_page_test.dart
 !/test/services/
 /test/services/*
+!/test/services/search_navigation_test.dart
+!/test/services/global_search_extra_service_test.dart
 !/test/services/ai_todo_recurrence_alignment_test.dart
 !/test/services/permission_request_coordinator_test.dart
 !/test/services/ongoing_activity_service_test.dart
@@ -118,11 +120,15 @@ todo.md
 !/test/services/timeout_http_client_test.dart
 !/test/services/band_service_settings_test.dart
 !/test/services/animation_config_service_test.dart
+!/test/services/privacy_policy_version_test.dart
 !/test/services/item_semantics_service_test.dart
 !/test/services/schedule_conflict_service_test.dart
+!/test/services/external_share_payload_classifier_test.dart
 !/test/services/sync_capability_service_test.dart
 !/test/services/sync_oplog_policy_test.dart
 !/test/services/strict_focus_sensor_service_test.dart
+!/test/services/pomodoro_completion_policy_test.dart
+!/test/services/focus_do_not_disturb_test.dart
 !/test/services/user_session_storage_test.dart
 !/test/services/team_share_link_test.dart
 !/test/services/todo_notification_policy_test.dart
@@ -132,6 +138,7 @@ todo.md
 !/test/services/fixed_schedule_recurrence_service_test.dart
 !/test/services/habit_sync_conflict_service_test.dart
 !/test/services/habit_today_section_display_test.dart
+!/test/services/scheduled_reminder_registry_test.dart
 !/test/windows_island/
 /test/windows_island/*
 !/test/windows_island/island_ipc_file_watcher_test.dart
@@ -151,10 +158,12 @@ todo.md
 !/test/widgets/todo_recurrence_completion_overview_test.dart
 !/test/widgets/todo_section_series_visibility_test.dart
 !/test/widgets/interconnect_settings_page_test.dart
+!/test/widgets/notification_settings_page_test.dart
 !/test/widgets/optional_liquid_glass_surface_test.dart
 !/test/widgets/app_status_toast_test.dart
 !/test/widgets/home_bottom_navigation_content_test.dart
 !/test/widgets/floating_bottom_bar_test.dart
+!/test/widgets/finance_transaction_detail_screen_test.dart
 !/test/widgets/home_drawer_menu_test.dart
 !/test/widgets/management_pages_test.dart
 !/test/widgets/management_components_test.dart

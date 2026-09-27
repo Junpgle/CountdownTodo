@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../services/github_resource_service.dart';
 
+typedef PrivacyPolicyAction = FutureOr<void> Function();
+
 class PrivacyPolicyDialog extends StatefulWidget {
   final bool isUpdate;
-  final VoidCallback onAgree;
-  final VoidCallback onDisagree;
+  final PrivacyPolicyAction onAgree;
+  final PrivacyPolicyAction onDisagree;
   final String? content;
 
   const PrivacyPolicyDialog({
@@ -85,7 +89,7 @@ class _PrivacyPolicyDialogState extends State<PrivacyPolicyDialog> {
       ),
     );
     if (confirmed == true && context.mounted) {
-      widget.onDisagree();
+      await widget.onDisagree();
     }
   }
 

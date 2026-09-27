@@ -1,14 +1,14 @@
 # Countdown Todo development context
 
 This file is a compact implementation map for coding assistants. It was last
-checked against the working tree on 2026-08-25; `AGENTS.md` contains the
+checked against the working tree on 2026-09-26; `AGENTS.md` contains the
 authoritative repository rules.
 
 ## Current baseline
 
-- Flutter package version: `5.8.3` (`pubspec.yaml`).
+- Flutter package version: `6.4.1` (`pubspec.yaml`).
 - Dart constraint: `>=3.5.0 <4.0.0`; Flutter constraint: `>=3.41.0`.
-- Local SQLite schema: version 44 (`DatabaseSchemaHistory.currentVersion`).
+- Local SQLite schema: version 55 (`DatabaseSchemaHistory.currentVersion`).
 - Main targets: Android, Windows, macOS, and Flutter web. iOS host files exist,
   but feature parity is not documented as complete.
 - `lib/models.dart` contains the shared sync models; `StorageService` remains
@@ -35,6 +35,8 @@ authoritative repository rules.
 - Todo time semantics now distinguish unscheduled, date-only and deadline
   items through `TodoTimeMode`; execution windows belong to `TodoPlanBlock`.
 - Search probes FTS5, falls back to FTS4, then SQL `LIKE`.
+- Global-search sources, result destinations, container transitions and remote
+  catalog limits are documented in `docs/features/global-search.md`.
 
 ## Network topology
 

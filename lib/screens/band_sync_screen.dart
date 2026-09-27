@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -238,7 +237,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
             16,
             widget.isEmbedded
                 ? 16
-                : floatingGlassSettingsContentTopInset(context, extra: 16),
+                : floatingGlassSettingsContentTopInset(context),
             16,
             16,
           ),
@@ -825,13 +824,13 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
 
   /// 处理手环发回的消息（todo状态变更等）
   Future<void> _handleBandMessage(Map<String, dynamic> data) async {
-    final type = data['type'] as String?;
+    final type = data['type']?.toString();
 
     if (type == 'band_info') {
-      final version = data['version'] as String? ?? '未知';
-      final versionCode = data['version_code'] as int? ?? 0;
+      final version = data['version']?.toString() ?? '未知';
+      final versionCode = (data['version_code'] as num?)?.toInt() ?? 0;
       _logs.add('手环版本: $version (v$versionCode)');
-      setState(() {});
+      if (mounted) setState(() {});
       return;
     }
 
@@ -851,21 +850,22 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     if (type == 'todo') {
       await _handleBandTodoUpdate(bandData, username);
     } else if (type == 'pomodoro') {
-      final action = bandData['action'] as String?;
+      final action = bandData is Map ? bandData['action']?.toString() : null;
       if (action == 'finish' || action == 'abandon') {
         _logs.add('手环${action == 'finish' ? '提前完成' : '放弃'}番茄钟');
       } else {
         _logs.add('收到番茄钟消息（无操作指令）');
       }
     } else if (type == 'debug') {
-      final message = bandData['message'] as String? ?? '';
+      final message =
+          bandData is Map ? bandData['message']?.toString() ?? '' : '';
       setState(() {
         _logs.add('[手环] $message');
       });
     } else if (type == 'countdown') {
-      _logs.add('收到倒计时同步（暂未处理）');
+      _logs.add('收到倒计时数据：手环端当前只支持查看，未修改本地数据');
     } else if (type == 'course') {
-      _logs.add('收到课程同步（暂未处理）');
+      _logs.add('收到课程数据：手环端当前只支持查看，未修改本地数据');
     } else {
       _logs.add('未知消息类型: $type');
     }
@@ -883,36 +883,47 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
       return;
     }
 
+    final allTodos =
+        await StorageService.getTodos(username, includeDeleted: true);
+    final todosById = <String, TodoItem>{
+      for (final todo in allTodos) todo.id: todo,
+    };
     int updatedCount = 0;
     for (final item in items) {
       if (item is! Map) continue;
 
-      final id = item['id'] as String?;
-      if (id == null) continue;
+      final id = (item['id'] ?? item['uuid'])?.toString();
+      if (id == null || id.isEmpty) continue;
 
       // 读取手环发回的状态
-      String? bandStatus = item['status'] as String?;
-      int? bandIsCompleted = item['is_completed'] as int?;
-      bool? bandIsCompletedBool = item['is_completed'] as bool?;
+      final bandStatus = item['status']?.toString();
+      final rawCompleted = item['is_completed'];
+      bool? completedFromPayload;
+      if (rawCompleted is bool) {
+        completedFromPayload = rawCompleted;
+      } else if (rawCompleted is num) {
+        completedFromPayload = rawCompleted != 0;
+      } else if (rawCompleted is String) {
+        completedFromPayload = switch (rawCompleted.toLowerCase()) {
+          '1' || 'true' || 'done' => true,
+          '0' || 'false' || 'undone' => false,
+          _ => null,
+        };
+      }
 
-      bool newIsDone = false;
+      bool? newIsDone;
       if (bandStatus == 'done') {
         newIsDone = true;
       } else if (bandStatus == 'undone') {
         newIsDone = false;
-      } else if (bandIsCompleted != null) {
-        newIsDone = bandIsCompleted == 1;
-      } else if (bandIsCompletedBool != null) {
-        newIsDone = bandIsCompletedBool;
+      } else if (completedFromPayload != null) {
+        newIsDone = completedFromPayload;
       } else {
         continue; // 没有状态信息，跳过
       }
 
-      // 从数据库读取该待办
-      final todos = await StorageService.getTodos(username);
-      final todo = todos.firstWhere((t) => t.id == id,
-          orElse: () => TodoItem(title: ''));
-      if (todo.title.isEmpty) {
+      final todo = todosById[id];
+      if (todo == null) {
         _logs.add('未找到待办: $id');
         continue;
       }
@@ -921,18 +932,13 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
       if (todo.isDone != newIsDone) {
         todo.isDone = newIsDone;
         todo.markAsChanged();
-        // 保存时读取全部待办，更新后写回
-        final allTodos = await StorageService.getTodos(username);
-        final idx = allTodos.indexWhere((t) => t.id == id);
-        if (idx != -1) {
-          allTodos[idx] = todo;
-        } else {
-          allTodos.add(todo);
-        }
-        await StorageService.saveTodos(username, allTodos);
         updatedCount++;
         _logs.add('更新待办状态: ${todo.title} -> ${newIsDone ? "已完成" : "未完成"}');
       }
+    }
+
+    if (updatedCount > 0) {
+      await StorageService.saveTodos(username, allTodos);
     }
 
     if (updatedCount == 0) {
@@ -978,10 +984,14 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
         .toList();
     _logs.add('筛选后 ${todoMaps.length} 条待办数据');
 
-    final success = await _sendInChunks('todo', todoMaps, 10);
+    final success = await BandSyncService.syncTodos(todoMaps);
     setState(() {
       _isSyncing = false;
-      _logs.add(success ? '待办同步成功 (${todoMaps.length}条)' : '待办同步失败');
+      _logs.add(success
+          ? (BandSyncService.supportsSyncResult
+              ? '待办同步成功 (${todoMaps.length}条)'
+              : '待办发送完成，手环未提供回执')
+          : '待办同步失败');
     });
   }
 
@@ -1035,10 +1045,14 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     }).toList();
     _logs.add('筛选后 ${courseMaps.length} 条课程数据');
 
-    final success = await _sendInChunks('course', courseMaps, 15);
+    final success = await BandSyncService.syncCourses(courseMaps);
     setState(() {
       _isSyncing = false;
-      _logs.add(success ? '课程同步成功 (${courseMaps.length}条)' : '课程同步失败');
+      _logs.add(success
+          ? (BandSyncService.supportsSyncResult
+              ? '课程同步成功 (${courseMaps.length}条)'
+              : '课程发送完成，手环未提供回执')
+          : '课程同步失败');
     });
   }
 
@@ -1073,7 +1087,11 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     final success = await BandSyncService.syncCountdowns(countdownMaps);
     setState(() {
       _isSyncing = false;
-      _logs.add(success ? '倒计时同步成功 (${countdownMaps.length}条)' : '倒计时同步失败');
+      _logs.add(success
+          ? (BandSyncService.supportsSyncResult
+              ? '倒计时同步成功 (${countdownMaps.length}条)'
+              : '倒计时发送完成，手环未提供回执')
+          : '倒计时同步失败');
     });
   }
 
@@ -1085,7 +1103,8 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
       final runState = await PomodoroService.loadRunState();
       if (runState == null || runState.phase == PomodoroPhase.idle) {
         _logs.add('当前无运行中的番茄钟');
-        await BandSyncService.syncPomodoro([]);
+        final success = await BandSyncService.syncPomodoro([]);
+        if (!success) _logs.add('番茄钟清空同步失败');
         setState(() => _isSyncing = false);
         return;
       }
@@ -1123,55 +1142,16 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
       final success = await BandSyncService.syncPomodoro(pomodoroData);
       setState(() {
         _isSyncing = false;
-        _logs.add(success ? '番茄钟同步成功' : '番茄钟同步失败');
+        _logs.add(success
+            ? (BandSyncService.supportsSyncResult
+                ? '番茄钟同步成功'
+                : '番茄钟发送完成，手环未提供回执')
+            : '番茄钟同步失败');
       });
     } catch (e) {
       _logs.add('番茄钟同步异常: $e');
       setState(() => _isSyncing = false);
     }
-  }
-
-  // 分批发送大数据，避免超过 MessageApi 限制
-  Future<bool> _sendInChunks(
-      String type, List<Map<String, dynamic>> items, int chunkSize) async {
-    if (items.isEmpty) {
-      return await BandSyncService.sendData(type, [],
-          batchNum: 1, totalBatches: 1);
-    }
-
-    // 计算总批次数
-    final totalBatches = (items.length / chunkSize).ceil();
-
-    bool allSuccess = true;
-    for (int i = 0; i < items.length; i += chunkSize) {
-      final end = (i + chunkSize < items.length) ? i + chunkSize : items.length;
-      final chunk = items.sublist(i, end);
-      final batchNum = i ~/ chunkSize + 1;
-      final jsonStr = jsonEncode(chunk);
-      final sizeKb = (jsonStr.length / 1024).toStringAsFixed(1);
-      _logs.add(
-          '发送 $type 第 $batchNum/$totalBatches 批 (${chunk.length}条, ${sizeKb}KB)...');
-
-      bool success = false;
-      int retries = 2;
-      while (retries >= 0 && !success) {
-        success = await BandSyncService.sendData(type, chunk,
-            batchNum: batchNum, totalBatches: totalBatches);
-        if (!success && retries > 0) {
-          _logs.add('第 $batchNum 批发送失败，重试...');
-          await Future.delayed(const Duration(seconds: 1));
-        }
-        retries--;
-      }
-
-      if (!success) {
-        allSuccess = false;
-        _logs.add('第 $batchNum 批发送失败');
-      }
-      // 批次间间隔，避免 SDK 处理不过来
-      await Future.delayed(const Duration(seconds: 1));
-    }
-    return allSuccess;
   }
 
   Future<void> _syncAll() async {

@@ -59,10 +59,42 @@ class MacPomodoroStatusBarService {
   static Timer? _activityDataRefreshFallbackTimer;
   static Timer? _overviewSyncTimer;
   static bool _overviewWasRequested = false;
+  static Future<void> _pomodoroStatusTail = Future<void>.value();
+  static int _pomodoroStatusGeneration = 0;
+  static Future<void> _remoteEventTail = Future<void>.value();
+  static int _statusLifecycleGeneration = 0;
   static const Duration _restoreGracePeriod = Duration(minutes: 2);
   static const Duration _activityRestoreFallbackDelay = Duration(seconds: 12);
   static const Duration _activityDataRefreshFallbackDelay =
       Duration(seconds: 6);
+
+  /// Native status updates must be delivered in the same order as the
+  /// corresponding local/remote events. MethodChannel calls are asynchronous;
+  /// without a queue, an older update can finish after a newer clear/update.
+  static Future<void> _enqueuePomodoroStatus(
+    Future<void> Function(int generation) operation,
+  ) async {
+    final generation = ++_pomodoroStatusGeneration;
+    final next = _pomodoroStatusTail.then((_) => operation(generation));
+    _pomodoroStatusTail = _swallowPomodoroStatusError(next);
+    try {
+      await next;
+    } catch (error, stackTrace) {
+      debugPrint('[MacPomodoroStatusBar] native status update failed: '
+          '$error\n$stackTrace');
+    }
+  }
+
+  static Future<void> _swallowPomodoroStatusError(Future<void> future) async {
+    try {
+      await future;
+    } catch (_) {
+      // The foreground operation logs the error; keep the queue usable.
+    }
+  }
+
+  static bool _isPomodoroStatusCurrent(int generation) =>
+      generation == _pomodoroStatusGeneration;
 
   /// 状态栏操作事件流（暂停/继续/结束）
   static final StreamController<MacPomodoroAction> _actionController =
@@ -84,6 +116,7 @@ class MacPomodoroStatusBarService {
     if (_initialized) return;
     _initialized = true;
     final initGeneration = ++_activitySyncGeneration;
+    ++_statusLifecycleGeneration;
     _activityRestoreDeferred = deferOngoingActivityRestore;
     if (deferOngoingActivityRestore) {
       _scheduleActivityRestoreFallback();
@@ -99,7 +132,7 @@ class MacPomodoroStatusBarService {
       debugPrint('[MacPomodoroStatusBar] loadRunState: ${runState?.phase}');
       if (_isActiveLocalState(runState)) {
         _lastLocalActiveState = runState;
-        _sendLocalState(runState!);
+        unawaited(_sendLocalState(runState!));
       }
     } catch (e) {
       debugPrint('[MacPomodoroStatusBar] init error: $e');
@@ -117,7 +150,7 @@ class MacPomodoroStatusBarService {
         _clearNative();
       } else if (_isActiveLocalState(state)) {
         _lastLocalActiveState = state;
-        _sendLocalState(state);
+        unawaited(_sendLocalState(state));
       } else {
         _lastLocalActiveState = null;
         _clearNative();
@@ -125,24 +158,9 @@ class MacPomodoroStatusBarService {
     });
 
     // 监听远端专注状态
-    _remoteSub = PomodoroSyncService.instance.onStateChanged.listen((remote) {
-      switch (remote.action) {
-        case 'START':
-        case 'SYNC_FOCUS':
-        case 'RECONNECT_SYNC':
-          _handleRemoteActiveState(remote);
-        case 'STOP':
-        case 'INTERRUPT':
-        case 'FINISH':
-        case 'CLEAR_FOCUS':
-        case 'FOCUS_DISCONNECTED':
-          _checkAndClearIfNoLocal();
-        case 'SWITCH':
-        case 'PAUSE':
-        case 'RESUME':
-          _handleRemoteActiveState(remote);
-      }
-    });
+    _remoteSub = PomodoroSyncService.instance.onStateChanged.listen(
+      _queueRemoteEvent,
+    );
 
     StorageService.scopedDataRefreshNotifier.addListener(_handleDataRefresh);
     if (!deferOngoingActivityRestore &&
@@ -422,16 +440,9 @@ class MacPomodoroStatusBarService {
     });
   }
 
-  static void _sendLocalState(PomodoroRunState state) async {
-    final prefs = await SharedPreferences.getInstance();
-    final enabled = prefs.getBool('macos_island_enabled') ??
-        prefs.getBool('macos_status_bar_enabled') ??
-        true;
-    if (!enabled) return;
+  static Future<void> _sendLocalState(PomodoroRunState state) {
     _lastRemotePayload = null;
-    debugPrint(
-        '[MacPomodoroStatusBar] _sendLocalState: phase=${state.phase}, targetEndMs=${state.targetEndMs}');
-    _channel.invokeMethod('updatePomodoroStatus', {
+    final payload = <String, dynamic>{
       'phase': state.phase.name,
       'targetEndMs': state.targetEndMs,
       'sessionStartMs': state.sessionStartMs,
@@ -452,8 +463,20 @@ class MacPomodoroStatusBarService {
       'sourceDeviceName': '本机',
       'todoTitle': state.todoTitle ?? '',
       'isRemote': false,
+    };
+    return _enqueuePomodoroStatus((generation) async {
+      final prefs = await SharedPreferences.getInstance();
+      final enabled = prefs.getBool('macos_island_enabled') ??
+          prefs.getBool('macos_status_bar_enabled') ??
+          true;
+      if (!enabled || !_isPomodoroStatusCurrent(generation)) return;
+      debugPrint(
+          '[MacPomodoroStatusBar] _sendLocalState: phase=${state.phase}, targetEndMs=${state.targetEndMs}');
+      await _channel.invokeMethod('updatePomodoroStatus', payload);
+      if (_isPomodoroStatusCurrent(generation)) {
+        _scheduleIslandOverviewSync();
+      }
     });
-    _scheduleIslandOverviewSync();
   }
 
   static bool _isActiveLocalState(PomodoroRunState? state) {
@@ -476,21 +499,25 @@ class MacPomodoroStatusBarService {
 
   /// 本机专注优先于 WebSocket 状态，且忽略服务端回推的本机专注事件。
   static Future<void> _handleRemoteActiveState(
-      CrossDevicePomodoroState remote) async {
+    CrossDevicePomodoroState remote, {
+    required int lifecycleGeneration,
+  }) async {
+    if (!_isStatusLifecycleCurrent(lifecycleGeneration)) return;
     final cached = _lastLocalActiveState;
     if (_isActiveLocalState(cached)) {
       debugPrint(
           '[MacIsland] keep local focus over ${remote.action}: ${cached!.sessionUuid}');
-      _sendLocalState(cached);
+      await _sendLocalState(cached);
       return;
     }
 
     final local = await PomodoroService.loadRunState();
+    if (!_isStatusLifecycleCurrent(lifecycleGeneration)) return;
     if (_isActiveLocalState(local)) {
       _lastLocalActiveState = local;
       debugPrint(
           '[MacIsland] restore local focus over ${remote.action}: ${local!.sessionUuid}');
-      _sendLocalState(local);
+      await _sendLocalState(local);
       return;
     }
 
@@ -503,18 +530,71 @@ class MacPomodoroStatusBarService {
     _sendRemoteState(remote);
   }
 
-  static void _sendRemoteState(CrossDevicePomodoroState remote) async {
-    final prefs = await SharedPreferences.getInstance();
-    final enabled = prefs.getBool('macos_island_enabled') ??
-        prefs.getBool('macos_status_bar_enabled') ??
-        true;
-    if (!enabled) return;
+  static void _queueRemoteEvent(CrossDevicePomodoroState remote) {
+    final lifecycleGeneration = _statusLifecycleGeneration;
+    final next = _remoteEventTail
+        .then((_) => _processRemoteEvent(remote, lifecycleGeneration));
+    _remoteEventTail = _swallowRemoteEventError(next);
+    unawaited(next);
+  }
 
+  static Future<void> _processRemoteEvent(
+    CrossDevicePomodoroState remote,
+    int lifecycleGeneration,
+  ) async {
+    if (!_isStatusLifecycleCurrent(lifecycleGeneration)) return;
+    switch (remote.action) {
+      case 'START':
+      case 'SYNC_FOCUS':
+      case 'RECONNECT_SYNC':
+      case 'SWITCH':
+      case 'PAUSE':
+      case 'RESUME':
+        await _handleRemoteActiveState(
+          remote,
+          lifecycleGeneration: lifecycleGeneration,
+        );
+      case 'STOP':
+      case 'INTERRUPT':
+      case 'FINISH':
+      case 'CLEAR_FOCUS':
+      case 'FOCUS_DISCONNECTED':
+        _checkAndClearIfNoLocal();
+    }
+  }
+
+  static Future<void> _swallowRemoteEventError(Future<void> future) async {
+    try {
+      await future;
+    } catch (error, stackTrace) {
+      debugPrint('[MacPomodoroStatusBar] remote event failed: '
+          '$error\n$stackTrace');
+    }
+  }
+
+  static bool _isStatusLifecycleCurrent(int generation) =>
+      _initialized && generation == _statusLifecycleGeneration;
+
+  static void _sendRemoteState(CrossDevicePomodoroState remote) {
     final payload = mergeRemotePayload(remote, _lastRemotePayload);
     if (payload == null) return;
     _lastRemotePayload = payload;
-    _channel.invokeMethod('updatePomodoroStatus', payload);
-    _scheduleIslandOverviewSync();
+    unawaited(_sendRemotePayload(payload));
+  }
+
+  static Future<void> _sendRemotePayload(Map<String, dynamic> payload) {
+    final snapshot = Map<String, dynamic>.from(payload);
+    return _enqueuePomodoroStatus((generation) async {
+      final prefs = await SharedPreferences.getInstance();
+      final enabled = prefs.getBool('macos_island_enabled') ??
+          prefs.getBool('macos_status_bar_enabled') ??
+          true;
+      if (!enabled || !_isPomodoroStatusCurrent(generation)) return;
+      await _channel.invokeMethod('updatePomodoroStatus', snapshot);
+      if (_isPomodoroStatusCurrent(generation)) {
+        _scheduleIslandOverviewSync();
+      }
+    });
   }
 
   @visibleForTesting
@@ -592,35 +672,50 @@ class MacPomodoroStatusBarService {
     return '设备 · $suffix';
   }
 
-  static void _checkAndClearIfNoLocal() async {
+  static void _checkAndClearIfNoLocal() {
     final cached = _lastLocalActiveState;
     if (_isActiveLocalState(cached)) {
       debugPrint(
           '[MacPomodoroStatusBar] skip remote clear, cached local active: ${cached!.phase}');
-      _sendLocalState(cached);
+      unawaited(_sendLocalState(cached));
       return;
     }
 
-    // 延迟一点检查本地状态，避免竞态
-    await Future.delayed(const Duration(milliseconds: 500));
-    final local = await PomodoroService.loadRunState();
-    if (_isActiveLocalState(local)) {
-      _lastLocalActiveState = local;
-      debugPrint(
-          '[MacPomodoroStatusBar] skip remote clear, loaded local active: ${local!.phase}');
-      _sendLocalState(local);
-      return;
-    }
+    unawaited(_enqueuePomodoroStatus((generation) async {
+      // 延迟一点检查本地状态，避免竞态。新的状态请求会使本次清理失效。
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (!_isPomodoroStatusCurrent(generation)) return;
 
-    _clearNative();
-    _lastRemotePayload = null;
+      final local = await PomodoroService.loadRunState();
+      if (!_isPomodoroStatusCurrent(generation)) return;
+      if (_isActiveLocalState(local)) {
+        _lastLocalActiveState = local;
+        debugPrint(
+            '[MacPomodoroStatusBar] skip remote clear, loaded local active: ${local!.phase}');
+        unawaited(_sendLocalState(local));
+        return;
+      }
+
+      _lastRemotePayload = null;
+      debugPrint('[MacPomodoroStatusBar] _clearNative called');
+      await _channel.invokeMethod('clearPomodoroStatus');
+      if (_isPomodoroStatusCurrent(generation)) {
+        // 专注结束后的记录通常紧接着写入，稍作防抖后刷新概览。
+        _scheduleIslandOverviewSync();
+      }
+    }));
   }
 
   static void _clearNative() {
     debugPrint('[MacPomodoroStatusBar] _clearNative called');
-    _channel.invokeMethod('clearPomodoroStatus');
-    // 专注结束后的记录通常紧接着写入，稍作防抖后刷新概览。
-    _scheduleIslandOverviewSync();
+    _lastRemotePayload = null;
+    unawaited(_enqueuePomodoroStatus((generation) async {
+      await _channel.invokeMethod('clearPomodoroStatus');
+      if (_isPomodoroStatusCurrent(generation)) {
+        // 专注结束后的记录通常紧接着写入，稍作防抖后刷新概览。
+        _scheduleIslandOverviewSync();
+      }
+    }));
   }
 
   static void _handleDataRefresh() {
@@ -805,12 +900,9 @@ class MacPomodoroStatusBarService {
     final state = await PomodoroService.loadRunState();
     if (_isActiveLocalState(state)) {
       _lastLocalActiveState = state;
-      _sendLocalState(state!);
+      await _sendLocalState(state!);
     } else if (_lastRemotePayload != null) {
-      await _channel.invokeMethod(
-        'updatePomodoroStatus',
-        _lastRemotePayload,
-      );
+      await _sendRemotePayload(_lastRemotePayload!);
     } else {
       _clearNative();
     }
@@ -820,6 +912,9 @@ class MacPomodoroStatusBarService {
   static void dispose() {
     _initialized = false;
     _activitySyncGeneration++;
+    _pomodoroStatusGeneration++;
+    _statusLifecycleGeneration++;
+    _remoteEventTail = Future<void>.value();
     _channel.setMethodCallHandler(null);
     _activitySyncPending = false;
     _activityRestoreDeferred = false;

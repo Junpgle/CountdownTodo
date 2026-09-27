@@ -123,6 +123,7 @@ class TimelineStatisticsService {
     required List<TodoItem> todos,
     required List<PomodoroTag> tags,
     DateTime? now,
+    Set<String> excludedRecurrenceSeriesIds = const <String>{},
   }) {
     final effectiveNow = now ?? DateTime.now();
     final startMs = start.millisecondsSinceEpoch;
@@ -220,6 +221,7 @@ class TimelineStatisticsService {
       start: start,
       end: end,
       now: effectiveNow,
+      excludedSeriesIds: excludedRecurrenceSeriesIds,
     );
     final recurringCompletedCount = recurrenceSeries.fold<int>(
       0,
@@ -294,11 +296,17 @@ class TimelineStatisticsService {
     required DateTime start,
     required DateTime end,
     required DateTime now,
+    required Set<String> excludedSeriesIds,
   }) {
     final occurrencesBySeriesDay = <String, List<TodoItem>>{};
     for (final todo in todos) {
       final seriesId = todo.recurrenceSeriesId?.trim();
-      if (todo.isDeleted || seriesId == null || seriesId.isEmpty) continue;
+      if (todo.isDeleted ||
+          seriesId == null ||
+          seriesId.isEmpty ||
+          excludedSeriesIds.contains(seriesId)) {
+        continue;
+      }
       final occurrenceStart = _todoStart(todo);
       if (occurrenceStart.isBefore(start) || !occurrenceStart.isBefore(end)) {
         continue;

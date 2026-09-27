@@ -21,6 +21,8 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   late DateTime _month;
   List<FinanceBudget> _budgets = const [];
   List<FinanceCategory> _categories = const [];
+  List<FinancePaymentMethod> _paymentMethods = const [];
+  List<FinanceTransaction> _transactions = const [];
   FinanceSummary _summary = const FinanceSummary();
   bool _isLoading = true;
   String? _loadError;
@@ -40,13 +42,21 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
 
   FinanceBudget? get _overallBudget {
     for (final budget in _budgets) {
-      if (budget.categoryUuid == null) return budget;
+      if (budget.isOverall) return budget;
     }
     return null;
   }
 
-  List<FinanceBudget> get _categoryBudgets =>
-      _budgets.where((budget) => budget.categoryUuid != null).toList();
+  List<FinanceBudget> get _categoryBudgets => _budgets
+      .where((budget) => !budget.isPaymentMethod && budget.categoryUuid != null)
+      .toList();
+
+  List<FinanceBudget> get _paymentBudgets =>
+      _budgets.where((budget) => budget.isPaymentMethod).toList();
+
+  Map<String, FinancePaymentMethod> get _paymentMethodMap => {
+        for (final method in _paymentMethods) method.uuid: method,
+      };
 
   Future<void> _load() async {
     final generation = ++_loadGeneration;
@@ -61,17 +71,20 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       final to = DateTime(_month.year, _month.month + 1);
       final values = await Future.wait<dynamic>([
         FinanceRepository.getBudgets(monthKey: financeMonthKey(_month)),
-        FinanceRepository.getSummary(from: from, to: to),
         FinanceRepository.getCategories(
           type: FinanceCategoryType.expense,
           includeArchived: true,
         ),
+        FinanceRepository.getPaymentMethods(includeArchived: true),
+        FinanceRepository.getTransactions(from: from, to: to),
       ]);
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _budgets = values[0] as List<FinanceBudget>;
-        _summary = values[1] as FinanceSummary;
-        _categories = values[2] as List<FinanceCategory>;
+        _categories = values[1] as List<FinanceCategory>;
+        _paymentMethods = values[2] as List<FinancePaymentMethod>;
+        _transactions = values[3] as List<FinanceTransaction>;
+        _summary = FinanceRepository.summarizeTransactions(_transactions);
         _isLoading = false;
       });
     } catch (error) {
@@ -83,24 +96,78 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     }
   }
 
-  Future<void> _openEditor([FinanceBudget? budget]) async {
+  Future<void> _openEditor([
+    FinanceBudget? budget,
+    String? paymentMethodUuid,
+  ]) async {
     final result = await Navigator.of(context).push<FinanceBudget>(
       MaterialPageRoute(
         builder: (_) => FinanceBudgetEntryScreen(
           month: _month,
           budget: budget,
+          initialPaymentMethodUuid: paymentMethodUuid,
         ),
       ),
     );
     if (result != null && mounted) await _load();
   }
 
+  Future<void> _choosePaymentMethodForBudget() async {
+    final methods = _paymentMethods
+        .where((method) => !method.isArchived && !method.isDeleted)
+        .toList(growable: false);
+    if (methods.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先添加或恢复一个付款方式')),
+      );
+      return;
+    }
+    final paymentMethodUuid = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+              child: Text(
+                '选择付款方式',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+            for (final method in methods)
+              ListTile(
+                leading: Text(method.icon),
+                title: Text(method.name),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).pop(method.uuid),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (paymentMethodUuid == null || !mounted) return;
+    FinanceBudget? existing;
+    for (final budget in _paymentBudgets) {
+      if (budget.paymentMethodUuid == paymentMethodUuid) {
+        existing = budget;
+        break;
+      }
+    }
+    await _openEditor(existing, paymentMethodUuid);
+  }
+
   Future<void> _deleteBudget(FinanceBudget budget) async {
+    final itemName = budget.isPaymentMethod ? '付款方式余额' : '预算';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除预算？'),
-        content: const Text('删除预算不会影响已有账单。'),
+        title: Text('删除$itemName？'),
+        content: Text('删除$itemName记录不会影响已有账单。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -119,13 +186,13 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('删除预算失败：$error')),
+        SnackBar(content: Text('删除$itemName失败：$error')),
       );
       return;
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('预算已删除')),
+      SnackBar(content: Text('$itemName已删除')),
     );
     await _load();
   }
@@ -149,6 +216,28 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   }
 
   int _usedFor(FinanceBudget budget) {
+    if (budget.paymentMethodUuid != null) {
+      final paymentMethodUuid = budget.paymentMethodUuid!;
+      final snapshotAt = budget.updatedAt;
+      final snapshotDate = dateKey(
+        DateTime.fromMillisecondsSinceEpoch(snapshotAt),
+      );
+      final today = dateKey(DateTime.now());
+      final transactionsAfterSnapshot = _transactions.where((transaction) {
+        if (transaction.paymentMethodUuid != paymentMethodUuid ||
+            transaction.transactionDate.compareTo(today) > 0) {
+          return false;
+        }
+        final dateComparison =
+            transaction.transactionDate.compareTo(snapshotDate);
+        return dateComparison > 0 ||
+            (dateComparison == 0 && transaction.createdAt > snapshotAt);
+      });
+      final usage = FinanceRepository.summarizePaymentMethodSpending(
+        transactionsAfterSnapshot,
+      )[paymentMethodUuid];
+      return usage ?? 0;
+    }
     if (budget.isOverall) {
       return math.max(0, _summary.netExpenseMinor);
     }
@@ -157,79 +246,136 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
 
   String _budgetTitle(FinanceBudget budget) {
     if (budget.isOverall) return '全部支出';
-    return _categoryMap[budget.categoryUuid]?.name ?? '已归档或未知分类';
+    if (budget.paymentMethodUuid != null) {
+      return _paymentMethodMap[budget.paymentMethodUuid]?.name ?? '已归档或未知付款方式';
+    }
+    final category = _categoryMap[budget.categoryUuid];
+    return category == null
+        ? '已归档或未知分类'
+        : financeCategoryDisplayName(category, _categories);
   }
 
   String _budgetIcon(FinanceBudget budget) {
     if (budget.isOverall) return '🎯';
+    if (budget.paymentMethodUuid != null) {
+      return _paymentMethodMap[budget.paymentMethodUuid]?.icon ?? '💼';
+    }
     return _categoryMap[budget.categoryUuid]?.icon ?? '🗃️';
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
-        title: const Text('预算'),
+        title: const Text('预算与付款余额'),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _loadError != null
-              ? _buildError(colorScheme)
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: FinancePageList(
-                    bottomPadding: 112,
-                    children: [
-                      _buildMonthBar(colorScheme),
-                      const SizedBox(height: 8),
-                      _buildSummaryCard(colorScheme),
-                      const SizedBox(height: 24),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '预算项目',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                          Text(
-                            '${_budgets.length} 项',
-                            style: TextStyle(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      if (_budgets.isEmpty)
-                        _buildEmptyState(colorScheme)
-                      else
-                        FinanceAdaptiveFields(
-                          minChildWidth: 330,
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+                ? _buildError(colorScheme)
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: FinancePageList(
+                      topPadding: topBarHeight,
+                      bottomPadding: 112,
+                      children: [
+                        _buildMonthBar(colorScheme),
+                        const SizedBox(height: 8),
+                        _buildSummaryCard(colorScheme),
+                        const SizedBox(height: 24),
+                        Row(
                           children: [
-                            for (final budget in _budgets)
-                              _buildBudgetCard(budget, colorScheme)
+                            Expanded(
+                              child: Text(
+                                '总额与分类预算',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            Text(
+                              '${_budgets.where((budget) => !budget.isPaymentMethod).length} 项',
+                              style: TextStyle(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
                           ],
                         ),
-                      if (_budgets.isNotEmpty && _overallBudget == null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            '当前仅统计已设置分类预算的进度；想控制整月支出，可以再添加“全部支出”预算。',
-                            style: TextStyle(
-                              color: colorScheme.onSurfaceVariant,
-                              fontSize: 12,
+                        const SizedBox(height: 8),
+                        if (_budgets
+                            .where((budget) => !budget.isPaymentMethod)
+                            .isEmpty)
+                          _buildEmptyState(colorScheme)
+                        else
+                          FinanceAdaptiveFields(
+                            minChildWidth: 330,
+                            children: [
+                              for (final budget in _budgets.where(
+                                (budget) => !budget.isPaymentMethod,
+                              ))
+                                _buildBudgetCard(budget, colorScheme)
+                            ],
+                          ),
+                        if (_budgets.any((budget) => !budget.isPaymentMethod) &&
+                            _overallBudget == null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              '当前仅统计已设置分类预算的进度；想控制整月支出，可以再添加“全部支出”预算。',
+                              style: TextStyle(
+                                color: colorScheme.onSurfaceVariant,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
+                        const SizedBox(height: 24),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '付款方式实时余额',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            Text(
+                              '${_paymentBudgets.length} 项',
+                              style: TextStyle(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            IconButton(
+                              tooltip: '录入付款方式余额',
+                              onPressed: _choosePaymentMethodForBudget,
+                              icon: const Icon(Icons.add_circle_outline),
+                            ),
+                          ],
                         ),
-                    ],
+                        const SizedBox(height: 8),
+                        if (_paymentBudgets.isEmpty)
+                          _buildPaymentEmptyState(colorScheme)
+                        else
+                          FinanceAdaptiveFields(
+                            minChildWidth: 330,
+                            children: [
+                              for (final budget in _paymentBudgets)
+                                _buildBudgetCard(budget, colorScheme)
+                            ],
+                          ),
+                      ],
+                    ),
                   ),
-                ),
+      ),
       floatingActionButton: _isLoading || _loadError != null
           ? null
           : FloatingGlassActionButton.extended(
@@ -347,6 +493,14 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                   .bodySmall
                   ?.copyWith(color: foreground.withValues(alpha: 0.75))),
         ],
+        if (_paymentBudgets.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text('付款方式实时余额单独显示，不计入总额和分类预算。',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: foreground.withValues(alpha: 0.75))),
+        ],
       ]),
     );
   }
@@ -358,6 +512,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     final used = _usedFor(budget);
     final remaining = budget.amountMinor - used;
     final isOver = remaining < 0;
+    final snapshotAt = DateTime.fromMillisecondsSinceEpoch(budget.updatedAt);
     final progress = budget.amountMinor == 0
         ? 0.0
         : (used / budget.amountMinor).clamp(0.0, 1.0).toDouble();
@@ -380,7 +535,8 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                       .titleMedium
                       ?.copyWith(fontWeight: FontWeight.w700))),
           PopupMenuButton<String>(
-            tooltip: '${_budgetTitle(budget)}预算的更多操作',
+            tooltip:
+                '${_budgetTitle(budget)}${budget.isPaymentMethod ? '余额' : '预算'}的更多操作',
             onSelected: (value) {
               if (value == 'edit') _openEditor(budget);
               if (value == 'delete') _deleteBudget(budget);
@@ -393,8 +549,20 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         ]),
         const SizedBox(height: 16),
         FinanceAdaptiveFields(minChildWidth: 150, children: [
-          _budgetMetric('已使用', used),
-          _budgetMetric('预算额度', budget.amountMinor),
+          _budgetMetric(
+            budget.isPaymentMethod && used < 0
+                ? '录入后退款净加回'
+                : budget.isPaymentMethod
+                    ? '录入后净扣减'
+                    : '已使用',
+            budget.isPaymentMethod ? used.abs() : used,
+          ),
+          _budgetMetric(
+            budget.isPaymentMethod
+                ? '${snapshotAt.month}月${snapshotAt.day}日录入时余额'
+                : '预算额度',
+            budget.amountMinor,
+          ),
         ]),
         const SizedBox(height: 18),
         LinearProgressIndicator(
@@ -406,9 +574,13 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         ),
         const SizedBox(height: 12),
         FinanceStatusBadge(
-          label: isOver
-              ? '超支 ${formatFinanceAmount(-remaining)}'
-              : '剩余 ${formatFinanceAmount(remaining)}',
+          label: budget.isPaymentMethod
+              ? isOver
+                  ? '当前余额不足 ${formatFinanceAmount(-remaining)}'
+                  : '当前余额 ${formatFinanceAmount(remaining)}'
+              : isOver
+                  ? '超支 ${formatFinanceAmount(-remaining)}'
+                  : '剩余 ${formatFinanceAmount(remaining)}',
           isError: isOver,
           highlighted: !isOver,
         ),
@@ -445,6 +617,16 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       description: '设置总预算或分类额度，随时了解还能花多少。',
       actionLabel: '添加预算',
       onAction: () => _openEditor(),
+    );
+  }
+
+  Widget _buildPaymentEmptyState(ColorScheme colorScheme) {
+    return FinanceEmptyState(
+      icon: Icons.account_balance_wallet_outlined,
+      title: '还没有付款方式余额记录',
+      description: '录入此刻的剩余金额，之后的支出会扣减，退款会加回。',
+      actionLabel: '选择付款方式并录入余额',
+      onAction: _choosePaymentMethodForBudget,
     );
   }
 

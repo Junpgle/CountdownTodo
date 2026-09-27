@@ -5,6 +5,7 @@ import '../../models/help_article.dart';
 import '../../features/habits/screens/habit_center_screen.dart';
 import '../../features/thirty_day_challenge/screens/challenge_center_screen.dart';
 import '../../services/feature_tip_service.dart';
+import '../../storage_service.dart';
 import '../../update_service.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/page_transitions.dart';
@@ -224,7 +225,15 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
           onAction: () {
             Navigator.of(context, rootNavigator: true).push(
               PageTransitions.slideHorizontal(AddTodoScreen(
-                onTodoAdded: (_) {},
+                onTodoAdded: (todo) async {
+                  final username =
+                      widget.username ?? await StorageService.getLoginSession();
+                  if (username == null || username.isEmpty) {
+                    throw StateError('请先登录后再保存待办');
+                  }
+                  final todos = await StorageService.getTodos(username);
+                  await StorageService.saveTodos(username, [...todos, todo]);
+                },
               )),
             );
           },

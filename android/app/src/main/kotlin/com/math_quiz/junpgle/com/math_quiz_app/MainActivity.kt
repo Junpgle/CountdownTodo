@@ -219,6 +219,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val totalSteps: Int,
         val isTodo: Boolean,
         val shortText: String?,
+        val islandTitle: String?,
+        val islandContent: String?,
         val iconResId: Int,
         val largeIconResId: Int?,
         val channelId: String,
@@ -260,6 +262,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private var minorModeManager: MinorModeManager? = null
     private var powerSaveModeManager: AndroidPowerSaveModeManager? = null
     private var pendingDeepLink: String? = null
+    private var pendingDeepLinkId: String? = null
     // 保存待处理的番茄钟动作（在methodChannel初始化前）
     private var pendingPomodoroAction: String? = null
     // 保存待处理的待办确认动作（在methodChannel初始化前）
@@ -324,18 +327,28 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             pendingPlanBlockId = savedInstanceState.getString(STATE_PENDING_PLAN_ID)
             pendingPlanBlockTodoId = savedInstanceState.getString(STATE_PENDING_PLAN_TODO_ID)
             pendingShortcut = savedInstanceState.getString(STATE_PENDING_SHORTCUT)
-            pendingDeepLink = savedInstanceState.getString(STATE_PENDING_DEEP_LINK)
-
+            val savedDeepLinkId = savedInstanceState.getString(STATE_PENDING_DEEP_LINK_ID)
+            if (savedDeepLinkId != null && savedDeepLinkId != lastDeliveredDeepLinkId()) {
+                pendingDeepLink = savedInstanceState.getString(STATE_PENDING_DEEP_LINK)
+                pendingDeepLinkId = savedDeepLinkId
+            }
             // 上次已处理过通知 extras，但进程被杀后系统会恢复旧 intent（extras 仍在）。
             // 清除这些 extras 防止重复触发（例如从图标打开 App 时莫名开始专注）。
             clearNotificationExtras(intent)
             Log.d(TAG, "📦 Restored pending state from savedInstanceState")
         }
 
-        // 在 super.onCreate 之前提取 deep link（super 可能替换 intent）
-        val launchDeepLink = extractDeepLinkFromIntent(intent)
+        // 恢复 Activity 时 intent 可能仍是上次从小部件打开的 VIEW intent。
+        // 深链接是一次性导航请求，不能把旧 intent 或 saved state 当成新点击。
+        // 恢复之后真正的新点击仍会通过 onNewIntent 到达。
+        val launchDeepLink = if (savedInstanceState == null) {
+            extractDeepLinkFromIntent(intent)
+        } else {
+            null
+        }
         if (launchDeepLink != null) {
             pendingDeepLink = launchDeepLink
+            pendingDeepLinkId = UUID.randomUUID().toString()
             Log.d(TAG, "🔗 Saved launch deep link before FlutterActivity init")
         }
 
@@ -356,8 +369,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         handleShortcutFromIntent(intent)
 
         // 通知 extras 已提取完毕，现在可以安全清理 deep link 数据
-        if (launchDeepLink != null) {
+        if (extractDeepLinkFromIntent(intent) != null) {
             sanitizeDeepLinkIntent(intent)
+            setIntent(intent)
         }
 
         // 注册 Shizuku 权限请求与生命周期监听器
@@ -535,6 +549,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         outState.putString(STATE_PENDING_PLAN_TODO_ID, pendingPlanBlockTodoId)
         outState.putString(STATE_PENDING_SHORTCUT, pendingShortcut)
         outState.putString(STATE_PENDING_DEEP_LINK, pendingDeepLink)
+        outState.putString(STATE_PENDING_DEEP_LINK_ID, pendingDeepLinkId)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -550,15 +565,17 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         if (deepLink != null) {
             sanitizeDeepLinkIntent(intent)
-            dispatchDeepLink(deepLink)
+            setIntent(intent)
+            val deliveryId = UUID.randomUUID().toString()
+            dispatchDeepLink(deepLink, deliveryId)
             // A Flutter isolate can still be paused while onNewIntent is
             // delivered from the launcher. Retry after the Activity has had
             // time to reach the resumed state; the pending value is cleared
             // by the MethodChannel acknowledgement when the first delivery
             // succeeds.
             Handler(Looper.getMainLooper()).postDelayed({
-                if (pendingDeepLink == deepLink) {
-                    dispatchDeepLink(deepLink)
+                if (pendingDeepLinkId == deliveryId) {
+                    dispatchDeepLink(deepLink, deliveryId)
                 }
             }, 600)
         }
@@ -596,20 +613,31 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         intent.removeExtra("habit_notif_id")
     }
 
-    private fun dispatchDeepLink(data: String) {
+    private fun lastDeliveredDeepLinkId(): String? =
+        getSharedPreferences(DEEP_LINK_DELIVERY_PREFS, MODE_PRIVATE)
+            .getString(LAST_DELIVERED_DEEP_LINK_ID, null)
+
+    private fun finishDeepLinkDelivery(deliveryId: String?) {
+        if (deliveryId == null || pendingDeepLinkId != deliveryId) return
+        getSharedPreferences(DEEP_LINK_DELIVERY_PREFS, MODE_PRIVATE)
+            .edit().putString(LAST_DELIVERED_DEEP_LINK_ID, deliveryId).commit()
+        pendingDeepLink = null
+        pendingDeepLinkId = null
+    }
+
+    private fun dispatchDeepLink(data: String, deliveryId: String) {
         Log.d(TAG, "🔗 dispatchDeepLink: $data")
         // Keep a copy until Flutter acknowledges the message. When the
         // Activity is resumed from the launcher, the Flutter isolate can be
         // paused for a short window and a one-shot platform message may be
         // delivered too early. Dart can fetch this value on resume.
         pendingDeepLink = data
+        pendingDeepLinkId = deliveryId
         val channel = deepLinkChannel
         if (channel != null) {
             channel.invokeMethod("openDeepLink", data, object : MethodChannel.Result {
                 override fun success(result: Any?) {
-                    if (pendingDeepLink == data) {
-                        pendingDeepLink = null
-                    }
+                    finishDeepLinkDelivery(deliveryId)
                 }
 
                 override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
@@ -720,6 +748,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         private const val STATE_PENDING_PLAN_TODO_ID = "pending_plan_todo_id"
         private const val STATE_PENDING_SHORTCUT = "pending_shortcut"
         private const val STATE_PENDING_DEEP_LINK = "pending_deep_link"
+        private const val STATE_PENDING_DEEP_LINK_ID = "pending_deep_link_id"
+        private const val DEEP_LINK_DELIVERY_PREFS = "deep_link_delivery"
+        private const val LAST_DELIVERED_DEEP_LINK_ID = "last_delivered_id"
     }
 
     private fun handleShortcutFromIntent(intent: Intent?) {
@@ -1472,8 +1503,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         deepLinkChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "getInitialDeepLink" -> {
-                    result.success(pendingDeepLink)
-                    pendingDeepLink = null
+                    val deepLink = pendingDeepLink
+                    val deliveryId = pendingDeepLinkId
+                    result.success(deepLink)
+                    if (deepLink != null) finishDeepLinkDelivery(deliveryId)
                 }
                 else -> result.notImplemented()
             }
@@ -1506,6 +1539,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     // the path lets the Dart delta applier use the exact
                     // signed APK currently installed on this device.
                     result.success(applicationInfo.sourceDir)
+                }
+                "getApkVersionName" -> {
+                    val path = call.argument<String>("path")?.trim()
+                    if (path.isNullOrEmpty()) {
+                        result.error("INVALID_APK_PATH", "APK path is empty", null)
+                    } else {
+                        result.success(readApkVersionName(path))
+                    }
                 }
                 "isWifiConnected" -> {
                     val connectivityManager =
@@ -1595,6 +1636,15 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     val args = call.arguments as? Map<String, Any>
                     if (args != null) {
                         val type = args["type"] as? String
+                        if (SystemDoNotDisturbManager.shouldSuppressNotification(
+                                this@MainActivity,
+                                type,
+                                0
+                            )
+                        ) {
+                            result.success(null)
+                            return@setMethodCallHandler
+                        }
                         when (type) {
                             "quiz" -> updateQuizNotification(args)
                             "course" -> updateCourseNotification(args)
@@ -1755,6 +1805,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     }
                     val existing = KJSONArray(existingJson)
                     val incoming = KJSONArray(newJson)
+                    val incomingIds = mutableSetOf<Int>()
+                    for (i in 0 until incoming.length()) {
+                        incomingIds.add(incoming.getJSONObject(i).optInt("notifId", -1))
+                    }
 
                     val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
@@ -1777,7 +1831,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                                 // Course reminders fire before class starts; keep those visible
                                 // until the actual course start so opening the app before class
                                 // does not dismiss the reminder.
-                                if (!shouldKeepCourseReminderNotification(obj)) {
+                                // Flutter sends the complete aggregate. If a
+                                // reminder is absent from it, it was removed
+                                // by a source rebuild or a setting toggle and
+                                // its visible notification must be dismissed.
+                                // Keep an existing course notification only
+                                // when that same reminder is still registered.
+                                if (!incomingIds.contains(notifId)) {
                                     val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                                     nm.cancel(notifId)
                                 }
@@ -1786,10 +1846,6 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         prefs.edit().putString(ReminderService.KEY_REMINDERS, newJson).apply()
                     } else {
                         // ── Upsert logic (original) ──────────────
-                        val incomingIds = mutableSetOf<Int>()
-                        for (i in 0 until incoming.length()) {
-                            incomingIds.add(incoming.getJSONObject(i).optInt("notifId", -1))
-                        }
                         val merged = KJSONArray()
                         for (i in 0 until existing.length()) {
                             val obj = existing.getJSONObject(i)
@@ -1887,6 +1943,36 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     } else {
                         result.success(true)
                     }
+                }
+
+                "getSystemDoNotDisturbAccess" -> {
+                    result.success(SystemDoNotDisturbManager.hasAccess(this@MainActivity))
+                }
+
+                "openSystemDoNotDisturbSettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Unable to open notification policy settings", e)
+                        result.success(false)
+                    }
+                }
+
+                "setSystemDoNotDisturb" -> {
+                    val args = call.arguments as? Map<*, *>
+                    val enabled = args?.get("enabled") as? Boolean ?: false
+                    val untilMs = (args?.get("untilMs") as? Number)?.toLong()
+                    result.success(
+                        SystemDoNotDisturbManager.setEnabled(
+                            this@MainActivity,
+                            enabled,
+                            untilMs
+                        )
+                    )
                 }
 
                 "checkCalendarPermission" -> {
@@ -2091,8 +2177,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 "sendMessage" -> {
                     val data = call.argument<String>("data")
                     if (data != null) {
-                        plugin?.sendMessage(data)
-                        result.success(true)
+                        val bandPlugin = plugin
+                        if (bandPlugin == null) {
+                            result.success(false)
+                        } else {
+                            bandPlugin.sendMessage(data) { sent -> result.success(sent) }
+                        }
                     } else {
                         result.error("INVALID_ARGS", "data is required", null)
                     }
@@ -2269,42 +2359,6 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             }
             notificationManager.createNotificationChannel(alertChannel)
         }
-    }
-
-    private fun shouldKeepCourseReminderNotification(obj: org.json.JSONObject): Boolean {
-        if (obj.optString("type") != "course") return false
-
-        val nowMs = System.currentTimeMillis()
-        val explicitStartMs = obj.optLong("courseStartMs", -1L)
-        if (explicitStartMs > 0L) {
-            return nowMs < explicitStartMs
-        }
-
-        val triggerAtMs = obj.optLong("triggerAtMs", -1L)
-        if (triggerAtMs <= 0L) return false
-
-        val timeStr = obj.optString("timeStr", "")
-        val startText = timeStr.substringBefore("-").trim()
-        val parts = startText.split(":")
-        if (parts.size < 2) return false
-
-        val hour = parts[0].toIntOrNull() ?: return false
-        val minute = parts[1].toIntOrNull() ?: return false
-        if (hour !in 0..23 || minute !in 0..59) return false
-
-        val calendar = Calendar.getInstance().apply {
-            timeInMillis = triggerAtMs
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-
-        var inferredStartMs = calendar.timeInMillis
-        if (inferredStartMs < triggerAtMs) {
-            inferredStartMs += 24L * 60L * 60L * 1000L
-        }
-        return nowMs < inferredStartMs
     }
 
     private fun updateCourseNotification(args: Map<String, Any>) {
@@ -2527,6 +2581,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         val timeStr = args["timeStr"] as? String ?: ""
         val todoType = args["todoType"] as? String ?: "default"
         val imagePath = args["imagePath"] as? String
+        val islandTitle =
+            (args["islandTitle"] as? String)?.takeIf { it.isNotBlank() }
+        val islandContent =
+            (args["islandContent"] as? String)?.takeIf { it.isNotBlank() }
         
         // 使用 Number 来接收，避免类型转换问题
         val customNotifId = (args["notificationId"] as? Number)?.toInt()
@@ -2542,12 +2600,18 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             else -> Triple(R.drawable.calendar_clock, 0xFFFF9800.toInt(), "待办")
         }
 
-        val title = todoTitle
-        val text = if (todoRemark.isNotEmpty()) todoRemark else "时间: $timeStr"
+        // HyperOS displays the expanded island from the regular notification
+        // fields on some devices, rather than the custom miui.focus payload.
+        // Prefer the original special-todo text here so pickup codes remain
+        // readable in the island card.
+        val visibleTitle = islandTitle ?: todoTitle
+        val visibleRemark = islandContent ?: todoRemark
+        val title = visibleTitle
+        val text = if (visibleRemark.isNotEmpty()) visibleRemark else "时间: $timeStr"
         val subText = "$typeLabel"
         val shortText = when {
-            todoRemark.isNotEmpty() -> todoRemark
-            else -> todoTitle
+            visibleRemark.isNotEmpty() -> visibleRemark
+            else -> visibleTitle
         }
 
         buildAndNotify(
@@ -2561,6 +2625,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             totalSteps = 0,
             isTodo = true,
             shortText = shortText,
+            islandTitle = islandTitle,
+            islandContent = islandContent,
             iconResId = iconResId,
             largeIconResId = iconResId,
             notificationId = notifId,
@@ -2570,7 +2636,9 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         )
 
         // 📳 同步发送到手环
-        bandPlugin?.sendNotificationToBand(title, text, todoType, notifId)
+        // Keep the wearable notification on its existing masked copy.
+        val bandText = if (todoRemark.isNotEmpty()) todoRemark else "时间: $timeStr"
+        bandPlugin?.sendNotificationToBand(todoTitle, bandText, todoType, notifId)
     }
 
     // 负责"全天"待办的汇总显示
@@ -2861,6 +2929,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         totalSteps: Int,
         isTodo: Boolean = false,
         shortText: String? = null,
+        islandTitle: String? = null,
+        islandContent: String? = null,
         iconResId: Int = R.drawable.ic_notification,
         largeIconResId: Int? = null,
         channelId: String = NOTIFICATION_CHANNEL_ID,
@@ -2898,6 +2968,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             totalSteps = totalSteps,
             isTodo = isTodo,
             shortText = shortText,
+            islandTitle = islandTitle,
+            islandContent = islandContent,
             iconResId = iconResId,
             largeIconResId = largeIconResId,
             channelId = channelId,
@@ -3144,15 +3216,20 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // ==========================================
         try {
             if (HyperIslandNotification.isSupported(this)) {
-                val hyperBuilder = HyperIslandNotification.Builder(this, islandBizTag, title)
+                val hyperTitle = islandTitle ?: title
+                val hyperBuilder = HyperIslandNotification.Builder(
+                    this,
+                    islandBizTag,
+                    hyperTitle
+                )
                     .setSmallWindowTarget(MainActivity::class.java.name)
 
                 val islandIcon = HyperPicture("island_icon", this, iconResId)
                 hyperBuilder.addPicture(islandIcon)
 
                 hyperBuilder.setBaseInfo(
-                    title = title,
-                    content = shortText ?: text, // 优先显示短文本（比如教室信息或时间）
+                    title = hyperTitle,
+                    content = islandContent ?: shortText ?: text, // 特殊待办在岛上显示完整取件信息
                     pictureKey = "island_icon"
                 )
 
@@ -3247,4 +3324,20 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             Log.e(TAG, "Notify error", e)
         }
     }
+
+    private fun readApkVersionName(path: String): String? {
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageArchiveInfo(
+                path,
+                PackageManager.PackageInfoFlags.of(0L)
+            )
+        } else {
+            readApkPackageInfoLegacy(path)
+        }
+        return packageInfo?.versionName
+    }
+
+    @Suppress("DEPRECATION")
+    private fun readApkPackageInfoLegacy(path: String) =
+        packageManager.getPackageArchiveInfo(path, 0)
 }

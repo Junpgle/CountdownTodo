@@ -1,13 +1,8 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
-import { ApiService } from './services/api';
-import type { User } from './types';
+import { lazy, Suspense } from 'react';
 import './index.css';
 
-// 懒加载页面组件，启用 Vite 代码分割
+// 介绍页是这个旧网页入口的唯一页面，避免误进入已停用的旧版 WebApp。
 const LandingPage = lazy(() => import('./pages/LandingPage').then(m => ({ default: m.LandingPage })));
-const AuthScreen = lazy(() => import('./pages/AuthScreen').then(m => ({ default: m.AuthScreen })));
-const WebApp = lazy(() => import('./pages/WebApp').then(m => ({ default: m.WebApp })));
-import TeamDisplayBoard from './pages/TeamDisplayBoard';
 
 // 只有在加载大包时显示的极简 Loading
 const LoadingSpinner = () => (
@@ -20,87 +15,11 @@ const LoadingSpinner = () => (
 );
 
 const App = () => {
-  const isLandingPage = window.location.pathname.includes('home.html') || window.location.search.includes('landing=1') || window.location.hash.includes('landing');
-  const isAppPage = !isLandingPage;
-
-  const [currentView, setCurrentView] = useState<'landing' | 'auth' | 'webapp' | 'dashboard'>(() => {
-    if (isLandingPage) return 'landing';
-    if (window.location.hash.includes('dashboard')) return 'dashboard';
-    return ApiService.getToken() ? 'webapp' : 'auth';
-  });
-
-  const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
-    if (isLandingPage && currentView !== 'landing') {
-        window.location.href = './index.html' + window.location.hash;
-        return;
-    }
-
-    const handleHashChange = () => {
-      const hash = window.location.hash;
-      const token = ApiService.getToken();
-      if (hash.includes('dashboard')) {
-        if (!token) {
-          setCurrentView('auth');
-          window.location.hash = 'app';
-          return;
-        }
-        setCurrentView('dashboard');
-      } else if (hash.includes('app')) {
-        setCurrentView(token ? 'webapp' : 'auth');
-      }
-    };
-    if (isAppPage) {
-        window.addEventListener('hashchange', handleHashChange);
-    }
-
-    const token = ApiService.getToken();
-    const savedUser = localStorage.getItem('cdt_user');
-    if (token && savedUser) {
-      try {
-        const parsedUser = JSON.parse(savedUser);
-        setUser(parsedUser);
-        if (isAppPage && currentView === 'auth') {
-          setCurrentView('webapp');
-        }
-      } catch (e) {
-        ApiService.clearAuthAndData();
-      }
-    }
-
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [isAppPage, currentView]);
-
-  const handleOpenWeb = () => {
-    window.location.href = './index.html#app';
-  };
-
-  const handleLogout = () => {
-    ApiService.clearAuthAndData();
-    setUser(null);
-    setCurrentView('auth');
-  };
-
   return (
     <Suspense fallback={<LoadingSpinner />}>
-      {isAppPage ? (
-          <>
-            {currentView === 'dashboard' && user ? (
-                <TeamDisplayBoard user={user} onBack={() => setCurrentView('webapp')} />
-            ) : currentView === 'auth' ? (
-                <AuthScreen onBack={() => { window.location.href = './home.html?landing=1#features'; }} onLoginSuccess={(u) => { setUser(u); setCurrentView('webapp'); }} />
-            ) : currentView === 'webapp' && user ? (
-                <WebApp onBack={() => { window.location.href = './home.html?landing=1#features'; }} onOpenDashboard={() => setCurrentView('dashboard')} user={user} onLogout={handleLogout} />
-            ) : (
-                <LoadingSpinner />
-            )}
-          </>
-      ) : (
-        <div className="bg-white min-h-screen font-sans selection:bg-indigo-600 selection:text-white antialiased">
-          <LandingPage onOpenWeb={handleOpenWeb} />
-        </div>
-      )}
+      <div className="bg-white min-h-screen font-sans selection:bg-indigo-600 selection:text-white antialiased">
+        <LandingPage />
+      </div>
     </Suspense>
   );
 };

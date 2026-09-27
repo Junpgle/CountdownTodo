@@ -7,6 +7,7 @@ import '../storage_service.dart';
 import '../services/course_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/android_energy_policy.dart';
+import '../widgets/floating_glass_control.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
 
 // Custom Colors to match Tailwind Emerald
@@ -247,6 +248,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
   }
 
   Widget _buildHeader(bool isDesktop) {
+    final onBack = widget.onBack ?? () => Navigator.of(context).pop();
     return Container(
       height: isDesktop ? 100 : 70,
       padding: EdgeInsets.symmetric(horizontal: isDesktop ? 40 : 16),
@@ -258,14 +260,34 @@ class _AppBoardScreenState extends State<AppBoardScreen>
       child: Row(
         children: [
           // Back Button
-          IconButton(
-            onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.arrow_back, color: Colors.white70),
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.white.withValues(alpha: 0.05),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-              side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+          FloatingGlassControl(
+            height: 48,
+            borderRadius: 16,
+            tint: Theme.of(context)
+                .colorScheme
+                .surfaceContainerHighest
+                .withValues(alpha: 0.08),
+            isDark: true,
+            useTopBarGlass: true,
+            fallback: IconButton(
+              onPressed: onBack,
+              icon: const Icon(Icons.arrow_back, color: Colors.white70),
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.white.withValues(alpha: 0.05),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+              ),
+            ),
+            child: IconButton(
+              onPressed: onBack,
+              icon: const Icon(Icons.arrow_back, color: Colors.white70),
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+                side: BorderSide.none,
+              ),
             ),
           ),
           const SizedBox(width: 16),

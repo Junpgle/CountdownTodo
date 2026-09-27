@@ -219,6 +219,7 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
         MediaQuery.textScalerOf(context).scale(14) < 21;
     final visible =
         (_showArchived ? _archivedTags : _tags).where(_matches).toList();
+    final topBarHeight = floatingGlassTopBarHeight(context);
     final canReorder = !_showArchived && _searchController.text.trim().isEmpty;
     final list =
         Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -286,39 +287,47 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
 
     return Scaffold(
       backgroundColor: scheme.surface,
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('管理标签'),
       ),
-      body: ManagementPage(maxWidth: 1160, children: [
-        const ManagementIntro(
-            icon: Icons.label_outline_rounded,
-            title: '让专注更有条理',
-            description: '整理专注与时间日志的标签，保留每一次投入的线索。'),
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          FilledButton.icon(
-              onPressed: () => _addTag(isWide),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('添加标签')),
-          TextButton.icon(
-              onPressed: () => _openTagTool(true),
-              icon: const Icon(Icons.playlist_add_rounded),
-              label: const Text('批量添加标签')),
-          TextButton.icon(
-              onPressed: () => _openTagTool(false),
-              icon: const Icon(Icons.link_rounded),
-              label: const Text('重新绑定标签')),
-        ]),
-        const SizedBox(height: 24),
-        if (isWide)
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: list),
-            const SizedBox(width: 24),
-            Expanded(child: _buildRightPanel(scheme)),
-          ])
-        else
-          list,
-      ]),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: ManagementPage(
+          topPadding: topBarHeight,
+          maxWidth: 1160,
+          children: [
+            const ManagementIntro(
+                icon: Icons.label_outline_rounded,
+                title: '让专注更有条理',
+                description: '整理专注与时间日志的标签，保留每一次投入的线索。'),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              FilledButton.icon(
+                  onPressed: () => _addTag(isWide),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('添加标签')),
+              TextButton.icon(
+                  onPressed: () => _openTagTool(true),
+                  icon: const Icon(Icons.playlist_add_rounded),
+                  label: const Text('批量添加标签')),
+              TextButton.icon(
+                  onPressed: () => _openTagTool(false),
+                  icon: const Icon(Icons.link_rounded),
+                  label: const Text('重新绑定标签')),
+            ]),
+            const SizedBox(height: 24),
+            if (isWide)
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(child: list),
+                const SizedBox(width: 24),
+                Expanded(child: _buildRightPanel(scheme)),
+              ])
+            else
+              list,
+          ],
+        ),
+      ),
     );
   }
 

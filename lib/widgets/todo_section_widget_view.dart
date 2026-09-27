@@ -1865,20 +1865,21 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                 title: "待办清单",
                 icon: Icons.check_circle_outline,
                 actionIcon: Icons.create_new_folder_outlined,
-                actionKey: widget.folderKey,
+                actionKey: widget.folderKey ?? _folderManagementButtonKey,
                 actionTooltip: "管理文件夹",
                 isLight: widget.isLight,
                 onAction: () async {
-                  await Navigator.of(context).push(
-                    PageTransitions.material(
-                      builder: (_) => FolderManageScreen(
-                        username: widget.username,
-                        todoGroups: widget.todoGroups,
-                        onGroupsChanged: widget.onGroupsChanged,
-                        allTodos: widget.todos,
-                        onTodosChanged: widget.onTodosChanged,
-                      ),
+                  await PageTransitions.pushFromRect(
+                    context: context,
+                    page: FolderManageScreen(
+                      username: widget.username,
+                      todoGroups: widget.todoGroups,
+                      onGroupsChanged: widget.onGroupsChanged,
+                      allTodos: widget.todos,
+                      onTodosChanged: widget.onTodosChanged,
                     ),
+                    sourceKey: widget.folderKey ?? _folderManagementButtonKey,
+                    placeholderIcon: Icons.folder_copy_outlined,
                   );
                   _loadSettings();
                 },
@@ -1888,7 +1889,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
               mainAxisSize: MainAxisSize.min,
               children: [
                 SizedBox(
-                  key: widget.historyKey,
+                  key: widget.historyKey ?? _historicalTodosButtonKey,
                   child: IconButton(
                     constraints: const BoxConstraints.tightFor(
                       width: floatingGlassStandardControlSize,
@@ -1902,12 +1903,14 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                       color: useDarkUI ? Colors.white70 : Colors.grey,
                     ),
                     onPressed: () async {
-                      await Navigator.push(
-                        context,
-                        PageTransitions.material(
-                          builder: (_) =>
-                              HistoricalTodosScreen(username: widget.username),
+                      await PageTransitions.pushFromRect(
+                        context: context,
+                        page: HistoricalTodosScreen(
+                          username: widget.username,
                         ),
+                        sourceKey:
+                            widget.historyKey ?? _historicalTodosButtonKey,
+                        placeholderIcon: Icons.history_rounded,
                       );
                       widget.onRefreshRequested();
                     },

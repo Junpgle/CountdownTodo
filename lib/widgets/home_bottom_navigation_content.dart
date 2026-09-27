@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../services/liquid_glass_effect_service.dart';
+import '../utils/app_platform.dart';
 
 /// The radius shared by the floating navigation shell and its selection lens.
 ///
@@ -104,6 +105,7 @@ class FloatingBottomNavigationContent extends StatefulWidget {
     required this.selectedBackgroundColor,
     required this.onTabSelected,
     this.onDragStretchChanged,
+    this.showSelectionLens = true,
     this.keyPrefix = 'floating-bottom',
     this.borderRadius = floatingBottomNavigationBorderRadius,
   })  : assert(items.length > 0, 'At least one bottom-bar item is required.'),
@@ -119,6 +121,10 @@ class FloatingBottomNavigationContent extends StatefulWidget {
   final Color selectedBackgroundColor;
   final ValueChanged<int> onTabSelected;
   final ValueChanged<double>? onDragStretchChanged;
+
+  /// Disables the tab-selection lens for action-only bars such as the wide
+  /// home layout, where home and focus are already shown together.
+  final bool showSelectionLens;
   final String keyPrefix;
   final double borderRadius;
 
@@ -502,6 +508,8 @@ class _FloatingBottomNavigationContentState
     required GlassQuality quality,
     required bool paintBackground,
     required bool paintGlass,
+    required Color indicatorColor,
+    required LiquidGlassSettings indicatorSettings,
   }) {
     return Positioned.fill(
       child: IgnorePointer(
@@ -533,13 +541,13 @@ class _FloatingBottomNavigationContentState
                   alignment: alignment,
                   thickness: thickness,
                   quality: quality,
-                  indicatorColor: widget.selectedBackgroundColor,
+                  indicatorColor: indicatorColor,
                   isBackgroundIndicator: false,
                   paintBackground: paintBackground,
                   paintGlass: paintGlass,
                   padding: EdgeInsets.zero,
                   expansion: _indicatorExpansion,
-                  settings: _indicatorSettings,
+                  settings: indicatorSettings,
                   borderRadius: widget.borderRadius,
                   pinchStrength: 0.85,
                   shadows: paintBackground
@@ -567,6 +575,10 @@ class _FloatingBottomNavigationContentState
     BuildContext context,
     LiquidGlassEffectConfiguration configuration,
   ) {
+    if (!widget.showSelectionLens) {
+      return _buildActionOnlyNavigationContent(context);
+    }
+
     final quality = _qualityFor(configuration);
     final alignment = Alignment(_positionSpring.value, 0);
     final thickness = _interactionSpring.value.clamp(0.0, 1.0).toDouble();
@@ -575,6 +587,31 @@ class _FloatingBottomNavigationContentState
             .clamp(-14.0, 14.0)
             .toDouble();
     final jellyTransform = _jellyTransform(velocity, quality);
+    final customTransparency = configuration.enabled &&
+        configuration.transparencyPercent !=
+            LiquidGlassEffectConfiguration.defaultTransparencyPercent;
+    final indicatorColor = customTransparency
+        ? widget.selectedBackgroundColor.withValues(
+            alpha: liquidGlassBackerOpacity(
+              widget.selectedBackgroundColor.a,
+              configuration,
+            ),
+          )
+        : widget.selectedBackgroundColor;
+    final indicatorSettings = customTransparency
+        ? _indicatorSettings.copyWith(
+            glassColor: _indicatorSettings.glassColor.withValues(
+              alpha: liquidGlassBackerOpacity(
+                _indicatorSettings.glassColor.a,
+                configuration,
+              ),
+            ),
+          )
+        : _indicatorSettings;
+    // The two selection masks clip icon rows; an extra offscreen save layer
+    // for each mask is costly while Android rasterizes the scrolling page.
+    final selectionClipBehavior =
+        AppPlatform.isAndroid ? Clip.antiAlias : Clip.antiAliasWithSaveLayer;
     final directionalMotion = (velocity / 14).clamp(-1.0, 1.0).toDouble();
     final contentTransform = Matrix4.identity()
       ..translateByDouble(
@@ -647,6 +684,8 @@ class _FloatingBottomNavigationContentState
                         quality: quality,
                         paintBackground: true,
                         paintGlass: false,
+                        indicatorColor: indicatorColor,
+                        indicatorSettings: indicatorSettings,
                       ),
                       RepaintBoundary(
                         key: _indicatorBackgroundKey,
@@ -655,7 +694,7 @@ class _FloatingBottomNavigationContentState
                           clipBehavior: Clip.none,
                           children: [
                             ClipPath(
-                              clipBehavior: Clip.antiAliasWithSaveLayer,
+                              clipBehavior: selectionClipBehavior,
                               clipper: _OverflowingJellyClipper(
                                 itemCount: _slotCount,
                                 alignment: alignment,
@@ -675,7 +714,7 @@ class _FloatingBottomNavigationContentState
                             ExcludeSemantics(
                               child: IgnorePointer(
                                 child: ClipPath(
-                                  clipBehavior: Clip.antiAliasWithSaveLayer,
+                                  clipBehavior: selectionClipBehavior,
                                   clipper: _OverflowingJellyClipper(
                                     itemCount: _slotCount,
                                     alignment: alignment,
@@ -707,11 +746,34 @@ class _FloatingBottomNavigationContentState
                         quality: quality,
                         paintBackground: false,
                         paintGlass: true,
+                        indicatorColor: indicatorColor,
+                        indicatorSettings: indicatorSettings,
                       ),
                     ],
                   ),
                 ),
               ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildActionOnlyNavigationContent(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return GestureDetector(
+            key: ValueKey<String>(_keyName('navigation-gesture-layer')),
+            behavior: HitTestBehavior.translucent,
+            onTapUp: (details) => _handleBarTap(details, constraints.maxWidth),
+            child: SizedBox.expand(
+              child: _buildNavigationRow(
+                context,
+                selectedLayer: false,
+              ),
             ),
           );
         },

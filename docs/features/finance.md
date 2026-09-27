@@ -1,5 +1,7 @@
 # 个人记账
 
+最近按客户端和服务器代码核对：2026-09-26。
+
 当前状态：本地 MVP、第二阶段预算管理、第三阶段个人云同步、第四阶段自动化、
 第五阶段分期账单和第六阶段贷款管理已实现。
 
@@ -43,7 +45,10 @@
 的 `finance_v1` 能力声明、个人水位线和增量游标。八类记账记录均按
 `updated_at`、再按 `version` 执行 LWW；删除使用软删除墓碑，服务端发现过期或
 非法入参时返回冲突并要求客户端全量修复。记账数据只按 `user_id` 隔离，不进入
-团队数据，也不上传系统默认分类/付款方式。旧服务端未声明 `finance_v1` 时，
+团队数据。系统预设分类允许自定义名称和图标；名称与图标覆盖分别受
+`finance_category_names_v1` 和 `finance_category_icons_v1` 能力门控，分类类型和层级
+仍由内置定义保护。自定义分类按整条分类同步。系统默认付款方式仍只保留在本地。
+未声明对应能力的服务端不会确认相应的系统分类覆盖。旧服务端未声明 `finance_v1` 时，
 客户端不会合并返回空字段，也不会前移记账水位线；请求期间本地发生修改时同样
 不会跳过该修改。V48 起基础六张表增加 `pending_sync`；V51 新增的贷款主表和还款明细表也使用同一机制：本地新增、编辑、删除和导入先标记待同步，服务端确认接受后才清除；网络失败、冲突和请求期间的并发修改会
 保留标记，因此增量上传不再依赖本机时间是否晚于云端游标。
@@ -70,7 +75,7 @@
 
 ## 数据库
 
-客户端 SQLite schema v51 新增/扩展：
+记账相关 SQLite 架构从 v45 引入，并在 v46-v55 持续扩展：
 
 - `finance_transactions`
 - `finance_categories`
@@ -81,8 +86,11 @@
 - `finance_loans`
 - `finance_loan_installments`
 
-八张表均包含 `pending_sync`。从旧版本升级时，已有个人记录会安全排队一次，待
-服务端确认后清除；系统默认分类和付款方式不会进入待同步队列。
+八张记账表均包含 `pending_sync`。分类表有 `icon_customized` 和
+`name_customized` 标记：系统默认分类初始化时不排队，用户修改名称或图标后才进入
+对应能力的待同步流程。从旧版本升级时，已有个人记录会安全排队一次，待服务端确认
+后清除；系统默认付款方式不会进入待同步队列。V54 的付款方式月度额度目前仍为本地
+数据，尚未纳入记账云同步协议。
 
 系统分类和系统付款方式使用稳定 ID。历史分类和付款方式只能归档，不能物理
 删除，以免历史账单失去可读性。退款归入支出分类域，升级时会将旧版绑定在
@@ -99,16 +107,14 @@
 
 ## 服务端同步实现
 
-- Alibaba 服务端研发实现位于外部 checkout 的
-  `CDT-server/debug/services/financeSync.js`、`debug/routes/sync.js` 和
-  `debug/db/init.js`；生产 `math_quiz_backend/` 与仓库内 Cloudflare Worker
-  兼容路径保持不变。
+- Alibaba 服务端的 debug 与受保护 production 源码均包含 `finance_v1`、系统分类
+  图标/名称覆盖、分期以及贷款和还款明细同步；仓库内 Cloudflare Worker 仍是兼容
+  实现。这里记录的是代码树状态，不代表已部署到线上。
 - 分期字段位于 `finance_transactions` 的
   `installment_group_uuid`、`installment_index`、`installment_count` 和
-  `installment_total_minor`；旧服务端仍可保存每一期普通交易，但不会返回分期
-  关系，正式服务接入这些字段前跨设备展示可能退化为独立账单。
+  `installment_total_minor`，由 Alibaba 两套服务端代码保留分期关系。
 - 贷款字段位于 `finance_loans` 和 `finance_loan_installments`；客户端会把贷款主表、
-  还款状态和关联的利息账单一起同步。当前新增协议已写入 Alibaba debug 服务端，
-  生产 `math_quiz_backend/` 尚未部署或重启。
+  还款状态和关联的利息账单一起同步。部署状态需单独核实，代码存在不等同于线上已
+  发布。
 - 客户端同步只传递结构化账单字段；图片附件（如果未来加入）默认只保存在本机，
   不应直接把本地路径上传到云端。

@@ -110,7 +110,10 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
   }
 
   Future<void> _openEntry(JournalEntry entry) async {
-    final fullEntry = await _storage.loadEntry(entry.id);
+    final fullEntry = await _storage.loadEntry(
+      entry.id,
+      accountId: widget.username,
+    );
     if (!mounted || fullEntry == null) return;
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -130,9 +133,11 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
     final entries = _entries;
     final width = MediaQuery.sizeOf(context).width;
     final isWide = width >= 900;
+    final topBarHeight = floatingGlassTopBarHeight(context);
 
     return Scaffold(
       backgroundColor: scheme.surface,
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
@@ -196,36 +201,43 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : entries.isEmpty
-              ? _JournalEmptyState(
-                  hasSearch: _query.isNotEmpty,
-                  onClearSearch: () async {
-                    setState(() {
-                      _query = '';
-                      _searchController.clear();
-                    });
-                    await _loadEntries();
-                  },
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadEntries,
-                  child: _isPhotoWall
-                      ? _PhotoWall(
-                          entries: entries,
-                          isWide: isWide,
-                          controller: _scrollController,
-                          onTap: _openEntry,
-                        )
-                      : _Timeline(
-                          entries: entries,
-                          isWide: isWide,
-                          controller: _scrollController,
-                          isLoadingMore: _isLoadingMore,
-                          onTap: _openEntry,
-                        ),
-                ),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : entries.isEmpty
+                ? _JournalEmptyState(
+                    hasSearch: _query.isNotEmpty,
+                    onClearSearch: () async {
+                      setState(() {
+                        _query = '';
+                        _searchController.clear();
+                      });
+                      await _loadEntries();
+                    },
+                  )
+                : RefreshIndicator(
+                    onRefresh: _loadEntries,
+                    child: _isPhotoWall
+                        ? _PhotoWall(
+                            topPadding: topBarHeight,
+                            entries: entries,
+                            isWide: isWide,
+                            controller: _scrollController,
+                            accountId: widget.username,
+                            onTap: _openEntry,
+                          )
+                        : _Timeline(
+                            topPadding: topBarHeight,
+                            entries: entries,
+                            isWide: isWide,
+                            controller: _scrollController,
+                            isLoadingMore: _isLoadingMore,
+                            accountId: widget.username,
+                            onTap: _openEntry,
+                          ),
+                  ),
+      ),
       floatingActionButton: FloatingGlassActionButton.extended(
         onPressed: _createEntry,
         icon: const Icon(Icons.edit_rounded),
@@ -312,7 +324,10 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
 
     JournalEntry? entry;
     if (recovered.context.isEditing) {
-      entry = await _storage.loadEntry(recovered.context.entryId);
+      entry = await _storage.loadEntry(
+        recovered.context.entryId,
+        accountId: widget.username,
+      );
       if (!mounted || entry == null) {
         await clearPendingJournalPick();
         _showMessage('未找到待恢复的日记，图片未导入');
@@ -336,17 +351,21 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
 }
 
 class _Timeline extends StatelessWidget {
+  final double topPadding;
   final List<JournalEntry> entries;
   final bool isWide;
   final ScrollController controller;
   final bool isLoadingMore;
+  final String accountId;
   final ValueChanged<JournalEntry> onTap;
 
   const _Timeline({
+    required this.topPadding,
     required this.entries,
     required this.isWide,
     required this.controller,
     required this.isLoadingMore,
+    required this.accountId,
     required this.onTap,
   });
 
@@ -360,7 +379,8 @@ class _Timeline extends StatelessWidget {
     return ListView(
       controller: controller,
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(isWide ? 40 : 20, 12, isWide ? 40 : 20, 120),
+      padding: EdgeInsets.fromLTRB(
+          isWide ? 40 : 20, topPadding + 12, isWide ? 40 : 20, 120),
       children: [
         for (final group in grouped.entries) ...[
           Padding(
@@ -395,12 +415,17 @@ class _Timeline extends StatelessWidget {
               ),
               itemBuilder: (_, index) => _JournalCard(
                 entry: group.value[index],
+                accountId: accountId,
                 onTap: () => onTap(group.value[index]),
               ),
             )
           else
             for (final entry in group.value) ...[
-              _JournalCard(entry: entry, onTap: () => onTap(entry)),
+              _JournalCard(
+                entry: entry,
+                accountId: accountId,
+                onTap: () => onTap(entry),
+              ),
               const SizedBox(height: 14),
             ],
         ],
@@ -415,15 +440,19 @@ class _Timeline extends StatelessWidget {
 }
 
 class _PhotoWall extends StatelessWidget {
+  final double topPadding;
   final List<JournalEntry> entries;
   final bool isWide;
   final ScrollController controller;
+  final String accountId;
   final ValueChanged<JournalEntry> onTap;
 
   const _PhotoWall({
+    required this.topPadding,
     required this.entries,
     required this.isWide,
     required this.controller,
+    required this.accountId,
     required this.onTap,
   });
 
@@ -433,7 +462,8 @@ class _PhotoWall extends StatelessWidget {
     return GridView.builder(
       controller: controller,
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(isWide ? 40 : 16, 20, isWide ? 40 : 16, 120),
+      padding: EdgeInsets.fromLTRB(
+          isWide ? 40 : 16, topPadding + 20, isWide ? 40 : 16, 120),
       itemCount: entries.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: columns,
@@ -443,6 +473,7 @@ class _PhotoWall extends StatelessWidget {
       ),
       itemBuilder: (_, index) => _PhotoWallCard(
         entry: entries[index],
+        accountId: accountId,
         onTap: () => onTap(entries[index]),
       ),
     );
@@ -451,9 +482,14 @@ class _PhotoWall extends StatelessWidget {
 
 class _JournalCard extends StatelessWidget {
   final JournalEntry entry;
+  final String accountId;
   final VoidCallback onTap;
 
-  const _JournalCard({required this.entry, required this.onTap});
+  const _JournalCard({
+    required this.entry,
+    required this.accountId,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -473,6 +509,7 @@ class _JournalCard extends StatelessWidget {
                 child: _JournalImage(
                   attachment: entry.attachments.first,
                   fit: BoxFit.cover,
+                  accountId: accountId,
                 ),
               ),
             Expanded(
@@ -543,9 +580,14 @@ class _JournalCard extends StatelessWidget {
 
 class _PhotoWallCard extends StatelessWidget {
   final JournalEntry entry;
+  final String accountId;
   final VoidCallback onTap;
 
-  const _PhotoWallCard({required this.entry, required this.onTap});
+  const _PhotoWallCard({
+    required this.entry,
+    required this.accountId,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -569,6 +611,7 @@ class _PhotoWallCard extends StatelessWidget {
                   : _JournalImage(
                       attachment: entry.attachments.first,
                       fit: BoxFit.cover,
+                      accountId: accountId,
                     ),
             ),
             Padding(
@@ -609,8 +652,13 @@ class _PhotoWallCard extends StatelessWidget {
 class _JournalImage extends StatefulWidget {
   final JournalAttachment attachment;
   final BoxFit fit;
+  final String? accountId;
 
-  const _JournalImage({required this.attachment, required this.fit});
+  const _JournalImage({
+    required this.attachment,
+    required this.fit,
+    this.accountId,
+  });
 
   @override
   State<_JournalImage> createState() => _JournalImageState();
@@ -636,7 +684,10 @@ class _JournalImageState extends State<_JournalImage> {
   void _resolveAttachment() {
     _attachmentFuture =
         JournalMediaService.instance.provider(widget.attachment) == null
-            ? JournalStorage.instance.loadAttachment(widget.attachment.id)
+            ? JournalStorage.instance.loadAttachment(
+                widget.attachment.id,
+                accountId: widget.accountId,
+              )
             : null;
   }
 

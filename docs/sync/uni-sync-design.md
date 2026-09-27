@@ -1,7 +1,8 @@
 # Uni-Sync design: current contract and former goals
 
-The former “V4.0 design bible” was aspirational. This reconciled description is
-the code-facing contract as of 2026-07-20.
+The former “V4.0 design bible” was aspirational. This page preserves the
+reconciliation snapshot from 2026-07-20; use [current conflict logic](conflict-logic.md)
+for newer client/server behavior, including finance and schedule changes.
 
 ## Consistency model
 

@@ -37,6 +37,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     return colors[hash % colors.length];
   }
 
+  Color get _weekLazyLoadPlaceholderColor {
+    return Theme.of(context).colorScheme.brightness == Brightness.dark
+        ? Colors.black
+        : Colors.white;
+  }
+
   void _showAllDayTodos(
       BuildContext context, List<TodoItem> todos, String dateStr) {
     showAppModalBottomSheet(
@@ -213,9 +219,13 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     }
 
     final showTodos = _activeDataViews.contains('todos');
+    final showFixedSchedules = _activeDataViews.contains('fixedSchedules');
     final showDeviceCalendar = _activeDataViews.contains('deviceCalendar');
     bool hasAnyAllDay = (showTodos &&
             _allDayTodosPerDay.values.any((list) => list.isNotEmpty)) ||
+        (showFixedSchedules &&
+            _fixedSchedulesPerDay.values
+                .any((list) => list.any((item) => item.startTime == null))) ||
         (showDeviceCalendar &&
             _allDayDeviceCalendarEventsPerDay.values
                 .any((list) => list.isNotEmpty));
@@ -230,36 +240,58 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           int weekday = index + 1;
           List<TodoItem> dayTodos =
               showTodos ? (_allDayTodosPerDay[weekday] ?? []) : [];
+          List<FixedScheduleItem> fixedSchedules = showFixedSchedules
+              ? (_fixedSchedulesPerDay[weekday] ?? [])
+                  .where((item) => item.startTime == null)
+                  .toList()
+              : [];
           List<DeviceCalendarEvent> deviceEvents = showDeviceCalendar
               ? (_allDayDeviceCalendarEventsPerDay[weekday] ?? [])
               : [];
 
-          if (dayTodos.isEmpty && deviceEvents.isEmpty) {
+          if (dayTodos.isEmpty &&
+              fixedSchedules.isEmpty &&
+              deviceEvents.isEmpty) {
             return const Expanded(child: SizedBox(height: 22));
           }
 
-          String text;
+          final labels = <String>[];
           if (deviceEvents.isNotEmpty) {
-            text = deviceEvents.length == 1
+            labels.add(deviceEvents.length == 1
                 ? deviceEvents.first.title
-                : '${deviceEvents.length}项手机日历';
-          } else {
-            text = dayTodos.length == 1
-                ? dayTodos.first.title
-                : "${dayTodos.length}项全天待办";
+                : '${deviceEvents.length}项手机日历');
           }
+          if (fixedSchedules.isNotEmpty) {
+            labels.add(fixedSchedules.length == 1
+                ? fixedSchedules.first.title
+                : '${fixedSchedules.length}项固定日程');
+          }
+          if (dayTodos.isNotEmpty) {
+            labels.add(dayTodos.length == 1
+                ? dayTodos.first.title
+                : "${dayTodos.length}项全天待办");
+          }
+          final text = labels.join(' · ');
           bool allDone = dayTodos.every((t) => t.isDone);
           final colorScheme = Theme.of(context).colorScheme;
           final todoColor = deviceEvents.isNotEmpty
               ? (deviceEvents.first.colorValue == null
                   ? colorScheme.tertiary
                   : Color(deviceEvents.first.colorValue!))
-              : (allDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning);
+              : (fixedSchedules.isNotEmpty
+                  ? colorScheme.primary
+                  : (allDone
+                      ? colorScheme.cdtSuccess
+                      : colorScheme.cdtWarning));
           final onTodoColor = deviceEvents.isNotEmpty
               ? _colorForAllDayDeviceEvent(context, deviceEvents.first)
-              : (allDone ? colorScheme.onTertiary : colorScheme.onSecondary);
+              : (fixedSchedules.isNotEmpty
+                  ? colorScheme.onPrimary
+                  : (allDone
+                      ? colorScheme.onTertiary
+                      : colorScheme.onSecondary));
 
-          final currentDay = monday.add(Duration(days: index));
+          final currentDay = CalendarDateMath.addDays(monday, index);
           final dayKey = DateFormat('yyyy-MM-dd').format(currentDay);
           final allDaySourceKey = deviceEvents.isEmpty
               ? null
@@ -273,7 +305,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             child: GestureDetector(
               onTap: () {
                 String dateStr = DateFormat('MM-dd').format(currentDay);
-                if (deviceEvents.isNotEmpty) {
+                if (fixedSchedules.isNotEmpty || dayTodos.isNotEmpty) {
+                  _showDayDetailSheet(currentDay);
+                } else if (deviceEvents.isNotEmpty) {
                   if (deviceEvents.length == 1) {
                     _showDeviceCalendarEventDetail(
                       context,
@@ -313,6 +347,12 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       Padding(
                         padding: const EdgeInsets.only(right: 2),
                         child: Icon(Icons.phone_android_rounded,
+                            size: 10, color: onTodoColor),
+                      )
+                    else if (fixedSchedules.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 2),
+                        child: Icon(Icons.event_available,
                             size: 10, color: onTodoColor),
                       )
                     else if (dayTodos.any((t) => t.teamUuid != null))
@@ -440,7 +480,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           bool isToday = false;
 
           if (monday != null) {
-            currentDate = monday.add(Duration(days: index));
+            currentDate = CalendarDateMath.addDays(monday, index);
             dateStr = DateFormat('M/dd').format(currentDate);
             isToday = DateFormat('yyyy-MM-dd').format(currentDate) == todayStr;
           }
@@ -682,6 +722,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           eventsPerDay[weekday]!.add(_TimelineEvent(
               top: top,
               bottom: top + height,
+              collisionBottom: bottom,
               builder: (left, width) {
                 final double fontScale =
                     (width / (cellWidth - 2)).clamp(0.4, 1.0);
@@ -721,27 +762,15 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                     },
                     child: GestureDetector(
                       onTap: () {
-                        final renderBox = todoCardKey.currentContext
-                            ?.findRenderObject() as RenderBox?;
-                        if (renderBox != null) {
-                          final rect = renderBox.localToGlobal(Offset.zero) &
-                              renderBox.size;
-                          Navigator.push(
-                            context,
-                            ContainerTransformRoute(
-                              page: TodoDetailScreen(todo: todo),
-                              sourceRect: rect,
-                              sourceColor: todoColor,
-                              sourceBorderRadius:
-                                  const BorderRadius.all(Radius.circular(4)),
-                            ),
-                          );
-                        } else {
-                          Navigator.push(
-                              context,
-                              PageTransitions.slideHorizontal(
-                                  TodoDetailScreen(todo: todo)));
-                        }
+                        PageTransitions.pushFromRect(
+                          context: context,
+                          page: TodoDetailScreen(todo: todo),
+                          sourceKey: todoCardKey,
+                          sourceColor: _weekLazyLoadPlaceholderColor,
+                          sourceBorderRadius:
+                              const BorderRadius.all(Radius.circular(4)),
+                          placeholderIcon: Icons.task_alt_rounded,
+                        );
                       },
                       child: Container(
                         key: todoCardKey,
@@ -902,6 +931,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           eventsPerDay[weekday]!.add(_TimelineEvent(
               top: top,
               bottom: top + height,
+              collisionBottom: bottom,
               builder: (left, width) {
                 final double fontScale =
                     (width / (cellWidth - 2)).clamp(0.4, 1.0);
@@ -939,29 +969,16 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                     },
                     child: GestureDetector(
                       onTap: () {
-                        final renderBox = logCardKey.currentContext
-                            ?.findRenderObject() as RenderBox?;
-                        if (renderBox != null) {
-                          final rect = renderBox.localToGlobal(Offset.zero) &
-                              renderBox.size;
-                          Navigator.push(
-                            context,
-                            ContainerTransformRoute(
-                              page: TimeLogDetailScreen(
-                                  log: log, tags: _pomodoroTags),
-                              sourceRect: rect,
-                              sourceColor: logColor,
-                              sourceBorderRadius:
-                                  const BorderRadius.all(Radius.circular(4)),
-                            ),
-                          );
-                        } else {
-                          Navigator.push(
-                              context,
-                              PageTransitions.slideHorizontal(
-                                  TimeLogDetailScreen(
-                                      log: log, tags: _pomodoroTags)));
-                        }
+                        PageTransitions.pushFromRect(
+                          context: context,
+                          page: TimeLogDetailScreen(
+                              log: log, tags: _pomodoroTags),
+                          sourceKey: logCardKey,
+                          sourceColor: _weekLazyLoadPlaceholderColor,
+                          sourceBorderRadius:
+                              const BorderRadius.all(Radius.circular(4)),
+                          placeholderIcon: Icons.receipt_long_rounded,
+                        );
                       },
                       child: Container(
                         key: logCardKey,
@@ -1052,6 +1069,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           eventsPerDay[weekday]!.add(_TimelineEvent(
               top: top,
               bottom: top + height,
+              collisionBottom: bottom,
               builder: (left, width) {
                 final double fontScale =
                     (width / (cellWidth - 2)).clamp(0.4, 1.0);
@@ -1255,6 +1273,150 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
       }
     }
 
+    if (_activeDataViews.contains('fixedSchedules')) {
+      final monday = _getMondayOfCurrentWeek();
+      if (monday != null) {
+        for (int weekday = 1; weekday <= 7; weekday++) {
+          final dayStart = DateTime(
+            monday.year,
+            monday.month,
+            monday.day + weekday - 1,
+          );
+          final dayEnd = CalendarDateMath.addDays(dayStart, 1);
+          for (final schedule in (_fixedSchedulesPerDay[weekday] ?? const [])
+              .where((item) => item.startTime != null)) {
+            final scheduleStart =
+                DateTime.fromMillisecondsSinceEpoch(schedule.startTime!);
+            final scheduleEnd = schedule.endTime == null
+                ? scheduleStart.add(const Duration(hours: 1))
+                : DateTime.fromMillisecondsSinceEpoch(schedule.endTime!);
+            final sliceStart =
+                scheduleStart.isAfter(dayStart) ? scheduleStart : dayStart;
+            final sliceEnd =
+                scheduleEnd.isBefore(dayEnd) ? scheduleEnd : dayEnd;
+            if (!sliceEnd.isAfter(sliceStart)) continue;
+
+            final startMinutes = sliceStart.hour * 60 + sliceStart.minute;
+            final endMinutes = sliceEnd == dayEnd
+                ? 24 * 60
+                : sliceEnd.hour * 60 + sliceEnd.minute;
+            if (endMinutes <= startHour * 60 || startMinutes >= endHour * 60) {
+              continue;
+            }
+            final visibleStart =
+                startMinutes.clamp(startHour * 60, endHour * 60).toInt();
+            final visibleEnd =
+                endMinutes.clamp(startHour * 60, endHour * 60).toInt();
+            final top = _timeToY(
+              visibleStart ~/ 60,
+              visibleStart % 60,
+              minuteHeight,
+            );
+            final bottom = _timeToY(
+              visibleEnd ~/ 60,
+              visibleEnd % 60,
+              minuteHeight,
+            );
+            var height = bottom - top;
+            if (height < 18.0) height = 18.0;
+
+            final colorScheme = Theme.of(context).colorScheme;
+            final fixedColor = colorScheme.primary.withValues(alpha: 0.82);
+            final fixedSchedulePlaceholderColor =
+                colorScheme.brightness == Brightness.dark
+                    ? Colors.black
+                    : Colors.white;
+            final fixedScheduleCardKey =
+                _getFixedScheduleCardKey(schedule.id, weekday);
+            eventsPerDay[weekday]!.add(_TimelineEvent(
+              top: top,
+              bottom: top + height,
+              collisionBottom: bottom,
+              builder: (left, width) {
+                final titleSize =
+                    (height * 0.3 * (width / (cellWidth - 2)).clamp(0.4, 1.0))
+                        .clamp(9.0, 10.5);
+                return Positioned(
+                  top: top,
+                  left: left,
+                  width: width,
+                  height: height,
+                  child: GestureDetector(
+                    onTap: () => _openFixedScheduleDetail(
+                      schedule,
+                      sourceKey: fixedScheduleCardKey,
+                      sourceColor: fixedSchedulePlaceholderColor,
+                      sourceBorderRadius:
+                          const BorderRadius.all(Radius.circular(4)),
+                    ),
+                    child: Container(
+                      key: fixedScheduleCardKey,
+                      alignment: Alignment.center,
+                      clipBehavior: Clip.hardEdge,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 2,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: fixedColor,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: height < 28
+                          ? const Icon(
+                              Icons.event_available,
+                              size: 9,
+                              color: Colors.white,
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                if (height >= 40)
+                                  const Icon(
+                                    Icons.event_available,
+                                    size: 9,
+                                    color: Colors.white,
+                                  ),
+                                if (height >= 40) const SizedBox(height: 2),
+                                Text(
+                                  schedule.title,
+                                  maxLines: height >= 52 ? 2 : 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: titleSize,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.0,
+                                  ),
+                                ),
+                                if (height > 32)
+                                  Text(
+                                    _fixedScheduleTimeLabel(schedule),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.82),
+                                      fontSize: 8,
+                                      height: 1.0,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                    ),
+                  ),
+                );
+              },
+            ));
+          }
+        }
+      }
+    }
+
     if (_activeDataViews.contains('pomodoros')) {
       for (int weekday = 1; weekday <= 7; weekday++) {
         for (var record in _pomodorosPerDay[weekday]!) {
@@ -1349,6 +1511,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             eventsPerDay[weekday]!.add(_TimelineEvent(
                 top: top,
                 bottom: top + height,
+                collisionBottom: bottom,
                 builder: (left, width) {
                   final double fontScale =
                       (width / (cellWidth - 2)).clamp(0.4, 1.0);
@@ -1387,29 +1550,17 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       },
                       child: GestureDetector(
                         onTap: () {
-                          final renderBox = pomCardKey.currentContext
-                              ?.findRenderObject() as RenderBox?;
-                          if (renderBox != null) {
-                            final rect = renderBox.localToGlobal(Offset.zero) &
-                                renderBox.size;
-                            Navigator.push(
-                              context,
-                              ContainerTransformRoute(
-                                page: PomodoroDetailScreen(
-                                    record: record, tags: _pomodoroTags),
-                                sourceRect: rect,
-                                sourceColor: pomColor,
-                                sourceBorderRadius:
-                                    const BorderRadius.all(Radius.circular(4)),
-                              ),
-                            );
-                          } else {
-                            Navigator.push(
-                                context,
-                                PageTransitions.slideHorizontal(
-                                    PomodoroDetailScreen(
-                                        record: record, tags: _pomodoroTags)));
-                          }
+                          PageTransitions.pushFromRect(
+                            context: context,
+                            page: PomodoroDetailScreen(
+                                record: record, tags: _pomodoroTags),
+                            sourceKey: pomCardKey,
+                            sourceColor: _weekLazyLoadPlaceholderColor,
+                            sourceBorderRadius: const BorderRadius.all(
+                              Radius.circular(4),
+                            ),
+                            placeholderIcon: Icons.timer_outlined,
+                          );
                         },
                         child: Container(
                           key: pomCardKey,
@@ -1484,7 +1635,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             monday.month,
             monday.day + weekday - 1,
           );
-          final dayEnd = dayStart.add(const Duration(days: 1));
+          final dayEnd = CalendarDateMath.addDays(dayStart, 1);
           for (final event in _timedDeviceCalendarEventsPerDay[weekday] ??
               const <DeviceCalendarEvent>[]) {
             final sliceStart =
@@ -1504,8 +1655,9 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 endMinutes.clamp(startHour * 60, endHour * 60).toInt();
             final top =
                 _timeToY(visibleStart ~/ 60, visibleStart % 60, minuteHeight);
-            var height =
-                _timeToY(visibleEnd ~/ 60, visibleEnd % 60, minuteHeight) - top;
+            final bottom =
+                _timeToY(visibleEnd ~/ 60, visibleEnd % 60, minuteHeight);
+            var height = bottom - top;
             if (height < 18.0) height = 18.0;
             final color = event.colorValue == null
                 ? Theme.of(context).colorScheme.tertiary.withValues(alpha: 0.78)
@@ -1519,6 +1671,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             eventsPerDay[weekday]!.add(_TimelineEvent(
               top: top,
               bottom: top + height,
+              collisionBottom: bottom,
               builder: (left, width) {
                 final titleSize =
                     (height * 0.28 * (width / (cellWidth - 2)).clamp(0.4, 1.0))
@@ -1648,28 +1801,18 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                   },
                   child: GestureDetector(
                     onTap: () {
-                      final renderBox = cardKey.currentContext
-                          ?.findRenderObject() as RenderBox?;
-                      if (renderBox != null) {
-                        final rect = renderBox.localToGlobal(Offset.zero) &
-                            renderBox.size;
-                        Navigator.push(
-                          context,
-                          ContainerTransformRoute(
-                            page: CourseDetailScreen(course: course),
-                            sourceRect: rect,
-                            sourceColor: bgColor.withValues(alpha: 0.95),
-                            sourceBorderRadius:
-                                const BorderRadius.all(Radius.circular(4)),
-                          ),
-                        );
-                      } else {
-                        Navigator.push(
-                            context,
-                            PageTransitions.slideHorizontal(
-                              CourseDetailScreen(course: course),
-                            ));
-                      }
+                      PageTransitions.pushFromRect(
+                        context: context,
+                        page: CourseDetailScreen(
+                          course: course,
+                          courseSchedule: _allCourses,
+                        ),
+                        sourceKey: cardKey,
+                        sourceColor: _weekLazyLoadPlaceholderColor,
+                        sourceBorderRadius:
+                            const BorderRadius.all(Radius.circular(4)),
+                        placeholderIcon: Icons.calendar_month_rounded,
+                      );
                     },
                     child: Container(
                       key: cardKey,
@@ -1742,7 +1885,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             for (int i = e.columnIndex + 1; i < columns.length; i++) {
               bool overlap = false;
               for (var other in columns[i]) {
-                if (other.top < e.bottom && other.bottom > e.top) {
+                if (other.top < e.collisionBottom &&
+                    other.collisionBottom > e.top) {
                   overlap = true;
                   break;
                 }
@@ -1757,13 +1901,13 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         }
 
         currentGroup.add(event);
-        if (event.bottom > groupBottom) {
-          groupBottom = event.bottom;
+        if (event.collisionBottom > groupBottom) {
+          groupBottom = event.collisionBottom;
         }
 
         bool placed = false;
         for (int i = 0; i < columns.length; i++) {
-          if (columns[i].last.bottom <= event.top) {
+          if (columns[i].last.collisionBottom <= event.top) {
             columns[i].add(event);
             event.columnIndex = i;
             placed = true;
@@ -1782,7 +1926,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
         for (int i = e.columnIndex + 1; i < columns.length; i++) {
           bool overlap = false;
           for (var other in columns[i]) {
-            if (other.top < e.bottom && other.bottom > e.top) {
+            if (other.top < e.collisionBottom &&
+                other.collisionBottom > e.top) {
               overlap = true;
               break;
             }
@@ -1805,10 +1950,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     if (now.hour >= startHour && now.hour <= endHour) {
       if (_semesterMonday != null) {
         DateTime currentMonday =
-            _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
-        int diffDays = DateTime(now.year, now.month, now.day)
-            .difference(currentMonday)
-            .inDays;
+            CalendarDateMath.addDays(_semesterMonday!, (_currentWeek - 1) * 7);
+        int diffDays = CalendarDateMath.daysBetween(currentMonday, now);
 
         if (diffDays >= 0 && diffDays <= 6) {
           double nowY = _timeToY(now.hour, now.minute, minuteHeight);

@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite' // <--- 引入插件
 export default defineConfig({
   plugins: [
     react(),
-    tailwindcss() as any,
+    tailwindcss(),
   ],
   base: './',
   build: {

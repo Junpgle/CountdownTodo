@@ -1,11 +1,11 @@
 # Services
 
-Last reviewed: 2026-08-25.
+Last reviewed: 2026-09-26.
 
 ## Core areas
 
 - `database_helper.dart`: per-user SQLite schema (version tracked in
-  `database_schema_history.dart`, currently v44), migrations, FTS fallback and
+  `database_schema_history.dart`, currently v55), migrations, FTS fallback and
   data access.
 - `api_service.dart`, `environment_service.dart`: backend URL/environment and
   authenticated HTTP selection.
@@ -21,7 +21,9 @@ Last reviewed: 2026-08-25.
   (`fixed_schedule_recurrence_service.dart`).
 - `notification_service_*` and `todo_notification_policy.dart`: platform
   scheduling and date/deadline policy.
-- `search_service.dart`: global search ranking over database results.
+- `search_service.dart`: global search ranking and database-backed results;
+  `global_search_extra_service.dart` adds finance, journal, schedules, plan
+  blocks, check-ins, challenges, AI chat and team records.
 - `llm_service.dart` plus AI parser/executor services: configured provider and
   structured actions.
 - `data_export_service.dart` and migration services: portable data flows.

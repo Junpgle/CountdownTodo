@@ -663,6 +663,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     }
     setState(() => _saving = true);
     try {
+      final username = (await StorageService.getLoginSession() ?? '').trim();
       final rule = _buildRule();
       final goal = widget.goal;
       var recurringSourceIds =
@@ -674,7 +675,6 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       if (goal != null &&
           goal.sourceType == HabitSourceType.recurringTodo &&
           recurringSourceIds.isEmpty) {
-        final username = await StorageService.getLoginSession() ?? '';
         final seriesId = await HabitRepository.createRecurringTodoBinding(
           name: _nameController.text.trim(),
           rule: rule,
@@ -697,6 +697,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           defaultFocusMinutes: _sourceType == HabitSourceType.pomodoroTag
               ? _defaultFocusMinutes
               : null,
+          username: username,
         );
       } else {
         goal.name = _nameController.text.trim();
@@ -714,12 +715,13 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           goal.sourceIds = recurringSourceIds;
         }
         final allRules = await HabitRepository.getRules(habitUuid: goal.uuid);
-        await HabitRepository.updateGoal(goal);
+        await HabitRepository.updateGoal(goal, username: username);
         await HabitRepository.updateRule(
           goal: goal,
           updatedRule: rule,
           effectiveFromOption: _effectiveFromOption,
           allRules: allRules,
+          username: username,
         );
       }
       // 规则或提醒策略可能变化：重排习惯提醒。
@@ -741,6 +743,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 800;
         final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+        final topBarHeight = floatingGlassTopBarHeight(context);
         final content = switch (_step) {
           0 => _buildCreationStep(),
           1 => _buildTypeStep(),
@@ -770,75 +773,90 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
 
         if (isWide) {
           return Scaffold(
+            extendBodyBehindAppBar: true,
             appBar: FloatingGlassAppBar(
               flexibleSpace: const FloatingGlassTopBarBackground(),
               title: Text(widget.goal == null ? '新建习惯' : '编辑习惯'),
               centerTitle: false,
             ),
-            body: Row(
-              children: [
-                SizedBox(
-                  width: 240,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: Text(
-                          '设置进度',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleLarge
-                              ?.copyWith(fontWeight: FontWeight.bold),
-                        ),
+            body: FloatingGlassTopBarContentFade(
+              topBarHeight: topBarHeight,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 240,
+                    child: Padding(
+                      padding: EdgeInsets.only(top: topBarHeight),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Text(
+                              '设置进度',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          Expanded(child: _buildWideStepIndicator()),
+                        ],
                       ),
-                      Expanded(child: _buildWideStepIndicator()),
-                    ],
+                    ),
                   ),
-                ),
-                const VerticalDivider(width: 1),
-                Expanded(
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 40, vertical: 24),
-                          child: Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 600),
-                              child: formArea,
+                  const VerticalDivider(width: 1),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: EdgeInsets.fromLTRB(
+                                40, topBarHeight + 24, 40, 24),
+                            child: Center(
+                              child: ConstrainedBox(
+                                constraints:
+                                    const BoxConstraints(maxWidth: 600),
+                                child: formArea,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      _buildBottomBar(isWide: true),
-                    ],
+                        _buildBottomBar(isWide: true),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           );
         }
 
         return Scaffold(
           extendBody: useFloatingBottomBar,
+          extendBodyBehindAppBar: true,
           appBar: FloatingGlassAppBar(
             flexibleSpace: const FloatingGlassTopBarBackground(),
             title: Text(widget.goal == null ? '新建习惯' : '编辑习惯'),
             centerTitle: true,
           ),
           bottomNavigationBar: _buildBottomBar(isWide: false),
-          body: Column(
-            children: [
-              _buildStepIndicator(),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                  child: formArea,
+          body: FloatingGlassTopBarContentFade(
+            topBarHeight: topBarHeight,
+            child: Column(
+              children: [
+                Padding(
+                  padding: EdgeInsets.only(top: topBarHeight),
+                  child: _buildStepIndicator(),
                 ),
-              ),
-            ],
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                    child: formArea,
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },

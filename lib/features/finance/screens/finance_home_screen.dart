@@ -21,16 +21,40 @@ import 'finance_loan_screen.dart';
 import 'finance_settings_screen.dart';
 import 'finance_text_recognition_screen.dart';
 import 'finance_trash_screen.dart';
+import 'finance_transaction_detail_screen.dart';
+
+typedef _FinanceHomeData = ({
+  List<FinanceTransaction> transactions,
+  FinanceSummary summary,
+  List<FinanceCategory> categories,
+  List<FinancePaymentMethod> paymentMethods,
+  List<FinanceTransaction> overviewTransactions,
+});
 
 class FinanceHomeScreen extends StatefulWidget {
   final String username;
   final bool openQuickEntry;
+  final DateTime? initialMonth;
+  final String? initialCategoryFilterUuid;
+  final _FinanceHomeData? _initialData;
 
   const FinanceHomeScreen({
     super.key,
     required this.username,
     this.openQuickEntry = false,
-  });
+  })  : initialMonth = null,
+        initialCategoryFilterUuid = null,
+        _initialData = null;
+
+  const FinanceHomeScreen._categoryLedger({
+    required this.username,
+    required DateTime month,
+    required String categoryUuid,
+    required _FinanceHomeData initialData,
+  })  : openQuickEntry = false,
+        initialMonth = month,
+        initialCategoryFilterUuid = categoryUuid,
+        _initialData = initialData;
 
   @override
   State<FinanceHomeScreen> createState() => _FinanceHomeScreenState();
@@ -39,15 +63,19 @@ class FinanceHomeScreen extends StatefulWidget {
 class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   List<FinanceTransaction> _transactions = const [];
+  List<FinanceTransaction> _overviewTransactions = const [];
   List<FinanceCategory> _categories = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
   FinanceSummary _summary = const FinanceSummary();
   String _keyword = '';
   FinanceTransactionType? _filterType;
+  String? _categoryFilterUuid;
   int _selectedIndex = 0;
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
+  bool _maintenanceScheduled = false;
+  Future<void>? _maintenanceFuture;
   final GlobalKey _overviewAddActionKey = GlobalKey();
   final GlobalKey _bottomAddActionKey = GlobalKey();
 
@@ -59,10 +87,68 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         for (final item in _paymentMethods) item.uuid: item,
       };
 
+  bool get _hasLedgerFilters =>
+      _keyword.trim().isNotEmpty ||
+      _filterType != null ||
+      _categoryFilterUuid != null;
+
+  bool get _isCategoryLedgerRoute => widget.initialCategoryFilterUuid != null;
+
+  bool get _hasManualLedgerFilters =>
+      _keyword.trim().isNotEmpty || _filterType != null;
+
+  bool get _clearFiltersBeforePop =>
+      _isCategoryLedgerRoute ? _hasManualLedgerFilters : _hasLedgerFilters;
+
+  bool get _handleLedgerBack =>
+      _selectedIndex == 1 &&
+      (!_isCategoryLedgerRoute || _clearFiltersBeforePop);
+
+  void _clearLedgerFilters() {
+    if (!_clearFiltersBeforePop) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _keyword = '';
+      _filterType = null;
+      if (!_isCategoryLedgerRoute) _categoryFilterUuid = null;
+    });
+  }
+
+  void _returnToOverview() {
+    if (_selectedIndex != 1) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _selectedIndex = 0);
+  }
+
+  void _handleBack() {
+    if (_clearFiltersBeforePop) {
+      _clearLedgerFilters();
+    } else if (_isCategoryLedgerRoute) {
+      unawaited(Navigator.of(context).maybePop());
+    } else {
+      _returnToOverview();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    _load();
+    if (widget.initialMonth != null) _month = widget.initialMonth!;
+    if (_isCategoryLedgerRoute) {
+      _categoryFilterUuid = widget.initialCategoryFilterUuid;
+      _selectedIndex = 1;
+    }
+    final initialData = widget._initialData;
+    if (initialData == null) {
+      _load();
+    } else {
+      _transactions = initialData.transactions;
+      _summary = initialData.summary;
+      _categories = initialData.categories;
+      _paymentMethods = initialData.paymentMethods;
+      _overviewTransactions = initialData.overviewTransactions;
+      _isLoading = false;
+    }
     if (widget.openQuickEntry) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _openEntry();
@@ -70,47 +156,110 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     }
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool showLoading = true}) async {
     final generation = ++_loadGeneration;
-    if (mounted) {
+    if (mounted && showLoading) {
       setState(() {
         _isLoading = true;
         _loadError = null;
       });
     }
     try {
+      final data = await _loadOverviewData();
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _transactions = data.transactions;
+        _summary = data.summary;
+        _categories = data.categories;
+        _paymentMethods = data.paymentMethods;
+        _overviewTransactions = data.overviewTransactions;
+        _isLoading = false;
+      });
+      if (!_isCategoryLedgerRoute) _startBackgroundMaintenance(generation);
+    } catch (error) {
+      if (!mounted || generation != _loadGeneration) return;
+      if (showLoading) {
+        setState(() {
+          _isLoading = false;
+          _loadError = error.toString();
+        });
+      }
+    }
+  }
+
+  Future<_FinanceHomeData> _loadOverviewData() async {
+    final from = DateTime(_month.year, _month.month);
+    final to = DateTime(_month.year, _month.month + 1);
+    // 周视图需要覆盖月初前和月末后的完整自然周，避免边界日期被截断。
+    final overviewFrom = from.subtract(const Duration(days: 7));
+    final overviewTo = to.add(const Duration(days: 7));
+    final values = await Future.wait<dynamic>([
+      // 这个范围已经包含本月，后续在内存中切出本月账单，避免重复查询。
+      FinanceRepository.getTransactions(from: overviewFrom, to: overviewTo),
+      FinanceRepository.getCategories(includeArchived: true),
+      FinanceRepository.getPaymentMethods(includeArchived: true),
+    ]);
+    final overviewTransactions = values[0] as List<FinanceTransaction>;
+    final fromKey = dateKey(from);
+    final toKey = dateKey(to);
+    final transactions = overviewTransactions
+        .where((transaction) =>
+            transaction.transactionDate.compareTo(fromKey) >= 0 &&
+            transaction.transactionDate.compareTo(toKey) < 0)
+        .toList(growable: false);
+    return (
+      transactions: transactions,
+      summary: FinanceRepository.summarizeTransactions(transactions),
+      categories: values[1] as List<FinanceCategory>,
+      paymentMethods: values[2] as List<FinancePaymentMethod>,
+      overviewTransactions: overviewTransactions,
+    );
+  }
+
+  void _startBackgroundMaintenance(int generation) {
+    if (_maintenanceFuture != null || _maintenanceScheduled) return;
+    _maintenanceScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maintenanceScheduled = false;
+      if (!mounted ||
+          generation != _loadGeneration ||
+          _maintenanceFuture != null) {
+        return;
+      }
+      final future = _reconcileAfterFirstPaint(generation);
+      _maintenanceFuture = future;
+      unawaited(future);
+    });
+  }
+
+  Future<void> _reconcileAfterFirstPaint(int generation) async {
+    try {
+      var needsRefresh = false;
       try {
-        await FinanceAutomationService.reconcileCurrentPeriod();
+        needsRefresh =
+            await FinanceAutomationService.reconcileCurrentPeriod() > 0;
       } catch (_) {
         // 自动化异常不应阻断已有账单的查看和手动记账。
       }
       try {
-        await AiUsageCostService.reconcileCurrentMonth();
+        needsRefresh =
+            await AiUsageCostService.reconcileCurrentMonth() || needsRefresh;
       } catch (_) {
         // AI 费用补偿失败不应阻断已有账单的查看和手动记账。
       }
-      final from = DateTime(_month.year, _month.month);
-      final to = DateTime(_month.year, _month.month + 1);
-      final values = await Future.wait<dynamic>([
-        FinanceRepository.getTransactions(from: from, to: to),
-        FinanceRepository.getSummary(from: from, to: to),
-        FinanceRepository.getCategories(includeArchived: true),
-        FinanceRepository.getPaymentMethods(includeArchived: true),
-      ]);
+      if (!needsRefresh || !mounted || generation != _loadGeneration) return;
+
+      final data = await _loadOverviewData();
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _transactions = values[0] as List<FinanceTransaction>;
-        _summary = values[1] as FinanceSummary;
-        _categories = values[2] as List<FinanceCategory>;
-        _paymentMethods = values[3] as List<FinancePaymentMethod>;
-        _isLoading = false;
+        _transactions = data.transactions;
+        _summary = data.summary;
+        _categories = data.categories;
+        _paymentMethods = data.paymentMethods;
+        _overviewTransactions = data.overviewTransactions;
       });
-    } catch (error) {
-      if (!mounted || generation != _loadGeneration) return;
-      setState(() {
-        _isLoading = false;
-        _loadError = error.toString();
-      });
+    } catch (_) {
+      // 后台补偿失败不覆盖已经可见的首屏数据。
     }
   }
 
@@ -151,6 +300,34 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       PageTransitions.material(
         builder: (_) => FinanceEntryScreen(originalTransaction: original),
       ),
+    );
+    if (result != null && mounted) await _load();
+  }
+
+  Future<void> _openDetail(
+    FinanceTransaction transaction,
+    GlobalKey sourceKey,
+  ) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final category = _categoryMap[transaction.categoryUuid];
+    final categoryDisplayName = category == null
+        ? null
+        : financeCategoryDisplayName(category, _categories);
+    final result = await PageTransitions.pushFromRect<FinanceTransaction>(
+      context: context,
+      page: FinanceTransactionDetailScreen(
+        transaction: transaction,
+        category: category,
+        categoryDisplayName: categoryDisplayName,
+        paymentMethod: _paymentMethodMap[transaction.paymentMethodUuid],
+      ),
+      sourceKey: sourceKey,
+      sourceColor: colorScheme.surfaceContainerLow,
+      placeholderBuilder: (_) => Text(
+        category?.icon.isNotEmpty == true ? category!.icon : '💰',
+        style: const TextStyle(fontSize: 30),
+      ),
+      sourceBorderRadius: BorderRadius.circular(18),
     );
     if (result != null && mounted) await _load();
   }
@@ -273,53 +450,76 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     );
   }
 
-  void _changeMonth(int delta) {
+  void _setMonth(DateTime value) {
     setState(() {
-      _month = DateTime(_month.year, _month.month + delta);
+      _month = DateTime(value.year, value.month);
     });
     _load();
   }
 
-  Future<void> _pickMonth() async {
-    final picked = await showDatePicker(
+  Future<void> _pushCategoryLedger(
+    String categoryUuid,
+    GlobalKey sourceKey,
+  ) async {
+    final category = _categoryMap[categoryUuid];
+    final colorScheme = Theme.of(context).colorScheme;
+    await PageTransitions.pushFromRect<void>(
       context: context,
-      initialDate: _month,
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now().add(const Duration(days: 3650)),
-      helpText: '选择月份',
+      page: FinanceHomeScreen._categoryLedger(
+        username: widget.username,
+        month: _month,
+        categoryUuid: categoryUuid,
+        initialData: (
+          transactions: _transactions,
+          summary: _summary,
+          categories: _categories,
+          paymentMethods: _paymentMethods,
+          overviewTransactions: _overviewTransactions,
+        ),
+      ),
+      sourceKey: sourceKey,
+      sourceColor: colorScheme.brightness == Brightness.dark
+          ? Colors.black
+          : Colors.white,
+      placeholderBuilder: (_) => Text(
+        category?.icon ?? '💰',
+        style: const TextStyle(fontSize: 30),
+      ),
+      sourceBorderRadius: BorderRadius.circular(12),
     );
-    if (picked == null || !mounted) return;
-    setState(() => _month = DateTime(picked.year, picked.month));
-    await _load();
+    if (mounted) await _load(showLoading: false);
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+    final topBarHeight = floatingGlassTopBarHeight(context);
     final scaffold = Scaffold(
-      extendBody: useFloatingBottomBar,
+      extendBody: true,
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('记账'),
+        leading: _selectedIndex == 1
+            ? IconButton(
+                style: floatingGlassPlainIconButtonStyle(),
+                tooltip: _clearFiltersBeforePop
+                    ? _isCategoryLedgerRoute
+                        ? '取消附加筛选'
+                        : '返回全部账单'
+                    : _isCategoryLedgerRoute
+                        ? '返回支出分类'
+                        : '返回概览',
+                onPressed: _handleBack,
+                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+              )
+            : null,
         actions: [
-          IconButton(
-            style: floatingGlassPlainIconButtonStyle(),
-            tooltip: '文本识别',
-            onPressed: _openTextRecognition,
-            icon: const Icon(Icons.text_snippet_outlined),
-          ),
           IconButton(
             style: floatingGlassPlainIconButtonStyle(),
             tooltip: '预算',
             onPressed: _openBudgets,
             icon: const Icon(Icons.track_changes_outlined),
-          ),
-          IconButton(
-            style: floatingGlassPlainIconButtonStyle(),
-            tooltip: '贷款',
-            onPressed: _openLoans,
-            icon: const Icon(Icons.account_balance_outlined),
           ),
           PopupMenuButton<String>(
             style: floatingGlassPlainIconButtonStyle(),
@@ -404,129 +604,115 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _loadError != null
-              ? _buildError(colorScheme)
-              : Column(
-                  children: [
-                    _buildMonthBar(colorScheme),
-                    Expanded(
-                      child: IndexedStack(
-                        index: _selectedIndex,
-                        children: [
-                          FinanceOverviewPanel(
-                            month: _month,
-                            summary: _summary,
-                            transactions: _transactions,
-                            categories: _categoryMap,
-                            onAdd: () => _openEntry(
-                              sourceKey: _overviewAddActionKey,
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+                ? _buildError(colorScheme)
+                : Column(
+                    children: [
+                      Expanded(
+                        child: IndexedStack(
+                          index: _selectedIndex,
+                          children: [
+                            FinanceOverviewPanel(
+                              topPadding: topBarHeight,
+                              month: _month,
+                              summary: _summary,
+                              transactions: _overviewTransactions,
+                              categories: _categoryMap,
+                              onAdd: () => _openEntry(
+                                sourceKey: _overviewAddActionKey,
+                              ),
+                              addActionKey: _overviewAddActionKey,
+                              onRefresh: _load,
+                              onMonthChanged: _setMonth,
+                              onCategorySelected: _pushCategoryLedger,
                             ),
-                            addActionKey: _overviewAddActionKey,
-                            onRefresh: _load,
-                          ),
-                          FinanceLedgerPanel(
-                            transactions: _transactions,
-                            categories: _categoryMap,
-                            paymentMethods: _paymentMethodMap,
-                            keyword: _keyword,
-                            filterType: _filterType,
-                            onKeywordChanged: (value) =>
-                                setState(() => _keyword = value),
-                            onFilterChanged: (value) =>
-                                setState(() => _filterType = value),
-                            onEdit: (transaction) =>
-                                _openEntry(transaction: transaction),
-                            onDelete: _deleteTransaction,
-                            onRefund: _openRefund,
-                          ),
-                        ],
+                            FinanceLedgerPanel(
+                              topPadding: topBarHeight,
+                              transactions: _transactions,
+                              categories: _categoryMap,
+                              paymentMethods: _paymentMethodMap,
+                              keyword: _keyword,
+                              filterType: _filterType,
+                              categoryUuid: _categoryFilterUuid,
+                              onOpenDetail: _openDetail,
+                              onKeywordChanged: (value) =>
+                                  setState(() => _keyword = value),
+                              onFilterChanged: (value) =>
+                                  setState(() => _filterType = value),
+                              onCategoryChanged: (value) =>
+                                  setState(() => _categoryFilterUuid = value),
+                              onEdit: (transaction) =>
+                                  _openEntry(transaction: transaction),
+                              onDelete: _deleteTransaction,
+                              onRefund: _openRefund,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+      ),
       // 记账入口固定在底栏中央，避免扩展 FAB 覆盖账单内容。
-      bottomNavigationBar: useFloatingBottomBar
-          ? FloatingBottomNavigationBar(
-              items: [
-                FloatingBottomNavigationItem(
-                  icon: Icons.insights_outlined,
-                  label: '概览',
+      bottomNavigationBar: FloatingBottomNavigationBar(
+        mobilePortraitOnly: false,
+        items: [
+          const FloatingBottomNavigationItem(
+            icon: Icons.insights_outlined,
+            label: '概览',
+          ),
+          FloatingBottomNavigationItem(
+            label: '记一笔',
+            selectable: false,
+            onPressed: () => _openEntry(sourceKey: _bottomAddActionKey),
+            builder: (context, selectedLayer, interactive) => Center(
+              child: HomeBottomNavigationActionButton(
+                buttonKey: selectedLayer ? null : _bottomAddActionKey,
+                primaryColor: colorScheme.primary,
+                interactive: interactive,
+                onPressed: () => _openEntry(sourceKey: _bottomAddActionKey),
+                semanticsLabel: '记一笔',
+                child: Icon(
+                  Icons.add_rounded,
+                  color: colorScheme.onPrimary,
+                  size: 28,
                 ),
-                FloatingBottomNavigationItem(
-                  label: '记一笔',
-                  selectable: false,
-                  onPressed: () => _openEntry(sourceKey: _bottomAddActionKey),
-                  builder: (context, selectedLayer, interactive) => Center(
-                    child: HomeBottomNavigationActionButton(
-                      buttonKey: selectedLayer ? null : _bottomAddActionKey,
-                      primaryColor: colorScheme.primary,
-                      interactive: interactive,
-                      onPressed: () =>
-                          _openEntry(sourceKey: _bottomAddActionKey),
-                      semanticsLabel: '记一笔',
-                      child: Icon(
-                        Icons.add_rounded,
-                        color: colorScheme.onPrimary,
-                        size: 28,
-                      ),
-                    ),
-                  ),
-                ),
-                const FloatingBottomNavigationItem(
-                  icon: Icons.receipt_long_outlined,
-                  label: '账单',
-                ),
-              ],
-              selectedIndex: _selectedIndex == 0 ? 0 : 2,
-              onTabSelected: (index) {
-                if (index == 0) {
-                  setState(() => _selectedIndex = 0);
-                } else if (index == 2) {
-                  setState(() => _selectedIndex = 1);
-                }
-              },
-            )
-          : NavigationBar(
-              selectedIndex: _selectedIndex == 0 ? 0 : 2,
-              onDestinationSelected: (index) {
-                if (index == 1) {
-                  _openEntry(sourceKey: _bottomAddActionKey);
-                } else {
-                  setState(() => _selectedIndex = index == 0 ? 0 : 1);
-                }
-              },
-              destinations: [
-                const NavigationDestination(
-                  icon: Icon(Icons.insights_outlined),
-                  selectedIcon: Icon(Icons.insights),
-                  label: '概览',
-                ),
-                NavigationDestination(
-                  icon: SizedBox(
-                    key: _bottomAddActionKey,
-                    width: 32,
-                    height: 32,
-                    child: const Icon(Icons.add_rounded),
-                  ),
-                  selectedIcon: const Icon(Icons.add_rounded),
-                  label: '记一笔',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.receipt_long_outlined),
-                  selectedIcon: Icon(Icons.receipt_long),
-                  label: '账单',
-                ),
-              ],
+              ),
             ),
+          ),
+          const FloatingBottomNavigationItem(
+            icon: Icons.receipt_long_outlined,
+            label: '账单',
+          ),
+        ],
+        selectedIndex: _selectedIndex == 0 ? 0 : 2,
+        onTabSelected: (index) {
+          if (index == 0) {
+            setState(() => _selectedIndex = 0);
+          } else if (index == 2) {
+            setState(() => _selectedIndex = 1);
+          }
+        },
+      ),
+    );
+    final guardedScaffold = PopScope<Object?>(
+      canPop: !_handleLedgerBack,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _handleLedgerBack) {
+          _handleBack();
+        }
+      },
+      child: scaffold,
     );
 
     final isDesktop = !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.windows ||
             defaultTargetPlatform == TargetPlatform.macOS ||
             defaultTargetPlatform == TargetPlatform.linux);
-    if (!isDesktop) return scaffold;
+    if (!isDesktop) return guardedScaffold;
     return Shortcuts(
       shortcuts: const {
         SingleActivator(
@@ -551,51 +737,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         },
         child: Focus(
           autofocus: true,
-          child: scaffold,
+          child: guardedScaffold,
         ),
-      ),
-    );
-  }
-
-  Widget _buildMonthBar(ColorScheme colorScheme) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: '上个月',
-            onPressed: () => _changeMonth(-1),
-            style: floatingGlassPlainIconButtonStyle(),
-            icon: const Icon(Icons.chevron_left),
-          ),
-          Expanded(
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: _pickMonth,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '${_month.year} 年 ${_month.month} 月',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(width: 4),
-                    Icon(Icons.expand_more,
-                        size: 18, color: colorScheme.onSurfaceVariant),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          IconButton(
-            tooltip: '下个月',
-            onPressed: () => _changeMonth(1),
-            style: floatingGlassPlainIconButtonStyle(),
-            icon: const Icon(Icons.chevron_right),
-          ),
-        ],
       ),
     );
   }

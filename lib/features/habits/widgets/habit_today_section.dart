@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../screens/pomodoro_screen.dart';
-import '../../../services/pomodoro_control_service.dart';
-import '../../../services/pomodoro_service.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 import '../models/habit_goal.dart';
@@ -10,6 +7,7 @@ import '../models/habit_progress.dart';
 import '../screens/habit_detail_screen.dart';
 import '../services/habit_day_loader.dart';
 import '../services/habit_sleep_duration_service.dart';
+import '../services/habit_focus_launcher.dart';
 import 'habit_card.dart';
 
 /// 首页「今日习惯」卡片。
@@ -103,44 +101,14 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
     }
   }
 
-  Future<void> _startFocus(HabitGoal goal) async {
-    // 防御：仅时长型习惯绑定专注标签，其他类型或空标签直接打开专注页。
-    final tagUuids = goal.sourceType == HabitSourceType.pomodoroTag
-        ? goal.sourceIds
-        : const <String>[];
-    final running = await PomodoroService.loadRunState();
-    if (running != null &&
-        (running.phase == PomodoroPhase.focusing ||
-            running.phase == PomodoroPhase.breaking)) {
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        PageTransitions.material(
-          builder: (_) => PomodoroScreen(username: widget.username),
-        ),
+  Future<void> _startFocus(HabitGoal goal) => HabitFocusLauncher.open(
+        context: context,
+        username: widget.username,
+        goal: goal,
+        onReturned: () {
+          _loadData();
+        },
       );
-      return;
-    }
-    try {
-      final settings = await PomodoroService.getSettings();
-      await PomodoroControlService.startFocus(
-        settings: settings,
-        tagUuids: tagUuids,
-        durationMinutes: goal.defaultFocusMinutes,
-      );
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        PageTransitions.material(
-          builder: (_) => PomodoroScreen(username: widget.username),
-        ),
-      );
-      if (mounted) _loadData();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('启动专注失败: $e')),
-      );
-    }
-  }
 
   GlobalKey _cardKeyFor(HabitGoal goal) {
     return _cardKeys.putIfAbsent(goal.uuid, GlobalKey.new);

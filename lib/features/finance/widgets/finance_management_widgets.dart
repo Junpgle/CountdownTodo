@@ -9,12 +9,14 @@ import '../services/finance_repository.dart';
 class FinancePageList extends StatelessWidget {
   final List<Widget> children;
   final double maxWidth;
+  final double topPadding;
   final double bottomPadding;
 
   const FinancePageList({
     super.key,
     required this.children,
     this.maxWidth = 1000,
+    this.topPadding = 0,
     this.bottomPadding = 32,
   });
 
@@ -30,7 +32,7 @@ class FinancePageList extends StatelessWidget {
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: EdgeInsets.fromLTRB(
             inset,
-            12,
+            topPadding + 12,
             inset,
             bottomPadding + MediaQuery.paddingOf(context).bottom,
           ),

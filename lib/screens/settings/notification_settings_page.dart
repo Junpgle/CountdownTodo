@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import '../../storage_service.dart';
 import '../../models.dart';
+import '../../features/habits/services/habit_reminder_service.dart';
 import '../../services/course_service.dart';
 import '../../services/reminder_schedule_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/scheduled_reminder_registry.dart';
 import '../../services/storage/app_settings_storage.dart';
 import '../../utils/app_dialogs.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/time_utils.dart';
 import '../../widgets/app_sheet_widgets.dart';
 import '../../widgets/app_state_views.dart';
+import '../../widgets/settings_toggle_card.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
 
@@ -52,6 +55,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   }
 
   Future<void> _loadSettings() async {
+    if (!mounted) return;
     final liveEnabled =
         await AppSettingsStorage.isLiveActivityNotificationEnabled();
     final normalEnabled =
@@ -77,6 +81,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         await AppSettingsStorage.isFinanceBudgetAlertEnabled();
     final reminderMinutes = await AppSettingsStorage.getCourseReminderMinutes();
 
+    if (!mounted) return;
     setState(() {
       _liveActivityEnabled = liveEnabled;
       _normalEnabled = normalEnabled;
@@ -93,11 +98,13 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       _courseReminderMinutes = reminderMinutes;
     });
 
+    if (!mounted) return;
     final username = await StorageService.getLoginSession();
     if (username != null) {
       final groups = await StorageService.getTodoGroups(username);
       final catReminders =
           await AppSettingsStorage.getCategoryReminderMinutes(username);
+      if (!mounted) return;
       setState(() {
         _username = username;
         _todoGroups = groups.where((g) => !g.isDeleted).toList();
@@ -105,7 +112,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       });
     }
 
-    if (AppPlatform.isWeb) {
+    if (mounted && AppPlatform.isWeb) {
       await _refreshWebPermission();
     }
   }
@@ -144,18 +151,20 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   Future<void> _toggleLiveActivityMaster(bool? value) async {
     final enabled = value ?? false;
     await AppSettingsStorage.setLiveActivityNotificationEnabled(enabled);
-    setState(() {
-      _liveActivityEnabled = enabled;
-      if (!enabled) {
-        _courseEnabled = false;
-        _quizEnabled = false;
-        _todoSummaryEnabled = false;
-        _specialTodoEnabled = false;
-        _pomodoroEnabled = false;
-        _todoRecognizeEnabled = false;
-        _todoLiveEnabled = false;
-      }
-    });
+    if (mounted) {
+      setState(() {
+        _liveActivityEnabled = enabled;
+        if (!enabled) {
+          _courseEnabled = false;
+          _quizEnabled = false;
+          _todoSummaryEnabled = false;
+          _specialTodoEnabled = false;
+          _pomodoroEnabled = false;
+          _todoRecognizeEnabled = false;
+          _todoLiveEnabled = false;
+        }
+      });
+    }
     if (enabled) {
       await AppSettingsStorage.setCourseNotificationEnabled(true);
       await AppSettingsStorage.setQuizNotificationEnabled(true);
@@ -173,6 +182,12 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       await AppSettingsStorage.setTodoRecognizeNotificationEnabled(false);
       await AppSettingsStorage.setTodoLiveNotificationEnabled(false);
     }
+    if (!enabled) {
+      await NotificationService.cancelNotification();
+      await NotificationService.cancelQuizNotification();
+      await NotificationService.cancelTodoRecognizeNotification();
+    }
+    await _triggerReschedule();
   }
 
   Future<void> _toggleNormalMaster(bool? value) async {
@@ -181,6 +196,9 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       final granted = await _requestWebPermission();
       if (!granted) {
         await AppSettingsStorage.setNormalNotificationEnabled(false);
+        await _clearScheduledSource(ScheduledReminderSources.reminderSchedule);
+        await _clearScheduledSource(ScheduledReminderSources.pomodoro);
+        await _clearScheduledSource(ScheduledReminderSources.habit);
         if (!mounted) return;
         setState(() => _normalEnabled = false);
         return;
@@ -188,38 +206,55 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     }
 
     await AppSettingsStorage.setNormalNotificationEnabled(enabled);
-    setState(() {
-      _normalEnabled = enabled;
-      if (!enabled) {
-        _pomodoroEndEnabled = false;
-        _reminderEnabled = false;
-        _financeBudgetEnabled = false;
-      }
-    });
+    if (mounted) {
+      setState(() {
+        _normalEnabled = enabled;
+        if (!enabled) {
+          _pomodoroEndEnabled = false;
+          _reminderEnabled = false;
+          _financeBudgetEnabled = false;
+        }
+      });
+    }
     if (enabled) {
       await AppSettingsStorage.setPomodoroEndNotificationEnabled(true);
       await AppSettingsStorage.setReminderNotificationEnabled(true);
       await AppSettingsStorage.setFinanceBudgetAlertEnabled(true);
-      _triggerReschedule();
+      await _triggerReschedule();
     } else {
       await AppSettingsStorage.setPomodoroEndNotificationEnabled(false);
       await AppSettingsStorage.setReminderNotificationEnabled(false);
       await AppSettingsStorage.setFinanceBudgetAlertEnabled(false);
-      await NotificationService.scheduleReminders([], clearFirst: true);
+      await _clearScheduledSource(ScheduledReminderSources.reminderSchedule);
+      await _clearScheduledSource(ScheduledReminderSources.pomodoro);
+      await _clearScheduledSource(ScheduledReminderSources.habit);
     }
   }
 
   Future<void> _toggleSubNotification(String key, bool value,
       Function(bool) setStateCallback, Function(bool) storageCallback) async {
     await storageCallback(value);
-    setState(() => setStateCallback(value));
-    if (key == 'reminder') {
-      if (value) {
-        _triggerReschedule();
-      } else {
-        await NotificationService.scheduleReminders([], clearFirst: true);
-      }
+    if (mounted) setState(() => setStateCallback(value));
+    const schedulingKeys = {
+      'course',
+      'special_todo',
+      'todo_live',
+      'reminder',
+      'finance_budget',
+    };
+    if (schedulingKeys.contains(key)) {
+      await _triggerReschedule();
+    } else if (key == 'pomodoro_end' && !value) {
+      await _clearScheduledSource(ScheduledReminderSources.pomodoro);
     }
+  }
+
+  Future<void> _clearScheduledSource(String source) {
+    return NotificationService.scheduleReminders(
+      const [],
+      clearFirst: false,
+      replaceSource: source,
+    );
   }
 
   Future<void> _triggerReschedule() async {
@@ -227,7 +262,13 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     if (username == null) return;
     final todos = await StorageService.getTodos(username);
     final courses = await CourseService.getAllCourses(username);
-    await ReminderScheduleService.scheduleAll(todos: todos, courses: courses);
+    await ReminderScheduleService.scheduleAll(
+      todos: todos,
+      courses: courses,
+      expectedUsername: username,
+      force: true,
+    );
+    await HabitReminderService.rescheduleAll();
   }
 
   @override
@@ -243,7 +284,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           ? null
           : FloatingGlassAppBar(
               flexibleSpace: const FloatingGlassTopBarBackground(),
-              title: const Text('通知与提醒设置'),
+              title: Text(
+                '通知与提醒设置',
+                style: TextStyle(color: colorScheme.onSurface),
+              ),
               centerTitle: true,
             ),
       body: floatingGlassSettingsBody(
@@ -257,32 +301,19 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                 isDesktop ? 24 : 16,
                 widget.isEmbedded
                     ? (isDesktop ? 20 : 16)
-                    : floatingGlassSettingsContentTopInset(
-                        context,
-                        extra: isDesktop ? 20 : 16,
-                      ),
+                    : floatingGlassSettingsContentTopInset(context),
                 isDesktop ? 24 : 16,
                 isDesktop ? 32 : 16,
               ),
               children: [
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: isDesktop ? 3 : 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: isDesktop ? 2.45 : 1.3,
-                  children: [
-                    _buildMasterSwitch(
-                      title: '实时活动通知',
-                      subtitle: '在状态栏实时更新进度（课程、测验、待办、番茄钟等）',
-                      icon: Icons.notifications_active,
-                      color: colorScheme.primary,
-                      value: _liveActivityEnabled,
-                      onChanged: _toggleLiveActivityMaster,
-                      isDesktop: isDesktop,
-                    ),
-                  ],
+                _buildMasterSwitch(
+                  title: '实时活动通知',
+                  subtitle: '在状态栏实时更新进度（课程、测验、待办、番茄钟等）',
+                  icon: Icons.notifications_active,
+                  color: colorScheme.primary,
+                  value: _liveActivityEnabled,
+                  onChanged: _toggleLiveActivityMaster,
+                  isDesktop: isDesktop,
                 ),
                 const SizedBox(height: 8),
                 _buildSubSection(
@@ -383,24 +414,14 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: isDesktop ? 3 : 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: isDesktop ? 2.45 : 1.3,
-                  children: [
-                    _buildMasterSwitch(
-                      title: '普通通知',
-                      subtitle: '一次性触发的提醒通知（番茄钟结束、定时闹钟等）',
-                      icon: Icons.notifications,
-                      color: colorScheme.secondary,
-                      value: _normalEnabled,
-                      onChanged: _toggleNormalMaster,
-                      isDesktop: isDesktop,
-                    ),
-                  ],
+                _buildMasterSwitch(
+                  title: '普通通知',
+                  subtitle: '一次性触发的提醒通知（番茄钟结束、定时闹钟等）',
+                  icon: Icons.notifications,
+                  color: colorScheme.secondary,
+                  value: _normalEnabled,
+                  onChanged: _toggleNormalMaster,
+                  isDesktop: isDesktop,
                 ),
                 const SizedBox(height: 8),
                 _buildSubSection(
@@ -452,91 +473,92 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   ],
                 ),
                 const SizedBox(height: 24),
-            Card(
-              elevation: 1,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.grey[600]),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        '关闭总开关将同时关闭该类别下所有子通知。单独开启某个子通知不会自动开启总开关。',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[700],
+                Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.grey[600]),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            '关闭总开关将同时关闭该类别下所有子通知。单独开启某个子通知不会自动开启总开关。',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[700],
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            OptionalLiquidGlassCard(
-              borderRadius: 16,
-              margin: EdgeInsets.zero,
-              fallbackDecoration: BoxDecoration(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.grey.shade900
-                    : Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.fromBorderSide(
-                    const BorderSide(color: Colors.transparent, width: 1.5)),
-              ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: _showScheduledReminders,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0, vertical: 16.0),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.teal.withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.manage_search,
-                            color: Colors.teal, size: 28),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              '定时闹钟管理',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 16),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '查看当前已注册到系统的精确闹钟提醒',
-                              style: TextStyle(
-                                  fontSize: 12, color: Colors.grey[600]),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      const Icon(Icons.chevron_right, color: Colors.grey),
-                    ],
                   ),
                 ),
-              ),
-            ),
-            if (_reminderEnabled && _todoGroups.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              _buildCategoryRemindersSection(),
-            ],
-          ],
-        );
+                const SizedBox(height: 16),
+                OptionalLiquidGlassCard(
+                  borderRadius: 16,
+                  margin: EdgeInsets.zero,
+                  fallbackDecoration: BoxDecoration(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey.shade900
+                        : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.fromBorderSide(const BorderSide(
+                        color: Colors.transparent, width: 1.5)),
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: _showScheduledReminders,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16.0, vertical: 16.0),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.teal.withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.manage_search,
+                                color: Colors.teal, size: 28),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  '定时闹钟管理',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '查看当前已注册到系统的精确闹钟提醒',
+                                  style: TextStyle(
+                                      fontSize: 12, color: Colors.grey[600]),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          const Icon(Icons.chevron_right, color: Colors.grey),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                if (_reminderEnabled && _todoGroups.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _buildCategoryRemindersSection(),
+                ],
+              ],
+            );
           },
         ),
       ),
@@ -552,7 +574,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           ? null
           : FloatingGlassAppBar(
               flexibleSpace: const FloatingGlassTopBarBackground(),
-              title: const Text('浏览器通知设置'),
+              title: Text(
+                '浏览器通知设置',
+                style: TextStyle(color: colorScheme.onSurface),
+              ),
               centerTitle: true,
             ),
       body: floatingGlassSettingsBody(
@@ -566,10 +591,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                 isDesktop ? 24 : 16,
                 widget.isEmbedded
                     ? (isDesktop ? 20 : 16)
-                    : floatingGlassSettingsContentTopInset(
-                        context,
-                        extra: isDesktop ? 20 : 16,
-                      ),
+                    : floatingGlassSettingsContentTopInset(context),
                 isDesktop ? 24 : 16,
                 isDesktop ? 32 : 16,
               ),
@@ -893,7 +915,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           crossAxisCount: isDesktop ? 3 : 2,
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          childAspectRatio: isDesktop ? 2.45 : 0.95,
+          childAspectRatio: isDesktop ? 2.45 : 1.3,
           children: children,
         ),
       ),
@@ -929,113 +951,15 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     required bool value,
     required ValueChanged<bool?> onChanged,
   }) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isSelected = value;
-    final iconWidget = AnimatedSwitcher(
-      duration: const Duration(milliseconds: 400),
-      switchInCurve: Curves.easeOutBack,
-      switchOutCurve: Curves.easeInBack,
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return ScaleTransition(
-          scale: animation,
-          child: RotationTransition(
-            turns: Tween<double>(begin: -0.1, end: 0.0).animate(animation),
-            child: child,
-          ),
-        );
-      },
-      child: Icon(
-        icon,
-        key: ValueKey<bool>(isSelected),
-        color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
-        size: isDesktop ? 28 : 32,
-      ),
-    );
-    final switchWidget = SizedBox(
-      height: 24,
-      child: FittedBox(
-        fit: BoxFit.fill,
-        child: LiquidGlassSwitch(
-          value: value,
-          onChanged: onChanged,
-          activeThumbColor: colorScheme.primary,
-        ),
-      ),
-    );
-    final titleWidget = AnimatedDefaultTextStyle(
-      duration: const Duration(milliseconds: 300),
-      style: TextStyle(
-        fontWeight: FontWeight.bold,
-        fontSize: 14,
-        color: isSelected
-            ? colorScheme.primary
-            : theme.textTheme.bodyMedium?.color,
-        fontFamily: theme.textTheme.bodyMedium?.fontFamily,
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      child: Text(title),
-    );
-    final subtitleWidget = Text(
-      subtitle,
-      maxLines: isDesktop ? 1 : 2,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-    );
-
-    return GestureDetector(
-      onTap: () => onChanged(!value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-        padding: EdgeInsets.all(isDesktop ? 16 : 12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? colorScheme.primary.withValues(alpha: 0.1)
-              : (theme.brightness == Brightness.dark
-                  ? Colors.grey.shade900
-                  : Colors.grey.shade100),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? colorScheme.primary : Colors.transparent,
-            width: 2,
-          ),
-        ),
-        child: isDesktop
-            ? Row(
-                children: [
-                  iconWidget,
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        titleWidget,
-                        const SizedBox(height: 3),
-                        subtitleWidget,
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  switchWidget,
-                ],
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [iconWidget, switchWidget],
-                  ),
-                  const Spacer(),
-                  titleWidget,
-                  const SizedBox(height: 2),
-                  subtitleWidget,
-                ],
-              ),
-      ),
+    return SettingsToggleCard(
+      isDesktop: isDesktop,
+      title: title,
+      subtitle: subtitle,
+      icon: icon,
+      value: value,
+      onChanged: (value) => onChanged(value),
+      unselectedTitleColor: Theme.of(context).colorScheme.onSurface,
+      mobileTopSpacing: 10,
     );
   }
 
@@ -1058,7 +982,6 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           padding: const EdgeInsets.all(12.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1093,21 +1016,25 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                 ],
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 '课程提醒时间',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 4),
-              Expanded(
-                child: Text(
-                  '距上课提前 $_courseReminderMinutes 分钟提醒',
-                  style: TextStyle(
-                      fontSize: 11, color: Colors.grey[600], height: 1.2),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
+              Text(
+                '距上课提前 $_courseReminderMinutes 分钟提醒',
+                style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    height: 1.2),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -1303,7 +1230,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           physics: const NeverScrollableScrollPhysics(),
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
-          childAspectRatio: 1.1,
+          childAspectRatio: 1.3,
           children: _todoGroups.map((group) {
             final mins = _categoryReminderMinutes[group.id] ?? 5;
             return Card(
@@ -1323,7 +1250,6 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   padding: const EdgeInsets.all(12.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1360,22 +1286,24 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                       const SizedBox(height: 8),
                       Text(
                         group.name,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 14),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
-                      Expanded(
-                        child: Text(
-                          '点击设置该分类下的待办默认提前提醒时间',
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey[600],
-                              height: 1.2),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      Text(
+                        '点击设置该分类下的待办默认提前提醒时间',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                            height: 1.2),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),

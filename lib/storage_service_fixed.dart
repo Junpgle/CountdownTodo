@@ -50,7 +50,7 @@ mixin _StorageFixed on _StorageServiceBase {
       }
     }
 
-    final db = await DatabaseHelper.instance.database;
+    final db = await DatabaseHelper.instance.databaseForUser(username);
     final ids = deduped.keys.toList();
     final existingById = <String, Map<String, dynamic>>{};
     if (ids.isNotEmpty) {
@@ -127,7 +127,7 @@ mixin _StorageFixed on _StorageServiceBase {
     bool includeDeleted = false,
   }) async {
     try {
-      final db = await DatabaseHelper.instance.database;
+      final db = await DatabaseHelper.instance.databaseForUser(username);
       final maps = await db.query(
         'fixed_schedules',
         where: includeDeleted ? null : 'is_deleted = 0',
@@ -146,7 +146,7 @@ mixin _StorageFixed on _StorageServiceBase {
   ) async {
     final date = DateFormat('yyyy-MM-dd').format(day.toLocal());
     try {
-      final db = await DatabaseHelper.instance.database;
+      final db = await DatabaseHelper.instance.databaseForUser(username);
       final maps = await db.query(
         'fixed_schedules',
         where: 'is_deleted = 0 AND date = ?',
@@ -203,7 +203,7 @@ mixin _StorageFixed on _StorageServiceBase {
     }
 
     final dedupeList = dedupeMap.values.toList();
-    final db = await DatabaseHelper.instance.database;
+    final db = await DatabaseHelper.instance.databaseForUser(username);
 
     // 🚀 批量获取现有数据，用于审计
     Map<String, Map<String, dynamic>> existingItemsMap = {};
@@ -274,7 +274,7 @@ mixin _StorageFixed on _StorageServiceBase {
   Future<List<TodoPlanBlock>> getPlanBlocks(String username,
       {bool includeDeleted = false}) async {
     try {
-      final db = await DatabaseHelper.instance.database;
+      final db = await DatabaseHelper.instance.databaseForUser(username);
       final List<Map<String, dynamic>> maps = await db.query('todo_plan_blocks',
           where: includeDeleted ? null : 'is_deleted = 0');
 
@@ -304,7 +304,7 @@ mixin _StorageFixed on _StorageServiceBase {
   Future<List<TodoPlanBlock>> getPlanBlocksByTodo(
       String username, String todoId) async {
     try {
-      final db = await DatabaseHelper.instance.database;
+      final db = await DatabaseHelper.instance.databaseForUser(username);
       final maps = await db.query(
         'todo_plan_blocks',
         where: 'todo_uuid = ? AND is_deleted = 0',
@@ -330,7 +330,7 @@ mixin _StorageFixed on _StorageServiceBase {
         DateTime(day.year, day.month, day.day + 1).millisecondsSinceEpoch;
 
     try {
-      final db = await DatabaseHelper.instance.database;
+      final db = await DatabaseHelper.instance.databaseForUser(username);
       final List<Map<String, dynamic>> maps = await db.query(
         'todo_plan_blocks',
         where: 'is_deleted = 0 AND start_time >= ? AND start_time < ?',

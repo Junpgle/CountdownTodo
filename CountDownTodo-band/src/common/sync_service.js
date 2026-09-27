@@ -11,6 +11,10 @@ var connect = null
 var isConnected = false
 var batchBuffer = {}
 var pendingRequests = {}
+var BATCH_TIMEOUT_MS = 10000
+var REQUEST_TIMEOUT_MS = 12000
+var ALL_TIMEOUT_MS = 90000
+var MAX_BATCHES = 10000
 var isInitialized = false
 var diagMsg = ''
 
@@ -49,12 +53,16 @@ function logDebug(msg) {
 }
 
 function saveLocalData(type, data, callback) {
-  storage.set({
-    key: SYNC_KEY_PREFIX + type,
-    value: JSON.stringify(data),
-    success: function() { if (callback) callback(true) },
-    fail: function(err) { if (callback) callback(false) }
-  })
+  try {
+    storage.set({
+      key: SYNC_KEY_PREFIX + type,
+      value: JSON.stringify(data),
+      success: function() { if (callback) callback(true) },
+      fail: function(err) { if (callback) callback(false) }
+    })
+  } catch (error) {
+    if (callback) callback(false)
+  }
 }
 
 function adaptItem(type, item) {
@@ -100,35 +108,95 @@ function adaptItem(type, item) {
 }
 
 function resolveRequest(type, result) {
-  if (pendingRequests[type]) {
-    if (pendingRequests[type].timeout) {
-      clearTimeout(pendingRequests[type].timeout)
-    }
-    if (pendingRequests[type].callback) {
-      diagMsg = type + ':' + (result ? result.message : 'null')
-      pendingRequests[type].callback(result)
-    }
+  var pending = pendingRequests[type]
+  if (pending) {
     delete pendingRequests[type]
+    if (pending.timeout) {
+      clearTimeout(pending.timeout)
+    }
+    if (pending.callback) {
+      diagMsg = type + ':' + (result ? result.message : 'null')
+      pending.callback(result)
+    }
   }
 }
 
-function replacePhoneData(type, phoneData) {
+function reportSyncResult(type, transferId, success, message) {
+  if (!transferId) return
+  var conn = getConnect()
+  if (!conn || typeof conn.send !== 'function') return
+  try {
+    conn.send({
+      data: {
+        type: 'sync_result',
+        syncType: type,
+        transferId: transferId,
+        success: success,
+        message: message,
+        timestamp: Date.now()
+      },
+      success: function() {},
+      fail: function() {}
+    })
+  } catch (error) {
+    logDebug('Sync result send failed: ' + error.message)
+  }
+}
+
+function replacePhoneData(type, phoneData, transferId) {
+  var validItems
   if (!Array.isArray(phoneData)) {
-    saveLocalData(type, phoneData, null)
-    resolveRequest(type, { success: true, message: '已同步手机数据' })
-    if (onSyncDataReceived) onSyncDataReceived(type, phoneData)
+    saveLocalData(type, phoneData, function(saved) {
+      var result = saved
+        ? { success: true, message: '已同步手机数据' }
+        : { success: false, message: '手环存储失败' }
+      resolveRequest(type, result)
+      reportSyncResult(type, transferId, result.success, result.message)
+      if (saved && onSyncDataReceived) onSyncDataReceived(type, phoneData)
+    })
     return
   }
-  var validItems = []
+  validItems = []
   var i
-  for (i = 0; i < phoneData.length; i++) {
-    if (!(phoneData[i].is_deleted === 1 || phoneData[i].is_deleted === true)) {
-      validItems.push(adaptItem(type, phoneData[i]))
+  try {
+    for (i = 0; i < phoneData.length; i++) {
+      if (!phoneData[i] || typeof phoneData[i] !== 'object') {
+        throw new Error('无效数据项')
+      }
+      if (!(phoneData[i].is_deleted === 1 || phoneData[i].is_deleted === true)) {
+        validItems.push(adaptItem(type, phoneData[i]))
+      }
     }
+  } catch (error) {
+    logDebug('Invalid ' + type + ' data: ' + error.message)
+    resolveRequest(type, { success: false, message: '同步数据无效' })
+    reportSyncResult(type, transferId, false, '同步数据无效')
+    return
   }
-  saveLocalData(type, validItems, null)
-  resolveRequest(type, { success: true, message: '已同步 (' + validItems.length + '条)' })
-  if (onSyncDataReceived) onSyncDataReceived(type, validItems)
+  saveLocalData(type, validItems, function(saved) {
+    var result = saved
+      ? { success: true, message: '已同步 (' + validItems.length + '条)' }
+      : { success: false, message: '手环存储失败' }
+    resolveRequest(type, result)
+    reportSyncResult(type, transferId, result.success, result.message)
+    if (saved && onSyncDataReceived) onSyncDataReceived(type, validItems)
+  })
+}
+
+function clearBatch(type) {
+  var buffer = batchBuffer[type]
+  if (!buffer) return
+  if (buffer.timeout) clearTimeout(buffer.timeout)
+  delete batchBuffer[type]
+}
+
+function failBatch(type, message, transferId) {
+  var buffer = batchBuffer[type]
+  var failedTransferId = transferId || (buffer && buffer.transferId)
+  clearBatch(type)
+  logDebug(type + ':' + message)
+  resolveRequest(type, { success: false, message: message })
+  reportSyncResult(type, failedTransferId, false, message)
 }
 
 /**
@@ -194,47 +262,58 @@ function handleReceivedData(data) {
     }
 
     var batchData = parsedData.data
-    var batchNum = parsedData.batchNum || 1
-    var totalBatches = parsedData.totalBatches || 1
+    var batchNum = parsedData.batchNum === undefined ? 1 : parsedData.batchNum
+    var totalBatches = parsedData.totalBatches === undefined ? 1 : parsedData.totalBatches
+    var transferId = typeof parsedData.transferId === 'string' ? parsedData.transferId : null
 
-    if (totalBatches === 1) {
-      replacePhoneData(type, batchData)
+    if (typeof totalBatches !== 'number' || !isFinite(totalBatches) ||
+        totalBatches < 1 || totalBatches > MAX_BATCHES ||
+        Math.floor(totalBatches) !== totalBatches ||
+        typeof batchNum !== 'number' || !isFinite(batchNum) ||
+        batchNum < 1 || batchNum > totalBatches || Math.floor(batchNum) !== batchNum) {
+      failBatch(type, '同步批次无效', transferId)
       return
     }
 
-    if (!batchBuffer[type]) {
-      batchBuffer[type] = { batches: [], totalBatches: totalBatches, timeout: null }
+    if (totalBatches === 1) {
+      clearBatch(type)
+      replacePhoneData(type, batchData, transferId)
+      return
+    }
+
+    if (!Array.isArray(batchData)) {
+      failBatch(type, '同步批次数据无效', transferId)
+      return
     }
     var buffer = batchBuffer[type]
-    buffer.totalBatches = totalBatches
+    if (buffer && (buffer.totalBatches !== totalBatches ||
+        buffer.transferId !== transferId ||
+        (transferId === null && batchNum === 1 && buffer.batches[0] !== undefined))) {
+      reportSyncResult(type, buffer.transferId, false, '同步已由新传输替代')
+      clearBatch(type)
+      buffer = null
+    }
+    if (!buffer) {
+      buffer = { batches: [], receivedCount: 0, totalBatches: totalBatches, transferId: transferId, timeout: null }
+      batchBuffer[type] = buffer
+    }
+    if (buffer.batches[batchNum - 1] === undefined) buffer.receivedCount++
     buffer.batches[batchNum - 1] = batchData
-
-    var receivedCount = 0
-    var k
-    for (k = 0; k < buffer.batches.length; k++) {
-      if (buffer.batches[k] !== undefined) { receivedCount++ }
+    if (pendingRequests[type] && pendingRequests[type].timeout) {
+      clearTimeout(pendingRequests[type].timeout)
+      pendingRequests[type].timeout = null
     }
 
-    if (receivedCount >= buffer.totalBatches) {
-      replacePhoneData(type, flattenArray(buffer.batches))
-      delete batchBuffer[type]
+    if (buffer.receivedCount === totalBatches) {
+      clearBatch(type)
+      replacePhoneData(type, flattenArray(buffer.batches), transferId)
     } else {
       if (buffer.timeout) clearTimeout(buffer.timeout)
       buffer.timeout = setTimeout(function() {
-        var collectedData = []
-        var a, b
-        for (a = 0; a < buffer.batches.length; a++) {
-          if (buffer.batches[a] !== undefined) {
-            if (Array.isArray(buffer.batches[a])) {
-              for (b = 0; b < buffer.batches[a].length; b++) { collectedData.push(buffer.batches[a][b]) }
-            } else {
-              collectedData.push(buffer.batches[a])
-            }
-          }
+        if (batchBuffer[type] === buffer) {
+          failBatch(type, '同步数据缺批，已保留原数据')
         }
-        replacePhoneData(type, collectedData)
-        delete batchBuffer[type]
-      }, 10000)
+      }, BATCH_TIMEOUT_MS)
     }
   } catch (error) {
     logDebug('Handle error: ' + error.message)
@@ -273,15 +352,41 @@ function requestSyncFromPhone(type, onResult) {
     return
   }
 
+  if (pendingRequests[type]) {
+    resolveRequest(type, { success: false, message: '已由新同步请求替代' })
+  }
+  if (batchBuffer[type]) {
+    reportSyncResult(type, batchBuffer[type].transferId, false, '同步已由新请求替代')
+  }
+  clearBatch(type)
   var timeoutId = setTimeout(function() {
     resolveRequest(type, { success: false, message: '手机未响应' })
-  }, 8000)
+  }, REQUEST_TIMEOUT_MS)
 
   pendingRequests[type] = { callback: onResult, timeout: timeoutId }
 
   doSend(type, function(sent) {
     if (!sent) {
       resolveRequest(type, { success: false, message: '发送失败' })
+    }
+  })
+}
+
+// 将手环本地修改直接回传给手机 App。requestSyncFromPhone 只负责请求
+// 手机下发数据，不能复用来提交手环上的待办状态。
+function syncData(type, data, onResult) {
+  var conn = getConnect()
+  if (!conn || typeof conn.send !== 'function') {
+    if (onResult) onResult({ success: false, message: '未连接到手机App' })
+    return
+  }
+  conn.send({
+    data: { type: type, data: data, timestamp: Date.now() },
+    success: function() {
+      if (onResult) onResult({ success: true })
+    },
+    fail: function() {
+      if (onResult) onResult({ success: false, message: '发送失败' })
     }
   })
 }
@@ -422,7 +527,7 @@ function sendVersionInfo() {
   if (typeof conn.send !== 'function') return
 
   conn.send({
-    data: { type: 'band_info', version: appVersion, version_code: appVersionCode, timestamp: Date.now() },
+    data: { type: 'band_info', version: appVersion, version_code: appVersionCode, supports_sync_result: true, timestamp: Date.now() },
     success: function() {},
     fail: function() {}
   })
@@ -472,12 +577,14 @@ function syncAll(onResult) {
   var masterTimeout = setTimeout(function() {
     if (!done && onResult) {
       done = true
-      for (var i = idx; i < types.length; i++) {
-        results[types[i]] = { success: false, message: '超时' }
+      for (var i = 0; i < types.length; i++) {
+        if (!results[types[i]]) {
+          results[types[i]] = { success: false, message: '超时' }
+        }
       }
       onResult(results)
     }
-  }, 30000)
+  }, ALL_TIMEOUT_MS)
 
   function runNext() {
     if (done) return
@@ -506,6 +613,7 @@ module.exports = {
   adaptItem: adaptItem,
   saveLocalData: saveLocalData,
   requestSyncFromPhone: requestSyncFromPhone,
+  syncData: syncData,
   syncAll: syncAll,
   sendVersionInfo: sendVersionInfo,
   sendDebugLog: sendDebugLog,

@@ -21,6 +21,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   List<FinanceRecurringRule> _rules = const [];
   List<FinanceEntryTemplate> _templates = const [];
   List<FinanceCategory> _categories = const [];
+  List<FinancePaymentMethod> _paymentMethods = const [];
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
@@ -41,6 +42,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
         FinanceStorage.getRecurringRules(includeDeleted: true),
         FinanceStorage.getTemplates(includeDeleted: true),
         FinanceRepository.getCategories(includeArchived: true),
+        FinanceRepository.getPaymentMethods(includeArchived: true),
       ]);
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -58,6 +60,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
             .where((item) => item.isDeleted)
             .toList();
         _categories = values[5] as List<FinanceCategory>;
+        _paymentMethods = values[6] as List<FinancePaymentMethod>;
         _isLoading = false;
         _loadError = null;
       });
@@ -167,6 +170,9 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
     final categories = {
       for (final category in _categories) category.uuid: category
     };
+    final paymentMethods = {
+      for (final method in _paymentMethods) method.uuid: method
+    };
     return [
       for (final item in _transactions)
         FinanceTrashEntry(
@@ -174,7 +180,12 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
           kind: FinanceTrashKind.transaction,
           title: item.merchant?.trim().isNotEmpty == true
               ? item.merchant!
-              : categories[item.categoryUuid]?.name ?? item.type.label,
+              : categories[item.categoryUuid] == null
+                  ? item.type.label
+                  : financeCategoryDisplayName(
+                      categories[item.categoryUuid]!,
+                      _categories,
+                    ),
           details: [
             item.transactionDate,
             if (item.isInstallment)
@@ -189,14 +200,18 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
         FinanceTrashEntry(
           uuid: item.uuid,
           kind: FinanceTrashKind.budget,
-          title: item.isOverall
-              ? '全部支出预算'
-              : '${categories[item.categoryUuid]?.name ?? '已归档或未知分类'}预算',
+          title: item.isPaymentMethod
+              ? '${paymentMethods[item.paymentMethodUuid]?.name ?? '已归档或未知付款方式'}余额'
+              : item.isOverall
+                  ? '全部支出预算'
+                  : '${categories[item.categoryUuid] == null ? '已归档或未知分类' : financeCategoryDisplayName(categories[item.categoryUuid]!, _categories)}预算',
           details: [
             item.monthKey,
+            if (item.isPaymentMethod)
+              '${DateTime.fromMillisecondsSinceEpoch(item.updatedAt).month}月${DateTime.fromMillisecondsSinceEpoch(item.updatedAt).day}日录入',
             if (item.note?.isNotEmpty == true) item.note!
           ].join(' · '),
-          amountLabel: '预算额度',
+          amountLabel: item.isPaymentMethod ? '录入时余额' : '预算额度',
           amountMinor: item.amountMinor,
           onRestore: () => _restoreBudget(item),
         ),
@@ -242,7 +257,9 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('记账回收站'),
@@ -251,22 +268,28 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
               tooltip: '刷新', onPressed: _load, icon: const Icon(Icons.refresh)),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _loadError != null
-              ? FinancePageList(children: [
-                  FinanceEmptyState(
-                    icon: Icons.error_outline_rounded,
-                    title: '回收站加载失败',
-                    description: '请重新加载后再恢复记录。',
-                    actionLabel: '重新加载',
-                    onAction: _load,
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+                ? FinancePageList(topPadding: topBarHeight, children: [
+                    FinanceEmptyState(
+                      icon: Icons.error_outline_rounded,
+                      title: '回收站加载失败',
+                      description: '请重新加载后再恢复记录。',
+                      actionLabel: '重新加载',
+                      onAction: _load,
+                    ),
+                  ])
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: FinanceTrashManager(
+                      topPadding: topBarHeight,
+                      entries: _entries,
+                    ),
                   ),
-                ])
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: FinanceTrashManager(entries: _entries),
-                ),
+      ),
     );
   }
 }

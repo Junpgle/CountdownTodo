@@ -317,4 +317,72 @@ void main() {
 
     semantics.dispose();
   });
+
+  testWidgets('supports a wide action-only bar without home or focus tabs',
+      (tester) async {
+    var weeklyPressed = false;
+    var addPressed = false;
+    var pomodoroPressed = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 600,
+              height: 60,
+              child: FloatingBottomNavigationContent(
+                items: [
+                  FloatingBottomNavigationItem(
+                    icon: Icons.calendar_today_rounded,
+                    label: '周视图',
+                    selectable: false,
+                    onPressed: () => weeklyPressed = true,
+                  ),
+                  FloatingBottomNavigationItem(
+                    icon: Icons.add_rounded,
+                    label: '新增',
+                    selectable: false,
+                    onPressed: () => addPressed = true,
+                  ),
+                  FloatingBottomNavigationItem(
+                    iconWidget: const Text('🍅'),
+                    label: '番茄钟',
+                    selectable: false,
+                    onPressed: () => pomodoroPressed = true,
+                  ),
+                ],
+                selectedIndex: 0,
+                primaryColor: Colors.green,
+                inactiveColor: Colors.black87,
+                selectedBackgroundColor: const Color(0x339E9E9E),
+                onTabSelected: (_) {},
+                showSelectionLens: false,
+                keyPrefix: 'wide-actions',
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('首页'), findsNothing);
+    expect(find.text('专注'), findsNothing);
+    expect(
+      find.byKey(
+        const ValueKey<String>('wide-actions-selection-indicator'),
+      ),
+      findsNothing,
+    );
+    expect(find.bySemanticsLabel('周视图'), findsOneWidget);
+    expect(find.bySemanticsLabel('新增'), findsOneWidget);
+    expect(find.bySemanticsLabel('番茄钟'), findsOneWidget);
+
+    await tester.tap(find.text('周视图'));
+    await tester.tap(find.text('新增'));
+    await tester.tap(find.text('番茄钟'));
+    expect(weeklyPressed, isTrue);
+    expect(addPressed, isTrue);
+    expect(pomodoroPressed, isTrue);
+  });
 }

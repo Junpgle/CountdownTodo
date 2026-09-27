@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -99,7 +101,7 @@ class TodoConfirmScreen extends StatefulWidget {
   final List<Map<String, dynamic>> llmResults;
   final String? imagePath;
   final String? originalText;
-  final Function(List<Map<String, dynamic>>)? onConfirm;
+  final FutureOr<void> Function(List<Map<String, dynamic>>)? onConfirm;
   final Future<void> Function(FixedScheduleItem)? onFixedScheduleAdded;
   final VoidCallback? onSkip;
 
@@ -128,6 +130,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   int _fixedScheduleCount = 0;
   int _currentIndex = 0;
   bool _isRetrying = false;
+  bool _isSaving = false;
   String? _retryStatus;
   List<TodoGroup> _todoGroups = [];
   Map<String, int> _categoryReminderDefaults = {};
@@ -154,12 +157,13 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
 
   List<ParsedTodoResult> _parseResults(List<Map<String, dynamic>> results) {
     return results.map((rawResult) {
-      // Pending image results may have been produced by an older prompt or
-      // stored before the timeMode migration. Normalize them again here so a
-      // process restart cannot reintroduce the old start/end representation.
-      final result = widget.imagePath != null
-          ? RecognizedTodoAdapter.normalizeImageResult(rawResult)
-          : Map<String, dynamic>.from(rawResult);
+      // Pending recognition results may have been produced by an older prompt
+      // or stored before the timeMode migration. Normalize every result here
+      // so a process restart cannot reintroduce the old start/end semantics.
+      final result = RecognizedTodoAdapter.normalizeResult(
+        rawResult,
+        promoteSpecialTodo: widget.imagePath != null,
+      );
       final rawTimeMode = result['timeMode'] ?? result['time_mode'];
       final declaredTimeMode = RecognizedTodoAdapter.parseTimeMode(rawTimeMode);
       final startTime = RecognizedTodoAdapter.parseDateTime(
@@ -977,6 +981,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   }
 
   Future<void> _finishConfirm() async {
+    if (_isSaving) return;
     if (_confirmedTodos.isEmpty && _fixedScheduleCount == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('没有添加任何内容')),
@@ -986,32 +991,44 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       return;
     }
 
-    // 🚀 核心：移动图片到持久化目录
-    String? persistentImagePath;
-    if (_confirmedTodos.isNotEmpty && widget.imagePath != null) {
-      try {
-        persistentImagePath =
-            await persistImagePath(widget.imagePath!, 'analysis_images');
-        if (persistentImagePath != null) {
-          // debugPrint('📸 图片已持久化到: $persistentImagePath');
+    setState(() => _isSaving = true);
+
+    try {
+      // 🚀 核心：移动图片到持久化目录
+      String? persistentImagePath;
+      if (_confirmedTodos.isNotEmpty && widget.imagePath != null) {
+        try {
+          persistentImagePath =
+              await persistImagePath(widget.imagePath!, 'analysis_images');
+          if (persistentImagePath != null) {
+            // debugPrint('📸 图片已持久化到: $persistentImagePath');
+          }
+        } catch (e) {
+          // debugPrint('❌ 持久化图片失败: $e');
         }
-      } catch (e) {
-        // debugPrint('❌ 持久化图片失败: $e');
       }
-    }
 
-    // 将路径注入到所有待办中
-    if (persistentImagePath != null) {
-      for (var todo in _confirmedTodos) {
-        todo['imagePath'] = persistentImagePath;
+      // 将路径注入到所有待办中
+      if (persistentImagePath != null) {
+        for (var todo in _confirmedTodos) {
+          todo['imagePath'] = persistentImagePath;
+        }
       }
-    }
 
-    if (_confirmedTodos.isNotEmpty && widget.onConfirm != null) {
-      widget.onConfirm!(_confirmedTodos);
+      if (_confirmedTodos.isNotEmpty && widget.onConfirm != null) {
+        await widget.onConfirm!(_confirmedTodos);
+      }
+      if (!mounted) return;
+      Navigator.pop(context, _confirmedTodos);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存失败，请重试：$error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
-    if (!mounted) return;
-    Navigator.pop(context, _confirmedTodos);
   }
 
   @override
@@ -1020,8 +1037,10 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     final hasImage = localImageExists(imagePath);
     final bool hasMoreTodos = _currentIndex < _allTodos.length;
     final currentTodo = hasMoreTodos ? _allTodos[_currentIndex] : null;
+    final topBarHeight = floatingGlassTopBarHeight(context);
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: Text(hasMoreTodos
@@ -1045,116 +1064,120 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
             ),
         ],
       ),
-      body: _isRetrying
-          ? _buildSkeleton(Theme.of(context).brightness == Brightness.dark)
-          : Column(
-              children: [
-                // 图片预览（可折叠）
-                if (hasImage)
-                  Container(
-                    height: 120,
-                    width: double.infinity,
-                    margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: imagePath != null
-                          ? localImageWidget(imagePath, fit: BoxFit.contain)
-                          : const SizedBox.shrink(),
-                    ),
-                  ),
-
-                // 重试状态提示
-                if (_retryStatus != null)
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
+      body: Padding(
+        padding: EdgeInsets.only(top: topBarHeight),
+        child: _isRetrying
+            ? _buildSkeleton(Theme.of(context).brightness == Brightness.dark)
+            : Column(
+                children: [
+                  // 图片预览（可折叠）
+                  if (hasImage)
+                    Container(
+                      height: 120,
+                      width: double.infinity,
+                      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                       decoration: BoxDecoration(
-                        color: _isRetrying
-                            ? Theme.of(context).colorScheme.primary
-                            : (_retryStatus!.contains('失败')
-                                ? Colors.red
-                                : Colors.orange),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey),
                       ),
-                      child: Row(
-                        children: [
-                          if (_isRetrying)
-                            const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          else
-                            Icon(
-                              _retryStatus!.contains('失败')
-                                  ? Icons.error_outline
-                                  : Icons.info_outline,
-                              size: 16,
-                              color: _retryStatus!.contains('失败')
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: imagePath != null
+                            ? localImageWidget(imagePath, fit: BoxFit.contain)
+                            : const SizedBox.shrink(),
+                      ),
+                    ),
+
+                  // 重试状态提示
+                  if (_retryStatus != null)
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _isRetrying
+                              ? Theme.of(context).colorScheme.primary
+                              : (_retryStatus!.contains('失败')
                                   ? Colors.red
-                                  : Colors.orange,
-                            ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _retryStatus!,
-                              style: TextStyle(
-                                fontSize: 13,
+                                  : Colors.orange),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            if (_isRetrying)
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            else
+                              Icon(
+                                _retryStatus!.contains('失败')
+                                    ? Icons.error_outline
+                                    : Icons.info_outline,
+                                size: 16,
                                 color: _retryStatus!.contains('失败')
                                     ? Colors.red
-                                    : Colors.black87,
+                                    : Colors.orange,
+                              ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _retryStatus!,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: _retryStatus!.contains('失败')
+                                      ? Colors.red
+                                      : Colors.black87,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
+
+                  // 当前待办卡片 或 完成页面
+                  Expanded(
+                    child: _allTodos.isEmpty
+                        ? _buildEmptyState()
+                        : hasMoreTodos
+                            ? AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 350),
+                                transitionBuilder: (child, animation) {
+                                  final slideAnimation = Tween<Offset>(
+                                    begin: const Offset(0.3, 0.0),
+                                    end: Offset.zero,
+                                  ).animate(CurvedAnimation(
+                                    parent: animation,
+                                    curve: Curves.easeOutCubic,
+                                  ));
+                                  return FadeTransition(
+                                    opacity: animation,
+                                    child: SlideTransition(
+                                      position: slideAnimation,
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: _buildCurrentTodoCard(currentTodo!),
+                              )
+                            : _buildCompletedState(),
                   ),
 
-                // 当前待办卡片 或 完成页面
-                Expanded(
-                  child: _allTodos.isEmpty
-                      ? _buildEmptyState()
-                      : hasMoreTodos
-                          ? AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 350),
-                              transitionBuilder: (child, animation) {
-                                final slideAnimation = Tween<Offset>(
-                                  begin: const Offset(0.3, 0.0),
-                                  end: Offset.zero,
-                                ).animate(CurvedAnimation(
-                                  parent: animation,
-                                  curve: Curves.easeOutCubic,
-                                ));
-                                return FadeTransition(
-                                  opacity: animation,
-                                  child: SlideTransition(
-                                    position: slideAnimation,
-                                    child: child,
-                                  ),
-                                );
-                              },
-                              child: _buildCurrentTodoCard(currentTodo!),
-                            )
-                          : _buildCompletedState(),
-                ),
-
-                // 底部按钮
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: hasMoreTodos
-                        ? _buildConfirmButtons()
-                        : _buildDoneButton(),
+                  // 底部按钮
+                  SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: hasMoreTodos
+                          ? _buildConfirmButtons()
+                          : _buildDoneButton(),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+      ),
     );
   }
 
@@ -1181,6 +1204,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   }
 
   Widget _buildCurrentTodoCard(ParsedTodoResult todo) {
+    final colorScheme = Theme.of(context).colorScheme;
     return SingleChildScrollView(
       key: ValueKey(_currentIndex),
       padding: const EdgeInsets.all(16),
@@ -1242,14 +1266,14 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.grey,
+                    color: colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     todo.remark!,
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.grey,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -1266,19 +1290,23 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.green,
+                    color: colorScheme.tertiaryContainer,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.check_circle, size: 16, color: Colors.green),
+                      Icon(
+                        Icons.check_circle,
+                        size: 16,
+                        color: colorScheme.onTertiaryContainer,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         '已添加 ${_confirmedTodos.length} 个待办',
                         style: TextStyle(
                           fontSize: 13,
-                          color: Colors.green,
+                          color: colorScheme.onTertiaryContainer,
                         ),
                       ),
                     ],
@@ -1293,6 +1321,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   }
 
   Widget _buildTimeInfo(ParsedTodoResult todo) {
+    final colorScheme = Theme.of(context).colorScheme;
     String timeText;
     IconData timeIcon;
 
@@ -1337,13 +1366,13 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
 
     return Row(
       children: [
-        Icon(timeIcon, size: 18, color: Colors.grey),
+        Icon(timeIcon, size: 18, color: colorScheme.onSurfaceVariant),
         const SizedBox(width: 8),
         Text(
           timeText,
           style: TextStyle(
             fontSize: 14,
-            color: Colors.grey,
+            color: colorScheme.onSurfaceVariant,
           ),
         ),
       ],
@@ -1386,7 +1415,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed: _isRetrying ? null : _confirmCurrentTodo,
+            onPressed: _isRetrying || _isSaving ? null : _confirmCurrentTodo,
             icon: const Icon(Icons.add),
             label: const Text('确认并添加'),
             style: FilledButton.styleFrom(
@@ -1400,7 +1429,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _isRetrying ? null : _skipCurrentTodo,
+                onPressed: _isRetrying || _isSaving ? null : _skipCurrentTodo,
                 icon: const Icon(Icons.skip_next),
                 label: const Text('跳过'),
                 style: OutlinedButton.styleFrom(
@@ -1411,7 +1440,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _isRetrying
+                onPressed: _isRetrying || _isSaving
                     ? null
                     : () async {
                         final remaining = _allTodos.sublist(_currentIndex);
@@ -1425,7 +1454,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                             _confirmedTodos.add(todo.toMap());
                           }
                         }
-                        _finishConfirm();
+                        await _finishConfirm();
                       },
                 icon: const Icon(Icons.done_all),
                 label: const Text('全部添加'),

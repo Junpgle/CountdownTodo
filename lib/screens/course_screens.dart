@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import '../course_import/course_schedule_semantics.dart';
 import '../services/course_service.dart';
 import '../services/pomodoro_service.dart';
 import '../services/power_save_mode_service.dart';
@@ -9,10 +12,12 @@ import '../storage_service.dart';
 import '../utils/app_color_utils.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/android_energy_policy.dart';
+import '../utils/calendar_date_math.dart';
 import '../utils/local_image_provider.dart';
 import '../utils/page_transitions.dart';
 import 'time_log_screen.dart';
 import 'course_month_view.dart';
+import 'fixed_schedule_detail_screen.dart';
 import '../widgets/app_detail_widgets.dart';
 import '../utils/theme_color_tokens.dart';
 import '../utils/todo_recurrence_calendar_index.dart';
@@ -58,6 +63,11 @@ class _HiddenTimeRange {
 class _TimelineEvent {
   final double top;
   final double bottom;
+
+  /// The actual time boundary used for column allocation. [bottom] may be
+  /// extended for a readable minimum card height without making adjacent
+  /// records look like overlapping events.
+  final double collisionBottom;
   final Widget Function(double left, double width) builder;
   int columnIndex = 0;
   int maxColumns = 1;
@@ -66,8 +76,9 @@ class _TimelineEvent {
   _TimelineEvent({
     required this.top,
     required this.bottom,
+    double? collisionBottom,
     required this.builder,
-  });
+  }) : collisionBottom = collisionBottom ?? bottom;
 }
 
 class _WeeklyCourseScreenState extends _WeeklyCourseScreenStateBase

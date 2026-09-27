@@ -60,12 +60,14 @@ class PlatformBootstrap {
   }) {
     if (!AppPlatform.isDesktop) return;
 
-    const windowOptions = WindowOptions(
+    final windowOptions = WindowOptions(
       size: Size(1280, 720),
       center: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.normal,
+      titleBarStyle:
+          AppPlatform.isMacOS ? TitleBarStyle.hidden : TitleBarStyle.normal,
+      windowButtonVisibility: AppPlatform.isMacOS ? false : true,
     );
 
     windowManager.waitUntilReadyToShow(windowOptions, () async {

@@ -11,10 +11,34 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 52;
+  static const int currentVersion = 55;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 55,
+      title: '记账分类名称自定义',
+      changes: [
+        '系统预设的大类和小类均可自定义名称，并保留原有自定义图标。',
+        '云同步服务支持名称覆盖标记，旧服务端不会误确认名称变更。',
+      ],
+    ),
+    DatabaseSchemaChange(
+      version: 54,
+      title: '付款方式月度额度',
+      changes: [
+        '支持按月份和付款方式分别设置可用额度。',
+        '为每种付款方式显示本月已用金额和剩余金额。',
+      ],
+    ),
+    DatabaseSchemaChange(
+      version: 53,
+      title: '记账分类自定义图标同步',
+      changes: [
+        '系统预设分类允许自定义图标，并在个人设备间云同步。',
+        '区分系统默认图标与用户修改，避免新设备初始化覆盖云端图标。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 52,
       title: 'MiMo 精确计费',

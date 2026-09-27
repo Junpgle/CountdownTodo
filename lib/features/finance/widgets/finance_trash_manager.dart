@@ -38,9 +38,14 @@ class FinanceTrashEntry {
 }
 
 class FinanceTrashManager extends StatefulWidget {
+  final double topPadding;
   final List<FinanceTrashEntry> entries;
 
-  const FinanceTrashManager({super.key, required this.entries});
+  const FinanceTrashManager({
+    super.key,
+    this.topPadding = 0,
+    required this.entries,
+  });
 
   @override
   State<FinanceTrashManager> createState() => _FinanceTrashManagerState();
@@ -86,7 +91,7 @@ class _FinanceTrashManagerState extends State<FinanceTrashManager> {
                     .toLowerCase()
                     .contains(query)))
         .toList();
-    return FinancePageList(children: [
+    return FinancePageList(topPadding: widget.topPadding, children: [
       const FinancePageIntro(
         icon: Icons.restore_from_trash_outlined,
         title: '找回需要的记录',

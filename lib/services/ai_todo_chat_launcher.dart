@@ -131,6 +131,10 @@ class AiTodoChatLauncher {
         'remark': t.remark ?? '',
         'startTime': _formatEpochMillis(t.createdDate),
         'endTime': _formatDateTime(t.dueDate),
+        // Keep the canonical field available to the model context. The
+        // start/end aliases remain only for the client-side action executor's
+        // legacy snapshot handling and must not be used as prompt examples.
+        'dueDate': _formatDateTime(t.dueDate),
         'timeMode': t.timeMode.name,
         'isAllDay': t.isAllDayTask,
         'isDone': t.isDone,

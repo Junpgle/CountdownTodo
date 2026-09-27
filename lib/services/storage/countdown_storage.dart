@@ -64,7 +64,7 @@ class CountdownStorage {
     unawaited(_clearCountdownPrefsMirror(username));
 
     final dbHelper = DatabaseHelper.instance;
-    final db = await dbHelper.database;
+    final db = await dbHelper.databaseForUser(username);
 
     Map<String, Map<String, dynamic>> existingItemsMap = {};
     if (!isSyncSource && dedupeList.isNotEmpty) {
@@ -155,7 +155,7 @@ class CountdownStorage {
     final prefs = await SharedPreferences.getInstance();
     try {
       final dbHelper = DatabaseHelper.instance;
-      final db = await dbHelper.database;
+      final db = await dbHelper.databaseForUser(username);
       await StorageConflictCleanup.clearGhostConflictFlags(db);
 
       final String migrationKey = "migrated_countdowns_$username";

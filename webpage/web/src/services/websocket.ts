@@ -98,7 +98,7 @@ export class WsService {
     });
     if (token) params.set('token', token);
     const url = `${wsBase}/ws?${params.toString()}`;
-    console.log(`[WS] connecting to ${url}`);
+    console.log(`[WS] connecting to ${ApiService.getBackendKey()} backend`);
 
     let ws: WebSocket;
     try {

@@ -1,7 +1,8 @@
 # Feature status
 
-Last checked against the working tree: 2026-08-25. This is a capability map,
-not a release promise.
+Global-search coverage checked against the working tree: 2026-09-26. This is a
+capability map, not a release promise; other entries retain the 2026-08-25
+review baseline.
 
 ## Implemented
 
@@ -19,12 +20,17 @@ not a release promise.
   30-item list, cloud template catalog and share-code parsing.
 - Alibaba Cloud delta sync, conflict inbox/history/rollback, collaboration and
   WebSocket-driven live updates.
-- Global search with FTS5/FTS4/LIKE fallback and search-history statistics.
+- Global search with FTS5/FTS4/LIKE fallback across core SQLite records, finance,
+  journal, schedules, plan blocks, check-ins, challenges, AI chat and team data;
+  result destinations include native detail/edit screens and a generic detail
+  page, with a shared-container open/return transition. See
+  `docs/features/global-search.md` for remote-source limits.
 - Data import/export screens, theme customization, updates (including Wi-Fi
   auto-download of update packages) and onboarding.
 - AI chat/actions covering todos, fixed schedules, plan blocks, time logs,
-  Pomodoro, countdowns, groups and tags. Dedicated parser/action regression
-  tests are still sparse.
+  Pomodoro, countdowns, groups and tags, plus finance drafts and read/update/delete
+  actions through the separate finance protocol. Dedicated parser/action
+  regression tests are still sparse.
 - Rule-based medal recommendations plus an ML/bandit recommendation path; the
   catalog currently contains 100 medals.
 - Home sidebar configuration (hide/reorder entries), minor mode with an

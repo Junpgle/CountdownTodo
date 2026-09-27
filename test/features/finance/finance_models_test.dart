@@ -168,6 +168,29 @@ void main() {
     expect(financeMonthKey(DateTime(2026, 8, 27)), '2026-08');
   });
 
+  test('付款方式月额度使用独立范围并可在 SQLite/JSON 字段间往返', () {
+    final original = FinanceBudget(
+      uuid: 'payment-budget-1',
+      monthKey: '2026-08',
+      paymentMethodUuid: 'payment-card',
+      amountMinor: 30000,
+    );
+
+    final restored = FinanceBudget.fromMap(original.toJson());
+
+    expect(restored.paymentMethodUuid, 'payment-card');
+    expect(restored.isPaymentMethod, isTrue);
+    expect(restored.isOverall, isFalse);
+    expect(
+      FinanceBudget.stableUuid(
+        '2026-08',
+        null,
+        paymentMethodUuid: 'payment-card',
+      ),
+      isNot(FinanceBudget.stableUuid('2026-08', null)),
+    );
+  });
+
   test('退款会以正向现金流显示，但保留退款类型', () {
     expect(
       formatSignedFinanceAmount(800, FinanceTransactionType.expense),
@@ -211,6 +234,73 @@ void main() {
     expect(summary.balanceMinor, 6200);
   });
 
+  test('已加载的交易列表可以直接生成概览汇总', () {
+    final summary = FinanceRepository.summarizeTransactions([
+      FinanceTransaction(
+        uuid: 'summary-income',
+        type: FinanceTransactionType.income,
+        amountMinor: 10000,
+        transactionDate: '2026-09-01',
+        categoryUuid: 'salary',
+      ),
+      FinanceTransaction(
+        uuid: 'summary-expense',
+        amountMinor: 5000,
+        transactionDate: '2026-09-02',
+        categoryUuid: 'food',
+      ),
+      FinanceTransaction(
+        uuid: 'summary-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 1200,
+        transactionDate: '2026-09-03',
+        categoryUuid: 'food',
+      ),
+    ]);
+
+    expect(summary.incomeMinor, 10000);
+    expect(summary.expenseMinor, 5000);
+    expect(summary.refundMinor, 1200);
+    expect(summary.netExpenseMinor, 3800);
+    expect(summary.expenseByCategory['food'], 3800);
+    expect(summary.expenseByDate['2026-09-02'], 5000);
+    expect(summary.expenseByDate['2026-09-03'], -1200);
+  });
+
+  test('付款方式净扣减按支出扣除退款并忽略收入', () {
+    final spending = FinanceRepository.summarizePaymentMethodSpending([
+      FinanceTransaction(
+        uuid: 'card-expense',
+        amountMinor: 10000,
+        paymentMethodUuid: 'payment-card',
+        transactionDate: '2026-09-01',
+      ),
+      FinanceTransaction(
+        uuid: 'card-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 2500,
+        paymentMethodUuid: 'payment-card',
+        transactionDate: '2026-09-02',
+      ),
+      FinanceTransaction(
+        uuid: 'wallet-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 4000,
+        paymentMethodUuid: 'payment-wallet',
+        transactionDate: '2026-09-03',
+      ),
+      FinanceTransaction(
+        uuid: 'card-income',
+        type: FinanceTransactionType.income,
+        amountMinor: 9000,
+        paymentMethodUuid: 'payment-card',
+        transactionDate: '2026-09-04',
+      ),
+    ]);
+
+    expect(spending, {'payment-card': 7500, 'payment-wallet': -4000});
+  });
+
   test('默认分类和付款方式使用稳定 ID', () {
     expect(
       FinanceDefaults.categories.map((item) => item['uuid']).toSet().length,
@@ -220,6 +310,64 @@ void main() {
       FinanceDefaults.paymentMethods.map((item) => item['uuid']).toSet().length,
       FinanceDefaults.paymentMethods.length,
     );
+  });
+
+  test('默认细分类使用父分类 UUID，并能生成可读路径', () {
+    final parent = FinanceCategory.fromMap(
+      FinanceDefaults.categories.firstWhere(
+        (item) => item['uuid'] == 'finance-system-category-food',
+      ),
+    );
+    final child = FinanceCategory.fromMap(
+      FinanceDefaults.categories.firstWhere(
+        (item) => item['uuid'] == 'finance-system-category-food-milk-tea',
+      ),
+    );
+
+    expect(child.parentUuid, parent.uuid);
+    expect(
+      financeCategoryDisplayName(child, [parent, child]),
+      '餐饮 - 奶茶',
+    );
+    expect(
+      FinanceDefaults.categories
+          .where((item) => item['parent_uuid'] != null)
+          .every((item) => FinanceDefaults.categories.any(
+                (parent) => parent['uuid'] == item['parent_uuid'],
+              )),
+      isTrue,
+    );
+  });
+
+  test('餐饮默认分类包含网购小类', () {
+    final onlineShopping = FinanceDefaults.categories.firstWhere(
+      (item) => item['uuid'] == 'finance-system-category-food-online-shopping',
+    );
+
+    expect(onlineShopping['name'], '网购');
+    expect(
+      onlineShopping['parent_uuid'],
+      'finance-system-category-food',
+    );
+    expect(onlineShopping['type'], 'expense');
+  });
+
+  test('分类图标自定义标记会进入本地映射与云同步载荷', () {
+    final category = FinanceCategory(
+      uuid: 'finance-system-category-food',
+      name: '餐饮',
+      icon: '🥗',
+      isSystem: true,
+      iconCustomized: true,
+      nameCustomized: true,
+    );
+
+    final map = category.toMap();
+    expect(map['icon'], '🥗');
+    expect(map['icon_customized'], 1);
+    expect(map['name_customized'], 1);
+    expect(FinanceCategory.fromMap(map).iconCustomized, isTrue);
+    expect(FinanceCategory.fromMap(map).nameCustomized, isTrue);
   });
 
   test('记账云同步按账号默认关闭并相互隔离', () async {
@@ -239,5 +387,4 @@ void main() {
       isFalse,
     );
   });
-
 }

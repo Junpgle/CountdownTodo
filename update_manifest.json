@@ -1,10 +1,10 @@
 {
-  "version_code": 60206,
-  "version_name": "6.2.6",
+  "version_code": 60435,
+  "version_name": "6.4.35",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 6.2.6",
-    "description": "【新增】支持只读读取手机系统日历，并在首页今日日程、周视图、半月视图和月视图展示；全天、跨日和瞬时日程也可识别。\n【新增】增加手机日历一次性功能引导和可持久化开关，日历内容仅用于展示，不写入应用数据或参与同步。\n【优化】统一课程、待办和手机日历详情展示，支持从卡片容器共享动画进入详情。\n【修复】修复首页短内容滚动回弹、慢速上滑被长按手势拦截，以及首页手机日程展示问题。\n【优化】统一管理类页面、快捷入口和 Android 快捷方式导航，提升常用功能可达性。\n【新增】新增挑战中心首页与挑战库入口，保留经典挑战内容。\n【优化】Android 接入系统省电模式联动，降低传感器、后台任务、通知和空闲动画唤醒，减少持续耗电。\n【适配】完善 Android 17 权限、自由窗和窗口渲染适配。\n【优化】手环后台通信改为按需启停，新增持久化开关，默认关闭以降低耗电。\n【新增】AI 助手支持多模态、智能上下文和会话回访，完善模型设置。\n【优化】完善 AI 计费与用量统计，补齐 MiMo、智谱和 DeepSeek 计费精度及本月费用入账。\n【新增】AI 习惯支持目标与规划动作，并优化习惯交互提示。\n【新增】个人记账新增分期与贷款管理，并补齐贷款同步、备份和退款边界。\n【优化】优化个人时间轴展示账本收支和图片识别待办去重，增强跨功能一致性。",
+    "title": "版本更新 6.4.35",
+    "description": "【新增】个人记账支持自定义系统分类名称。\n【新增】付款方式支持月度额度设置与当月剩余额度统计。\n【优化】完善记账分类详情、账单筛选和大类名称显示，优化相关页面转场并收拢首页快捷入口。\n【新增】扩展全局搜索可检索的数据类型与内容。\n【优化】支持调节液态玻璃透明度，统一顶部操作与设置切换卡片交互。\n【优化】完善习惯与重复待办联动、专注启动和循环日期计算；仅习惯展示的未完成系列不再计入逾期任务。\n【修复】修复番茄钟空闲页顶栏高度和专注计时动画显示异常。\n【修复】修复冷启动重复弹出界面，并恢复登录会话用户标识。\n【修复】修复 Android 超级岛和通知中取件信息、特殊待办显示不完整。\n【修复】防止手环同步不完整批次覆盖有效缓存。\n【修复】修正日历夏令时日期偏差，并统一重复待办日期计算。\n【修复】隔离团队与网页缓存，并避免网页 WebSocket 日志输出令牌。\n【优化】改进 AI 旧协议数据清洗，降低历史格式导致的误识别。\n【优化】稳定网页首页动态效果，改善跨页面操作体验。",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "mac_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
@@ -15,6 +15,62 @@
     },
     "android_delta_packages": {
       "arm64-v8a": [
+        {
+          "from_version": "6.4.1",
+          "from_sha256": "c2e87c860212e82fa77154a3b4cb585ac48e4d4edf80a502fb4aac9875fed665",
+          "to_version": "6.4.35",
+          "to_sha256": "669bcd444782a9823e65f9976e124d7f4e85771453acac4d7e7393c582821391",
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-6.4.1_to_6.4.35.patch",
+          "patch_size": 24581072,
+          "full_apk_size": 42704103,
+          "operation_count": 14,
+          "copied_bytes": 18123249,
+          "embedded_bytes": 24580854,
+          "algorithm": "apk-zip-local-spans",
+          "recommended": true
+        },
+        {
+          "from_version": "6.3.10",
+          "from_sha256": "d32b25d856f55135fba4f2bc79a2ffe61aa943b8c7473b1419eedff151477c04",
+          "to_version": "6.4.1",
+          "to_sha256": "c2e87c860212e82fa77154a3b4cb585ac48e4d4edf80a502fb4aac9875fed665",
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-6.3.10_to_6.4.1.patch",
+          "patch_size": 25284898,
+          "full_apk_size": 42638339,
+          "operation_count": 20,
+          "copied_bytes": 17353737,
+          "embedded_bytes": 25284602,
+          "algorithm": "apk-zip-local-spans",
+          "recommended": true
+        },
+        {
+          "from_version": "6.3.10",
+          "from_sha256": "d32b25d856f55135fba4f2bc79a2ffe61aa943b8c7473b1419eedff151477c04",
+          "to_version": "6.4.0",
+          "to_sha256": "763402620f11b806f9662c1609c87851bbfe9e7655d43513387da3f0b61ac47f",
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-6.3.10_to_6.4.0.patch",
+          "patch_size": 23093491,
+          "full_apk_size": 42638107,
+          "operation_count": 16,
+          "copied_bytes": 19544860,
+          "embedded_bytes": 23093247,
+          "algorithm": "apk-zip-local-spans",
+          "recommended": true
+        },
+        {
+          "from_version": "6.2.8",
+          "from_sha256": "cfbbb2394cca5258282a56c0ac152acaa2cf3672f50c23a7399c26abe40c017c",
+          "to_version": "6.3.10",
+          "to_sha256": "d32b25d856f55135fba4f2bc79a2ffe61aa943b8c7473b1419eedff151477c04",
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-6.2.8_to_6.3.10.patch",
+          "patch_size": 25352410,
+          "full_apk_size": 42637827,
+          "operation_count": 46,
+          "copied_bytes": 17286051,
+          "embedded_bytes": 25351776,
+          "algorithm": "apk-zip-local-spans",
+          "recommended": true
+        },
         {
           "from_version": "5.7.56",
           "from_sha256": "d7df94198a46732017e80988aa1a0fd66b87fdcea044ceeef3de8c2076ee6eec",
@@ -55,6 +111,20 @@
           "embedded_bytes": 24859519,
           "algorithm": "apk-zip-local-spans",
           "recommended": true
+        },
+        {
+          "from_version": "6.2.6",
+          "from_sha256": "94e88cba017333ece2b0fe5e14c10333c22846db22db8ab6b420202f2fc23a35",
+          "to_version": "6.2.8",
+          "to_sha256": "cfbbb2394cca5258282a56c0ac152acaa2cf3672f50c23a7399c26abe40c017c",
+          "patch_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-6.2.6_to_6.2.8.patch",
+          "patch_size": 24902248,
+          "full_apk_size": 42177947,
+          "operation_count": 46,
+          "copied_bytes": 17276333,
+          "embedded_bytes": 24901614,
+          "algorithm": "apk-zip-local-spans",
+          "recommended": true
         }
       ]
     }
@@ -75,14 +145,6 @@
       "content": "20260614已更新注册登录逻辑，加入人机验证，旧版本的用户退出账号后可能无法正常登录，请更新到最新版本！",
       "remind_mode": "once",
       "target_versions": []
-    }，
-    {
-      "show": true,
-      "id": "ann_20260916_001",
-      "title": "新版本发布提醒",
-      "content": "20260916已发布Android新版本，由于手头没有Windows电脑，不能构建Windows包。希望抢先体验新版本的可以手动前往设置-强制获取最新版完整包进行更新。",
-      "remind_mode": "once",
-      "target_versions": []
     }
   ],
   "wallpaper": {
@@ -90,6 +152,79 @@
     "image_url": "https://gitee.com/Junpgle/CountdownTodo/raw/master/wallpapergitee/15.jpg"
   },
   "changelog_history": [
+    {
+      "version_name": "6.4.35",
+      "date": "2026-09-27",
+      "items": [
+        "【新增】个人记账支持自定义系统分类名称。",
+        "【新增】付款方式支持月度额度设置与当月剩余额度统计。",
+        "【优化】完善记账分类详情、账单筛选和大类名称显示，优化相关页面转场并收拢首页快捷入口。",
+        "【新增】扩展全局搜索可检索的数据类型与内容。",
+        "【优化】支持调节液态玻璃透明度，统一顶部操作与设置切换卡片交互。",
+        "【优化】完善习惯与重复待办联动、专注启动和循环日期计算；仅习惯展示的未完成系列不再计入逾期任务。",
+        "【修复】修复番茄钟空闲页顶栏高度和专注计时动画显示异常。",
+        "【修复】修复冷启动重复弹出界面，并恢复登录会话用户标识。",
+        "【修复】修复 Android 超级岛和通知中取件信息、特殊待办显示不完整。",
+        "【修复】防止手环同步不完整批次覆盖有效缓存。",
+        "【修复】修正日历夏令时日期偏差，并统一重复待办日期计算。",
+        "【修复】隔离团队与网页缓存，并避免网页 WebSocket 日志输出令牌。",
+        "【优化】改进 AI 旧协议数据清洗，降低历史格式导致的误识别。",
+        "【优化】稳定网页首页动态效果，改善跨页面操作体验。"
+      ]
+    },
+    {
+      "version_name": "6.4.1",
+      "date": "2026-09-21",
+      "items": [
+        "【修复】修复更新清单被错误标记为有更新时仍触发 Wi-Fi 自动下载的问题。",
+        "【优化】更新下载仅在真实 Wi-Fi 网络且目标版本高于当前版本时执行，避免重复下载已有安装包。",
+        "【优化】更新中心读取 APK 内部版本号，并在完整安装包下载完成后显示实际版本。"
+      ]
+    },
+    {
+      "version_name": "6.4.0",
+      "date": "2026-09-20",
+      "items": [
+        "【修复】修复时间日志窄屏时补录、标签管理和刷新按钮被 AI 助手挤出顶栏的问题。",
+        "【修复】修复 AI 识别待办结果页顶栏内容被遮挡、显示到屏幕外的问题。",
+        "【修复】Android 小组件支持固定日程展示，并兼容时间待定、结束待定和地点信息。",
+        "【优化】番茄钟和屏幕使用时间页面顶栏支持渐隐，改善内容空间。",
+        "【优化】网页版入口收敛为新版 Flutter Web Beta，减少旧入口误导。"
+      ]
+    },
+    {
+      "version_name": "6.3.10",
+      "date": "2026-09-16",
+      "items": [
+        "【新增】个人记账支持内置金额计算器，可直接输入四则运算并将计算过程写入备注。",
+        "【新增】完善个人记账分类大类/小类管理、分类详情筛选与图标云同步，快速录入流程更完整。",
+        "【新增】番茄钟支持专注期间勿扰，并同步专注状态与系统勿扰状态。",
+        "【新增】课表支持固定日程，统一固定日程的数据生命周期、详情页和共享转场。",
+        "【优化】完善多学期课表导入、共存/替换、云端读写和删除刷新，避免学期配置漂移。",
+        "【修复】修复外部分享多文件处理、局域网同步确认、提醒调度所有权、待办账户归属及同步重复上传问题。",
+        "【兼容】支持原生 HTTP 直连与历史迁移，统一阿里云直连和 HTTPS 中转线路。",
+        "【优化】统一玻璃顶栏与内容避让，修复周视图、规划、习惯、屏幕时间和番茄钟统计首屏遮挡及多余空隙。",
+        "【修复】修复课程时间轴相邻记录碰撞布局，并完善固定日程详情转场。",
+        "【优化】优化懒加载返回、预测式返回和共享容器动画，提升页面生命周期稳定性。",
+        "【适配】完善 macOS 自绘窗口、无标题栏、登录项、状态栏提醒和灵动岛显示。",
+        "【优化】补充课程系列进度汇总，完善习惯中心同步与页面适配。"
+      ]
+    },
+    {
+      "version_name": "6.2.8",
+      "date": "2026-09-06",
+      "items": [
+        "【新增】新增 AI 助手行为设置页，支持调整助手交互偏好。",
+        "【优化】优化 AI 多模态识别、智能上下文和记账解析，修复空结果、错误分类、重复打开记账页及旧协议误建待办。",
+        "【修复】图片分享识别持久化临时图片，避免外部分享文件过期导致识别失败。",
+        "【修复】修复 Android 通知栏提前完成番茄钟后仍继续计时的问题。",
+        "【优化】课表导入先校验登录与目标学期，支持多学期隔离，并为缺少时间的课程提供补全。",
+        "【修复】修复多个学校课表解析器的周次、日期、时间和重复课程问题。",
+        "【新增】Android 分享面板按用途拆分为课表导入、图片识别、记账导入和文件保存；文件保存保留原始字节。",
+        "【修复】修复外部分享课表卡在处理中，增加读取、去重超时和安全收尾。",
+        "【优化】macOS 灵动岛忽略剪贴板网址，减少无关网址触发。"
+      ]
+    },
     {
       "version_name": "6.2.6",
       "date": "2026-09-03",
@@ -181,7 +316,8 @@
         "【优化】首页优先展示未完成的习惯",
         "【优化】拆分更新日志和引导"
       ]
-    },{
+    },
+    {
       "version_name": "5.6.14",
       "date": "2026-08-03",
       "items": [
@@ -200,7 +336,8 @@
         "【新增】挑战支持从云端下放",
         "【新增】自定义挑战支持分享"
       ]
-    },{
+    },
+    {
       "version_name": "5.6.5",
       "date": "2026-08-02",
       "items": [
@@ -218,7 +355,8 @@
         "【修复】4. 修复Android小组件进度文本乱码问题",
         "【修复】5. 修复底层SQL解析异常"
       ]
-    },{
+    },
+    {
       "version_name": "5.5.27",
       "date": "2026-07-31",
       "items": [
@@ -234,7 +372,8 @@
         "【新增】支持本地 MCP 待办服务 Beta",
         "【优化】AI适配待办与日程语义"
       ]
-    },{
+    },
+    {
       "version_name": "5.4.21",
       "date": "2026-07-17",
       "items": [
@@ -255,7 +394,8 @@
         "【新增】灵动岛适配Mac网易云播放，支持歌词展示",
         "【优化】权限管理新UI"
       ]
-    },{
+    },
+    {
       "version_name": "5.3.16",
       "date": "2026-07-04",
       "items": [
@@ -285,7 +425,8 @@
         "【新增】团队分享支持以链接查看",
         "【修复】浏览器上日历无法导出的问题"
       ]
-    },{
+    },
+    {
       "version_name": "5.2.11",
       "date": "2026-06-28",
       "items": [
@@ -308,7 +449,8 @@
         "【优化】详情界面适配横屏",
         "【新增】手动强制下载最新版本"
       ]
-    },{
+    },
+    {
       "version_name": "5.1.4",
       "date": "2026-06-21",
       "items": [
@@ -337,7 +479,8 @@
         "【修复】周视图界面滑动后不响应的问题",
         "【优化】批量添加标签界面适配新版面包屑标题"
       ]
-    },{
+    },
+    {
       "version_name": "5.0.8",
       "date": "2026-06-18",
       "items": [
@@ -352,7 +495,8 @@
         "【新增】支持更新源偏好设置",
         "【修复】课程板块在没有课程的时候不隐藏的问题"
       ]
-    },{
+    },
+    {
       "version_name": "5.0.0",
       "date": "2026-06-17",
       "items": [
@@ -370,7 +514,8 @@
         "【重构】设置界面，分类更清晰直观",
         "【修复】解决了一些已知问题"
       ]
-    },{
+    },
+    {
       "version_name": "4.15.11",
       "date": "2026-06-15",
       "items": [
@@ -386,7 +531,8 @@
         "【优化】网页番茄钟界面移动端体验",
         "【优化】优化周视图的排版，待办也能显示备注"
       ]
-    },{
+    },
+    {
       "version_name": "4.15.7",
       "date": "2026-06-11",
       "items": [
@@ -403,7 +549,8 @@
         "【去除】过时的选项",
         "【优化】关于此应用界面宽屏优化，支持mac"
       ]
-    },{
+    },
+    {
       "version_name": "4.14.15",
       "date": "2026-06-08",
       "items": [
@@ -416,7 +563,8 @@
         "【新增】更新后的开屏首页区分开未联网和无日志的情况",
         "【新增】开屏日志区域新增最近更新功能引导"
       ]
-    },{
+    },
+    {
       "version_name": "4.13.22",
       "date": "2026-05-30",
       "items": [
@@ -429,7 +577,8 @@
         "【优化】课程调度通知逻辑",
         "【新增】更新后第一屏显示逻辑"
       ]
-    },{
+    },
+    {
       "version_name": "4.13.12",
       "date": "2026-05-26",
       "items": [
@@ -444,7 +593,8 @@
         "【优化】调整动画默认效果",
         "【优化】预测式返回手势动画"
       ]
-    },{
+    },
+    {
       "version_name": "4.13.6",
       "date": "2026-05-25",
       "items": [

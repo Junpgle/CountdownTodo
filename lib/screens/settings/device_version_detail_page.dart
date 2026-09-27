@@ -26,6 +26,7 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -33,12 +34,14 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
     try {
       final online = await ApiService.fetchOnlineStats();
       final version = await ApiService.fetchDeviceVersionStats();
+      if (!mounted) return;
       setState(() {
         _onlineData = online;
         _versionData = version;
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _loading = false;
@@ -72,7 +75,7 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
                 child: ListView(
                   padding: EdgeInsets.fromLTRB(
                     16,
-                    floatingGlassSettingsContentTopInset(context, extra: 16),
+                    floatingGlassSettingsContentTopInset(context),
                     16,
                     16,
                   ),

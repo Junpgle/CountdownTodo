@@ -832,16 +832,6 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                             color: colorScheme.onSurface.withValues(alpha: 0.8),
                           ),
                         ),
-                      if (_liveSmartContextPreview.isEmpty)
-                        Text(
-                          '将注入：无（当前消息无需额外业务上下文）',
-                          style: TextStyle(
-                            fontSize: 12,
-                            height: 1.35,
-                            color:
-                                colorScheme.onSurface.withValues(alpha: 0.65),
-                          ),
-                        ),
                       if (_liveActionProtocolPreview.isNotEmpty)
                         SelectableText(
                           _liveActionProtocolPreview,

@@ -21,6 +21,8 @@ class FinanceSyncRequest {
     required this.fullSync,
     required this.bundle,
     required this.fingerprint,
+    this.categoryNamesCapabilityKey = '',
+    this.supportsCategoryNames = false,
   });
 
   final String username;
@@ -30,6 +32,8 @@ class FinanceSyncRequest {
   final bool fullSync;
   final Map<String, dynamic> bundle;
   final Map<String, String> fingerprint;
+  final String categoryNamesCapabilityKey;
+  final bool supportsCategoryNames;
 
   List<Map<String, dynamic>> _changes(
     String key, {
@@ -41,6 +45,25 @@ class FinanceSyncRequest {
       if (excludeSystem &&
           (_asBool(item['is_system']) ||
               _isSystemFinanceUuid(item['uuid']?.toString()))) {
+        return false;
+      }
+      // Built-in category rows are created locally on every device. Only
+      // explicit user name/icon overrides are worth uploading; otherwise a
+      // new device's initialization timestamp could overwrite a cloud value
+      // during the first full sync.
+      if (key == 'categories' &&
+          _isSystemCategoryUuid(item['uuid']?.toString())) {
+        final iconCustomized =
+            _asBool(item['icon_customized'] ?? item['iconCustomized']);
+        final nameCustomized =
+            _asBool(item['name_customized'] ?? item['nameCustomized']);
+        if (nameCustomized && !supportsCategoryNames) return false;
+        if (!iconCustomized && !nameCustomized) return false;
+      }
+      // Payment-method monthly amounts are intentionally local-only until the
+      // server budget contract supports their additional scope column.
+      if (key == 'budgets' &&
+          (item['payment_method_uuid'] ?? item['paymentMethodUuid']) != null) {
         return false;
       }
       if (fullSync) return true;
@@ -55,7 +78,6 @@ class FinanceSyncRequest {
   Map<String, dynamic> get payload => {
         'finance_categories_changes': _changes(
           'categories',
-          excludeSystem: true,
         ),
         'finance_payment_methods_changes': _changes(
           'payment_methods',
@@ -113,6 +135,8 @@ abstract final class FinanceSyncService {
     final prefs = await SharedPreferences.getInstance();
     final scope = _serverScope(ApiService.effectiveBaseUrl);
     final bootstrapKey = '$_scopePrefix${scope}_$username';
+    final categoryNamesCapabilityKey =
+        'finance_category_names_v1_${scope}_$username';
     final cursorKey =
         'finance_last_sync_time_${ApiService.syncServerKey}_$username';
     final initialized = prefs.getBool(bootstrapKey) == true;
@@ -127,6 +151,8 @@ abstract final class FinanceSyncService {
       fullSync: forceFullSync || !initialized,
       bundle: bundle,
       fingerprint: _fingerprint(bundle),
+      categoryNamesCapabilityKey: categoryNamesCapabilityKey,
+      supportsCategoryNames: prefs.getBool(categoryNamesCapabilityKey) ?? false,
     );
   }
 
@@ -148,6 +174,16 @@ abstract final class FinanceSyncService {
       );
     }
 
+    if (request.categoryNamesCapabilityKey.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(
+        request.categoryNamesCapabilityKey,
+        SyncCapabilityService.supportsFinanceCategoryNames(
+          response['sync_capabilities'],
+        ),
+      );
+    }
+
     final currentBundle = await FinanceStorage.getExportBundle();
     final localChanged = !_sameFingerprint(
       request.fingerprint,
@@ -164,6 +200,24 @@ abstract final class FinanceSyncService {
       'recurring_rules': response['server_finance_recurring_rules'] ?? const [],
       'templates': response['server_finance_entry_templates'] ?? const [],
     };
+    if (!request.supportsCategoryNames) {
+      final localNameOverrides = (currentBundle['categories'] as List? ?? [])
+          .whereType<Map>()
+          .where((item) =>
+              _isSystemCategoryUuid(item['uuid']?.toString()) &&
+              _asBool(item['name_customized'] ?? item['nameCustomized']))
+          .map((item) => item['uuid']?.toString())
+          .whereType<String>()
+          .toSet();
+      if (localNameOverrides.isNotEmpty) {
+        remoteBundle['categories'] = (remoteBundle['categories'] as List? ??
+                const [])
+            .whereType<Map>()
+            .where((item) => !localNameOverrides
+                .contains(item['uuid']?.toString() ?? item['id']?.toString()))
+            .toList(growable: false);
+      }
+    }
     final conflictKeys = _conflictKeys(response['finance_conflicts']);
     // If a local write happened while the request was in flight, defer the
     // whole remote snapshot to the next round. Otherwise a newer server clock
@@ -229,6 +283,7 @@ abstract final class FinanceSyncService {
     Map<String, dynamic> bundle, {
     required int cursor,
     required bool fullSync,
+    bool supportsCategoryNames = false,
   }) {
     final request = FinanceSyncRequest(
       username: 'test',
@@ -238,6 +293,7 @@ abstract final class FinanceSyncService {
       fullSync: fullSync,
       bundle: bundle,
       fingerprint: const {},
+      supportsCategoryNames: supportsCategoryNames,
     );
     final payload = request.payload;
     return {
@@ -335,7 +391,7 @@ abstract final class FinanceSyncService {
       if (raw is! List) continue;
       for (final item in raw.whereType<Map>()) {
         final map = Map<String, dynamic>.from(item);
-        if ((section == 'categories' || section == 'payment_methods') &&
+        if (section == 'payment_methods' &&
             (_asBool(map['is_system']) ||
                 _isSystemFinanceUuid(map['uuid']?.toString()))) {
           continue;
@@ -374,3 +430,6 @@ bool _asBool(dynamic value) {
 
 bool _isSystemFinanceUuid(String? uuid) =>
     uuid?.startsWith('finance-system-') == true;
+
+bool _isSystemCategoryUuid(String? uuid) =>
+    uuid?.startsWith('finance-system-category-') == true;

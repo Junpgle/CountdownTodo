@@ -111,11 +111,17 @@ class NotificationPollWorker(
                         payload = payload
                     )
 
-                    if (canPostNotification()) {
+                    if (canPostNotification() &&
+                        !SystemDoNotDisturbManager.shouldSuppressNotification(
+                            appContext,
+                            eventType,
+                            eventId.toInt()
+                        )
+                    ) {
                         Log.d(TAG, "Show notification eventId=$eventId type=$eventType title=$title")
                         showNotification(eventId = eventId, title = title, body = body)
                     } else {
-                        Log.d(TAG, "Cache unread only: notification permission denied eventId=$eventId")
+                        Log.d(TAG, "Cache unread only: notification blocked by permission or focus DND eventId=$eventId")
                     }
                 } else {
                     Log.d(TAG, "Skip already shown eventId=$eventId")

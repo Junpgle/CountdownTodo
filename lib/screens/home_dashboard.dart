@@ -37,6 +37,7 @@ import '../services/wallpaper_cache_service.dart';
 import '../services/pomodoro_service.dart';
 import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_sync_service.dart';
+import '../services/focus_do_not_disturb_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
 import '../services/island_slot_provider.dart';
@@ -88,7 +89,6 @@ import '../features/habits/widgets/habit_today_section.dart';
 import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
 import '../features/thirty_day_challenge/models/thirty_day_challenge.dart';
 import '../features/thirty_day_challenge/screens/challenge_center_screen.dart';
-import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
 import '../features/thirty_day_challenge/screens/new_challenge_screen.dart';
 import '../features/thirty_day_challenge/services/clipboard_share_detector.dart';
 import '../widgets/conflict_alert_dialog.dart';
@@ -102,7 +102,6 @@ import '../widgets/global_search_overlay.dart';
 import '../widgets/personal_timeline_section.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../widgets/home_bottom_navigation_content.dart';
-import '../widgets/home_quick_action_button.dart';
 import '../widgets/app_status_toast.dart';
 import '../services/feature_tip_service.dart';
 import '../services/device_calendar_read_service.dart';
@@ -203,6 +202,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   String? _activeCourseNotificationKey;
   final Set<int> _activeTodoNotifIds = {};
   bool _isCheckingUpcomingEvents = false;
+  bool _upcomingEventsCheckPending = false;
   Timer? _todoPersistDebounce;
   Completer<void>? _todoPersistDebounceCompleter;
   Future<void> _todoPersistChain = Future.value();
@@ -219,7 +219,6 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final GlobalKey _habitsCardKey = GlobalKey();
   final GlobalKey _focusBannerKey = GlobalKey();
   final GlobalKey _homePomodoroActionKey = GlobalKey();
-  final GlobalKey _homeFinanceActionKey = GlobalKey();
   final GlobalKey _financeCardKey = GlobalKey();
   final GlobalKey _homeAddActionKey = GlobalKey();
   final GlobalKey _courseButtonKey = GlobalKey();
@@ -265,10 +264,15 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   }
 
   int _selectedTabIndex = 0;
+  bool _focusTabVisited = false;
+  double _lastHomeHeaderExtent = 112.0;
+  double _lastFocusHeaderExtent = 0.0;
 
   // 待确认的事项数据（从图片识别来）
   Map<String, dynamic>? _pendingTodoConfirm;
-  bool _isOpeningPendingFinance = false;
+  // 图片识别完成后，聊天桥接刷新和外部分享回调可能同时请求打开
+  // 同一批记账草案；所有入口必须共用这把导航锁。
+  bool _isOpeningFinanceDrafts = false;
 
   // ── 跨端专注感知 ──
   CrossDevicePomodoroState? _remotePomodoro; // 其他设备正在进行的专注
@@ -310,6 +314,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   int _localPomodoroRemaining = 0;
   StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
   StreamSubscription<MacIslandCommand>? _macIslandCommandSub;
+  StreamSubscription<MacPomodoroAction>? _macIslandActionSub;
   Timer? _collaborativeSyncDebouncer; // 🚀 协同同步防抖器
   Timer? _syncWatchdogTimer;
   int _syncAttemptGeneration = 0;
@@ -472,17 +477,23 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
           image: provider,
           fit: BoxFit.cover,
           filterQuality: FilterQuality.medium,
+          color: const Color(0x66000000),
+          colorBlendMode: BlendMode.srcOver,
         );
       },
       placeholder: (context, url) => Image.asset(
         'assets/images/default_wallpaper.webp',
         fit: BoxFit.cover,
+        color: const Color(0x66000000),
+        colorBlendMode: BlendMode.srcOver,
       ),
       errorWidget: (context, url, error) {
         _reportFailure();
         return Image.asset(
           'assets/images/default_wallpaper.webp',
           fit: BoxFit.cover,
+          color: const Color(0x66000000),
+          colorBlendMode: BlendMode.srcOver,
         );
       },
     );

@@ -1,22 +1,22 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
-import '../../../screens/pomodoro_screen.dart';
-import '../../../services/pomodoro_control_service.dart';
-import '../../../services/pomodoro_service.dart';
 import '../../../utils/page_transitions.dart';
+import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/platform_backdrop_filter.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import '../services/habit_day_loader.dart';
 import '../services/habit_sleep_duration_service.dart';
+import '../services/habit_focus_launcher.dart';
 import '../widgets/habit_card.dart';
 import 'habit_detail_screen.dart';
 import 'habit_edit_screen.dart';
 
 /// 习惯中心「今日」标签页：今日概览 + 全部习惯卡片。
 class HabitTodayTab extends StatefulWidget {
+  final double topPadding;
   final String username;
 
   /// 教程要高亮的第一张习惯卡片。
@@ -33,6 +33,7 @@ class HabitTodayTab extends StatefulWidget {
 
   const HabitTodayTab({
     super.key,
+    this.topPadding = 0,
     required this.username,
     this.coachTargetKey,
     this.reloadTick = 0,
@@ -122,43 +123,12 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
   }
 
   /// 时长型：启动专注并跳转番茄钟，默认时长为习惯设置的默认时长。
-  Future<void> _startFocus(HabitGoal goal) async {
-    final tagUuids = goal.sourceType == HabitSourceType.pomodoroTag
-        ? goal.sourceIds
-        : const <String>[];
-    final running = await PomodoroService.loadRunState();
-    if (running != null &&
-        (running.phase == PomodoroPhase.focusing ||
-            running.phase == PomodoroPhase.breaking)) {
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        PageTransitions.material(
-          builder: (_) => PomodoroScreen(username: widget.username),
-        ),
+  Future<void> _startFocus(HabitGoal goal) => HabitFocusLauncher.open(
+        context: context,
+        username: widget.username,
+        goal: goal,
+        onReturned: _handleChanged,
       );
-      return;
-    }
-    try {
-      final settings = await PomodoroService.getSettings();
-      await PomodoroControlService.startFocus(
-        settings: settings,
-        tagUuids: tagUuids,
-        durationMinutes: goal.defaultFocusMinutes,
-      );
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        PageTransitions.material(
-          builder: (_) => PomodoroScreen(username: widget.username),
-        ),
-      );
-      if (mounted) _handleChanged();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('启动专注失败: $e')),
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -172,13 +142,16 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
       } else if (snapshot.isEmpty) {
         content = _buildEmpty();
       } else {
+        final bottomPadding =
+            floatingBottomNavigationContentPaddingFor(context);
         content = RefreshIndicator(
           onRefresh: _loadData,
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 840),
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                padding: EdgeInsets.fromLTRB(
+                    16, widget.topPadding + 12, 16, bottomPadding),
                 children: [
                   _buildSummaryCard(snapshot),
                   const SizedBox(height: 16),

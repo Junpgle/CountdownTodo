@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../screens/about_screen.dart';
 import '../screens/team_management_screen.dart';
+import '../screens/team_announcement_screen.dart';
+import '../screens/team_message_center_screen.dart';
 import '../storage_service.dart';
 import 'database_helper.dart';
+import 'api_service.dart';
 import 'pomodoro_service.dart';
 import 'package:intl/intl.dart';
 import '../screens/home_settings_screen.dart';
@@ -12,8 +15,23 @@ import '../widgets/todo_section_widget.dart';
 import '../screens/pomodoro_screen.dart';
 import '../screens/time_log_screen.dart';
 import 'course_service.dart';
+import 'global_search_extra_service.dart';
 import '../screens/screen_time_detail_screen.dart';
 import '../screens/course_screens.dart';
+import '../screens/login_screen.dart';
+import '../screens/search_record_detail_screen.dart';
+import '../screens/add_todo_screen.dart';
+import '../screens/fixed_schedule_editor_screen.dart';
+import '../screens/folder_manage_screen.dart';
+import '../screens/todo_plan_screen.dart';
+import '../features/finance/models/finance_models.dart';
+import '../features/finance/screens/finance_transaction_detail_screen.dart';
+import '../features/finance/screens/finance_loan_screen.dart';
+import '../features/finance/screens/finance_budget_entry_screen.dart';
+import '../features/finance/screens/finance_home_screen.dart';
+import '../features/journal/models/journal_entry.dart';
+import '../features/journal/screens/journal_detail_screen.dart';
+import '../features/journal/screens/journal_home_screen.dart';
 import '../screens/personal_timeline_screen.dart';
 import '../features/habits/models/habit_goal.dart';
 import '../features/habits/repositories/habit_repository.dart';
@@ -21,6 +39,7 @@ import '../features/habits/screens/habit_detail_screen.dart';
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
 import '../features/thirty_day_challenge/screens/challenge_center_screen.dart';
+import '../utils/app_platform.dart';
 
 class SearchResultWithScore {
   final SearchResult result;
@@ -31,6 +50,27 @@ class SearchResultWithScore {
 class SearchService {
   static final SearchService instance = SearchService._();
   SearchService._();
+
+  static const _windowsOnlySettings = {
+    'float_window_style',
+    'force_refresh',
+    'island_priority',
+    'tai_db',
+  };
+  static const _androidOnlySettings = {
+    'live_updates',
+    'island_support',
+    'test_notification',
+  };
+  static const _macOsOnlySettings = {
+    'mac_status_bar',
+    'mac_island_shortcut',
+    'mac_island_reminders',
+    'mac_island_clipboard_links',
+    'mac_island_clipboard_browser',
+    'mac_island_test',
+    'mac_island_without_notch',
+  };
 
   int _latestSearchId = 0;
   Future<void>? _warmupFuture;
@@ -78,8 +118,8 @@ class SearchService {
     ),
     SearchResult(
       id: 'setting_server_choice',
-      title: '云端线路选择 (阿里云/Cloudflare)',
-      subtitle: '切换数据同步服务器',
+      title: '云端线路选择（阿里云直连/Cloudflare 中转）',
+      subtitle: '切换阿里云 HTTP 直连或 HTTPS 中转线路',
       icon: Icons.cloud_queue,
       type: SearchResultType.setting,
       breadcrumb: '设置 > 账号',
@@ -147,6 +187,15 @@ class SearchService {
       type: SearchResultType.setting,
       breadcrumb: '设置 > 高级',
       extraData: {'route': '/settings', 'target': 'llm_config'},
+    ),
+    SearchResult(
+      id: 'setting_ai_assistant',
+      title: 'AI 助手设置 / 智能上下文',
+      subtitle: '调整智能上下文、注入预览、提示词与深度思考',
+      icon: Icons.auto_awesome_rounded,
+      type: SearchResultType.setting,
+      breadcrumb: '设置 > AI',
+      extraData: {'route': '/settings', 'target': 'ai_assistant'},
     ),
     SearchResult(
       id: 'setting_llm_retry',
@@ -642,6 +691,38 @@ class SearchService {
       type: SearchResultType.challenge,
       extraData: {'route': '/challenge'},
     ),
+    SearchResult(
+      id: 'feature_finance',
+      title: '个人记账 / 账单 / 预算',
+      subtitle: '查看账单、分类、预算与借款',
+      icon: Icons.receipt_long_rounded,
+      type: SearchResultType.finance,
+      extraData: {'route': '/finance'},
+    ),
+    SearchResult(
+      id: 'feature_journal',
+      title: '私密日记 / 日记本',
+      subtitle: '查看本机保存的日记',
+      icon: Icons.auto_stories_outlined,
+      type: SearchResultType.journal,
+      extraData: {'route': '/journal'},
+    ),
+    SearchResult(
+      id: 'feature_fixed_schedule',
+      title: '固定日程 / 日程安排',
+      subtitle: '查看课程与固定日程',
+      icon: Icons.event_available_outlined,
+      type: SearchResultType.fixedSchedule,
+      extraData: {'route': '/course/weekly'},
+    ),
+    SearchResult(
+      id: 'feature_plan_blocks',
+      title: '待办规划块 / 今日计划',
+      subtitle: '查看已安排的执行时段',
+      icon: Icons.view_timeline_outlined,
+      type: SearchResultType.planBlock,
+      extraData: {'route': '/plan'},
+    ),
     // 🚀 业务模块直达
     SearchResult(
       id: 'feature_pomodoro_stats',
@@ -653,7 +734,7 @@ class SearchService {
     ),
     SearchResult(
       id: 'feature_time_log_manual',
-      title: '时间日志补录 / 手动记账 / 补录时间',
+      title: '时间日志补录 / 手动补录时间',
       subtitle: '手动补录错过的专注或学习时段',
       icon: Icons.more_time,
       type: SearchResultType.log,
@@ -680,9 +761,15 @@ class SearchService {
         .catchError((_) => <SearchResult>[]);
     final databaseSearch =
         _searchDatabase(q, searchTerms).catchError((_) => <SearchResult>[]);
+    final username = await StorageService.getLoginSession() ?? 'default';
+    final extraSearch = GlobalSearchExtraService.search(
+      username,
+      searchTerms,
+      targetDate: _parseDateQuery(q),
+    ).catchError((_) => <SearchResult>[]);
 
     // 1. 静态索引扫描
-    for (var s in _staticSettings) {
+    for (var s in _staticSettings.where(_isStaticSettingAvailable)) {
       int score = _calculateScore(
         s.title.toLowerCase(),
         s.subtitle?.toLowerCase(),
@@ -694,7 +781,8 @@ class SearchService {
     }
 
     // 2. 习惯、挑战与数据库查询互不依赖，并行执行以缩短输入后的等待。
-    final searchResults = await Future.wait([featureSearch, databaseSearch]);
+    final searchResults =
+        await Future.wait([featureSearch, databaseSearch, extraSearch]);
     if (currentSearchId != _latestSearchId) return [];
 
     for (final item in searchResults[0]) {
@@ -723,6 +811,18 @@ class SearchService {
         searchTerms,
       );
       // DB 已过滤，保底给 score=1，避免备注命中却被丢弃
+      scoredResults
+          .add(SearchResultWithScore(item, (score > 0 ? score : 1) + 10));
+    }
+
+    for (final item in searchResults[2]) {
+      final score = _calculateScore(
+        item.title.toLowerCase(),
+        item.subtitle?.toLowerCase(),
+        null,
+        q,
+        searchTerms,
+      );
       scoredResults
           .add(SearchResultWithScore(item, (score > 0 ? score : 1) + 10));
     }
@@ -756,6 +856,15 @@ class SearchService {
     return finalResults;
   }
 
+  static bool _isStaticSettingAvailable(SearchResult result) {
+    final target = result.extraData?['target']?.toString();
+    if (target == null) return true;
+    if (_windowsOnlySettings.contains(target)) return AppPlatform.isWindows;
+    if (_androidOnlySettings.contains(target)) return AppPlatform.isAndroid;
+    if (_macOsOnlySettings.contains(target)) return AppPlatform.isMacOS;
+    return true;
+  }
+
   List<String> _extractSearchTerms(String query) {
     return query
         .split(RegExp(r'[\s,，;；]+'))
@@ -767,6 +876,47 @@ class SearchService {
   bool _matchesAllTerms(String text, List<String> terms) {
     final lower = text.toLowerCase();
     return terms.every((term) => lower.contains(term.toLowerCase()));
+  }
+
+  DateTime? _parseDateQuery(String query) {
+    final now = DateTime.now();
+    switch (query) {
+      case '今天':
+      case '今日':
+      case '今':
+      case 'today':
+        return now;
+      case '昨天':
+      case '昨日':
+      case 'yesterday':
+        return now.subtract(const Duration(days: 1));
+      case '前天':
+        return now.subtract(const Duration(days: 2));
+      case '大前天':
+        return now.subtract(const Duration(days: 3));
+      case '明天':
+      case '明日':
+      case 'tomorrow':
+        return now.add(const Duration(days: 1));
+      case '后天':
+        return now.add(const Duration(days: 2));
+      case '大后天':
+        return now.add(const Duration(days: 3));
+    }
+    final full = RegExp(r'^(\d{4})[./\-/年](\d{1,2})[./\-/月](\d{1,2})[日号]?$')
+        .firstMatch(query);
+    final short =
+        RegExp(r'^(\d{1,2})[./\-/月](\d{1,2})[日号]?$').firstMatch(query);
+    final year = full == null ? now.year : int.tryParse(full.group(1)!) ?? 0;
+    final month =
+        int.tryParse((full ?? short)?.group(full == null ? 1 : 2) ?? '') ?? 0;
+    final day =
+        int.tryParse((full ?? short)?.group(full == null ? 2 : 3) ?? '') ?? 0;
+    if (year < 1 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+    final parsed = DateTime(year, month, day);
+    return parsed.year == year && parsed.month == month && parsed.day == day
+        ? parsed
+        : null;
   }
 
   Future<List<SearchResult>> _searchHabitsAndChallenges(
@@ -885,55 +1035,7 @@ class SearchService {
     final q = query.toLowerCase().trim();
 
     // ── 日期查询解析 (支持 "今天", "昨天", "04/24" 等) ────────────────────
-    DateTime? targetDate;
-    if (q == '今天' || q == '今日' || q == '今' || q == 'today') {
-      targetDate = DateTime.now();
-    } else if (q == '昨天' || q == '昨日' || q == 'yesterday') {
-      targetDate = DateTime.now().subtract(const Duration(days: 1));
-    } else if (q == '前天') {
-      targetDate = DateTime.now().subtract(const Duration(days: 2));
-    } else if (q == '大前天') {
-      targetDate = DateTime.now().subtract(const Duration(days: 3));
-    } else if (q == '明天' || q == '明日' || q == 'tomorrow') {
-      targetDate = DateTime.now().add(const Duration(days: 1));
-    } else if (q == '后天') {
-      targetDate = DateTime.now().add(const Duration(days: 2));
-    } else if (q == '大后天') {
-      targetDate = DateTime.now().add(const Duration(days: 3));
-    } else {
-      final now = DateTime.now();
-      final patterns = <RegExp>[
-        RegExp(r'^(\d{4})[./\-/年](\d{1,2})[./\-/月](\d{1,2})[日号]?$'),
-        RegExp(r'^(\d{1,2})[./\-/月](\d{1,2})[日号]?$'),
-      ];
-
-      for (final pattern in patterns) {
-        final match = pattern.firstMatch(q);
-        if (match == null) continue;
-
-        int? year;
-        int month;
-        int day;
-        if (match.groupCount == 3 && match.group(1)!.length == 4) {
-          year = int.tryParse(match.group(1)!);
-          month = int.tryParse(match.group(2)!) ?? 0;
-          day = int.tryParse(match.group(3)!) ?? 0;
-        } else {
-          year = now.year;
-          month = int.tryParse(match.group(1)!) ?? 0;
-          day = int.tryParse(match.group(2)!) ?? 0;
-        }
-
-        if (year != null &&
-            month >= 1 &&
-            month <= 12 &&
-            day >= 1 &&
-            day <= 31) {
-          targetDate = DateTime(year, month, day);
-          break;
-        }
-      }
-    }
+    final targetDate = _parseDateQuery(q);
 
     final isDateQuery = targetDate != null;
     final startOfDay = targetDate != null
@@ -958,28 +1060,23 @@ class SearchService {
         // Date searches must use the storage facade so recurring series are
         // materialized for the requested day before filtering.
         final allTodos = await StorageService.getTodos(username);
-        final matchedTodos = allTodos
-            .where((t) {
-              if (t.isDeleted) return false;
-              final dueDate = t.dueDate;
-              if (dueDate != null &&
-                  !dueDate.isBefore(startOfDay!) &&
-                  dueDate.isBefore(endOfDay!)) {
-                return true;
-              }
-              final createdDate = t.createdDate;
-              if (createdDate != null) {
-                final created =
-                    DateTime.fromMillisecondsSinceEpoch(createdDate);
-                if (!created.isBefore(startOfDay!) &&
-                    created.isBefore(endOfDay!)) {
-                  return true;
-                }
-              }
-              return false;
-            })
-            .take(20)
-            .toList();
+        final matchedTodos = allTodos.where((t) {
+          if (t.isDeleted) return false;
+          final dueDate = t.dueDate;
+          if (dueDate != null &&
+              !dueDate.isBefore(startOfDay!) &&
+              dueDate.isBefore(endOfDay!)) {
+            return true;
+          }
+          final createdDate = t.createdDate;
+          if (createdDate != null) {
+            final created = DateTime.fromMillisecondsSinceEpoch(createdDate);
+            if (!created.isBefore(startOfDay!) && created.isBefore(endOfDay!)) {
+              return true;
+            }
+          }
+          return false;
+        }).toList();
         todos = matchedTodos
             .map((t) => {
                   'uuid': t.id,
@@ -1059,12 +1156,31 @@ class SearchService {
     // ── 课程 ─────────────────────────────────────────────────────────────
     try {
       final courseMap = <String, Map<String, dynamic>>{};
-      for (final term in searchTerms) {
-        for (final row in await db.searchCourses(term)) {
-          courseMap[row['uuid'].toString()] = row;
+      if (isDateQuery) {
+        final day = DateFormat('yyyy-MM-dd').format(startOfDay!);
+        for (final course in await CourseService.getAllCourses(username)) {
+          if (course.date != day) continue;
+          courseMap[course.uuid] = {
+            'uuid': course.uuid,
+            'course_name': course.courseName,
+            'teacher_name': course.teacherName,
+            'room_name': course.roomName,
+            'week_index': course.weekIndex,
+            'weekday': course.weekday,
+            'start_time': course.startTime,
+            'end_time': course.endTime,
+            'course_record': course,
+          };
+        }
+      } else {
+        for (final term in searchTerms) {
+          for (final row in await db.searchCourses(term)) {
+            courseMap[row['uuid'].toString()] = row;
+          }
         }
       }
       final courses = courseMap.values.where((c) {
+        if (isDateQuery) return true;
         final haystack = [c['course_name'], c['teacher_name'], c['room_name']]
             .where((s) => s != null)
             .map((s) => s.toString())
@@ -1104,6 +1220,7 @@ class SearchService {
             'room_name': c['room_name'],
             'week_index': weekIdx,
             'weekday': weekday,
+            if (c['course_record'] != null) 'course_record': c['course_record'],
             if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
           },
         ));
@@ -1115,12 +1232,24 @@ class SearchService {
     // ── 倒计时 ────────────────────────────────────────────────────────────
     try {
       final countdownMap = <String, Map<String, dynamic>>{};
-      for (final term in searchTerms) {
-        for (final row in await db.searchCountdowns(term)) {
-          countdownMap[row['uuid'].toString()] = row;
+      if (isDateQuery) {
+        for (final item in await StorageService.getCountdowns(username)) {
+          if (item.isDeleted ||
+              item.targetDate.isBefore(startOfDay!) ||
+              !item.targetDate.isBefore(endOfDay!)) {
+            continue;
+          }
+          countdownMap[item.id] = item.toJson();
+        }
+      } else {
+        for (final term in searchTerms) {
+          for (final row in await db.searchCountdowns(term)) {
+            countdownMap[row['uuid'].toString()] = row;
+          }
         }
       }
       final countdowns = countdownMap.values.where((cd) {
+        if (isDateQuery) return true;
         final haystack = [cd['title'], cd['team_name']]
             .where((s) => s != null)
             .map((s) => s.toString())
@@ -1149,6 +1278,11 @@ class SearchService {
           extraData: {
             'uuid': cd['uuid'],
             'table': 'countdowns',
+            'fields': {
+              '目标日期': targetMs == null ? '' : subtitle,
+              '所属团队': cd['team_name']?.toString() ?? '',
+            },
+            'detail_label': '倒计时',
             if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
           },
         ));
@@ -1175,16 +1309,13 @@ class SearchService {
             logMap[row['uuid'].toString()] = row;
           }
         }
-        matchedLogs = logMap.values
-            .where((log) {
-              final haystack = [log['title'], log['remark']]
-                  .whereType<String>()
-                  .join(' ')
-                  .toLowerCase();
-              return _matchesAllTerms(haystack, searchTerms);
-            })
-            .take(15)
-            .toList();
+        matchedLogs = logMap.values.where((log) {
+          final haystack = [log['title'], log['remark']]
+              .whereType<String>()
+              .join(' ')
+              .toLowerCase();
+          return _matchesAllTerms(haystack, searchTerms);
+        }).toList();
       }
 
       for (final log in matchedLogs) {
@@ -1270,6 +1401,7 @@ class SearchService {
               extraData: {
                 'app_name': appName,
                 'route': '/screen_time/app',
+                'search_date_ms': startOfDay!.millisecondsSinceEpoch,
                 if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
               },
             ));
@@ -1336,19 +1468,28 @@ class SearchService {
       }
     }
 
-    // ── 番茄钟 (仅日期搜索时展示) ──────────────────────────────────────────
-    if (isDateQuery) {
+    // ── 番茄钟 ──────────────────────────────────────────────────────────
+    {
       try {
         final allPoms = await PomodoroService.getRecords();
-        final matchedPoms = allPoms
-            .where((p) {
-              final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
-              return start.isAfter(
-                      startOfDay!.subtract(const Duration(milliseconds: 1))) &&
-                  start.isBefore(endOfDay!);
-            })
-            .take(15)
-            .toList();
+        final tagNames = {
+          for (final tag in await PomodoroService.getTags()) tag.uuid: tag.name,
+        };
+        final matchedPoms = allPoms.where((p) {
+          if (isDateQuery) {
+            final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
+            return start.isAfter(
+                    startOfDay!.subtract(const Duration(milliseconds: 1))) &&
+                start.isBefore(endOfDay!);
+          }
+          return _matchesAllTerms(
+              [
+                p.todoTitle,
+                p.note,
+                ...p.tagUuids.map((id) => tagNames[id]),
+              ].whereType<String>().join(' '),
+              searchTerms);
+        }).toList();
         for (var p in matchedPoms) {
           final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
           final end = p.endTime != null
@@ -1419,7 +1560,12 @@ class SearchService {
     final coursesFuture =
         CourseService.getAllCourses(username).catchError((_) => <CourseItem>[]);
     final overdueCountFuture =
-        db.countOverdueTodos(now.millisecondsSinceEpoch).catchError((_) => 0);
+        HabitRepository.getHabitOnlyRecurringTodoSeriesIds()
+            .then((seriesIds) => db.countOverdueTodos(
+                  now.millisecondsSinceEpoch,
+                  excludedRecurrenceSeriesIds: seriesIds,
+                ))
+            .catchError((_) => 0);
     final topHistoryFuture = db
         .getRecentSearches(limit: 1)
         .catchError((_) => <Map<String, dynamic>>[]);
@@ -1599,7 +1745,11 @@ class SearchService {
 }
 
 class SearchNavigationHandler {
-  static void handle(BuildContext context, SearchResult result) {
+  static Future<void> handle(
+    BuildContext context,
+    SearchResult result, {
+    required GlobalKey sourceKey,
+  }) async {
     final data = result.extraData;
     if (data == null) return;
 
@@ -1614,46 +1764,194 @@ class SearchNavigationHandler {
             content: Text("正在搜索: $query"),
             duration: const Duration(seconds: 1)));
       } else if (action == 'new_todo') {
-        _executeAction(context, action);
+        await _executeAction(context, action, sourceKey);
       } else if (action == 'navigate') {
-        _navigateByRoute(context, route ?? '', data);
+        await _navigateByRoute(context, route ?? '', data, sourceKey);
       } else if (action == 'filter_overdue') {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text("已跳转至待办列表 - 逾期筛选")));
+        final username = await StorageService.getLoginSession() ?? 'default';
+        final results = await Future.wait<dynamic>([
+          StorageService.getTodos(username),
+          HabitRepository.getHabitOnlyRecurringTodoSeriesIds(),
+        ]);
+        final todos = results[0] as List<TodoItem>;
+        final habitOnlySeriesIds = results[1] as Set<String>;
+        final overdue = todos
+            .where((item) =>
+                !item.isDeleted &&
+                !item.isDone &&
+                item.dueDate != null &&
+                item.dueDate!.isBefore(DateTime.now()) &&
+                !habitOnlySeriesIds.contains(item.recurrenceSeriesId))
+            .toList();
+        if (!context.mounted) return;
+        await _push(
+            context,
+            sourceKey,
+            SearchRecordDetailScreen(
+              result: SearchResult(
+                id: result.id,
+                title: result.title,
+                subtitle: '${overdue.length} 项待办逾期',
+                icon: result.icon,
+                type: result.type,
+                extraData: {
+                  'detail_label': '逾期待办',
+                  'fields': {
+                    '待办': overdue.map((item) => item.title).join('\n')
+                  },
+                },
+              ),
+            ));
       }
       return;
     }
 
     if (route != null) {
-      _navigateByRoute(context, route, data);
+      await _navigateByRoute(context, route, data, sourceKey);
     } else if (result.type == SearchResultType.todo) {
-      _handleTodoEdit(context, result);
-    } else if (result.type == SearchResultType.todoGroup) {
-      _handleTodoGroupNavigation(context, result);
+      await _handleTodoEdit(context, result, sourceKey);
     } else if (result.type == SearchResultType.course ||
         data['type'] == 'course_detail') {
-      _handleCourseNavigation(context, result);
+      await _handleCourseNavigation(context, result, sourceKey);
+    } else if (result.type == SearchResultType.log) {
+      final uuid = data['uuid']?.toString();
+      final table = data['table']?.toString();
+      if (uuid == null) {
+        _showMissingRecord(context);
+        return;
+      }
+      final tags = await PomodoroService.getTags();
+      if (table == 'pomodoro_records') {
+        final records = await PomodoroService.getRecords();
+        if (!context.mounted) return;
+        for (final record in records) {
+          if (record.uuid == uuid) {
+            await _push(context, sourceKey,
+                PomodoroDetailScreen(record: record, tags: tags));
+            return;
+          }
+        }
+      } else {
+        final username = await StorageService.getLoginSession() ?? 'default';
+        final logs = await StorageService.getTimeLogs(username);
+        if (!context.mounted) return;
+        for (final log in logs) {
+          if (log.id == uuid) {
+            await _push(
+                context, sourceKey, TimeLogDetailScreen(log: log, tags: tags));
+            return;
+          }
+        }
+      }
+      _showMissingRecord(context);
+    } else if (result.type == SearchResultType.journal &&
+        data['record'] is JournalEntry) {
+      final username = await StorageService.getLoginSession() ?? 'default';
+      if (!context.mounted) return;
+      await _push(
+          context,
+          sourceKey,
+          JournalDetailScreen(
+            accountId: username,
+            entry: data['record'] as JournalEntry,
+          ));
+    } else if (result.type == SearchResultType.fixedSchedule &&
+        data['record'] is FixedScheduleItem) {
+      final username = await StorageService.getLoginSession() ?? 'default';
+      if (!context.mounted) return;
+      await _push(
+          context,
+          sourceKey,
+          FixedScheduleEditorScreen(
+            username: username,
+            item: data['record'] as FixedScheduleItem,
+            onSave: (item) =>
+                StorageService.saveFixedSchedules(username, [item]),
+          ));
+    } else if (result.type == SearchResultType.finance &&
+        data['record'] is FinanceTransaction) {
+      await _push(
+          context,
+          sourceKey,
+          FinanceTransactionDetailScreen(
+            transaction: data['record'] as FinanceTransaction,
+            category: data['finance_category'] as FinanceCategory?,
+            paymentMethod: data['finance_payment'] as FinancePaymentMethod?,
+          ));
+    } else if (result.type == SearchResultType.finance &&
+        data['record'] is FinanceLoan) {
+      await _push(context, sourceKey,
+          FinanceLoanDetailScreen(loan: data['record'] as FinanceLoan));
+    } else if (result.type == SearchResultType.finance &&
+        data['record'] is FinanceBudget) {
+      final budget = data['record'] as FinanceBudget;
+      final month = DateTime.tryParse('${budget.monthKey}-01');
+      if (month != null) {
+        await _push(context, sourceKey,
+            FinanceBudgetEntryScreen(month: month, budget: budget));
+      }
+    } else if (result.type == SearchResultType.todoGroup) {
+      final username = await StorageService.getLoginSession() ?? 'default';
+      final todos = await StorageService.getTodos(username);
+      final groups = await StorageService.getTodoGroups(username);
+      final groupId = data['uuid']?.toString();
+      if (!context.mounted) return;
+      await _push(
+          context,
+          sourceKey,
+          FolderManageScreen(
+            username: username,
+            todoGroups: groups,
+            allTodos: todos,
+            initialGroupId: groupId,
+            onGroupsChanged: (items) async =>
+                StorageService.saveTodoGroups(username, items),
+            onTodosChanged: (items) async =>
+                StorageService.saveTodos(username, items),
+          ));
+    } else {
+      await _push(context, sourceKey, SearchRecordDetailScreen(result: result));
     }
   }
 
-  static void _handleTodoEdit(BuildContext context, SearchResult result) async {
+  static Future<void> _push(
+      BuildContext context, GlobalKey sourceKey, Widget page) async {
+    if (!context.mounted) return;
+    await PageTransitions.pushFromRect(
+      context: context,
+      page: page,
+      sourceKey: sourceKey,
+    );
+  }
+
+  static void _showMissingRecord(BuildContext context) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('这条记录已不存在，请重新搜索')),
+    );
+  }
+
+  static Future<void> _handleTodoEdit(
+      BuildContext context, SearchResult result, GlobalKey sourceKey) async {
     try {
       final uuid = result.extraData?['uuid'];
       if (uuid == null) {
-        // debugPrint("❌ _handleTodoEdit: uuid is null");
+        _showMissingRecord(context);
         return;
       }
 
       final db = DatabaseHelper.instance;
       final todoMap = await db.getTodoByUuid(uuid);
       if (todoMap == null) {
-        // debugPrint("❌ _handleTodoEdit: todo not found for uuid=$uuid");
+        if (!context.mounted) return;
+        _showMissingRecord(context);
         return;
       }
 
       final username = await StorageService.getLoginSession();
       if (username == null) {
-        // debugPrint("❌ _handleTodoEdit: no login session");
+        if (!context.mounted) return;
+        _showMissingRecord(context);
         return;
       }
 
@@ -1702,77 +2000,75 @@ class SearchNavigationHandler {
           todo;
 
       if (context.mounted) {
-        Navigator.push(
+        await _push(
           context,
-          PageTransitions.material(
-            builder: (_) => TodoEditScreen(
-              // 使用完整存储模型，保留循环规则和 recurrenceSeriesId，
-              // 这样从全局搜索进入编辑页也能访问同系列的其他期次。
-              todo: canonicalTodo,
-              todos: allTodos,
-              onTodosChanged: (newList) async {
-                await StorageService.saveTodos(username, newList);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text("待办已更新"),
-                        behavior: SnackBarBehavior.floating),
-                  );
-                }
-              },
-              todoGroups: allGroups,
-              onGroupsChanged: (newGroups) async {
-                await StorageService.saveTodoGroups(username, newGroups);
-              },
-              username: username,
-            ),
+          sourceKey,
+          TodoEditScreen(
+            // 使用完整存储模型，保留循环规则和 recurrenceSeriesId，
+            // 这样从全局搜索进入编辑页也能访问同系列的其他期次。
+            todo: canonicalTodo,
+            todos: allTodos,
+            onTodosChanged: (newList) async {
+              await StorageService.saveTodos(username, newList);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text("待办已更新"),
+                      behavior: SnackBarBehavior.floating),
+                );
+              }
+            },
+            todoGroups: allGroups,
+            onGroupsChanged: (newGroups) async {
+              await StorageService.saveTodoGroups(username, newGroups);
+            },
+            username: username,
           ),
         );
-      } else {
-        // debugPrint("❌ _handleTodoEdit: context not mounted after async ops");
       }
     } catch (e) {
-      // debugPrint("❌ _handleTodoEdit crash: $e\n$stack");
+      debugPrint('Open searched todo failed: $e');
+      if (!context.mounted) return;
+      _showMissingRecord(context);
     }
   }
 
-  static void _handleTodoGroupNavigation(
-      BuildContext context, SearchResult result) {
-    Navigator.of(context).popUntil((route) => route.isFirst);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text("已跳转至文件夹: ${result.title}"),
-      behavior: SnackBarBehavior.floating,
-    ));
-  }
-
-  static void _handleCourseNavigation(
-      BuildContext context, SearchResult result) async {
+  static Future<void> _handleCourseNavigation(
+      BuildContext context, SearchResult result, GlobalKey sourceKey) async {
     try {
+      final username = await StorageService.getLoginSession() ?? 'default';
+      final adjusted = result.extraData?['course_record'];
+      if (adjusted is CourseItem) {
+        if (!context.mounted) return;
+        await _push(context, sourceKey,
+            CourseDetailScreen(course: adjusted, username: username));
+        return;
+      }
       final uuid = result.extraData?['uuid'];
-      if (uuid == null) return;
+      if (uuid == null) {
+        if (!context.mounted) return;
+        _showMissingRecord(context);
+        return;
+      }
 
-      final db = DatabaseHelper.instance;
-      final maps = await db.searchCourses(''); // 暂时全量搜或者加个 getCourseByUuid
-      final courseMap = maps.firstWhere(
-          (m) => m['uuid'].toString() == uuid.toString(),
-          orElse: () => {});
-
-      if (courseMap.isNotEmpty) {
-        final course = CourseItem.fromJson(courseMap);
-        if (context.mounted) {
-          Navigator.push(
-              context,
-              PageTransitions.material(
-                  builder: (_) => CourseDetailScreen(course: course)));
+      final courses = await CourseService.getAllCourses(username);
+      if (!context.mounted) return;
+      for (final course in courses) {
+        if (course.uuid == uuid.toString()) {
+          await _push(context, sourceKey,
+              CourseDetailScreen(course: course, username: username));
+          return;
         }
       }
+      _showMissingRecord(context);
     } catch (e) {
-      // debugPrint("❌ _handleCourseNavigation error: $e");
+      debugPrint('Open searched course failed: $e');
+      _showMissingRecord(context);
     }
   }
 
-  static void _navigateByRoute(
-      BuildContext context, String route, Map<String, dynamic> data) async {
+  static Future<void> _navigateByRoute(BuildContext context, String route,
+      Map<String, dynamic> data, GlobalKey sourceKey) async {
     final target = data['target'] as String?;
     Widget? page;
     final username = await StorageService.getLoginSession() ?? 'default';
@@ -1781,12 +2077,8 @@ class SearchNavigationHandler {
     if (route == '/time_log/tag') {
       final tagUuid = data['tag_uuid'];
       if (tagUuid != null) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
-        Navigator.push(
-            context,
-            PageTransitions.material(
-                builder: (_) => TimeLogScreen(
-                    username: username, initialTagUuid: tagUuid)));
+        await _push(context, sourceKey,
+            TimeLogScreen(username: username, initialTagUuid: tagUuid));
       }
       return;
     }
@@ -1803,17 +2095,19 @@ class SearchNavigationHandler {
           }
         }
         if (!context.mounted) return;
-        Navigator.of(context).popUntil((route) => route.isFirst);
-        Navigator.push(
+        final searchDateMs = data['search_date_ms'] as int?;
+        await _push(
             context,
-            PageTransitions.material(
-                builder: (_) => AppDetailScreen(
-                      appName: appName,
-                      historyStats: history,
-                      filter: DeviceFilter.all,
-                      range: ScreenTimeRange.day,
-                      anchorDate: DateTime.now(),
-                    )));
+            sourceKey,
+            AppDetailScreen(
+              appName: appName,
+              historyStats: history,
+              filter: DeviceFilter.all,
+              range: ScreenTimeRange.day,
+              anchorDate: searchDateMs == null
+                  ? DateTime.now()
+                  : DateTime.fromMillisecondsSinceEpoch(searchDateMs),
+            ));
       }
       return;
     }
@@ -1838,34 +2132,58 @@ class SearchNavigationHandler {
         page = TimeLogScreen(username: username);
         break;
       case '/settings':
-        page = SettingsPage(initialTarget: target);
+        page = SettingsPage(
+          initialTarget: target,
+          openInitialTargetAsRoot: true,
+        );
         break;
       case '/about':
         page = const AboutScreen();
         break;
       case '/login':
-        Navigator.pushNamed(context, '/login');
-        return;
+        page = const LoginScreen();
+        break;
       case '/teams':
-        if (context.mounted) {
-          Navigator.push(
-              context,
-              PageTransitions.slideHorizontal(TeamManagementScreen(
-                  username: username, initialTarget: target)));
+        if (target == 'messages' ||
+            target == 'announcements' ||
+            target == 'members') {
+          final rawTeams = await ApiService.fetchTeams();
+          final teams = rawTeams
+              .whereType<Map>()
+              .map((raw) => Team.fromJson(Map<String, dynamic>.from(raw)))
+              .toList();
+          if (target == 'messages') {
+            page = TeamMessageCenterScreen(
+              managedTeams: teams
+                  .where((team) => team.userRole == TeamRole.admin)
+                  .toList(),
+            );
+          } else if (teams.isNotEmpty) {
+            page = target == 'announcements'
+                ? TeamAnnouncementScreen(team: teams.first)
+                : TeamMembersSearchScreen(team: teams.first);
+          }
         }
-        return;
+        page ??= TeamManagementScreen(username: username);
+        break;
       case '/today':
-        Navigator.of(context).popUntil((route) => route.isFirst);
-        return;
+        page = WeeklyCourseScreen(username: username);
+        break;
       case '/course/weekly':
         page = WeeklyCourseScreen(username: username);
         break;
+      case '/plan':
+        page = TodoPlanScreen(username: username);
+        break;
+      case '/finance':
+        page = FinanceHomeScreen(username: username);
+        break;
+      case '/journal':
+        page = JournalHomeScreen(username: username);
+        break;
       case '/tomorrow':
-        Navigator.of(context).popUntil((route) => route.isFirst);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text("已跳转至主页 - 请查看明日安排"),
-            behavior: SnackBarBehavior.floating));
-        return;
+        page = WeeklyCourseScreen(username: username);
+        break;
       case '/screen_time':
         final cache = await StorageService.getScreenTimeCache();
         page = ScreenTimeDetailScreen(todayStats: cache);
@@ -1894,17 +2212,32 @@ class SearchNavigationHandler {
     }
 
     if (page != null && context.mounted) {
-      Navigator.push(context, PageTransitions.slideHorizontal(page));
+      await _push(context, sourceKey, page);
     }
   }
 
-  static void _executeAction(BuildContext context, String action) {
+  static Future<void> _executeAction(
+      BuildContext context, String action, GlobalKey sourceKey) async {
     if (action == 'new_todo') {
-      Navigator.of(context).popUntil((route) => route.isFirst);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("请在首页点击 + 号或通过快捷方式新建待办"),
-        behavior: SnackBarBehavior.floating,
-      ));
+      final username = await StorageService.getLoginSession() ?? 'default';
+      final groups = await StorageService.getTodoGroups(username);
+      if (!context.mounted) return;
+      await _push(
+          context,
+          sourceKey,
+          AddTodoScreen(
+            todoGroups: groups,
+            onTodoAdded: (todo) async {
+              final todos = await StorageService.getTodos(username);
+              await StorageService.saveTodos(username, [...todos, todo]);
+            },
+            onTodosBatchAdded: (added) async {
+              final todos = await StorageService.getTodos(username);
+              await StorageService.saveTodos(username, [...todos, ...added]);
+            },
+            onFixedScheduleAdded: (item) =>
+                StorageService.saveFixedSchedules(username, [item]),
+          ));
     }
   }
 }

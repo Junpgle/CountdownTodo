@@ -845,26 +845,63 @@ export default {
       if (url.pathname === "/api/courses" && request.method === "GET") {
         if (!authUserId) return errorResponse("未授权", 401);
         const userId = parseInt(url.searchParams.get("user_id"), 10);
-        const semester = url.searchParams.get("semester") || "default";
+        const semester = url.searchParams.get("semester");
         if (authUserId !== userId) return errorResponse("越权", 403);
-        const { results } = await DB.prepare(`SELECT * FROM courses WHERE user_id = ? AND semester = ? AND is_deleted = 0 ORDER BY week_index, weekday, start_time`).bind(userId, semester).all();
+        const query = semester === "all"
+          ? DB.prepare(`SELECT * FROM courses WHERE user_id = ? AND is_deleted = 0 ORDER BY semester, week_index, weekday, start_time`).bind(userId)
+          : DB.prepare(`SELECT * FROM courses WHERE user_id = ? AND semester = ? AND is_deleted = 0 ORDER BY week_index, weekday, start_time`).bind(userId, semester || "default");
+        const { results } = await query.all();
         return jsonResponse(results);
+      }
+
+      if (url.pathname === "/api/capabilities" && request.method === "GET") {
+        if (!authUserId) return errorResponse("未授权", 401);
+        return jsonResponse({
+          success: true,
+          capabilities: {
+            atomic_course_upload: true,
+          },
+        });
       }
 
       if (url.pathname === "/api/courses" && request.method === "POST") {
         if (!authUserId) return errorResponse("未授权", 401);
-        const { user_id, courses, semester = "default" } = await request.json();
+        const {
+          user_id,
+          courses,
+          semester = "default",
+          replace_all = false,
+          atomic_all_semesters = false,
+        } = await request.json();
         if (authUserId !== parseInt(user_id, 10)) return errorResponse("越权", 403);
+        if (!Array.isArray(courses)) return errorResponse("courses 格式错误", 400);
+        if (atomic_all_semesters === true && semester !== "all") {
+          return errorResponse("原子多学期上传必须使用 semester=all", 400);
+        }
+        if (atomic_all_semesters === true && replace_all !== true) {
+          return errorResponse("原子多学期上传必须替换完整课表", 400);
+        }
         const now = Date.now();
         const limitError = await enforceSyncLimit(user_id, DB, now);
         if (limitError && limitError !== 'IGNORE') return errorResponse(limitError, 429);
 
-        const batchStatements = [DB.prepare("DELETE FROM courses WHERE user_id = ? AND semester = ?").bind(user_id, semester)];
+        const batchStatements = [replace_all === true
+          ? DB.prepare("DELETE FROM courses WHERE user_id = ?").bind(user_id)
+          : DB.prepare("DELETE FROM courses WHERE user_id = ? AND semester = ?").bind(user_id, semester)];
         for (const c of courses) {
-          batchStatements.push(DB.prepare(`INSERT INTO courses (user_id, semester, course_name, room_name, teacher_name, start_time, end_time, weekday, week_index, lesson_type, created_at, updated_at, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`).bind(user_id, semester, c.course_name, c.room_name, c.teacher_name, c.start_time, c.end_time, c.weekday, c.week_index, c.lesson_type, 0, now, now));
+          const courseSemester = atomic_all_semesters === true
+            ? String(c.semester ?? c.semester_id ?? "default").trim() || "default"
+            : semester;
+          if (courseSemester === "all") {
+            return errorResponse("课程学期 ID 无效", 400);
+          }
+          batchStatements.push(DB.prepare(`INSERT INTO courses (user_id, semester, course_name, room_name, teacher_name, start_time, end_time, weekday, week_index, lesson_type, created_at, updated_at, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`).bind(user_id, courseSemester, c.course_name, c.room_name, c.teacher_name, c.start_time, c.end_time, c.weekday, c.week_index, c.lesson_type, 0, now, now));
         }
         if (batchStatements.length > 0) await DB.batch(batchStatements);
-        return jsonResponse({ success: true });
+        return jsonResponse({
+          success: true,
+          atomic_course_upload: atomic_all_semesters === true,
+        });
       }
 
       if (url.pathname === "/api/settings" && request.method === "GET") {
@@ -950,19 +987,32 @@ export default {
           const version = parseInt(r.version ?? 1, 10);
           const createdAt = normalizeToMs(r.created_at ?? r.createdAt) || now;
           const updatedAt = normalizeToMs(r.updated_at ?? r.updatedAt) || now;
-          const tagUuidsArr = Array.isArray(r.tag_uuids) ? r.tag_uuids.map(String) : [];
+          const hasTagUuids = Array.isArray(r.tag_uuids) || Array.isArray(r.tagUuids);
+          const tagUuidsArr = Array.isArray(r.tag_uuids)
+            ? r.tag_uuids.map(String)
+            : (Array.isArray(r.tagUuids) ? r.tagUuids.map(String) : []);
 
           const existing = await DB.prepare("SELECT version, updated_at FROM pomodoro_records WHERE uuid = ? AND user_id = ?").bind(uuid, authUserId).first();
+          let shouldApplyRecord = false;
           if (!existing) {
             batch.push(DB.prepare(`INSERT INTO pomodoro_records (uuid, user_id, todo_uuid, start_time, end_time, planned_duration, actual_duration, status, device_id, is_deleted, version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(uuid, authUserId, todoUuid, startTime, endTime, plannedDuration, actualDuration, status, deviceId, isDeleted, version, createdAt, updatedAt));
+            shouldApplyRecord = true;
           } else if (version > (existing.version || 0) || updatedAt > normalizeToMs(existing.updated_at)) {
             batch.push(DB.prepare(`UPDATE pomodoro_records SET todo_uuid=?, start_time=?, end_time=?, planned_duration=?, actual_duration=?, status=?, device_id=?, is_deleted=?, version=?, updated_at=? WHERE uuid=? AND user_id=?`).bind(todoUuid, startTime, endTime, plannedDuration, actualDuration, status, deviceId, isDeleted, version, updatedAt, uuid, authUserId));
+            shouldApplyRecord = true;
           }
 
-          if (tagUuidsArr.length > 0) {
+          // The record payload is the complete tag set.  Tombstone the old
+          // associations first, then upsert the current set in the same D1
+          // batch.  Only do this when the record itself wins LWW, and only
+          // when the client actually sent tag_uuids, so old clients do not
+          // accidentally erase newer tag data.
+          if (shouldApplyRecord && hasTagUuids) {
             const tagsKey = todoUuid || uuid;
+            const associationTime = updatedAt || now;
+            batch.push(DB.prepare("UPDATE todo_tags SET is_deleted=1, updated_at=? WHERE todo_uuid=? AND COALESCE(updated_at, 0) < ?").bind(associationTime, tagsKey, associationTime));
             for (const tagUuid of tagUuidsArr) {
-              batch.push(DB.prepare("INSERT OR REPLACE INTO todo_tags (todo_uuid, tag_uuid, is_deleted, updated_at) VALUES (?,?,0,?)").bind(tagsKey, tagUuid, now));
+              batch.push(DB.prepare("INSERT INTO todo_tags (todo_uuid, tag_uuid, is_deleted, updated_at) VALUES (?,?,0,?) ON CONFLICT(todo_uuid, tag_uuid) DO UPDATE SET is_deleted=0, updated_at=excluded.updated_at WHERE excluded.updated_at >= todo_tags.updated_at").bind(tagsKey, tagUuid, associationTime));
             }
           }
         }
@@ -974,11 +1024,18 @@ export default {
         if (!authUserId) return errorResponse("未授权", 401);
         const fromMs = parseInt(url.searchParams.get("from") || "0", 10);
         const toMs = parseInt(url.searchParams.get("to") || String(Date.now()), 10);
+        const includeDeleted = url.searchParams.get("include_deleted") === "1";
+        const updatedSince = url.searchParams.get("updated_since");
+        const rangeStart = updatedSince == null
+          ? fromMs
+          : parseInt(updatedSince || "0", 10);
+        const rangeColumn = updatedSince == null ? "r.start_time" : "r.updated_at";
+        const deletionClause = includeDeleted ? "" : " AND r.is_deleted = 0";
         const { results } = await DB.prepare(`
           SELECT r.*, t.content AS todo_title, GROUP_CONCAT(tt.tag_uuid) AS tag_uuids_concat
           FROM pomodoro_records r LEFT JOIN todos t ON r.todo_uuid = t.uuid LEFT JOIN todo_tags tt ON COALESCE(r.todo_uuid, r.uuid) = tt.todo_uuid AND tt.is_deleted = 0
-          WHERE r.user_id = ? AND r.is_deleted = 0 AND r.start_time >= ? AND r.start_time <= ? GROUP BY r.uuid ORDER BY r.start_time DESC
-        `).bind(authUserId, fromMs, toMs).all();
+          WHERE r.user_id = ?${deletionClause} AND ${rangeColumn} >= ? AND ${rangeColumn} <= ? GROUP BY r.uuid ORDER BY r.start_time DESC
+        `).bind(authUserId, rangeStart, toMs).all();
 
         const enriched = results.map(r => ({
           ...r, tag_uuids: r.tag_uuids_concat ? r.tag_uuids_concat.split(',').filter(Boolean) : [], tag_uuids_concat: undefined,

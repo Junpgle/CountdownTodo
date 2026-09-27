@@ -26,9 +26,7 @@ class McpIntroductionPage extends StatelessWidget {
           child: SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(
               16,
-              isEmbedded
-                  ? 16
-                  : floatingGlassSettingsContentTopInset(context, extra: 16),
+              isEmbedded ? 16 : floatingGlassSettingsContentTopInset(context),
               16,
               32,
             ),

@@ -35,6 +35,7 @@ import '../services/pomodoro_sync_service.dart';
 import '../services/feature_tip_service.dart';
 import '../services/item_semantics_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
+import '../services/todo_recurrence_date_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/recognized_todo_adapter.dart';
 import '../widgets/coach_mark_overlay.dart';
@@ -42,7 +43,6 @@ import 'version_history_sheet.dart';
 import 'ai_water_border.dart';
 import 'optional_liquid_glass_surface.dart';
 import '../screens/todo_plan_screen.dart';
-import '../features/habits/models/habit_goal.dart';
 import '../features/habits/repositories/habit_repository.dart';
 
 part 'todo_section_widget_contract.dart';
@@ -92,8 +92,8 @@ class TodoSectionWidget extends StatefulWidget {
 
   final Function(String?, String?)? onTeamChanged; // 🚀 传参：ID, Name
 
-  final Key? folderKey;
-  final Key? historyKey;
+  final GlobalKey? folderKey;
+  final GlobalKey? historyKey;
 
   const TodoSectionWidget({
     super.key,
@@ -219,6 +219,8 @@ abstract class _TodoSectionStateBase extends State<TodoSectionWidget>
   bool _hasInitializedExpansion = false;
 
   final Map<String, GlobalKey> _todoCardKeys = {};
+  final GlobalKey _folderManagementButtonKey = GlobalKey();
+  final GlobalKey _historicalTodosButtonKey = GlobalKey();
   final Map<String, Key> _todoDismissKeys = {};
   final Map<String, AnimationController> _completingAnimations = {};
   final Map<String, bool> _isCompleting = {};

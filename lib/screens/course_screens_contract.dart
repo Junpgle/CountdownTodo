@@ -21,16 +21,24 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
 
   // 多学期支持
   List<SemesterInfo> _semesters = [];
+  String _activeSemesterId = 'default';
+
+  SemesterInfo? _semesterForDate(DateTime date);
+
+  int _relativeWeekForDate(DateTime date, SemesterInfo semester);
 
   List<TimeLogItem> _allTimeLogs = [];
   List<PomodoroRecord> _allPomodoroRecords = [];
   List<PomodoroTag> _pomodoroTags = [];
   List<TodoPlanBlock> _allPlanBlocks = [];
+  List<FixedScheduleItem> _allFixedSchedules = [];
   Map<int, List<TimeLogItem>> _timeLogsPerDay = {};
   Map<int, List<PomodoroRecord>> _pomodorosPerDay = {};
   Map<int, List<TodoPlanBlock>> _planBlocksPerDay = {};
+  Map<int, List<FixedScheduleItem>> _fixedSchedulesPerDay = {};
   final Set<String> _activeDataViews = {
     'courses',
+    'fixedSchedules',
     'todos',
     'plans',
     'timeLogs',
@@ -59,6 +67,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   final Map<String, GlobalKey> _timeLogCardKeys = {};
   final Map<String, GlobalKey> _pomodoroCardKeys = {};
   final Map<String, GlobalKey> _deviceCalendarCardKeys = {};
+  final Map<String, GlobalKey> _fixedScheduleCardKeys = {};
 
   final GlobalKey _filterKey = GlobalKey();
   final GlobalKey _viewModeKey = GlobalKey();
@@ -105,6 +114,19 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
     return _deviceCalendarCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
+  GlobalKey _getFixedScheduleCardKey(String scheduleId, int weekday) {
+    final keyStr = 'w${_currentWeek}_${scheduleId}_d$weekday';
+    return _fixedScheduleCardKeys.putIfAbsent(keyStr, () => GlobalKey());
+  }
+
+  GlobalKey _getFixedScheduleSidebarKey(
+    String scheduleId,
+    String? sourceDate,
+  ) {
+    final keyStr = 'sidebar_${scheduleId}_${sourceDate ?? 'schedule'}';
+    return _fixedScheduleCardKeys.putIfAbsent(keyStr, () => GlobalKey());
+  }
+
   // 时间轴参数配置
   final double timeColumnWidth = 45.0;
   final int startHour = 6;
@@ -125,12 +147,58 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   Map<String, List<TimeLogItem>> _monthLogMap = {};
   Map<String, List<PomodoroRecord>> _monthPomMap = {};
   Map<String, List<TodoPlanBlock>> _monthPlanMap = {};
+  Map<String, List<FixedScheduleItem>> _monthFixedScheduleMap = {};
   Map<String, List<DeviceCalendarEvent>> _monthDeviceCalendarMap = {};
   bool _monthDataPrepared = false;
   final int _maxExpandedSpanDays = 366;
   void initState();
   void dispose();
   Future<void> _loadData();
+  Future<void> _reloadFixedSchedules();
+  void _reloadFixedSchedulesOnRefresh();
+
+  DateTime? _fixedScheduleDate(FixedScheduleItem item) {
+    final parsed = DateTime.tryParse(item.date);
+    if (parsed == null) return null;
+    return DateTime(parsed.year, parsed.month, parsed.day);
+  }
+
+  String _fixedScheduleTimeLabel(FixedScheduleItem item) {
+    if (item.startTime == null) return '时间待定';
+    final start = DateTime.fromMillisecondsSinceEpoch(item.startTime!);
+    if (item.endTime == null) {
+      return '${DateFormat('HH:mm').format(start)} · 结束待定';
+    }
+    final end = DateTime.fromMillisecondsSinceEpoch(item.endTime!);
+    return '${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)}';
+  }
+
+  Future<void> _openFixedScheduleDetail(
+    FixedScheduleItem item, {
+    GlobalKey? sourceKey,
+    Color? sourceColor,
+    BorderRadius? sourceBorderRadius,
+  }) async {
+    final page = FixedScheduleDetailScreen(
+      username: widget.username,
+      item: item,
+    );
+    final result = sourceKey == null
+        ? await Navigator.of(context).push<FixedScheduleItem>(
+            PageTransitions.material(builder: (_) => page),
+          )
+        : await PageTransitions.pushFromRect<FixedScheduleItem>(
+            context: context,
+            page: page,
+            sourceKey: sourceKey,
+            sourceColor: sourceColor,
+            sourceBorderRadius: sourceBorderRadius ??
+                const BorderRadius.all(Radius.circular(4)),
+            placeholderIcon: Icons.event_available_rounded,
+          );
+    if (mounted && result != null) await _reloadFixedSchedules();
+  }
+
   Future<void> _loadDeviceCalendarEventsForCurrentWeek();
   Future<void> _loadDeviceCalendarEventsForCurrentView();
   void _updateWeekCourses();
@@ -148,6 +216,7 @@ abstract class _WeeklyCourseScreenStateBase extends State<WeeklyCourseScreen>
   void _updateWeekDeviceCalendarEvents();
   void _updateMonthDeviceCalendarEvents();
   void _updateWeekTimeLogsPomodorosAndPlans();
+  void _updateWeekFixedSchedules();
   void _changeWeek(int delta);
   void _jumpToWeek(int newWeek);
   void _toggleViewMode(int mode);

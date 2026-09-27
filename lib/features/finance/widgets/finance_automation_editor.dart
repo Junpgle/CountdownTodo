@@ -335,7 +335,7 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
           DropdownMenuItem(
               value: category.uuid,
               child: Text(
-                  '${category.icon} ${category.name}${category.isArchived ? '（已归档）' : ''}',
+                  '${category.icon} ${financeCategoryDisplayName(category, widget.categories)}${category.isArchived ? '（已归档）' : ''}',
                   overflow: TextOverflow.ellipsis)),
         if (_categoryUuid != null &&
             categories.every((item) => item.uuid != _categoryUuid))

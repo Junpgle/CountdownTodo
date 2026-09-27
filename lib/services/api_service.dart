@@ -7,15 +7,33 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String cloudflareUrl = 'https://mathquiz.junpgle.me';
-  static const String webAliyunProxyUrl = 'https://api-cdt.junpgle.me';
+  /// Persisted values for the production API route selector.
+  ///
+  /// Keep these values stable because older releases store them in
+  /// SharedPreferences.
+  static const String serverChoiceAliyunDirect = 'aliyun';
+  static const String serverChoiceCloudflare = 'cloudflare';
+
+  /// Current Aliyun production API endpoints.
+  static const String aliyunCloudflareUrl = 'https://api-cdt.junpgle.me';
   static const String aliyunProdUrl = 'http://101.200.13.100:8082';
   static const String aliyunTestUrl = 'http://101.200.13.100:8084';
+
+  /// The retired Cloudflare Worker is kept only for the historical migration
+  /// flow. It must not be selected as the current app API endpoint.
+  static const String legacyCloudflareUrl = 'https://mathquiz.junpgle.me';
+
+  /// Backwards-compatible name used by the legacy migration code and tests.
+  static const String cloudflareUrl = legacyCloudflareUrl;
+
+  /// Web must use the HTTPS Zero Trust route because browsers cannot safely
+  /// call the HTTP origin from an HTTPS page.
+  static const String webAliyunProxyUrl = aliyunCloudflareUrl;
 
   // Web must never start against the retired Cloudflare Worker. Share pages
   // intentionally skip the normal app initialization sequence, so the
   // default must already be the current API proxy before the first request.
-  static String baseUrl = kIsWeb ? webAliyunProxyUrl : cloudflareUrl;
+  static String baseUrl = kIsWeb ? aliyunCloudflareUrl : aliyunProdUrl;
   static String? _baseUrlOverride;
 
   // 🛡️ 全局使用的、跳过 SSL 证书验证的 HTTP 客户端
@@ -46,20 +64,24 @@ class ApiService {
     _isLocked = true;
   }
 
+  static String normalizeServerChoice(String? choice) {
+    return choice == serverChoiceCloudflare
+        ? serverChoiceCloudflare
+        : serverChoiceAliyunDirect;
+  }
+
   // 初始化设置
   static void setServerChoice(String choice) {
     if (_isLocked) return; // 🛡️ 如果环境已锁定（如测试版），禁止通过设置更改地址
 
     if (kIsWeb) {
-      baseUrl = webAliyunProxyUrl;
+      baseUrl = aliyunCloudflareUrl;
       return;
     }
 
-    if (choice == 'aliyun') {
-      baseUrl = aliyunProdUrl;
-    } else {
-      baseUrl = cloudflareUrl;
-    }
+    baseUrl = normalizeServerChoice(choice) == serverChoiceCloudflare
+        ? aliyunCloudflareUrl
+        : aliyunProdUrl;
   }
 
   // --- Migration Tool Support ---
@@ -77,15 +99,18 @@ class ApiService {
       kIsWeb ? webAliyunProxyUrl : (_baseUrlOverride ?? baseUrl);
   static String get effectiveBaseUrl => _effectiveBaseUrl;
 
-  /// Stable namespace for sync watermarks. Test/custom endpoints must not
-  /// share the production or Cloudflare watermark.
+  /// Stable namespace for sync watermarks. The current direct and Cloudflare
+  /// routes share the Aliyun production namespace; test, legacy, and custom
+  /// endpoints remain isolated.
   static String get syncServerKey {
     final normalized = _effectiveBaseUrl.replaceFirst(RegExp(r'/$'), '');
-    if (normalized == aliyunProdUrl) return 'aliyun';
-    if (normalized == aliyunTestUrl) return 'aliyun_test';
-    if (normalized == cloudflareUrl || normalized == webAliyunProxyUrl) {
-      return 'cf';
+    // Direct HTTP and Cloudflare HTTPS both reach the same Aliyun production
+    // database, so switching routes must not create a second sync cursor.
+    if (normalized == aliyunProdUrl || normalized == aliyunCloudflareUrl) {
+      return 'aliyun';
     }
+    if (normalized == aliyunTestUrl) return 'aliyun_test';
+    if (normalized == legacyCloudflareUrl) return 'cf';
     return 'custom_${base64Url.encode(utf8.encode(normalized)).replaceAll('=', '')}';
   }
 
@@ -634,13 +659,16 @@ class ApiService {
   static Future<List<dynamic>> fetchCourses(int userId,
       {String? semester}) async {
     try {
-      final uri = semester != null
-          ? Uri.parse(
-              '$_effectiveBaseUrl/api/courses?user_id=$userId&semester=$semester')
-          : Uri.parse('$_effectiveBaseUrl/api/courses?user_id=$userId');
+      final uri = Uri.parse('$_effectiveBaseUrl/api/courses').replace(
+        queryParameters: {
+          'user_id': userId.toString(),
+          if (semester != null) 'semester': semester,
+        },
+      );
       final response = await _request('GET', uri.toString());
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final decoded = jsonDecode(response.body);
+        return decoded is List ? decoded : [];
       }
       return [];
     } catch (e) {
@@ -648,10 +676,114 @@ class ApiService {
     }
   }
 
+  /// Returns all courses known by the server, including configured semesters.
+  ///
+  /// New servers understand `semester=all`.  The per-semester requests remain
+  /// as a compatibility path for older deployments and also cover servers
+  /// that do not persist the semester list in user settings.
+  static Future<List<dynamic>> fetchCoursesForSemesters(
+    int userId,
+    Iterable<String> semesterIds, {
+    bool includeAll = true,
+  }) async {
+    final normalizedSemesters = <String>{
+      for (final id in semesterIds)
+        if (id.trim().isNotEmpty) id.trim(),
+      'default',
+    };
+
+    final requests = <Future<List<dynamic>>>[];
+    if (includeAll) {
+      requests.add(fetchCourses(userId, semester: 'all'));
+    }
+    requests.addAll(normalizedSemesters.map((semester) async {
+      final courses = await fetchCourses(userId, semester: semester);
+      return courses.map((course) {
+        if (course is! Map) return course;
+        final map = Map<String, dynamic>.from(course);
+        if (map['semester'] == null && map['semester_id'] == null) {
+          map['semester'] = semester;
+        }
+        return map;
+      }).toList();
+    }));
+
+    final responses = await Future.wait(requests);
+    final result = <dynamic>[];
+    final seen = <String>{};
+    for (final response in responses) {
+      for (final course in response) {
+        if (course is! Map) continue;
+        final map = Map<String, dynamic>.from(course);
+        final semester = (map['semester'] ??
+                map['semester_id'] ??
+                map['semesterId'] ??
+                'default')
+            .toString();
+        final stableId = (map['uuid'] ?? map['id'])?.toString();
+        final identity = stableId == null || stableId.isEmpty
+            ? <Object?>[
+                semester,
+                map['course_name'] ?? map['courseName'],
+                map['room_name'] ?? map['roomName'],
+                map['teacher_name'] ?? map['teacherName'],
+                map['start_time'] ?? map['startTime'],
+                map['end_time'] ?? map['endTime'],
+                map['weekday'],
+                map['week_index'] ?? map['weekIndex'],
+                map['date'],
+              ].join('|')
+            : '$semester|$stableId';
+        if (seen.add(identity)) result.add(map);
+      }
+    }
+    return result;
+  }
+
+  static List<String> semesterIdsFromSettings(Map<String, dynamic>? settings) {
+    final rawSemesters = settings?['semesters'];
+    if (rawSemesters is! List) return const [];
+    return rawSemesters
+        .whereType<Map>()
+        .map((semester) => semester['id']?.toString() ?? '')
+        .where((id) => id.trim().isNotEmpty)
+        .toList();
+  }
+
+  static Future<List<dynamic>> fetchAllCourses(int userId) async {
+    final settings = await fetchUserSettings();
+    return fetchCoursesForSemesters(
+      userId,
+      semesterIdsFromSettings(settings),
+    );
+  }
+
+  /// The multi-semester course replacement must be performed by one server
+  /// transaction.  Older servers only understand the per-semester endpoint,
+  /// so callers must verify this capability before sending the new payload.
+  static Future<bool> supportsAtomicCourseUpload() async {
+    try {
+      final response = await _request(
+        'GET',
+        '/api/capabilities',
+        timeout: const Duration(seconds: 5),
+      );
+      if (response.statusCode != 200) return false;
+      final data = jsonDecode(response.body);
+      return data is Map &&
+          (data['capabilities'] is Map) &&
+          (data['capabilities']['atomic_course_upload'] == true);
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<Map<String, dynamic>> uploadCourses({
     required int userId,
     required List<Map<String, dynamic>> courses,
     String semester = "default",
+    bool replaceAll = false,
+    bool atomicAllSemesters = false,
   }) async {
     try {
       final response = await _request(
@@ -660,6 +792,8 @@ class ApiService {
         body: {
           'user_id': userId,
           'semester': semester,
+          'replace_all': replaceAll,
+          if (atomicAllSemesters) 'atomic_all_semesters': true,
           'courses': courses,
         },
       );
@@ -864,12 +998,20 @@ class ApiService {
 
   /// 拉取专注记录（按时间范围）
   static Future<List<dynamic>> fetchPomodoroRecords(
-      [int? userId, int? fromMs, int? toMs]) async {
+      [int? userId,
+      int? fromMs,
+      int? toMs,
+      bool includeDeleted = false,
+      bool useUpdatedAt = false]) async {
     try {
       final params = <String, String>{};
       if (userId != null) params['user_id'] = userId.toString();
       if (fromMs != null) params['from'] = fromMs.toString();
       if (toMs != null) params['to'] = toMs.toString();
+      if (includeDeleted) params['include_deleted'] = '1';
+      if (useUpdatedAt && fromMs != null) {
+        params['updated_since'] = fromMs.toString();
+      }
       final uri = Uri.parse('$_effectiveBaseUrl/api/pomodoro/records')
           .replace(queryParameters: params.isEmpty ? null : params);
       final response = await _request('GET', uri.toString());
@@ -970,8 +1112,17 @@ class ApiService {
           List<Map<String, dynamic>> sessions) =>
       uploadPomodoroRecords(sessions);
   static Future<List<dynamic>> fetchPomodoroSessions(
-          {int? fromMs, int? toMs}) =>
-      fetchPomodoroRecords(null, fromMs, toMs);
+          {int? fromMs,
+          int? toMs,
+          bool includeDeleted = false,
+          bool useUpdatedAt = false}) =>
+      fetchPomodoroRecords(
+        null,
+        fromMs,
+        toMs,
+        includeDeleted,
+        useUpdatedAt,
+      );
 
   // ==========================================
   // 👥 10. 团队与协作 (Teams)
@@ -1257,12 +1408,16 @@ class ApiService {
   }
 
   /// 🚀 Uni-Sync 4.0: 获取团队系统消息流
-  static Future<Map<String, dynamic>> fetchTeamSystemMessages(
-      String teamUuid) async {
+  static Future<Map<String, dynamic>> fetchTeamSystemMessages(String teamUuid,
+      {int? limit, int? offset}) async {
     try {
+      final paging = [
+        if (limit != null) 'limit=$limit',
+        if (offset != null) 'offset=$offset',
+      ].join('&');
       final response = await _request(
         'GET',
-        '/api/teams/system_messages?team_uuid=$teamUuid',
+        '/api/teams/system_messages?team_uuid=$teamUuid${paging.isEmpty ? '' : '&$paging'}',
       );
       return jsonDecode(response.body);
     } catch (e) {

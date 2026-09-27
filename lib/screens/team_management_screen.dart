@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import '../models.dart';
 import '../services/api_service.dart';
 import '../services/pomodoro_sync_service.dart';
@@ -44,11 +46,7 @@ class TeamManagementScreen extends StatefulWidget {
 
 class _TeamManagementScreenState extends State<TeamManagementScreen>
     with WidgetsBindingObserver {
-  static List<Team> _cachedTeams = [];
-  static List<dynamic> _cachedInvitations = [];
-  static Map<String, int> _cachedPendingCounts = {};
-  static Map<String, int> _cachedConflictCounts = {};
-  static int _cachedTotalConflictCount = 0;
+  static final Map<String, _TeamManagementSnapshot> _cachedSnapshots = {};
   StreamSubscription? _wsSub;
   Team? _selectedTeam;
   List<Team> _teams = [];
@@ -59,6 +57,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   bool _isLoading = true;
   bool _isCheckingClipboard = false;
   int _teamLoadGeneration = 0;
+  String? _activeCacheOwnerKey;
   final GlobalKey _panoramaActionKey = GlobalKey();
   final GlobalKey _conflictActionKey = GlobalKey();
 
@@ -67,22 +66,58 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     StorageService.scopedDataRefreshNotifier.addListener(_onDataRefreshed);
+    _activeCacheOwnerKey = _cacheOwnerKey;
     _restoreCachedSnapshot();
     _loadTeams(isSilent: _hasCachedSnapshot);
     _setupWsListener();
     _checkClipboardForInvite();
   }
 
-  bool get _hasCachedSnapshot =>
-      _cachedTeams.isNotEmpty || _cachedInvitations.isNotEmpty;
+  @override
+  void didUpdateWidget(covariant TeamManagementScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final ownerKey = _cacheOwnerKey;
+    if (_activeCacheOwnerKey == ownerKey) return;
+
+    _activeCacheOwnerKey = ownerKey;
+    _teamLoadGeneration++;
+    _selectedTeam = null;
+    _teams = [];
+    _myInvitations = [];
+    _teamPendingCounts = {};
+    _teamConflictCounts = {};
+    _totalConflictCount = 0;
+    _isLoading = true;
+    _restoreCachedSnapshot();
+    _loadTeams(isSilent: _hasCachedSnapshot);
+  }
+
+  String? get _cacheOwnerKey {
+    final token = ApiService.getToken();
+    if (token == null || token.isEmpty) return null;
+    final tokenDigest = sha256.convert(utf8.encode(token));
+    return '${ApiService.syncServerKey}:$tokenDigest:${widget.username.trim()}';
+  }
+
+  _TeamManagementSnapshot? get _cachedSnapshot {
+    final ownerKey = _cacheOwnerKey;
+    return ownerKey == null ? null : _cachedSnapshots[ownerKey];
+  }
+
+  bool get _hasCachedSnapshot {
+    final snapshot = _cachedSnapshot;
+    return snapshot != null &&
+        (snapshot.teams.isNotEmpty || snapshot.invitations.isNotEmpty);
+  }
 
   void _restoreCachedSnapshot() {
     if (!_hasCachedSnapshot) return;
-    _teams = List<Team>.from(_cachedTeams);
-    _myInvitations = List<dynamic>.from(_cachedInvitations);
-    _teamPendingCounts = Map<String, int>.from(_cachedPendingCounts);
-    _teamConflictCounts = Map<String, int>.from(_cachedConflictCounts);
-    _totalConflictCount = _cachedTotalConflictCount;
+    final snapshot = _cachedSnapshot!;
+    _teams = List<Team>.from(snapshot.teams);
+    _myInvitations = List<dynamic>.from(snapshot.invitations);
+    _teamPendingCounts = Map<String, int>.from(snapshot.pendingCounts);
+    _teamConflictCounts = Map<String, int>.from(snapshot.conflictCounts);
+    _totalConflictCount = snapshot.totalConflictCount;
     _selectedTeam = _selectedTeam != null
         ? _teams.where((t) => t.uuid == _selectedTeam!.uuid).firstOrNull
         : (_teams.isNotEmpty ? _teams.first : null);
@@ -322,6 +357,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
 
   Future<void> _loadTeams({bool isSilent = false}) async {
     final loadGeneration = ++_teamLoadGeneration;
+    final ownerKey = _cacheOwnerKey;
     final hasLocalContent = _teams.isNotEmpty || _myInvitations.isNotEmpty;
     if (!isSilent && !hasLocalContent) {
       setState(() => _isLoading = true);
@@ -344,13 +380,21 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
       if (adminTeamUuids.isNotEmpty) {
         final pendingResults = await Future.wait(adminTeamUuids
             .map((uuid) => ApiService.fetchPendingRequests(uuid)));
-        if (!mounted || loadGeneration != _teamLoadGeneration) return;
+        if (!mounted ||
+            loadGeneration != _teamLoadGeneration ||
+            ownerKey != _cacheOwnerKey) {
+          return;
+        }
         for (int i = 0; i < adminTeamUuids.length; i++) {
           pendingCounts[adminTeamUuids[i]] = pendingResults[i].length;
         }
       }
 
-      if (!mounted || loadGeneration != _teamLoadGeneration) return;
+      if (!mounted ||
+          loadGeneration != _teamLoadGeneration ||
+          ownerKey != _cacheOwnerKey) {
+        return;
+      }
       setState(() {
         _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
         _myInvitations = invitations;
@@ -369,13 +413,13 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
           }
         }
       });
-      _cachedTeams = List<Team>.from(_teams);
-      _cachedInvitations = List<dynamic>.from(_myInvitations);
-      _cachedPendingCounts = Map<String, int>.from(_teamPendingCounts);
+      _cacheSnapshot();
 
-      unawaited(_loadTeamConflictCounts(loadGeneration));
+      unawaited(_loadTeamConflictCounts(loadGeneration, ownerKey));
     } catch (e) {
-      if (mounted && loadGeneration == _teamLoadGeneration) {
+      if (mounted &&
+          loadGeneration == _teamLoadGeneration &&
+          ownerKey == _cacheOwnerKey) {
         setState(() => _isLoading = false);
       }
     }
@@ -388,7 +432,10 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     }
   }
 
-  Future<void> _loadTeamConflictCounts(int loadGeneration) async {
+  Future<void> _loadTeamConflictCounts(
+    int loadGeneration,
+    String? ownerKey,
+  ) async {
     try {
       final results = await Future.wait([
         StorageService.getTodos(widget.username, includeDeleted: true),
@@ -422,14 +469,29 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
           .where(ConflictVisibilityService.isVisibleHabitRuleConflict)
           .length;
 
-      if (!mounted || loadGeneration != _teamLoadGeneration) return;
+      if (!mounted ||
+          loadGeneration != _teamLoadGeneration ||
+          ownerKey != _cacheOwnerKey) {
+        return;
+      }
       setState(() {
         _teamConflictCounts = conflictCounts;
         _totalConflictCount = total;
       });
-      _cachedConflictCounts = Map<String, int>.from(conflictCounts);
-      _cachedTotalConflictCount = total;
+      _cacheSnapshot();
     } catch (_) {}
+  }
+
+  void _cacheSnapshot() {
+    final ownerKey = _cacheOwnerKey;
+    if (ownerKey == null) return;
+    _cachedSnapshots[ownerKey] = _TeamManagementSnapshot(
+      teams: List<Team>.from(_teams),
+      invitations: List<dynamic>.from(_myInvitations),
+      pendingCounts: Map<String, int>.from(_teamPendingCounts),
+      conflictCounts: Map<String, int>.from(_teamConflictCounts),
+      totalConflictCount: _totalConflictCount,
+    );
   }
 
   void _handleInitialTarget(String target) {
@@ -2168,6 +2230,22 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   }
 }
 
+class _TeamManagementSnapshot {
+  const _TeamManagementSnapshot({
+    required this.teams,
+    required this.invitations,
+    required this.pendingCounts,
+    required this.conflictCounts,
+    required this.totalConflictCount,
+  });
+
+  final List<Team> teams;
+  final List<dynamic> invitations;
+  final Map<String, int> pendingCounts;
+  final Map<String, int> conflictCounts;
+  final int totalConflictCount;
+}
+
 // ============== 团队详情看板 (Master-Detail Detail) ==============
 class _TeamDetailView extends StatefulWidget {
   final Team team;
@@ -2623,6 +2701,40 @@ class _TeamSettingsView extends StatelessWidget {
 }
 
 // ============== 成员列表子视图 ==============
+/// Full-page entry used by search so opening and closing the member list uses
+/// the same container transform as the search result card.
+class TeamMembersSearchScreen extends StatefulWidget {
+  const TeamMembersSearchScreen({super.key, required this.team});
+
+  final Team team;
+
+  @override
+  State<TeamMembersSearchScreen> createState() =>
+      _TeamMembersSearchScreenState();
+}
+
+class _TeamMembersSearchScreenState extends State<TeamMembersSearchScreen> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: FloatingGlassAppBar(
+          title: Text('${widget.team.name} · 团队成员'),
+        ),
+        body: _TeamMembersView(
+          team: widget.team,
+          scrollController: _scrollController,
+          onRefresh: () {},
+        ),
+      );
+}
+
 class _TeamMembersView extends StatefulWidget {
   final Team team;
   final ScrollController scrollController;

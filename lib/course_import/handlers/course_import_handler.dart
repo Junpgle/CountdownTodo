@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -11,349 +12,48 @@ import '../parsers/xujc_parser.dart';
 import '../parsers/xidian_parser.dart';
 import '../parsers/zfsoft_parser.dart';
 import '../widgets/zf_time_config_dialog.dart';
+import '../widgets/course_time_repair_dialog.dart';
 import '../widgets/course_webview_screen.dart';
 import '../../utils/page_transitions.dart';
 import '../../utils/text_file_reader.dart';
 import '../../storage_service.dart';
+import '../course_schedule_semantics.dart';
+import '../course_import_preflight.dart';
 
 /// 导入模式
 enum ImportMode {
-  replace, // 替换现有课表
-  merge, // 与现有课表共存
+  replace, // 替换目标学期课表
+  merge, // 按时间段合并并与其他学期共存
 }
 
 class CourseImportHandler {
   final BuildContext context;
   final String username;
-  DateTime? semesterStart;
-  final VoidCallback onRescheduleReminders;
+  final FutureOr<void> Function() onRescheduleReminders;
   final Function(String) showMessage;
-  final Function(DateTime)? onSemesterStartChanged;
+
+  bool _loadingDialogOpen = false;
+  Route<void>? _loadingDialogRoute;
+  Future<void>? _loadingDialogFuture;
+  Future<void>? _loadingDialogReady;
+  NavigatorState? _loadingDialogNavigator;
 
   CourseImportHandler({
     required this.context,
     required this.username,
-    required this.semesterStart,
     required this.onRescheduleReminders,
     required this.showMessage,
-    this.onSemesterStartChanged,
   });
 
-  Future<bool> _ensureSemesterStartSet() async {
-    // 先尝试从存储读取最新值（处理构造时未传入的情况）
-    semesterStart ??= await StorageService.getSemesterStart();
-    if (semesterStart != null) return true;
-    if (!context.mounted) return false;
-
-    final DateTime? picked = await showDialog<DateTime>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        return AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.school_outlined, color: Colors.orange),
-              SizedBox(width: 10),
-              Text('请先设置开学日期'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '导入课表需要知道开学日期，才能计算每节课的具体日期。',
-                style: TextStyle(fontSize: 14, height: 1.5),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                '请选择本学期的第一天（周一）：',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.calendar_month),
-                  label: const Text('选择开学日期'),
-                  onPressed: () async {
-                    final picked = await showDatePicker(
-                      context: ctx,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2100),
-                      helpText: '选择开学日期',
-                    );
-                    if (picked != null && ctx.mounted) {
-                      Navigator.pop(ctx, picked);
-                    }
-                  },
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (picked == null) return false;
-
-    semesterStart = picked;
-    StorageService.saveAppSetting(
-      StorageService.keySemesterStart,
-      picked.toIso8601String(),
-    );
-    onSemesterStartChanged?.call(picked);
-    return true;
-  }
-
   /// 让用户选择导入到哪个学期
-  /// 返回选中的学期 ID，如果用户取消则返回 null
-  Future<String?> _askTargetSemester() async {
-    final semesters = await StorageService.getSemesters();
-    final activeSemesterId = await StorageService.getActiveSemesterId();
-    if (!context.mounted) return null;
+  /// 返回选中的完整学期信息，解析和保存都必须使用同一个学期。
+  Future<SemesterInfo?> _askTargetSemester() =>
+      CourseImportPreflight.selectTargetSemester(context);
 
-    // 始终显示选择界面，让用户可以选择或创建新学期
-    final selected = await showDialog<SemesterInfo>(
-      context: context,
-      builder: (ctx) {
-        final colorScheme = Theme.of(ctx).colorScheme;
-        return AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: [
-              Icon(Icons.school_outlined, color: colorScheme.primary),
-              const SizedBox(width: 10),
-              const Text('选择导入到哪个学期'),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (semesters.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      '还没有创建任何学期，请先创建一个学期。',
-                      style: TextStyle(color: colorScheme.onSurfaceVariant),
-                    ),
-                  ),
-                ...semesters.map((semester) {
-                  final isActive = semester.id == activeSemesterId;
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => Navigator.pop(ctx, semester),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      margin: const EdgeInsets.only(bottom: 8),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: isActive
-                              ? colorScheme.primary
-                              : colorScheme.outlineVariant,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            isActive
-                                ? Icons.radio_button_checked
-                                : Icons.radio_button_unchecked,
-                            color: isActive
-                                ? colorScheme.primary
-                                : colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  semester.name,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color:
-                                        isActive ? colorScheme.primary : null,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '开学日期: ${semester.startDate.month}/${semester.startDate.day}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-            TextButton.icon(
-              onPressed: () async {
-                // 创建新学期
-                final newSemester = await _showCreateSemesterDialog();
-                if (newSemester != null && ctx.mounted) {
-                  Navigator.pop(ctx, newSemester);
-                }
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('新建学期'),
-            ),
-          ],
-        );
-      },
-    );
-
-    return selected?.id;
-  }
-
-  /// 显示创建新学期的对话框
-  Future<SemesterInfo?> _showCreateSemesterDialog() async {
-    final nameController = TextEditingController();
-    DateTime? startDate;
-    DateTime? endDate;
-
-    final result = await showDialog<SemesterInfo>(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-              title: const Text('创建新学期'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextField(
-                      controller: nameController,
-                      decoration: const InputDecoration(
-                        labelText: '学期名称',
-                        hintText: '例如: 2026春季学期',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.calendar_month),
-                        label: Text(
-                          startDate != null
-                              ? '开学日期: ${startDate!.year}/${startDate!.month}/${startDate!.day}'
-                              : '选择开学日期',
-                        ),
-                        onPressed: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: DateTime.now(),
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime(2100),
-                            helpText: '选择开学日期',
-                          );
-                          if (picked != null) {
-                            setState(() => startDate = picked);
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.calendar_month_outlined),
-                        label: Text(
-                          endDate != null
-                              ? '放假日期: ${endDate!.year}/${endDate!.month}/${endDate!.day}'
-                              : '选择放假日期 (可选)',
-                        ),
-                        onPressed: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate:
-                                startDate?.add(const Duration(days: 120)) ??
-                                    DateTime.now(),
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime(2100),
-                            helpText: '选择放假日期',
-                          );
-                          if (picked != null) {
-                            setState(() => endDate = picked);
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    if (nameController.text.isEmpty || startDate == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('请填写学期名称和开学日期')),
-                      );
-                      return;
-                    }
-                    final id = 'semester_${startDate!.millisecondsSinceEpoch}';
-                    Navigator.pop(
-                      ctx,
-                      SemesterInfo(
-                        id: id,
-                        name: nameController.text,
-                        startDate: startDate!,
-                        endDate: endDate,
-                      ),
-                    );
-                  },
-                  child: const Text('创建'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (result != null) {
-      // 保存新学期到存储
-      final semesters = await StorageService.getSemesters();
-      semesters.add(result);
-      await StorageService.saveSemesters(semesters);
-    }
-
-    return result;
-  }
+  /// Exposes the same import-mode choice to external share imports after
+  /// their content has been parsed but before anything is written.
+  Future<ImportMode?> askImportMode(List<CourseItem> newCourses) =>
+      _askImportMode(newCourses);
 
   /// 检测冲突并让用户选择导入模式
   /// 返回 ImportMode，如果用户取消则返回 null
@@ -364,8 +64,8 @@ class CourseImportHandler {
     if (!context.mounted) return null;
 
     if (conflicts.isNotEmpty) {
-      // 有冲突：提示用户将覆盖冲突课程
-      final confirmed = await showDialog<bool>(
+      // 有冲突：让用户明确选择按时段共存，或替换整个目标学期。
+      final mode = await showDialog<ImportMode>(
         context: context,
         builder: (ctx) {
           final colorScheme = Theme.of(ctx).colorScheme;
@@ -392,7 +92,7 @@ class CourseImportHandler {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '以下 ${conflictSummary.length} 门课程与新课表存在时间冲突，导入后将被覆盖：',
+                    '以下 ${conflictSummary.length} 门课程与新课表存在时间冲突，请选择导入方式：',
                     style: TextStyle(
                         fontSize: 14, color: colorScheme.onSurfaceVariant),
                   ),
@@ -415,7 +115,7 @@ class CourseImportHandler {
                       )),
                   const SizedBox(height: 12),
                   Text(
-                    '不冲突的课程将保留。',
+                    '共存导入仅替换冲突时段并保留其他课程；替换当前学期会清空该学期旧课表。',
                     style: TextStyle(
                         fontSize: 13, color: colorScheme.onSurfaceVariant),
                   ),
@@ -424,21 +124,23 @@ class CourseImportHandler {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
+                onPressed: () => Navigator.pop(ctx),
                 child: const Text('取消'),
               ),
+              OutlinedButton(
+                onPressed: () => Navigator.pop(ctx, ImportMode.replace),
+                child: const Text('替换当前学期'),
+              ),
               FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('继续导入'),
+                onPressed: () => Navigator.pop(ctx, ImportMode.merge),
+                child: const Text('共存导入'),
               ),
             ],
           );
         },
       );
 
-      if (confirmed != true) return null;
-      // 有冲突时自动使用合并模式（只覆盖冲突的，保留不冲突的）
-      return ImportMode.merge;
+      return mode;
     } else {
       // 无冲突：让用户选择导入方式
       final mode = await showDialog<ImportMode>(
@@ -482,7 +184,7 @@ class CourseImportHandler {
                                       TextStyle(fontWeight: FontWeight.bold)),
                               const SizedBox(height: 4),
                               Text(
-                                '清除旧课表，仅保留新导入的课程',
+                                '清除该学期旧课表，仅保留新导入的课程',
                                 style: TextStyle(
                                     fontSize: 12,
                                     color: colorScheme.onSurfaceVariant),
@@ -519,7 +221,7 @@ class CourseImportHandler {
                                       color: colorScheme.primary)),
                               const SizedBox(height: 4),
                               Text(
-                                '新旧课表合并，适用于不同学期的课表',
+                                '替换该学期的冲突课程，保留其他学期的课表',
                                 style: TextStyle(
                                     fontSize: 12,
                                     color: colorScheme.onSurfaceVariant),
@@ -547,7 +249,20 @@ class CourseImportHandler {
     }
   }
 
+  Future<List<CourseItem>?> _repairMissingTimes(
+      List<CourseItem> courses) async {
+    if (courses.every(CourseScheduleSemantics.hasUsableTime)) {
+      return courses;
+    }
+    if (!context.mounted) return null;
+    return CourseTimeRepairDialog.show(context, courses);
+  }
+
   Future<void> smartImportCourse() async {
+    // 先完成所有不会产生副作用的导入前置检查，再让用户选择来源和文件。
+    final targetSemester = await _askTargetSemester();
+    if (targetSemester == null || !context.mounted) return;
+
     // 1. 先弹出学校选择器
     final String? selectedSchool = await showAppModalBottomSheet<String>(
       context: context,
@@ -614,8 +329,6 @@ class CourseImportHandler {
 
     if (selectedSchool == null) return;
 
-    if (!await _ensureSemesterStartSet()) return;
-
     // 2. 根据学校执行不同的导入方式
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.any,
@@ -653,18 +366,22 @@ class CourseImportHandler {
           if (!HfutScheduleParser.isValid(content)) {
             throw Exception('文件格式不匹配');
           }
-          parsedCourses =
-              HfutScheduleParser.parse(content, semesterStart: semesterStart);
+          parsedCourses = HfutScheduleParser.parse(
+            content,
+            semesterStart: targetSemester.startDate,
+          );
           break;
         case 'xd':
           sourceName = "西安电子科技大学";
-          if (semesterStart == null) throw Exception("请先设置开学日期");
-          parsedCourses =
-              XidianScheduleParser.parseIcs(content, semesterStart!);
+          parsedCourses = XidianScheduleParser.parseIcs(
+            content,
+            targetSemester.startDate,
+          );
           break;
         case 'zf':
-          sourceName = "正方教务系统";
-          _closeLoadingDialog();
+        case 'hl':
+          sourceName = selectedSchool == 'zf' ? "正方教务系统" : "河南财经政法大学";
+          await _closeLoadingDialog();
           if (!context.mounted) return;
           Map<int, Map<String, int>>? userAdjustedTimes =
               await showDialog<Map<int, Map<String, int>>>(
@@ -674,64 +391,53 @@ class CourseImportHandler {
           );
           if (userAdjustedTimes == null) return;
           _showLoadingDialog("正在解析课表...");
-          if (semesterStart == null) {
-            _closeLoadingDialog();
-            throw Exception("请先设置开学日期");
-          }
           parsedCourses = ZfSoftScheduleParser.parseHtml(
             content,
-            semesterStart!,
+            targetSemester.startDate,
             customTimes: userAdjustedTimes,
           );
           break;
         case 'xm':
-        case 'hl':
-          sourceName = selectedSchool == 'xm' ? "厦门大学" : "河南财经政法大学";
-          if (semesterStart == null) throw Exception("请先设置开学日期");
-          parsedCourses = XmuScheduleParser.parseHtml(content, semesterStart!);
+          sourceName = "厦门大学";
+          parsedCourses =
+              XmuScheduleParser.parseHtml(content, targetSemester.startDate);
           break;
         case 'xj':
           sourceName = "厦门大学嘉庚学院";
-          if (semesterStart == null) throw Exception("请先设置开学日期");
-          parsedCourses = XujcScheduleParser.parseHtml(content, semesterStart!);
+          parsedCourses = XujcScheduleParser.parseHtml(
+            content,
+            targetSemester.startDate,
+          );
           break;
         default:
           throw Exception("未知的导入方式");
       }
 
+      parsedCourses = await CourseService.prepareImportedCourses(
+        parsedCourses,
+        semesterId: targetSemester.id,
+        semesterStart: targetSemester.startDate,
+      );
+
       if (parsedCourses.isEmpty) {
-        _closeLoadingDialog();
+        await _closeLoadingDialog();
         showMessage('❌ 导入失败\n文件格式不匹配或解析错误');
         return;
       }
 
-      // 第二步：关闭进度弹窗，选择目标学期和导入模式
-      _closeLoadingDialog();
+      final repairedCourses = await _repairMissingTimes(parsedCourses);
+      if (repairedCourses == null) {
+        await _closeLoadingDialog();
+        return;
+      }
+      parsedCourses = repairedCourses;
 
-      // 让用户选择导入到哪个学期
-      final targetSemesterId = await _askTargetSemester();
-      if (targetSemesterId == null) return; // 用户取消
-
-      // 设置课程的学期 ID
-      parsedCourses = parsedCourses
-          .map((c) => CourseItem(
-                courseName: c.courseName,
-                teacherName: c.teacherName,
-                date: c.date,
-                weekday: c.weekday,
-                startTime: c.startTime,
-                endTime: c.endTime,
-                weekIndex: c.weekIndex,
-                roomName: c.roomName,
-                lessonType: c.lessonType,
-                semesterId: targetSemesterId,
-                teamUuid: c.teamUuid,
-              ))
-          .toList();
+      // 第二步：关闭进度弹窗，选择导入模式
+      await _closeLoadingDialog();
 
       final mode = await _askImportMode(parsedCourses);
       if (mode == null) {
-        _closeLoadingDialog(); // 确保关闭所有 loading
+        await _closeLoadingDialog(); // 确保关闭所有 loading
         return; // 用户取消
       }
 
@@ -739,16 +445,30 @@ class CourseImportHandler {
       _showLoadingDialog(mode == ImportMode.merge ? "正在合并课表..." : "正在导入课表...");
 
       if (mode == ImportMode.merge) {
-        await CourseService.mergeCoursesToSql(username, parsedCourses);
+        await CourseService.mergeCoursesForSemester(
+          username,
+          targetSemester.id,
+          parsedCourses,
+        );
       } else {
-        await CourseService.saveCourses(username, parsedCourses);
+        await CourseService.replaceCoursesForSemester(
+          username,
+          targetSemester.id,
+          parsedCourses,
+        );
       }
 
-      _closeLoadingDialog();
+      await _closeLoadingDialog();
       showMessage('✅ $sourceName 导入成功！');
-      onRescheduleReminders();
+      try {
+        await onRescheduleReminders();
+      } catch (error) {
+        // Scheduling is a post-import refresh. A notification failure must
+        // not turn a successfully saved course import into a false error.
+        debugPrint('⚠️ 课表导入后刷新提醒失败: $error');
+      }
     } catch (e) {
-      _closeLoadingDialog();
+      await _closeLoadingDialog();
       showMessage('❌ 导入失败: $e');
     }
   }
@@ -770,6 +490,10 @@ class CourseImportHandler {
   }
 
   Future<void> importFromWebView() async {
+    // 先校验并确定目标学期，避免打开网页、登录和抓取完成后才发现无法计算课程日期。
+    final targetSemester = await _askTargetSemester();
+    if (targetSemester == null || !context.mounted) return;
+
     // 🚀 1. 弹出高校选择器，预设地址
     final String? lastUrl = await StorageService.getLastCourseImportUrl();
     if (!context.mounted) return;
@@ -781,7 +505,8 @@ class CourseImportHandler {
       '河南财经政法大学': 'https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html',
     };
 
-    final String? selectedUrl = await showAppModalBottomSheet<String>(
+    const manualInputSelection = '__manual_course_import_url__';
+    var selectedUrl = await showAppModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {
@@ -840,7 +565,7 @@ class CourseImportHandler {
                     leading:
                         const Icon(Icons.input_rounded, color: Colors.grey),
                     title: const Text('手动输入'),
-                    onTap: () => Navigator.pop(context, 'https://www.bing.com'),
+                    onTap: () => Navigator.pop(context, manualInputSelection),
                   ),
                   const SizedBox(height: 20),
                 ],
@@ -851,9 +576,12 @@ class CourseImportHandler {
       },
     );
 
+    if (selectedUrl == manualInputSelection) {
+      selectedUrl = await _askManualImportUrl(lastUrl);
+    }
     if (selectedUrl == null) return;
+    final resolvedUrl = selectedUrl;
 
-    if (!await _ensureSemesterStartSet()) return;
     if (!context.mounted) return;
 
     // 修复电脑端返回时因为复杂动画导致的 WebView 进程卡死问题
@@ -865,12 +593,12 @@ class CourseImportHandler {
     final Route<String> route = isDesktop
         ? PageRouteBuilder(
             pageBuilder: (context, animation, secondaryAnimation) =>
-                CourseWebViewScreen(initialUrl: selectedUrl),
+                CourseWebViewScreen(initialUrl: resolvedUrl),
             transitionDuration: Duration.zero,
             reverseTransitionDuration: Duration.zero,
           )
         : PageTransitions.slideHorizontal(
-            CourseWebViewScreen(initialUrl: selectedUrl));
+            CourseWebViewScreen(initialUrl: resolvedUrl));
 
     final String? htmlContent = await Navigator.push<String>(
       context,
@@ -887,6 +615,7 @@ class CourseImportHandler {
 
       String sourceName = "网页导入";
       List<CourseItem> parsedCourses = [];
+      final normalizedUrl = resolvedUrl.toLowerCase();
 
       // 🚀 核心改进：优先尝试作为 JSON 识别（适配合工大等前后端分离系统）
       String? jsonCandidate;
@@ -906,16 +635,16 @@ class CourseImportHandler {
       if (jsonCandidate != null && HfutScheduleParser.isValid(jsonCandidate)) {
         sourceName = "合肥工业大学";
         parsedCourses = HfutScheduleParser.parse(jsonCandidate,
-            semesterStart: semesterStart);
+            semesterStart: targetSemester.startDate);
       } else if (HfutScheduleParser.isValid(htmlContent)) {
         sourceName = "合肥工业大学";
-        parsedCourses =
-            HfutScheduleParser.parse(htmlContent, semesterStart: semesterStart);
+        parsedCourses = HfutScheduleParser.parse(htmlContent,
+            semesterStart: targetSemester.startDate);
       } else if (htmlContent.contains('timetable_con') ||
           htmlContent.contains('id="table1"') ||
           htmlContent.contains('kbgrid_table')) {
         sourceName = "正方教务系统";
-        _closeLoadingDialog();
+        await _closeLoadingDialog();
         if (!context.mounted) return;
 
         Map<int, Map<String, int>>? userAdjustedTimes =
@@ -929,40 +658,61 @@ class CourseImportHandler {
 
         _showLoadingDialog("正在解析课表...");
 
-        if (semesterStart == null) {
-          _closeLoadingDialog();
-          showMessage('⚠️ 请先设置开学日期');
-          return;
-        }
-
         parsedCourses = ZfSoftScheduleParser.parseHtml(
           htmlContent,
-          semesterStart!,
+          targetSemester.startDate,
           customTimes: userAdjustedTimes,
         );
       } else {
-        // Fallback or generic HTML parsing
-        if (semesterStart == null) {
-          _closeLoadingDialog();
-          showMessage('⚠️ 请先设置开学日期');
-          return;
-        }
-
-        // Check if it's likely XMU or XUJC
+        // 只有确认过来源后才选择对应解析器，不再把任意 HTML 猜成厦大课表。
         if (htmlContent.contains('厦门大学嘉庚学院') ||
-            htmlContent.contains('jw.xujc.com')) {
+            normalizedUrl.contains('xujc.com')) {
           sourceName = "厦门大学嘉庚学院";
-          parsedCourses =
-              XujcScheduleParser.parseHtml(htmlContent, semesterStart!);
+          parsedCourses = XujcScheduleParser.parseHtml(
+              htmlContent, targetSemester.startDate);
+        } else if (normalizedUrl.contains('huel.edu.cn')) {
+          sourceName = "河南财经政法大学";
+          await _closeLoadingDialog();
+          if (!context.mounted) return;
+
+          final userAdjustedTimes =
+              await showDialog<Map<int, Map<String, int>>>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => const ZfTimeConfigDialog(),
+          );
+          if (userAdjustedTimes == null) return;
+
+          _showLoadingDialog("正在解析课表...");
+          parsedCourses = ZfSoftScheduleParser.parseHtml(
+            htmlContent,
+            targetSemester.startDate,
+            customTimes: userAdjustedTimes,
+          );
         } else if (htmlContent.contains('XMUSTUDENT') ||
-            htmlContent.toLowerCase().contains('<html')) {
-          sourceName = "智能网页解析";
-          parsedCourses =
-              XmuScheduleParser.parseHtml(htmlContent, semesterStart!);
+            normalizedUrl.contains('xmu.edu.cn')) {
+          sourceName = "厦门大学";
+          parsedCourses = XmuScheduleParser.parseHtml(
+              htmlContent, targetSemester.startDate);
         }
       }
 
-      if (sourceName == "正方教务系统") _closeLoadingDialog();
+      parsedCourses = await CourseService.prepareImportedCourses(
+        parsedCourses,
+        semesterId: targetSemester.id,
+        semesterStart: targetSemester.startDate,
+      );
+
+      final repairedCourses = await _repairMissingTimes(parsedCourses);
+      if (repairedCourses == null) {
+        await _closeLoadingDialog();
+        return;
+      }
+      parsedCourses = repairedCourses;
+
+      if (sourceName == "正方教务系统" || sourceName == "河南财经政法大学") {
+        await _closeLoadingDialog();
+      }
 
       if (parsedCourses.isEmpty) {
         // 构建更详细的失败日志输出到 UI
@@ -988,38 +738,17 @@ class CourseImportHandler {
           }
         }
 
-        _closeLoadingDialog();
+        await _closeLoadingDialog();
         showMessage('❌ 导入失败\n$detail');
         return;
       }
 
-      // 第二步：关闭进度弹窗，选择目标学期和导入模式
-      _closeLoadingDialog();
-
-      // 让用户选择导入到哪个学期
-      final targetSemesterId = await _askTargetSemester();
-      if (targetSemesterId == null) return; // 用户取消
-
-      // 设置课程的学期 ID
-      parsedCourses = parsedCourses
-          .map((c) => CourseItem(
-                courseName: c.courseName,
-                teacherName: c.teacherName,
-                date: c.date,
-                weekday: c.weekday,
-                startTime: c.startTime,
-                endTime: c.endTime,
-                weekIndex: c.weekIndex,
-                roomName: c.roomName,
-                lessonType: c.lessonType,
-                semesterId: targetSemesterId,
-                teamUuid: c.teamUuid,
-              ))
-          .toList();
+      // 第二步：关闭进度弹窗，选择导入模式
+      await _closeLoadingDialog();
 
       final mode = await _askImportMode(parsedCourses);
       if (mode == null) {
-        _closeLoadingDialog(); // 确保关闭所有 loading
+        await _closeLoadingDialog(); // 确保关闭所有 loading
         return; // 用户取消
       }
 
@@ -1027,27 +756,99 @@ class CourseImportHandler {
       _showLoadingDialog(mode == ImportMode.merge ? "正在合并课表..." : "正在导入课表...");
 
       if (mode == ImportMode.merge) {
-        await CourseService.mergeCoursesToSql(username, parsedCourses);
+        await CourseService.mergeCoursesForSemester(
+          username,
+          targetSemester.id,
+          parsedCourses,
+        );
       } else {
-        await CourseService.saveCourses(username, parsedCourses);
+        await CourseService.replaceCoursesForSemester(
+          username,
+          targetSemester.id,
+          parsedCourses,
+        );
       }
 
       if (!context.mounted) return;
-      _closeLoadingDialog();
+      await _closeLoadingDialog();
       showMessage('✅ $sourceName 导入成功！');
-      onRescheduleReminders();
+      try {
+        await onRescheduleReminders();
+      } catch (error) {
+        // Scheduling is a post-import refresh. A notification failure must
+        // not turn a successfully saved course import into a false error.
+        debugPrint('⚠️ 课表导入后刷新提醒失败: $error');
+      }
     } catch (e) {
-      _closeLoadingDialog();
+      await _closeLoadingDialog();
       showMessage('❌ 导入异常: $e');
     }
   }
 
+  Future<String?> _askManualImportUrl(String? initialUrl) async {
+    if (!context.mounted) return null;
+    final controller = TextEditingController(text: initialUrl ?? '');
+    String? errorText;
+
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              void submit() {
+                final value = controller.text.trim();
+                final uri = Uri.tryParse(value);
+                final valid = uri != null &&
+                    (uri.scheme == 'http' || uri.scheme == 'https') &&
+                    uri.host.isNotEmpty;
+                if (!valid) {
+                  setDialogState(() => errorText = '请输入有效的 http(s) 教务系统网址');
+                  return;
+                }
+                Navigator.pop(dialogContext, value);
+              }
+
+              return AlertDialog(
+                title: const Text('输入教务系统网址'),
+                content: TextField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType: TextInputType.url,
+                  textInputAction: TextInputAction.go,
+                  onSubmitted: (_) => submit(),
+                  decoration: InputDecoration(
+                    hintText: 'https://jw.example.edu.cn',
+                    errorText: errorText,
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: submit,
+                    child: const Text('打开'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
+
   void _showLoadingDialog(String message) {
-    if (!context.mounted) return;
-    showDialog(
+    if (!context.mounted || _loadingDialogOpen) return;
+
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final route = DialogRoute<void>(
       context: context,
       barrierDismissible: false,
-      useRootNavigator: true,
       builder: (ctx) => AlertDialog(
         content: Row(
           children: [
@@ -1058,12 +859,58 @@ class CourseImportHandler {
         ),
       ),
     );
+
+    _loadingDialogOpen = true;
+    _loadingDialogRoute = route;
+    _loadingDialogNavigator = navigator;
+    _loadingDialogReady = Future<void>.delayed(Duration.zero);
+    final dialogFuture = navigator.push<void>(route);
+    _loadingDialogFuture = dialogFuture;
+    unawaited(_observeLoadingDialog(route, dialogFuture));
   }
 
-  void _closeLoadingDialog() {
-    if (!context.mounted) return;
-    if (Navigator.of(context, rootNavigator: true).canPop()) {
-      Navigator.of(context, rootNavigator: true).pop();
+  Future<void> _observeLoadingDialog(
+      Route<void> route, Future<void> dialogFuture) async {
+    try {
+      await dialogFuture;
+    } catch (error, stackTrace) {
+      debugPrint('⚠️ 课表导入进度弹窗异常结束: $error\n$stackTrace');
+    } finally {
+      if (identical(_loadingDialogRoute, route)) {
+        _loadingDialogOpen = false;
+        _loadingDialogRoute = null;
+        _loadingDialogFuture = null;
+        _loadingDialogReady = null;
+        _loadingDialogNavigator = null;
+      }
+    }
+  }
+
+  Future<void> _closeLoadingDialog() async {
+    if (!_loadingDialogOpen) return;
+
+    final route = _loadingDialogRoute;
+    final dialogFuture = _loadingDialogFuture;
+    final ready = _loadingDialogReady;
+    if (route == null) return;
+    if (ready != null) await ready;
+
+    // Remove only the route created by _showLoadingDialog. A concurrent
+    // share/import page or confirmation dialog must never be popped here.
+    final navigator = _loadingDialogNavigator;
+    if (identical(_loadingDialogRoute, route) &&
+        navigator != null &&
+        navigator.mounted &&
+        route.isActive) {
+      navigator.removeRoute(route);
+    }
+
+    if (dialogFuture != null) {
+      try {
+        await dialogFuture;
+      } catch (_) {
+        // The observer already records unexpected route failures.
+      }
     }
   }
 }

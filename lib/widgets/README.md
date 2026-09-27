@@ -1,6 +1,6 @@
 # Widgets
 
-Last reviewed: 2026-08-25.
+Last reviewed: 2026-09-26.
 
 The directory contains reusable state views, Material 3 controls, global search,
 todo/group/section cards, recurrence progress/calendar helpers, countdown and
@@ -10,7 +10,10 @@ history sheets, macOS menu-bar UI and Turnstile platform variants.
 Notable shared building blocks include `app_state_views.dart`,
 `todo_recurrence_progress.dart`, `todo_section_widget.dart`,
 `todo_group_widget.dart`, `global_search_overlay.dart`, and the platform-specific
-Turnstile/menu widgets.
+Turnstile/menu widgets. Search-result cards remain as the source page while a
+detail route uses `PageTransitions.pushFromRect`, so opening and returning use
+the same container transform when animations are enabled and the source geometry
+is available.
 
 Liquid Glass integration is centralized here: `optional_liquid_glass_surface.dart`
 exposes `OptionalLiquidGlassSurface/Card/Panel` plus quality/tint helpers, so

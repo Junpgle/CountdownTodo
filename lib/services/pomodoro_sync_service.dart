@@ -49,6 +49,7 @@ class CrossDevicePomodoroState {
   final int? accumulatedMs;
   final int? pauseStartMs;
   final int? serverElapsedMs;
+  final bool? doNotDisturb;
 
   // 🚀 团队协作扩展
   final List<ConflictInfo>? conflicts;
@@ -81,6 +82,7 @@ class CrossDevicePomodoroState {
     this.accumulatedMs,
     this.pauseStartMs,
     this.serverElapsedMs,
+    this.doNotDisturb,
     this.conflicts,
     this.teamUuid,
     this.delta,
@@ -119,6 +121,9 @@ class CrossDevicePomodoroState {
         pauseStartMs: _parseInt(j['pauseStartMs']),
         serverElapsedMs:
             _parseInt(j['server_elapsed_ms'] ?? j['serverElapsedMs']),
+        doNotDisturb: _parseBool(
+          j['do_not_disturb'] ?? j['doNotDisturb'] ?? j['dnd'],
+        ),
         conflicts: j['conflicts'] != null
             ? (j['conflicts'] as List)
                 .map((c) => ConflictInfo.fromJson(c))
@@ -130,6 +135,24 @@ class CrossDevicePomodoroState {
 
   static int? _parseInt(dynamic v) {
     return JsonValueParser.toNullableInt(v);
+  }
+
+  static bool? _parseBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      switch (value.trim().toLowerCase()) {
+        case 'true':
+        case '1':
+        case 'yes':
+          return true;
+        case 'false':
+        case '0':
+        case 'no':
+          return false;
+      }
+    }
+    return null;
   }
 
   static List<String> _parseStringList(dynamic v) {
@@ -161,6 +184,7 @@ class CrossDevicePomodoroState {
         if (pausedAtMs != null) 'pausedAtMs': pausedAtMs,
         if (accumulatedMs != null) 'accumulatedMs': accumulatedMs,
         if (pauseStartMs != null) 'pauseStartMs': pauseStartMs,
+        if (doNotDisturb != null) 'do_not_disturb': doNotDisturb,
       };
 }
 
@@ -188,6 +212,7 @@ class PomodoroSyncService {
   Future<void>? _transportSuspendFuture;
   bool _connecting = false;
   String? _focusSourceDevice;
+  Set<String> _subscribedTeamUuids = <String>{};
   DateTime _lastMessageTime = DateTime.now(); // 记录最后一次收到消息的时间
   bool _isLocalFocusing = false; // 本地是否处于专注/休息计时中
   bool _isInBackground = false;
@@ -216,6 +241,7 @@ class PomodoroSyncService {
 
   String? get focusSourceDevice => _focusSourceDevice;
   bool get isFocusSource => isFromCurrentDevice(_focusSourceDevice);
+  Set<String> get subscribedTeamUuids => Set.unmodifiable(_subscribedTeamUuids);
 
   bool isFromCurrentDevice(String? sourceDevice) =>
       deviceIdsMatch(_deviceId, sourceDevice);
@@ -394,7 +420,7 @@ class PomodoroSyncService {
       );
 
       _startHeartbeat();
-      _subscribeToTeams();
+      unawaited(_subscribeToTeams());
 
       // 🚀 补擦除逻辑：连接成功后，如果本地不是专注发起者且处于空闲，主动上报一次空闲状态
       // 只有在 _isLocalFocusing 为 false 时才发送，避免干扰当前正在进行的计时
@@ -518,6 +544,7 @@ class PomodoroSyncService {
   void _onDisconnected() {
     _setConnState(SyncConnectionState.disconnected);
     _heartbeatTimer?.cancel();
+    _subscribedTeamUuids = <String>{};
     _connecting = false;
     _scheduleReconnect();
   }
@@ -579,6 +606,7 @@ class PomodoroSyncService {
     List<String> tagNames = const [],
     String? sourceDeviceName,
     String? note,
+    bool doNotDisturb = false,
     int? customTimestamp,
   }) {
     _send({
@@ -592,6 +620,7 @@ class PomodoroSyncService {
       'tags': tagNames,
       if (sourceDeviceName != null) 'source_device_name': sourceDeviceName,
       if (note != null) 'note': note,
+      'do_not_disturb': doNotDisturb,
       if (mode != null) 'mode': mode,
       if (currentCycle != null) 'current_cycle': currentCycle,
       if (totalCycles != null) 'total_cycles': totalCycles,
@@ -615,6 +644,7 @@ class PomodoroSyncService {
     List<String> tagNames = const [],
     String? sourceDeviceName,
     String? note,
+    bool doNotDisturb = false,
     int? customTimestamp,
   }) {
     _send({
@@ -628,6 +658,7 @@ class PomodoroSyncService {
       'tags': tagNames,
       if (sourceDeviceName != null) 'source_device_name': sourceDeviceName,
       if (note != null) 'note': note,
+      'do_not_disturb': doNotDisturb,
       if (mode != null) 'mode': mode,
       if (currentCycle != null) 'current_cycle': currentCycle,
       if (totalCycles != null) 'total_cycles': totalCycles,
@@ -728,6 +759,7 @@ class PomodoroSyncService {
     required int pausedAtMs,
     required int accumulatedMs,
     required int pauseStartMs,
+    bool? doNotDisturb,
   }) {
     _send({
       'action': 'PAUSE',
@@ -735,6 +767,7 @@ class PomodoroSyncService {
       'pausedAtMs': pausedAtMs,
       'accumulatedMs': accumulatedMs,
       'pauseStartMs': pauseStartMs,
+      if (doNotDisturb != null) 'do_not_disturb': doNotDisturb,
     });
   }
 
@@ -748,6 +781,7 @@ class PomodoroSyncService {
     String? todoUuid,
     String? todoTitle,
     String? note,
+    bool? doNotDisturb,
   }) {
     _send({
       'action': 'RESUME',
@@ -760,6 +794,7 @@ class PomodoroSyncService {
       if (todoUuid != null) 'todo_uuid': todoUuid,
       if (todoTitle != null) 'todo_title': todoTitle,
       if (note != null) 'note': note,
+      if (doNotDisturb != null) 'do_not_disturb': doNotDisturb,
     });
   }
 
@@ -775,15 +810,20 @@ class PomodoroSyncService {
     });
   }
 
-  void _subscribeToTeams() async {
+  Future<void> _subscribeToTeams() async {
     if (_connState != SyncConnectionState.connected) return;
     try {
       final teamsData = await ApiService.fetchTeams();
-      final teamUuids = teamsData.map((t) => t['uuid'].toString()).toList();
+      if (_connState != SyncConnectionState.connected) return;
+      final teamUuids = teamsData
+          .map((t) => t['uuid']?.toString() ?? '')
+          .where((uuid) => uuid.isNotEmpty)
+          .toSet();
+      _subscribedTeamUuids = teamUuids;
       if (teamUuids.isNotEmpty) {
         _send({
           'type': 'subscribe',
-          'teamUuids': teamUuids,
+          'teamUuids': teamUuids.toList(),
         });
       }
     } catch (e) {
@@ -813,6 +853,7 @@ class PomodoroSyncService {
     _channel = null;
     _userId = null;
     _deviceId = null;
+    _subscribedTeamUuids = <String>{};
     _connecting = false;
     _setConnState(SyncConnectionState.disconnected);
   }

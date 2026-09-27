@@ -17,6 +17,12 @@ import '../services/feature_tip_service.dart';
 class PomodoroScreen extends StatefulWidget {
   final String username;
 
+  /// Notification action received while the app was not already showing this
+  /// route. The dashboard consumes the native event to bring this page to the
+  /// foreground, so the action must travel with the route instead of relying
+  /// on a broadcast replay after the page is created.
+  final String? initialNotificationAction;
+
   /// 0 = 工作台（默认），1 = 统计看板
   final int initialTab;
 
@@ -28,6 +34,7 @@ class PomodoroScreen extends StatefulWidget {
     required this.username,
     this.initialTab = 0,
     this.initialDimension = 0,
+    this.initialNotificationAction,
   });
 
   @override
@@ -47,6 +54,8 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   final GlobalKey _statsTabKey = GlobalKey();
   final List<StreamSubscription<MethodCall>> _notifSubs = [];
   bool _disposed = false;
+  String? _pendingNotificationAction;
+  bool _notificationActionDispatchScheduled = false;
 
   PomodoroWorkbenchState? get _workbenchState => _workbenchKey.currentState;
 
@@ -166,16 +175,52 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   }
 
   void _setupMethodChannelListener() {
+    _pendingNotificationAction = widget.initialNotificationAction;
     _notifSubs.add(NotificationService.listen('pomodoroFinishEarly', (call) {
-      // debugPrint('[PomodoroScreen] Triggering finishEarly from notification');
-      if (!mounted || _disposed) return;
-      _workbenchState?.handleFinishEarly();
+      _queueNotificationAction('pomodoroFinishEarly');
     }));
     _notifSubs.add(NotificationService.listen('pomodoroAbandon', (call) {
-      // debugPrint('[PomodoroScreen] Triggering abandonFocus from notification');
-      if (!mounted || _disposed) return;
-      _workbenchState?.handleAbandonFocus();
+      _queueNotificationAction('pomodoroAbandon');
     }));
+  }
+
+  void _queueNotificationAction(String action) {
+    if (!mounted || _disposed) return;
+    _pendingNotificationAction = action;
+    _dispatchPendingNotificationAction();
+  }
+
+  void _dispatchPendingNotificationAction() {
+    if (_disposed || !mounted || !_workbenchReady) return;
+    if (_workbenchState == null || _pendingNotificationAction == null) return;
+    if (_notificationActionDispatchScheduled) return;
+
+    _notificationActionDispatchScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _notificationActionDispatchScheduled = false;
+      if (_disposed || !mounted) return;
+      final action = _pendingNotificationAction;
+      _pendingNotificationAction = null;
+      if (action == 'pomodoroFinishEarly') {
+        _workbenchState?.handleFinishEarly();
+      } else if (action == 'pomodoroAbandon') {
+        _workbenchState?.handleAbandonFocus();
+      } else if (action == 'macTogglePause') {
+        _workbenchState?.handleTogglePause();
+      } else if (action == 'macStopFocus') {
+        _workbenchState?.handleStopFocus();
+      }
+    });
+  }
+
+  void _handleWorkbenchReady() {
+    if (!_disposed && mounted && !_workbenchReady) {
+      setState(() => _workbenchReady = true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _checkCoachMarks();
+      });
+    }
+    _dispatchPendingNotificationAction();
   }
 
   @override
@@ -196,8 +241,12 @@ class _PomodoroScreenState extends State<PomodoroScreen>
         _currentPhase == PomodoroPhase.breaking ||
         _currentPhase == PomodoroPhase.remoteWatching;
 
-    // Keep previous readiness gating for AppBar/tab hiding behavior
+    // Keep the existing readiness gating for bottom-tab visibility.
     final isFocusingOrWatching = !_workbenchReady || isTimerRunning;
+    // The idle workbench renders its own settings row at the top. Keep the
+    // page app bar present from the first frame so async initialization cannot
+    // expand it over that row after the workbench becomes ready.
+    final isAppBarCollapsed = isTimerRunning;
 
     // Show the compact landscape stats column only when timer is idle or finished
     final bool showLandscapeStats = _currentPhase == PomodoroPhase.idle ||
@@ -207,7 +256,6 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
     final windowWidth = MediaQuery.sizeOf(context).width;
-    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
 
     // Keep the side-by-side layout for wide windows. Compact Android 17
     // freeform windows reuse the tab layout below so the fixed stats column
@@ -215,8 +263,14 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     final useWideLandscapeLayout = isLandscape && windowWidth >= 720;
     if (useWideLandscapeLayout) {
       return Scaffold(
+        extendBody: true,
         body: SafeArea(
           bottom: false,
+          minimum: EdgeInsets.only(
+            bottom: isFocusingOrWatching
+                ? 0
+                : floatingBottomNavigationContentPaddingFor(context),
+          ),
           child: Row(
             children: [
               // Left: large workbench area
@@ -234,14 +288,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                         setState(() => _currentPhase = phase);
                       }
                     },
-                    onReady: () {
-                      if (!_disposed && mounted && !_workbenchReady) {
-                        setState(() => _workbenchReady = true);
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) _checkCoachMarks();
-                        });
-                      }
-                    },
+                    onReady: _handleWorkbenchReady,
                     onRecordAdded: () {
                       if (!_disposed && mounted) {
                         try {
@@ -325,69 +372,64 @@ class _PomodoroScreenState extends State<PomodoroScreen>
             ],
           ),
         ),
+        bottomNavigationBar: _buildBottomTabBar(isFocusingOrWatching),
       );
     }
 
+    final topInset = MediaQuery.paddingOf(context).top;
     return Scaffold(
-      extendBody: useFloatingBottomBar,
+      extendBody: true,
       body: FloatingGlassScrollAware(
         child: SafeArea(
+          // Keep the horizontal safe-area behavior of the previous column,
+          // while letting the custom header occupy the overlay layer.
+          top: false,
           bottom: false,
-          child: Column(
-            children: [
-              // ── 顶部导航栏：淡入淡出 ──
-              _buildAppBar(isFocusingOrWatching),
-
-              // ── 主内容区：IndexedStack 保持状态 + AnimatedOpacity 淡入淡出 ──
-              Expanded(
-                child: FadingIndexedStack(
-                  index: tabIndex,
-                  children: [
-                    // portrait workbench
-                    PomodoroWorkbench(
-                      key: _workbenchKey,
-                      username: widget.username,
-                      onPhaseChanged: (phase) {
-                        if (!_disposed && mounted && _currentPhase != phase) {
-                          setState(() => _currentPhase = phase);
-                        }
-                      },
-                      onReady: () {
-                        if (!_disposed && mounted && !_workbenchReady) {
-                          setState(() => _workbenchReady = true);
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) _checkCoachMarks();
-                          });
-                        }
-                      },
-                      onRecordAdded: () {
-                        if (!_disposed && mounted) {
-                          try {
-                            _statsKey.currentState?.reload();
-                          } catch (_) {}
-                        }
-                      },
-                    ),
-                    PomodoroStats(
-                      key: _statsKey,
-                      username: widget.username,
-                      initialDimension: widget.initialDimension,
-                    ),
-                  ],
-                ),
+          child: FloatingGlassPinnedHeaderLayout(
+            initialHeaderExtent:
+                topInset + (isAppBarCollapsed ? 0.0 : kToolbarHeight),
+            header: SafeArea(
+              top: true,
+              bottom: false,
+              left: false,
+              right: false,
+              child: _buildAppBar(isAppBarCollapsed),
+            ),
+            bodyBuilder: (context, headerExtent) => Padding(
+              padding: EdgeInsets.only(top: headerExtent),
+              child: FadingIndexedStack(
+                index: tabIndex,
+                children: [
+                  // portrait workbench
+                  PomodoroWorkbench(
+                    key: _workbenchKey,
+                    username: widget.username,
+                    onPhaseChanged: (phase) {
+                      if (!_disposed && mounted && _currentPhase != phase) {
+                        setState(() => _currentPhase = phase);
+                      }
+                    },
+                    onReady: _handleWorkbenchReady,
+                    onRecordAdded: () {
+                      if (!_disposed && mounted) {
+                        try {
+                          _statsKey.currentState?.reload();
+                        } catch (_) {}
+                      }
+                    },
+                  ),
+                  PomodoroStats(
+                    key: _statsKey,
+                    username: widget.username,
+                    initialDimension: widget.initialDimension,
+                  ),
+                ],
               ),
-
-              // 手机竖屏时底栏挂到 Scaffold 的悬浮层，避免在内容 Column
-              // 中占据一整块底部高度；桌面/横屏保留原有的普通布局。
-              if (!useFloatingBottomBar)
-                _buildBottomTabBar(isFocusingOrWatching),
-            ],
+            ),
           ),
         ),
       ),
-      bottomNavigationBar: useFloatingBottomBar
-          ? _buildBottomTabBar(isFocusingOrWatching)
-          : null,
+      bottomNavigationBar: _buildBottomTabBar(isFocusingOrWatching),
     );
   }
 
@@ -438,68 +480,28 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   }
 
   Widget _buildBottomTabBar(bool isFocusingOrWatching) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
-
-    final Widget navigation = useFloatingBottomBar
-        ? FloatingBottomNavigationBar(
-            mobilePortraitOnly: false,
-            items: [
-              const FloatingBottomNavigationItem(
-                icon: Icons.timer_outlined,
-                label: '工作台',
-              ),
-              FloatingBottomNavigationItem(
-                key: _statsTabKey,
-                icon: Icons.bar_chart_rounded,
-                label: '统计看板',
-              ),
-            ],
-            selectedIndex: _tabController.index,
-            onTabSelected: (index) => _tabController.animateTo(index),
-          )
-        : SafeArea(
-            top: false,
-            left: false,
-            right: false,
-            child: FloatingBottomBar(
-              height: 96,
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border(
-                    top: BorderSide(
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-                      width: 1,
-                    ),
-                  ),
-                ),
-                child: TabBar(
-                  controller: _tabController,
-                  indicatorSize: TabBarIndicatorSize.label,
-                  dividerColor: colorScheme.surface.withValues(alpha: 0),
-                  tabs: [
-                    const Tab(
-                      icon: Icon(Icons.timer_outlined),
-                      text: '工作台',
-                      iconMargin: EdgeInsets.only(bottom: 2),
-                    ),
-                    Tab(
-                      key: _statsTabKey,
-                      icon: const Icon(Icons.bar_chart_rounded),
-                      text: '统计看板',
-                      iconMargin: const EdgeInsets.only(bottom: 2),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
+    final Widget navigation = FloatingBottomNavigationBar(
+      mobilePortraitOnly: false,
+      items: [
+        const FloatingBottomNavigationItem(
+          icon: Icons.timer_outlined,
+          label: '工作台',
+        ),
+        FloatingBottomNavigationItem(
+          key: _statsTabKey,
+          icon: Icons.bar_chart_rounded,
+          label: '统计看板',
+        ),
+      ],
+      selectedIndex: _tabController.index,
+      onTabSelected: (index) => _tabController.animateTo(index),
+    );
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
       height: isFocusingOrWatching ? 0 : null,
-      clipBehavior: useFloatingBottomBar && !isFocusingOrWatching
+      clipBehavior: !isFocusingOrWatching
           ? Clip.none
           : Clip.hardEdge,
       decoration: const BoxDecoration(),

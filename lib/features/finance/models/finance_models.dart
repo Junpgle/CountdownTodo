@@ -589,11 +589,131 @@ abstract final class FinanceDefaults {
       'sort_order': 10,
     },
     {
+      'uuid': 'finance-system-category-food-breakfast',
+      'name': '早餐',
+      'icon': '🥐',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-food',
+      'sort_order': 11,
+    },
+    {
+      'uuid': 'finance-system-category-food-lunch',
+      'name': '午餐',
+      'icon': '🍱',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-food',
+      'sort_order': 12,
+    },
+    {
+      'uuid': 'finance-system-category-food-dinner',
+      'name': '晚餐',
+      'icon': '🍛',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-food',
+      'sort_order': 13,
+    },
+    {
+      'uuid': 'finance-system-category-food-takeout',
+      'name': '外卖',
+      'icon': '🥡',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-food',
+      'sort_order': 14,
+    },
+    {
+      'uuid': 'finance-system-category-food-coffee',
+      'name': '咖啡',
+      'icon': '☕',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-food',
+      'sort_order': 15,
+    },
+    {
+      'uuid': 'finance-system-category-food-milk-tea',
+      'name': '奶茶',
+      'icon': '🧋',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-food',
+      'sort_order': 16,
+    },
+    {
+      'uuid': 'finance-system-category-food-snacks',
+      'name': '零食',
+      'icon': '🍿',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-food',
+      'sort_order': 17,
+    },
+    {
+      'uuid': 'finance-system-category-food-groceries',
+      'name': '买菜',
+      'icon': '🥬',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-food',
+      'sort_order': 18,
+    },
+    {
+      'uuid': 'finance-system-category-food-online-shopping',
+      'name': '网购',
+      'icon': '🛒',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-food',
+      'sort_order': 19,
+    },
+    {
       'uuid': 'finance-system-category-transport',
       'name': '交通',
       'icon': '🚇',
       'type': 'expense',
       'sort_order': 20,
+    },
+    {
+      'uuid': 'finance-system-category-transport-public',
+      'name': '公交地铁',
+      'icon': '🚇',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-transport',
+      'sort_order': 21,
+    },
+    {
+      'uuid': 'finance-system-category-transport-taxi',
+      'name': '打车',
+      'icon': '🚕',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-transport',
+      'sort_order': 22,
+    },
+    {
+      'uuid': 'finance-system-category-transport-fuel',
+      'name': '加油',
+      'icon': '⛽',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-transport',
+      'sort_order': 23,
+    },
+    {
+      'uuid': 'finance-system-category-transport-parking',
+      'name': '停车',
+      'icon': '🅿️',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-transport',
+      'sort_order': 24,
+    },
+    {
+      'uuid': 'finance-system-category-transport-train-flight',
+      'name': '火车飞机',
+      'icon': '✈️',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-transport',
+      'sort_order': 25,
+    },
+    {
+      'uuid': 'finance-system-category-transport-cycling',
+      'name': '骑行',
+      'icon': '🚲',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-transport',
+      'sort_order': 26,
     },
     {
       'uuid': 'finance-system-category-shopping',
@@ -603,11 +723,99 @@ abstract final class FinanceDefaults {
       'sort_order': 30,
     },
     {
+      'uuid': 'finance-system-category-shopping-daily',
+      'name': '日用品',
+      'icon': '🧴',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-shopping',
+      'sort_order': 31,
+    },
+    {
+      'uuid': 'finance-system-category-shopping-clothes',
+      'name': '服饰鞋包',
+      'icon': '👕',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-shopping',
+      'sort_order': 32,
+    },
+    {
+      'uuid': 'finance-system-category-shopping-digital',
+      'name': '数码',
+      'icon': '📱',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-shopping',
+      'sort_order': 33,
+    },
+    {
+      'uuid': 'finance-system-category-shopping-home',
+      'name': '家居家电',
+      'icon': '🛋️',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-shopping',
+      'sort_order': 34,
+    },
+    {
+      'uuid': 'finance-system-category-shopping-beauty',
+      'name': '美妆个护',
+      'icon': '💄',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-shopping',
+      'sort_order': 35,
+    },
+    {
+      'uuid': 'finance-system-category-shopping-pet',
+      'name': '宠物用品',
+      'icon': '🐾',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-shopping',
+      'sort_order': 36,
+    },
+    {
       'uuid': 'finance-system-category-housing',
       'name': '居住',
       'icon': '🏠',
       'type': 'expense',
       'sort_order': 40,
+    },
+    {
+      'uuid': 'finance-system-category-housing-rent',
+      'name': '房租',
+      'icon': '🔑',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-housing',
+      'sort_order': 41,
+    },
+    {
+      'uuid': 'finance-system-category-housing-utilities',
+      'name': '水电燃气',
+      'icon': '💡',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-housing',
+      'sort_order': 42,
+    },
+    {
+      'uuid': 'finance-system-category-housing-property',
+      'name': '物业',
+      'icon': '🏢',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-housing',
+      'sort_order': 43,
+    },
+    {
+      'uuid': 'finance-system-category-housing-network',
+      'name': '通讯网络',
+      'icon': '📶',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-housing',
+      'sort_order': 44,
+    },
+    {
+      'uuid': 'finance-system-category-housing-maintenance',
+      'name': '家庭维修',
+      'icon': '🔧',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-housing',
+      'sort_order': 45,
     },
     {
       'uuid': 'finance-system-category-learning',
@@ -617,11 +825,75 @@ abstract final class FinanceDefaults {
       'sort_order': 50,
     },
     {
+      'uuid': 'finance-system-category-learning-books',
+      'name': '书籍',
+      'icon': '📖',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-learning',
+      'sort_order': 51,
+    },
+    {
+      'uuid': 'finance-system-category-learning-course',
+      'name': '课程培训',
+      'icon': '🎓',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-learning',
+      'sort_order': 52,
+    },
+    {
+      'uuid': 'finance-system-category-learning-stationery',
+      'name': '文具',
+      'icon': '✏️',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-learning',
+      'sort_order': 53,
+    },
+    {
+      'uuid': 'finance-system-category-learning-exam',
+      'name': '考试报名',
+      'icon': '📝',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-learning',
+      'sort_order': 54,
+    },
+    {
       'uuid': 'finance-system-category-entertainment',
       'name': '娱乐',
       'icon': '🎮',
       'type': 'expense',
       'sort_order': 60,
+    },
+    {
+      'uuid': 'finance-system-category-entertainment-movie',
+      'name': '电影演出',
+      'icon': '🎬',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-entertainment',
+      'sort_order': 61,
+    },
+    {
+      'uuid': 'finance-system-category-entertainment-game',
+      'name': '游戏',
+      'icon': '🎮',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-entertainment',
+      'sort_order': 62,
+    },
+    {
+      'uuid': 'finance-system-category-entertainment-travel',
+      'name': '旅行',
+      'icon': '🧳',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-entertainment',
+      'sort_order': 63,
+    },
+    {
+      'uuid': 'finance-system-category-entertainment-music',
+      'name': '音乐',
+      'icon': '🎧',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-entertainment',
+      'sort_order': 64,
     },
     {
       'uuid': 'finance-system-category-health',
@@ -631,11 +903,75 @@ abstract final class FinanceDefaults {
       'sort_order': 70,
     },
     {
+      'uuid': 'finance-system-category-health-medical',
+      'name': '医疗就诊',
+      'icon': '🩺',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-health',
+      'sort_order': 71,
+    },
+    {
+      'uuid': 'finance-system-category-health-medicine',
+      'name': '药品',
+      'icon': '💊',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-health',
+      'sort_order': 72,
+    },
+    {
+      'uuid': 'finance-system-category-health-checkup',
+      'name': '体检',
+      'icon': '🩻',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-health',
+      'sort_order': 73,
+    },
+    {
+      'uuid': 'finance-system-category-health-fitness',
+      'name': '健身',
+      'icon': '🏋️',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-health',
+      'sort_order': 74,
+    },
+    {
       'uuid': 'finance-system-category-social',
       'name': '社交',
       'icon': '🎁',
       'type': 'expense',
       'sort_order': 80,
+    },
+    {
+      'uuid': 'finance-system-category-social-gift',
+      'name': '礼物',
+      'icon': '🎁',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-social',
+      'sort_order': 81,
+    },
+    {
+      'uuid': 'finance-system-category-social-red-envelope',
+      'name': '红包',
+      'icon': '🧧',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-social',
+      'sort_order': 82,
+    },
+    {
+      'uuid': 'finance-system-category-social-dining',
+      'name': '聚餐',
+      'icon': '🍻',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-social',
+      'sort_order': 83,
+    },
+    {
+      'uuid': 'finance-system-category-social-ceremony',
+      'name': '随礼',
+      'icon': '💌',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-social',
+      'sort_order': 84,
     },
     {
       'uuid': 'finance-system-category-subscription',
@@ -645,11 +981,59 @@ abstract final class FinanceDefaults {
       'sort_order': 90,
     },
     {
+      'uuid': 'finance-system-category-subscription-video',
+      'name': '视频会员',
+      'icon': '📺',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-subscription',
+      'sort_order': 91,
+    },
+    {
+      'uuid': 'finance-system-category-subscription-music',
+      'name': '音乐会员',
+      'icon': '🎵',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-subscription',
+      'sort_order': 92,
+    },
+    {
+      'uuid': 'finance-system-category-subscription-software',
+      'name': '软件服务',
+      'icon': '🧩',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-subscription',
+      'sort_order': 93,
+    },
+    {
+      'uuid': 'finance-system-category-subscription-cloud',
+      'name': '云存储',
+      'icon': '☁️',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-subscription',
+      'sort_order': 94,
+    },
+    {
       'uuid': 'finance-system-category-ai-service',
       'name': 'AI 服务',
       'icon': '✨',
       'type': 'expense',
       'sort_order': 95,
+    },
+    {
+      'uuid': 'finance-system-category-ai-service-subscription',
+      'name': 'AI 订阅',
+      'icon': '✨',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-ai-service',
+      'sort_order': 96,
+    },
+    {
+      'uuid': 'finance-system-category-ai-service-api',
+      'name': 'API 调用',
+      'icon': '🔌',
+      'type': 'expense',
+      'parent_uuid': 'finance-system-category-ai-service',
+      'sort_order': 97,
     },
     {
       'uuid': 'finance-system-category-loan-interest',
@@ -673,6 +1057,30 @@ abstract final class FinanceDefaults {
       'sort_order': 10,
     },
     {
+      'uuid': 'finance-system-category-salary-base',
+      'name': '基本工资',
+      'icon': '💼',
+      'type': 'income',
+      'parent_uuid': 'finance-system-category-salary',
+      'sort_order': 11,
+    },
+    {
+      'uuid': 'finance-system-category-salary-overtime',
+      'name': '加班费',
+      'icon': '⏱️',
+      'type': 'income',
+      'parent_uuid': 'finance-system-category-salary',
+      'sort_order': 12,
+    },
+    {
+      'uuid': 'finance-system-category-salary-allowance',
+      'name': '津贴补贴',
+      'icon': '🧾',
+      'type': 'income',
+      'parent_uuid': 'finance-system-category-salary',
+      'sort_order': 13,
+    },
+    {
       'uuid': 'finance-system-category-pocket-money',
       'name': '零花钱',
       'icon': '💰',
@@ -680,11 +1088,51 @@ abstract final class FinanceDefaults {
       'sort_order': 20,
     },
     {
+      'uuid': 'finance-system-category-pocket-money-family',
+      'name': '家庭支持',
+      'icon': '🏡',
+      'type': 'income',
+      'parent_uuid': 'finance-system-category-pocket-money',
+      'sort_order': 21,
+    },
+    {
+      'uuid': 'finance-system-category-pocket-money-living',
+      'name': '生活费',
+      'icon': '💰',
+      'type': 'income',
+      'parent_uuid': 'finance-system-category-pocket-money',
+      'sort_order': 22,
+    },
+    {
       'uuid': 'finance-system-category-bonus',
       'name': '奖金',
       'icon': '🏆',
       'type': 'income',
       'sort_order': 30,
+    },
+    {
+      'uuid': 'finance-system-category-bonus-year-end',
+      'name': '年终奖',
+      'icon': '🏆',
+      'type': 'income',
+      'parent_uuid': 'finance-system-category-bonus',
+      'sort_order': 31,
+    },
+    {
+      'uuid': 'finance-system-category-bonus-project',
+      'name': '项目奖金',
+      'icon': '🎯',
+      'type': 'income',
+      'parent_uuid': 'finance-system-category-bonus',
+      'sort_order': 32,
+    },
+    {
+      'uuid': 'finance-system-category-bonus-competition',
+      'name': '竞赛奖励',
+      'icon': '🥇',
+      'type': 'income',
+      'parent_uuid': 'finance-system-category-bonus',
+      'sort_order': 33,
     },
     {
       'uuid': 'finance-system-category-refund',
@@ -699,6 +1147,38 @@ abstract final class FinanceDefaults {
       'icon': '➕',
       'type': 'income',
       'sort_order': 100,
+    },
+    {
+      'uuid': 'finance-system-category-other-income-interest',
+      'name': '利息收益',
+      'icon': '💹',
+      'type': 'income',
+      'parent_uuid': 'finance-system-category-other-income',
+      'sort_order': 101,
+    },
+    {
+      'uuid': 'finance-system-category-other-income-investment',
+      'name': '理财收益',
+      'icon': '📈',
+      'type': 'income',
+      'parent_uuid': 'finance-system-category-other-income',
+      'sort_order': 102,
+    },
+    {
+      'uuid': 'finance-system-category-other-income-resale',
+      'name': '二手闲置',
+      'icon': '📦',
+      'type': 'income',
+      'parent_uuid': 'finance-system-category-other-income',
+      'sort_order': 103,
+    },
+    {
+      'uuid': 'finance-system-category-other-income-side-job',
+      'name': '兼职收入',
+      'icon': '🧑‍💻',
+      'type': 'income',
+      'parent_uuid': 'finance-system-category-other-income',
+      'sort_order': 104,
     },
   ];
 
@@ -747,6 +1227,12 @@ class FinanceCategory {
   String name;
   FinanceCategoryType type;
   String icon;
+
+  /// Only system categories need this marker. Their built-in rows are seeded
+  /// locally and must not be uploaded as user edits until a name or icon
+  /// override is explicitly customized.
+  bool iconCustomized;
+  bool nameCustomized;
   int? colorValue;
   String? parentUuid;
   bool isSystem;
@@ -763,6 +1249,8 @@ class FinanceCategory {
     required this.name,
     this.type = FinanceCategoryType.expense,
     this.icon = '📦',
+    this.iconCustomized = false,
+    this.nameCustomized = false,
     this.colorValue,
     this.parentUuid,
     this.isSystem = false,
@@ -789,6 +1277,8 @@ class FinanceCategory {
         'name': name,
         'type': type.name,
         'icon': icon,
+        'icon_customized': iconCustomized ? 1 : 0,
+        'name_customized': nameCustomized ? 1 : 0,
         'color_value': colorValue,
         'parent_uuid': parentUuid,
         'is_system': isSystem ? 1 : 0,
@@ -809,6 +1299,8 @@ class FinanceCategory {
       name: _string(map['name']) ?? '未命名分类',
       type: _categoryType(map['type'] ?? map['category_type']),
       icon: _string(map['icon']) ?? '📦',
+      iconCustomized: _bool(map['icon_customized'] ?? map['iconCustomized']),
+      nameCustomized: _bool(map['name_customized'] ?? map['nameCustomized']),
       colorValue: _nullableInt(map['color_value'] ?? map['colorValue']),
       parentUuid: _nullableString(map['parent_uuid'] ?? map['parentUuid']),
       isSystem: _bool(map['is_system'] ?? map['isSystem']),
@@ -821,6 +1313,32 @@ class FinanceCategory {
       pendingSync: _bool(map['pending_sync'] ?? map['pendingSync']),
     );
   }
+}
+
+/// Returns the readable path for a category, such as `餐饮 - 奶茶`.
+///
+/// The parent is resolved by UUID instead of by its display name so duplicate
+/// names remain unambiguous and old transactions can keep their stored UUID.
+String financeCategoryDisplayName(
+  FinanceCategory category,
+  Iterable<FinanceCategory> categories, {
+  String separator = ' - ',
+}) {
+  final byUuid = <String, FinanceCategory>{
+    for (final item in categories) item.uuid: item,
+  };
+  final names = <String>[];
+  final visited = <String>{};
+  FinanceCategory? current = category;
+  while (current != null && visited.add(current.uuid)) {
+    names.insert(0, current.name);
+    final parentUuid = current.parentUuid?.trim();
+    if (parentUuid == null || parentUuid.isEmpty) break;
+    final parent = byUuid[parentUuid];
+    if (parent == null || parent.type != current.type) break;
+    current = parent;
+  }
+  return names.join(separator);
 }
 
 class FinancePaymentMethod {
@@ -1196,6 +1714,7 @@ class FinanceBudget {
   String uuid;
   String monthKey;
   String? categoryUuid;
+  String? paymentMethodUuid;
   int amountMinor;
   String currencyCode;
   String? note;
@@ -1210,6 +1729,7 @@ class FinanceBudget {
     String? uuid,
     required this.monthKey,
     this.categoryUuid,
+    this.paymentMethodUuid,
     required this.amountMinor,
     this.currencyCode = FinanceDefaults.defaultCurrencyCode,
     this.note,
@@ -1223,17 +1743,25 @@ class FinanceBudget {
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
-  static String stableUuid(String monthKey, String? categoryUuid) {
-    final scope = categoryUuid?.trim().isNotEmpty == true
-        ? categoryUuid!.trim()
-        : 'overall';
+  static String stableUuid(
+    String monthKey,
+    String? categoryUuid, {
+    String? paymentMethodUuid,
+  }) {
+    final scope = paymentMethodUuid?.trim().isNotEmpty == true
+        ? 'payment:${paymentMethodUuid!.trim()}'
+        : categoryUuid?.trim().isNotEmpty == true
+            ? categoryUuid!.trim()
+            : 'overall';
     return const Uuid().v5(
       _uuidNamespace,
       'countdown-todo/finance-budget/v1/$monthKey/$scope',
     );
   }
 
-  bool get isOverall => categoryUuid == null;
+  bool get isPaymentMethod => paymentMethodUuid != null;
+
+  bool get isOverall => categoryUuid == null && paymentMethodUuid == null;
 
   void markAsChanged() {
     version++;
@@ -1246,6 +1774,7 @@ class FinanceBudget {
         'uuid': uuid,
         'month_key': monthKey,
         'category_uuid': categoryUuid,
+        'payment_method_uuid': paymentMethodUuid,
         'amount_minor': amountMinor,
         'currency_code': currencyCode,
         'note': note,
@@ -1266,6 +1795,9 @@ class FinanceBudget {
           financeMonthKey(DateTime.now()),
       categoryUuid:
           _nullableString(map['category_uuid'] ?? map['categoryUuid']),
+      paymentMethodUuid: _nullableString(
+        map['payment_method_uuid'] ?? map['paymentMethodUuid'],
+      ),
       amountMinor: _int(map['amount_minor'] ?? map['amountMinor']).abs(),
       currencyCode: _string(map['currency_code'] ?? map['currencyCode']) ??
           FinanceDefaults.defaultCurrencyCode,
@@ -1539,6 +2071,53 @@ class FinanceSummary {
     this.incomeByCategory = const {},
     this.expenseByDate = const {},
   });
+
+  static FinanceSummary fromTransactions(
+    Iterable<FinanceTransaction> transactions,
+  ) {
+    var income = 0;
+    var expense = 0;
+    var refund = 0;
+    var transactionCount = 0;
+    final expenseByCategory = <String, int>{};
+    final incomeByCategory = <String, int>{};
+    final expenseByDate = <String, int>{};
+
+    for (final transaction in transactions) {
+      transactionCount++;
+      final categoryUuid = transaction.categoryUuid ?? '';
+      switch (transaction.type) {
+        case FinanceTransactionType.income:
+          income += transaction.amountMinor;
+          incomeByCategory[categoryUuid] =
+              (incomeByCategory[categoryUuid] ?? 0) + transaction.amountMinor;
+        case FinanceTransactionType.expense:
+          expense += transaction.amountMinor;
+          expenseByCategory[categoryUuid] =
+              (expenseByCategory[categoryUuid] ?? 0) + transaction.amountMinor;
+          expenseByDate[transaction.transactionDate] =
+              (expenseByDate[transaction.transactionDate] ?? 0) +
+                  transaction.amountMinor;
+        case FinanceTransactionType.refund:
+          refund += transaction.amountMinor;
+          expenseByCategory[categoryUuid] =
+              (expenseByCategory[categoryUuid] ?? 0) - transaction.amountMinor;
+          expenseByDate[transaction.transactionDate] =
+              (expenseByDate[transaction.transactionDate] ?? 0) -
+                  transaction.amountMinor;
+      }
+    }
+
+    return FinanceSummary(
+      incomeMinor: income,
+      expenseMinor: expense,
+      refundMinor: refund,
+      transactionCount: transactionCount,
+      expenseByCategory: expenseByCategory,
+      incomeByCategory: incomeByCategory,
+      expenseByDate: expenseByDate,
+    );
+  }
 
   int get netExpenseMinor => expenseMinor - refundMinor;
 

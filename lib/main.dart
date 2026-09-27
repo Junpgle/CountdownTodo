@@ -29,8 +29,10 @@ import 'services/float_window_service.dart';
 import 'services/window_service.dart';
 import 'services/band_sync_service.dart';
 import 'services/notification_service.dart';
+import 'services/reminder_schedule_service.dart';
 import 'services/android_window_rendering_policy.dart';
 import 'services/pomodoro_service.dart';
+import 'services/focus_do_not_disturb_service.dart';
 import 'widgets/macos_menu_bar.dart';
 import 'services/pomodoro_sync_service.dart';
 import 'services/widget_service.dart';
@@ -44,6 +46,7 @@ import 'services/liquid_glass_effect_service.dart';
 import 'services/power_save_mode_service.dart';
 import 'theme/app_liquid_glass_theme.dart';
 import 'widgets/island_debug_host.dart';
+import 'widgets/macos_window_chrome.dart';
 
 import 'utils/navigator_utils.dart';
 import 'utils/url_hash.dart';
@@ -98,6 +101,34 @@ Future<T?> _runStartupTask<T>(
   }
 }
 
+Future<void> _reconcileFocusDoNotDisturbWithRunState() async {
+  final saved = await PomodoroService.loadRunState();
+  final now = DateTime.now().millisecondsSinceEpoch;
+  final countdownAlreadyEnded = saved != null &&
+      saved.mode == TimerMode.countdown &&
+      !saved.isPaused &&
+      saved.targetEndMs <= now;
+  final shouldBeActive = saved != null &&
+      saved.phase == PomodoroPhase.focusing &&
+      saved.doNotDisturbDuringFocus &&
+      !saved.strictWaitingForFlip &&
+      !countdownAlreadyEnded;
+
+  if (shouldBeActive) {
+    await FocusDoNotDisturbService.setActive(
+      true,
+      sessionUuid: saved.sessionUuid,
+      untilMs: saved.isPaused || saved.mode == TimerMode.countUp
+          ? null
+          : saved.targetEndMs,
+    );
+  } else {
+    // This is deliberately forced: a process can die after native DND has
+    // been enabled but before the run-state write completes.
+    await FocusDoNotDisturbService.setActive(false, force: true);
+  }
+}
+
 Future<void> _initializePlatformBeforeHome(List<String> args) async {
   // Read Android Battery Saver first, then start the independent tasks together
   // while the Flutter splash is visible. This prevents optional shader warm-up
@@ -118,6 +149,16 @@ Future<void> _initializePlatformBeforeHome(List<String> args) async {
   final powerSaveMode = PowerSaveModeService.isEnabled;
   PageTransitions.setPowerSaveMode(powerSaveMode);
   await LiquidGlassEffectService.setPowerSaveMode(powerSaveMode);
+  await _runStartupTask(
+    'FocusDoNotDisturbService.initialize',
+    FocusDoNotDisturbService.initialize(),
+    timeout: const Duration(seconds: 2),
+  );
+  await _runStartupTask(
+    'FocusDoNotDisturbService.reconcileWithRunState',
+    _reconcileFocusDoNotDisturbWithRunState(),
+    timeout: const Duration(seconds: 2),
+  );
   await Future.wait<dynamic>([
     _runStartupTask(
       'NotificationService.bindNativeChannel',
@@ -156,6 +197,11 @@ Future<void> _initializePlatformBeforeHome(List<String> args) async {
       timeout: const Duration(seconds: 2),
     ),
   ]);
+  await _runStartupTask(
+    'NotificationService.reconcileScheduledRemindersForDoNotDisturb',
+    NotificationService.reconcileScheduledRemindersForDoNotDisturb(),
+    timeout: const Duration(seconds: 2),
+  );
 }
 
 String? _detectInitialShareCode() {
@@ -269,7 +315,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Map<String, dynamic>? _splashContent;
   bool _showDefaultSplash = true;
   bool _showHolidaySplash = false;
-  bool _showPrivacyUpdate = false;
+  bool _privacyDialogShowing = false;
+  bool _privacyCheckScheduled = false;
   bool _defaultSplashCompleted = false;
   bool _splashSequenceReady = false;
   bool _windowReadyForSplashTransition = true;
@@ -487,7 +534,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         StorageService.initTheme(),
         EnvironmentService.init(),
         StorageService.getLoginSession(),
-        StorageService.isPrivacyPolicyUpToDate(),
         StorageService.isPrivacyPolicyAgreed(),
         FeatureGuideScreen.shouldShow()
             .timeout(const Duration(seconds: 2), onTimeout: () => false),
@@ -496,9 +542,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
       // 解析并发结果
       final String? user = results[2] as String?;
-      final bool privacyNeedsUpdate = results[3] as bool;
-      final bool wasAgreed = results[4] as bool;
-      final bool needGuide = results[5] as bool;
+      final bool wasAgreed = results[3] as bool;
+      final bool needGuide = results[4] as bool;
 
       // 0.6 初始化壁纸(从manifest获取)，延后到首帧后避免占用启动关键路径
       SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -507,23 +552,24 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
       final wasLoggedIn = user != null && user.isNotEmpty;
 
-      // 3. 判断是否需要弹窗：已登录但未同意过，或版本已过期
-      final shouldShowPrivacyDialog =
-          wasLoggedIn && (!wasAgreed || !privacyNeedsUpdate);
+      // 本地同意状态只负责首屏决定是否需要首次同意，远程版本检查放到
+      // 首帧之后，避免网络请求阻塞进入应用。
+      final shouldShowPrivacyDialog = wasLoggedIn && !wasAgreed;
 
       if (mounted) {
         setState(() {
           _loggedInUser = user;
           _showFeatureGuide = needGuide;
           _isChecking = false;
-          _showPrivacyUpdate = shouldShowPrivacyDialog;
         });
 
-        // 4. 如果需要弹窗，在界面渲染后弹出
-        if (_showPrivacyUpdate) {
+        // 4. 未同意过的用户立即显示首次同意弹窗；已同意用户在后台检查版本。
+        if (shouldShowPrivacyDialog) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            _showPrivacyUpdateDialog();
+            unawaited(_showPrivacyUpdateDialog());
           });
+        } else if (wasLoggedIn && wasAgreed) {
+          _schedulePrivacyPolicyBackgroundCheck();
         }
         _scheduleDeepLinkConsumption();
       }
@@ -548,6 +594,29 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     });
   }
 
+  void _schedulePrivacyPolicyBackgroundCheck() {
+    if (_privacyCheckScheduled) return;
+    _privacyCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_checkPrivacyPolicyInBackground());
+    });
+  }
+
+  Future<void> _checkPrivacyPolicyInBackground() async {
+    final user = _loggedInUser;
+    if (!mounted || user == null || user.isEmpty) return;
+
+    try {
+      final policyUpToDate = await StorageService.isPrivacyPolicyUpToDate();
+      if (!mounted || _loggedInUser != user || policyUpToDate) return;
+      if (!await StorageService.isPrivacyPolicyAgreed()) return;
+      if (!mounted || _loggedInUser != user) return;
+      await _showPrivacyUpdateDialog();
+    } catch (_) {
+      // 后台检查失败不影响当前使用，下次启动或缓存过期后再重试。
+    }
+  }
+
   void _scheduleSplashReadinessFallback() {
     if (AppPlatform.isWeb ||
         !AppPlatform.isDesktop ||
@@ -568,46 +637,57 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   Future<void> _showPrivacyUpdateDialog() async {
+    if (!mounted || _privacyDialogShowing) return;
     final navContext = appNavigatorKey.currentContext;
-    if (navContext == null) return;
-    final result = await showDialog<bool>(
-      context: navContext,
-      barrierDismissible: false,
-      builder: (dialogContext) => PrivacyPolicyDialog(
-        isUpdate: true,
-        onAgree: () {
-          StorageService.setPrivacyPolicyAgreed(true);
-          Navigator.pop(dialogContext, true);
-        },
-        onDisagree: () async {
-          await StorageService.clearLoginSession();
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.clear();
-          if (dialogContext.mounted) {
-            Navigator.pop(dialogContext, false);
-          }
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              setState(() {
-                _loggedInUser = null;
-              });
+    if (navContext == null || !navContext.mounted) return;
+
+    _privacyDialogShowing = true;
+    try {
+      final result = await showDialog<bool>(
+        context: navContext,
+        barrierDismissible: false,
+        builder: (dialogContext) => PrivacyPolicyDialog(
+          isUpdate: true,
+          onAgree: () async {
+            await StorageService.setPrivacyPolicyAgreed(true);
+            if (dialogContext.mounted) {
+              Navigator.pop(dialogContext, true);
             }
-          });
-        },
-      ),
-    );
-    if (result == false) {
-      // 用户不同意更新后的隐私协议，退出登录并清除数据
-      await StorageService.clearLoginSession();
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.clear();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() {
-            _loggedInUser = null;
-          });
-        }
-      });
+          },
+          onDisagree: () async {
+            await ReminderScheduleService.clearScheduledReminders();
+            await StorageService.clearLoginSession();
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.clear();
+            if (dialogContext.mounted) {
+              Navigator.pop(dialogContext, false);
+            }
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _loggedInUser = null;
+                });
+              }
+            });
+          },
+        ),
+      );
+      if (result == false) {
+        // 用户不同意更新后的隐私协议，退出登录并清除数据
+        await ReminderScheduleService.clearScheduledReminders();
+        await StorageService.clearLoginSession();
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.clear();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _loggedInUser = null;
+            });
+          }
+        });
+      }
+    } finally {
+      _privacyDialogShowing = false;
     }
   }
 
@@ -827,6 +907,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       await PomodoroService.addRecord(record);
       // debugPrint('[Band] Clearing run state');
       await PomodoroService.clearRunState();
+      await NotificationService.reconcileScheduledRemindersForDoNotDisturb();
     } else if (action == 'abandon') {
       final now = DateTime.now().millisecondsSinceEpoch;
       final actualSeconds = PomodoroRunState.computeActualSeconds(
@@ -843,6 +924,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       }
       // debugPrint('[Band] Clearing run state (abandon)');
       await PomodoroService.clearRunState();
+      await NotificationService.reconcileScheduledRemindersForDoNotDisturb();
       // debugPrint('[Band] 番茄钟已放弃');
     }
   }
@@ -982,6 +1064,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                               ),
                               enabled: liquidGlassConfiguration.enabled,
                               mode: liquidGlassConfiguration.mode,
+                              transparencyPercent:
+                                  liquidGlassConfiguration.transparencyPercent,
                             );
                             final darkTheme = applyAppLiquidGlassTheme(
                               ThemeData(
@@ -996,6 +1080,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                               ),
                               enabled: liquidGlassConfiguration.enabled,
                               mode: liquidGlassConfiguration.mode,
+                              transparencyPercent:
+                                  liquidGlassConfiguration.transparencyPercent,
                             );
 
                             return MacosMenuBar(
@@ -1115,10 +1201,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                                                     )
                                                   : content;
 
-                                          return AppSystemUiRegion(
-                                            backgroundBrightness:
-                                                Theme.of(context).brightness,
-                                            child: adaptedContent,
+                                          return MacosWindowChrome(
+                                            child: AppSystemUiRegion(
+                                              backgroundBrightness:
+                                                  Theme.of(context).brightness,
+                                              child: adaptedContent,
+                                            ),
                                           );
                                         },
                                       );

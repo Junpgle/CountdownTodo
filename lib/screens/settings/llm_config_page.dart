@@ -1964,96 +1964,100 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                   return Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 1180),
-                      child: Stepper(
-                        type: wide
-                            ? StepperType.horizontal
-                            : StepperType.vertical,
-                        margin: wide
-                            ? const EdgeInsets.fromLTRB(24, 12, 24, 24)
-                            : null,
-                        currentStep: _currentStep,
-                        onStepContinue: () {
-                          if (_currentStep < 2) {
-                            setState(() => _currentStep++);
-                          } else {
-                            _saveConfig();
-                          }
-                        },
-                        onStepCancel: () {
-                          if (_currentStep > 0) {
-                            setState(() => _currentStep--);
-                          }
-                        },
-                        onStepTapped: (step) {
-                          // 只允许点击已完成的步骤或当前步骤
-                          if (step <= _currentStep) {
-                            setState(() => _currentStep = step);
-                          }
-                        },
-                        controlsBuilder: (context, details) {
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 20),
-                            child: Row(
-                              mainAxisAlignment: wide
-                                  ? MainAxisAlignment.end
-                                  : MainAxisAlignment.start,
-                              children: [
-                                if (_currentStep < 2)
-                                  FilledButton.icon(
-                                    onPressed: details.onStepContinue,
-                                    icon: const Icon(Icons.arrow_forward,
-                                        size: 18),
-                                    label: const Text('下一步'),
-                                  )
-                                else
-                                  FilledButton.icon(
-                                    onPressed: _isTesting
-                                        ? null
-                                        : details.onStepContinue,
-                                    icon: const Icon(Icons.save, size: 18),
-                                    label: const Text('保存配置'),
-                                  ),
-                                if (_currentStep > 0) ...[
-                                  const SizedBox(width: 12),
-                                  OutlinedButton.icon(
-                                    onPressed: details.onStepCancel,
-                                    icon:
-                                        const Icon(Icons.arrow_back, size: 18),
-                                    label: const Text('上一步'),
-                                  ),
+                      child: MediaQuery.removePadding(
+                        context: context,
+                        removeTop: true,
+                        child: Stepper(
+                          type: wide
+                              ? StepperType.horizontal
+                              : StepperType.vertical,
+                          margin: wide
+                              ? const EdgeInsets.fromLTRB(24, 12, 24, 24)
+                              : null,
+                          currentStep: _currentStep,
+                          onStepContinue: () {
+                            if (_currentStep < 2) {
+                              setState(() => _currentStep++);
+                            } else {
+                              _saveConfig();
+                            }
+                          },
+                          onStepCancel: () {
+                            if (_currentStep > 0) {
+                              setState(() => _currentStep--);
+                            }
+                          },
+                          onStepTapped: (step) {
+                            // 只允许点击已完成的步骤或当前步骤
+                            if (step <= _currentStep) {
+                              setState(() => _currentStep = step);
+                            }
+                          },
+                          controlsBuilder: (context, details) {
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 20),
+                              child: Row(
+                                mainAxisAlignment: wide
+                                    ? MainAxisAlignment.end
+                                    : MainAxisAlignment.start,
+                                children: [
+                                  if (_currentStep < 2)
+                                    FilledButton.icon(
+                                      onPressed: details.onStepContinue,
+                                      icon: const Icon(Icons.arrow_forward,
+                                          size: 18),
+                                      label: const Text('下一步'),
+                                    )
+                                  else
+                                    FilledButton.icon(
+                                      onPressed: _isTesting
+                                          ? null
+                                          : details.onStepContinue,
+                                      icon: const Icon(Icons.save, size: 18),
+                                      label: const Text('保存配置'),
+                                    ),
+                                  if (_currentStep > 0) ...[
+                                    const SizedBox(width: 12),
+                                    OutlinedButton.icon(
+                                      onPressed: details.onStepCancel,
+                                      icon: const Icon(Icons.arrow_back,
+                                          size: 18),
+                                      label: const Text('上一步'),
+                                    ),
+                                  ],
                                 ],
-                              ],
+                              ),
+                            );
+                          },
+                          steps: [
+                            Step(
+                              title: const Text('了解服务商'),
+                              content: _buildStep1Provider(),
+                              isActive: _currentStep >= 0,
+                              state: _currentStep > 0
+                                  ? StepState.complete
+                                  : StepState.indexed,
                             ),
-                          );
-                        },
-                        steps: [
-                          Step(
-                            title: const Text('了解服务商'),
-                            content: _buildStep1Provider(),
-                            isActive: _currentStep >= 0,
-                            state: _currentStep > 0
-                                ? StepState.complete
-                                : StepState.indexed,
-                          ),
-                          Step(
-                            title: const Text('配置 API Key'),
-                            content: _buildStep2ApiKey(),
-                            isActive: _currentStep >= 1,
-                            state: _currentStep > 1
-                                ? StepState.complete
-                                : _currentStep == 1
-                                    ? StepState.indexed
-                                    : StepState.disabled,
-                          ),
-                          Step(
-                            title: const Text('选择模型'),
-                            content: _buildStep3Models(),
-                            isActive: _currentStep >= 2,
-                            state: _currentStep == 2
-                                ? StepState.indexed
-                                : StepState.disabled,
-                          ),
-                        ],
+                            Step(
+                              title: const Text('配置 API Key'),
+                              content: _buildStep2ApiKey(),
+                              isActive: _currentStep >= 1,
+                              state: _currentStep > 1
+                                  ? StepState.complete
+                                  : _currentStep == 1
+                                      ? StepState.indexed
+                                      : StepState.disabled,
+                            ),
+                            Step(
+                              title: const Text('选择模型'),
+                              content: _buildStep3Models(),
+                              isActive: _currentStep >= 2,
+                              state: _currentStep == 2
+                                  ? StepState.indexed
+                                  : StepState.disabled,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   );

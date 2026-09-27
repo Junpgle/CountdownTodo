@@ -249,6 +249,7 @@ class WidgetService {
       PomodoroService.getTodayRecords(),
       PomodoroService.getTags(),
       _buildFinanceWidgetSummary(),
+      StorageService.getFixedSchedules(username),
     ]);
 
     final List<TodoItem> allTodos = results[0] as List<TodoItem>;
@@ -259,6 +260,8 @@ class WidgetService {
     final List<PomodoroTag> allTags = results[5] as List<PomodoroTag>;
     final WidgetFinanceSummary financeSummary =
         results[6] as WidgetFinanceSummary;
+    final List<FixedScheduleItem> fixedSchedulesRaw =
+        results[7] as List<FixedScheduleItem>;
     final widgetTodos = selectTodosForWidget(
       allTodos,
       now: now,
@@ -304,6 +307,37 @@ class WidgetService {
               'formattedEndTime': c.formattedEndTime,
             })
         .toList();
+
+    // 2. 固定日程：只保留未来 14 天内且尚未结束的日程。
+    // 固定日程与课表共用 Android 小部件的“日程”列表，但保留自己的
+    // 时间待定、结束待定和地点语义。
+    final DateTime scheduleLimit = now.add(const Duration(days: 14));
+    final List<Map<String, dynamic>> slimFixedSchedules =
+        fixedSchedulesRaw.where((item) {
+      if (item.title.trim().isEmpty) return false;
+      final date = DateTime.tryParse(item.date)?.toLocal();
+      if (date == null) return false;
+      final day = DateTime(date.year, date.month, date.day);
+      if (day.isBefore(today) || !day.isBefore(scheduleLimit)) {
+        return false;
+      }
+      final phase = item.phaseAt(now);
+      return phase != FixedSchedulePhase.ended &&
+          phase != FixedSchedulePhase.cancelled;
+    }).map((item) {
+      final start = item.startTime == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal();
+      return <String, dynamic>{
+        'id': item.id,
+        'title': item.title,
+        'date': item.date,
+        'startAtMs': item.startTime,
+        'startSort': start == null ? 2400 : start.hour * 100 + start.minute,
+        'timeText': _formatFixedScheduleTime(item),
+        'location': item.location?.trim() ?? '',
+      };
+    }).toList();
 
     // 3. 倒数日：只保留未删除且未过期的
     final List<Map<String, dynamic>> slimCountdowns = countdownsRaw
@@ -363,6 +397,7 @@ class WidgetService {
       'now': now.millisecondsSinceEpoch,
       'todos': slimTodos,
       'courses': slimCourses,
+      'fixedSchedules': slimFixedSchedules,
       'countdowns': slimCountdowns,
       'timelogs': slimTimeLogs,
       'poms': slimPoms,
@@ -446,6 +481,23 @@ class WidgetService {
     } catch (_) {
       return WidgetFinanceSummary(monthLabel: '${now.year}年${now.month}月');
     }
+  }
+
+  static String _formatFixedScheduleTime(FixedScheduleItem item) {
+    final startMs = item.startTime;
+    if (startMs == null) return '时间待定';
+
+    String format(int millisecondsSinceEpoch) {
+      final date = DateTime.fromMillisecondsSinceEpoch(
+        millisecondsSinceEpoch,
+      ).toLocal();
+      return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    }
+
+    final startText = format(startMs);
+    final endMs = item.endTime;
+    if (endMs == null) return '$startText · 结束待定';
+    return '$startText - ${format(endMs)}';
   }
 
   /// 计算今日各活跃习惯的进度摘要（主线程，SQLite 可访问）。
@@ -744,6 +796,9 @@ class WidgetService {
         (input['todos'] as List).cast<Map<String, dynamic>>();
     final List<Map<String, dynamic>> allCourses =
         (input['courses'] as List).cast<Map<String, dynamic>>();
+    final List<Map<String, dynamic>> fixedSchedules =
+        (input['fixedSchedules'] as List?)?.cast<Map<String, dynamic>>() ??
+            const [];
     final List<Map<String, dynamic>> countdownsRaw =
         (input['countdowns'] as List).cast<Map<String, dynamic>>();
     final List<Map<String, dynamic>> tlogsRaw =
@@ -817,7 +872,7 @@ class WidgetService {
           todo['visibleUntil'] as int? ?? 0;
     }
 
-    // 2. 课程处理（主线程已过滤为未来 14 天内）
+    // 2. 日程处理（主线程已过滤为未来 14 天内）
     String urgentCourseId = '';
     for (int i = 1; i <= maxWidgetItems; i++) {
       resultData['course_date_$i'] = '';
@@ -827,17 +882,41 @@ class WidgetService {
       resultData['course_id_$i'] = '';
     }
     try {
-      final df = DateFormat('yyyy-MM-dd');
-      final sortedCourses = List<Map<String, dynamic>>.from(allCourses)
+      final scheduleEntries = <Map<String, dynamic>>[
+        ...allCourses.map((course) => <String, dynamic>{
+              'id':
+                  '${course['courseName']}_${course['date']}_${course['startTime']}',
+              'title': course['courseName'],
+              'date': course['date'],
+              'startSort': course['startTime'],
+              'startAtMs': null,
+              'timeText':
+                  '${course['formattedStartTime']} - ${course['formattedEndTime']}',
+              'location': course['roomName'],
+            }),
+        ...fixedSchedules.map((schedule) => <String, dynamic>{
+              'id': schedule['id'],
+              'title': schedule['title'],
+              'date': schedule['date'],
+              'startSort': schedule['startSort'],
+              'startAtMs': schedule['startAtMs'],
+              'timeText': schedule['timeText'],
+              'location': schedule['location'],
+            }),
+      ];
+      final sortedSchedules = scheduleEntries
         ..sort((a, b) {
           final dateCmp = (a['date'] as String).compareTo(b['date'] as String);
           if (dateCmp != 0) return dateCmp;
-          return (a['startTime'] as int).compareTo(b['startTime'] as int);
+          return (a['startSort'] as int).compareTo(b['startSort'] as int);
         });
-      final displayCourses = sortedCourses.take(maxWidgetItems).toList();
-      for (int i = 0; i < displayCourses.length; i++) {
-        final course = displayCourses[i];
-        final courseDate = df.parse(course['date'] as String);
+      final displaySchedules = sortedSchedules.take(maxWidgetItems).toList();
+      for (int i = 0; i < displaySchedules.length; i++) {
+        final schedule = displaySchedules[i];
+        final rawDate = schedule['date'] as String?;
+        final courseDate =
+            rawDate == null ? null : DateTime.tryParse(rawDate)?.toLocal();
+        if (courseDate == null) continue;
         final diffDays =
             DateTime(courseDate.year, courseDate.month, courseDate.day)
                 .difference(today)
@@ -847,22 +926,30 @@ class WidgetService {
             : (diffDays == 1 ? '明天' : (diffDays == 2 ? '后天' : '$diffDays天后'));
         String fullDateHeader =
             '$dayLabel | ${courseDate.month}月${courseDate.day}日';
-        String cName = course['courseName'] as String? ?? '';
+        String cName = schedule['title'] as String? ?? '';
         if (diffDays == 0) {
           fullDateHeader = '<b>$fullDateHeader</b>';
           cName = '<b>$cName</b>';
         }
-        final startTime = course['startTime'] as int;
-        final cId = '${course['courseName']}_${course['date']}_$startTime';
+        final cId = schedule['id'] as String? ?? '';
         resultData['course_date_${i + 1}'] = fullDateHeader;
         resultData['course_name_${i + 1}'] = cName;
         resultData['course_time_${i + 1}'] =
-            '${course['formattedStartTime']} - ${course['formattedEndTime']}';
-        resultData['course_room_${i + 1}'] = '@${course['roomName']}';
+            schedule['timeText'] as String? ?? '';
+        final location = (schedule['location'] as String? ?? '').trim();
+        resultData['course_room_${i + 1}'] =
+            location.isEmpty ? '' : '@$location';
         resultData['course_id_${i + 1}'] = cId;
         if (urgentCourseId.isEmpty) {
-          final cStart = courseDate
-              .add(Duration(hours: startTime ~/ 100, minutes: startTime % 100));
+          final startAtMs = schedule['startAtMs'] as int?;
+          final startSort = schedule['startSort'] as int;
+          if (startAtMs == null && startSort == 2400) continue;
+          final cStart = startAtMs == null
+              ? courseDate.add(Duration(
+                  hours: startSort ~/ 100,
+                  minutes: startSort % 100,
+                ))
+              : DateTime.fromMillisecondsSinceEpoch(startAtMs).toLocal();
           if (cStart.isAfter(now) && cStart.difference(now).inMinutes <= 30) {
             urgentCourseId = cId;
           }

@@ -6,7 +6,7 @@ import 'home_sections.dart';
 
 import '../screens/add_todo_screen.dart';
 import '../screens/course_screens.dart';
-import '../screens/fixed_schedule_editor_screen.dart';
+import '../screens/fixed_schedule_detail_screen.dart';
 import '../screens/todo_plan_screen.dart';
 import '../services/course_service.dart';
 import '../services/device_calendar_read_service.dart';
@@ -258,8 +258,14 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
   List<CourseItem> _tomorrowCourses = [];
   List<DeviceCalendarEvent> _todayDeviceCalendarEvents = [];
   List<DeviceCalendarEvent> _tomorrowDeviceCalendarEvents = [];
+  final Map<String, GlobalKey> _fixedScheduleCardKeys = {};
   bool _loading = true;
   bool _showEnded = false;
+
+  GlobalKey _getFixedScheduleCardKey(FixedScheduleItem item) {
+    final keyId = '${item.id}_${item.date}';
+    return _fixedScheduleCardKeys.putIfAbsent(keyId, () => GlobalKey());
+  }
 
   @override
   void initState() {
@@ -549,19 +555,27 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     }
     final fixedSchedule = item.fixedSchedule;
     if (fixedSchedule != null) {
+      final fixedScheduleCardKey = _getFixedScheduleCardKey(fixedSchedule);
       return _FixedScheduleCompactCard(
         item: fixedSchedule,
         isLight: widget.isLight,
-        onTap: () async {
-          await Navigator.of(context).push(
-            PageTransitions.material(
-              builder: (_) => FixedScheduleEditorScreen(
-                username: widget.username,
-                item: fixedSchedule,
-              ),
+        cardKey: fixedScheduleCardKey,
+        onTap: (cardKey) async {
+          final result = await PageTransitions.pushFromRect<FixedScheduleItem>(
+            context: context,
+            page: FixedScheduleDetailScreen(
+              username: widget.username,
+              item: fixedSchedule,
             ),
+            sourceKey: cardKey,
+            sourceColor: Theme.of(context).colorScheme.brightness ==
+                    Brightness.dark
+                ? Colors.black
+                : Colors.white,
+            sourceBorderRadius: const BorderRadius.all(Radius.circular(14)),
+            placeholderIcon: Icons.event_available_rounded,
           );
-          if (mounted) await _loadBlocks();
+          if (mounted && result != null) await _loadBlocks();
         },
       );
     }
@@ -727,6 +741,46 @@ class _TodayScheduleSkeleton extends StatelessWidget {
   }
 }
 
+class _ScheduleTimeColumn extends StatelessWidget {
+  const _ScheduleTimeColumn({
+    required this.start,
+    required this.accent,
+    this.end,
+  });
+
+  final String start;
+  final String? end;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          start,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: accent,
+            height: 1.2,
+          ),
+        ),
+        if (end != null)
+          Text(
+            end!,
+            style: TextStyle(
+              fontSize: 10.5,
+              color: accent.withValues(alpha: 0.55),
+              height: 1.2,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _DeviceCalendarCompactCard extends StatefulWidget {
   const _DeviceCalendarCompactCard({
     required this.event,
@@ -753,9 +807,8 @@ class _DeviceCalendarCompactCardState
     final accent = widget.event.colorValue == null
         ? colors.tertiary
         : Color(widget.event.colorValue!);
-    final time = widget.event.allDay
-        ? '全天'
-        : '${DateFormat('HH:mm').format(widget.event.start)}–${DateFormat('HH:mm').format(widget.event.end)}';
+    final timeStart = DateFormat('HH:mm').format(widget.event.start);
+    final timeEnd = DateFormat('HH:mm').format(widget.event.end);
     return OptionalLiquidGlassCard(
       key: _cardKey,
       margin: const EdgeInsets.only(bottom: 6),
@@ -786,17 +839,24 @@ class _DeviceCalendarCompactCardState
                   ),
                 ),
                 SizedBox(
-                  width: 76,
-                  child: Text(
-                    time,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: accent,
-                    ),
-                  ),
+                  width: 50,
+                  child: widget.event.allDay
+                      ? Text(
+                          '全天',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: accent,
+                            height: 1.2,
+                          ),
+                        )
+                      : _ScheduleTimeColumn(
+                          start: timeStart,
+                          end: timeEnd,
+                          accent: accent,
+                        ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -853,23 +913,14 @@ class _FixedScheduleCompactCard extends StatelessWidget {
   const _FixedScheduleCompactCard({
     required this.item,
     required this.isLight,
+    required this.cardKey,
     required this.onTap,
   });
 
   final FixedScheduleItem item;
   final bool isLight;
-  final VoidCallback onTap;
-
-  String _timeLabel() {
-    if (item.startTime == null) return '时间待定';
-    final start =
-        DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal();
-    if (item.endTime == null) {
-      return '${DateFormat('HH:mm').format(start)} · 结束待定';
-    }
-    final end = DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal();
-    return '${DateFormat('HH:mm').format(start)}–${DateFormat('HH:mm').format(end)}';
-  }
+  final GlobalKey cardKey;
+  final void Function(GlobalKey cardKey) onTap;
 
   String _recurrenceLabel() => switch (item.recurrence) {
         RecurrenceType.none => '',
@@ -884,6 +935,18 @@ class _FixedScheduleCompactCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final startLabel = item.startTime == null
+        ? '时间待定'
+        : DateFormat('HH:mm').format(
+            DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal(),
+          );
+    final endLabel = item.startTime == null
+        ? null
+        : item.endTime == null
+            ? '结束待定'
+            : DateFormat('HH:mm').format(
+                DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal(),
+              );
     final supportingText = [
       if (_recurrenceLabel().isNotEmpty) _recurrenceLabel(),
       if (item.teamUuid?.trim().isNotEmpty == true) '团队日程',
@@ -891,6 +954,7 @@ class _FixedScheduleCompactCard extends StatelessWidget {
       if (item.remark?.trim().isNotEmpty == true) item.remark!.trim(),
     ].join(' · ');
     return OptionalLiquidGlassCard(
+      key: cardKey,
       margin: const EdgeInsets.only(bottom: 6),
       borderRadius: 14,
       tint: colors.primary.withValues(alpha: 0.16),
@@ -906,7 +970,7 @@ class _FixedScheduleCompactCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          onTap: onTap,
+          onTap: () => onTap(cardKey),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
@@ -921,17 +985,14 @@ class _FixedScheduleCompactCard extends StatelessWidget {
                   ),
                 ),
                 SizedBox(
-                  width: 92,
-                  child: Text(
-                    _timeLabel(),
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: colors.primary,
-                    ),
+                  width: 50,
+                  child: _ScheduleTimeColumn(
+                    start: startLabel,
+                    end: endLabel,
+                    accent: colors.primary,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

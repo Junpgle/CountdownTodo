@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
+import 'package:countdown_todo/features/finance/screens/finance_category_detail_screen.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_catalog_editor.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_catalog_manager.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 List<FinanceCategory> _categories() => [
       FinanceCategory(uuid: 'food', name: '餐饮', icon: '🍜', isSystem: true),
+      FinanceCategory(
+        uuid: 'milk-tea',
+        name: '奶茶',
+        icon: '🧋',
+        parentUuid: 'food',
+        isSystem: true,
+      ),
       FinanceCategory(uuid: 'coffee', name: '咖啡', icon: '☕'),
       FinanceCategory(uuid: 'archived', name: '旧分类', isArchived: true),
       FinanceCategory(uuid: 'deleted', name: '已删除分类', isDeleted: true),
@@ -29,6 +37,7 @@ Future<void> _pumpCatalog(
   Brightness brightness = Brightness.light,
   List<FinanceCategory>? categories,
   Future<FinanceCategory?> Function(FinanceCategoryType)? onAdd,
+  Future<void> Function(FinanceCategory)? onAddSubcategory,
   Future<void> Function(FinanceCategory)? onEdit,
   Future<void> Function(FinanceCategory)? onArchive,
   Future<void> Function(FinanceCategory)? onRestore,
@@ -57,6 +66,7 @@ Future<void> _pumpCatalog(
             FinancePaymentMethod(uuid: 'card', name: '日常银行卡', icon: '💳'),
           ],
           onAddCategory: onAdd ?? (_) async => null,
+          onAddSubcategory: onAddSubcategory,
           onAddPaymentMethod: () async => false,
           onEditCategory: onEdit ?? (_) async {},
           onArchiveCategory: onArchive ?? (_) async {},
@@ -76,7 +86,11 @@ Future<void> _openEditor(
   required Future<void> Function(FinanceCatalogDraft) onSave,
   FinanceCategoryType? type = FinanceCategoryType.expense,
   bool editing = false,
+  bool systemCategory = false,
   String name = '',
+  List<FinanceCategory> availableParents = const [],
+  String? initialParentUuid,
+  bool lockParent = false,
   Size size = const Size(390, 844),
   double textScale = 1,
 }) async {
@@ -101,6 +115,10 @@ Future<void> _openEditor(
                     initialIcon: '📦',
                     categoryType: type,
                     isEditing: editing,
+                    availableParents: availableParents,
+                    initialParentUuid: initialParentUuid,
+                    lockParent: lockParent,
+                    systemCategory: systemCategory,
                     onSave: onSave,
                   ),
                 ),
@@ -113,6 +131,24 @@ Future<void> _openEditor(
 }
 
 void main() {
+  testWidgets('二级分类收在对应的一级分类卡片内', (tester) async {
+    await _pumpCatalog(tester);
+    final parent = find.byKey(const ValueKey('finance-catalog-item-food'));
+    expect(find.text('一级分类 · 2'), findsOneWidget);
+    expect(find.textContaining('个二级分类'), findsNWidgets(2));
+    expect(
+        find.descendant(of: parent, matching: find.text('奶茶')), findsNothing);
+    await tester.tap(find.text('餐饮'));
+    await tester.pumpAndSettle();
+    expect(
+        find.descendant(of: parent, matching: find.text('奶茶')), findsOneWidget);
+    expect(find.text('餐饮 - 奶茶'), findsNothing);
+    await tester.tap(find.text('餐饮'));
+    await tester.pumpAndSettle();
+    expect(
+        find.descendant(of: parent, matching: find.text('奶茶')), findsNothing);
+  });
+
   testWidgets('分类按收支分开，搜索与归档筛选不会显示已删除项目', (tester) async {
     String? restored;
     await _pumpCatalog(tester,
@@ -149,7 +185,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('自定义卡片直接编辑并支持归档，系统项目不提供无效操作', (tester) async {
+  testWidgets('自定义卡片直接编辑并支持归档，系统分类可自定义名称和图标', (tester) async {
     String? edited;
     String? archived;
     await _pumpCatalog(
@@ -162,10 +198,18 @@ void main() {
         find.descendant(
             of: system, matching: find.byType(PopupMenuButton<String>)),
         findsNothing);
+    await tester.tap(find.byTooltip('自定义餐饮名称和图标'));
+    await tester.pumpAndSettle();
+    expect(edited, 'food');
     await tester.tap(find.text('餐饮'));
     await tester.pumpAndSettle();
-    expect(edited, isNull);
+    expect(edited, 'food');
     await tester.tap(find.text('咖啡'));
+    await tester.pumpAndSettle();
+    expect(edited, 'food');
+    await tester.tap(find.byTooltip('管理咖啡'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑'));
     await tester.pumpAndSettle();
     expect(edited, 'coffee');
     await tester.tap(find.byTooltip('管理咖啡'));
@@ -173,6 +217,44 @@ void main() {
     await tester.tap(find.text('归档'));
     await tester.pumpAndSettle();
     expect(archived, 'coffee');
+  });
+
+  testWidgets('系统分类编辑器允许修改名称和图标但锁定分类身份', (tester) async {
+    FinanceCatalogDraft? saved;
+    await _openEditor(
+      tester,
+      editing: true,
+      systemCategory: true,
+      name: '餐饮',
+      onSave: (draft) async => saved = draft,
+    );
+
+    expect(
+      tester.widget<TextFormField>(find.byKey(_nameKey)).enabled,
+      isTrue,
+    );
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(find.byKey(const ValueKey('finance-catalog-parent')), findsNothing);
+    await tester.enterText(find.byKey(_nameKey), '伙食');
+    await tester.tap(find.byKey(const ValueKey('finance-icon-🐾')));
+    await tester.tap(find.byKey(_saveKey));
+    await tester.pumpAndSettle();
+
+    expect(saved?.name, '伙食');
+    expect(saved?.icon, '🐾');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('自定义大类可以直接新增自己的细分类', (tester) async {
+    String? parentUuid;
+    await _pumpCatalog(
+      tester,
+      onAddSubcategory: (parent) async => parentUuid = parent.uuid,
+    );
+    await tester.tap(find.byTooltip('新增咖啡下的小类'));
+    await tester.pumpAndSettle();
+    expect(parentUuid, 'coffee');
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('新增默认使用当前分类类型，保存后自动显示新增项目', (tester) async {
@@ -242,6 +324,32 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('自定义分类可以挂到大类下，并在编辑器中锁定已选上级', (tester) async {
+    FinanceCatalogDraft? saved;
+    final parents = _categories();
+    await _openEditor(
+      tester,
+      availableParents: parents,
+      initialParentUuid: 'food',
+      lockParent: true,
+      onSave: (draft) async => saved = draft,
+    );
+    expect(
+        find.byKey(const ValueKey('finance-catalog-parent')), findsOneWidget);
+    final parentField = tester.widget<DropdownButtonFormField<String>>(
+      find.byKey(const ValueKey('finance-catalog-parent')),
+    );
+    expect(parentField.onChanged, isNull);
+    expect(find.textContaining('这是该大类下的细分类'), findsOneWidget);
+
+    await tester.enterText(find.byKey(_nameKey), '夜宵');
+    await tester.tap(find.byKey(_saveKey));
+    await tester.pumpAndSettle();
+    expect(saved?.name, '夜宵');
+    expect(saved?.parentUuid, 'food');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('编辑已有分类时类型固定，取消后表单安全销毁', (tester) async {
     await _openEditor(tester,
         editing: true,
@@ -287,6 +395,77 @@ void main() {
     await tester.tap(find.byKey(_saveKey));
     await tester.pumpAndSettle();
     expect(find.byType(FinanceCatalogEditor), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('没有小类时，大类账单直接显示自定义大类名称', (tester) async {
+    final root = FinanceCategory(
+      uuid: 'food',
+      name: '日常饮食',
+      icon: '🍜',
+    );
+    final transaction = FinanceTransaction(
+      uuid: 'food-entry',
+      amountMinor: 1280,
+      categoryUuid: root.uuid,
+      transactionDate: '2026-09-24',
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: FinanceCategoryDetailScreen(
+        periodTitle: '本月',
+        rootCategoryUuid: root.uuid,
+        transactions: [transaction],
+        categories: {root.uuid: root},
+      ),
+    ));
+
+    final item = find.byKey(
+      const ValueKey('finance-category-detail-food'),
+    );
+    expect(find.text('分类'), findsOneWidget);
+    expect(find.text('未细分'), findsNothing);
+    expect(
+        find.descendant(of: item, matching: find.text('日常饮食')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('有小类时，大类直接记账显示大类名称', (tester) async {
+    final root = FinanceCategory(
+      uuid: 'food',
+      name: '日常饮食',
+      icon: '🍜',
+    );
+    final child = FinanceCategory(
+      uuid: 'takeout',
+      name: '外卖',
+      parentUuid: root.uuid,
+    );
+    final transaction = FinanceTransaction(
+      uuid: 'food-entry',
+      amountMinor: 1280,
+      categoryUuid: root.uuid,
+      transactionDate: '2026-09-24',
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: FinanceCategoryDetailScreen(
+        periodTitle: '本月',
+        rootCategoryUuid: root.uuid,
+        transactions: [transaction],
+        categories: {root.uuid: root, child.uuid: child},
+      ),
+    ));
+
+    expect(find.text('小类'), findsOneWidget);
+    final item = find.byKey(
+      const ValueKey('finance-category-detail-food'),
+    );
+    expect(
+      find.descendant(of: item, matching: find.text('日常饮食')),
+      findsOneWidget,
+    );
+    expect(find.text('未细分'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

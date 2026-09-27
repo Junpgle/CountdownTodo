@@ -4,6 +4,7 @@ import '../services/liquid_glass_effect_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/settings_toggle_card.dart';
 import '../widgets/floating_glass_control.dart';
 
 class AnimationSettingsPage extends StatefulWidget {
@@ -30,6 +31,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   bool _layerBlurEnabled = false;
   bool _liquidGlassEnabled = false;
   LiquidGlassEffectMode _liquidGlassMode = LiquidGlassEffectMode.standard;
+  int _liquidGlassTransparency =
+      LiquidGlassEffectConfiguration.defaultTransparencyPercent;
   bool _liquidGlassMutationPending = false;
   bool _lazyLoadEnabled = true;
   bool _screenRadiusEnabled = true;
@@ -115,6 +118,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       final liquidGlass = results[11] as LiquidGlassEffectConfiguration;
       _liquidGlassEnabled = liquidGlass.enabled;
       _liquidGlassMode = liquidGlass.mode;
+      _liquidGlassTransparency = liquidGlass.transparencyPercent;
     });
   }
 
@@ -163,6 +167,19 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       if (mounted) {
         setState(() => _liquidGlassMutationPending = false);
       }
+    }
+  }
+
+  Future<void> _saveLiquidGlassTransparency(int percent) async {
+    try {
+      await LiquidGlassEffectService.setTransparency(percent);
+      await AnimationConfigService.clearActivePreset();
+      if (mounted) setState(() => _preset = null);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('玻璃透明度保存失败：$error')),
+      );
     }
   }
 
@@ -268,10 +285,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                 isDesktop ? 24 : 16,
                 widget.isEmbedded
                     ? (isDesktop ? 20 : 16)
-                    : floatingGlassSettingsContentTopInset(
-                        context,
-                        extra: isDesktop ? 20 : 16,
-                      ),
+                    : floatingGlassSettingsContentTopInset(context),
                 isDesktop ? 24 : 16,
                 isDesktop ? 32 : 16,
               ),
@@ -560,6 +574,77 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                               height: 1.4,
                               color: colorScheme.onSurfaceVariant,
                             ),
+                          ),
+                          const SizedBox(height: 18),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                '玻璃底色透明度',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                              Text(
+                                '$_liquidGlassTransparency%',
+                                style: TextStyle(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Slider(
+                            key: const ValueKey<String>(
+                              'animation-settings-liquid-glass-transparency',
+                            ),
+                            value: _liquidGlassTransparency.toDouble(),
+                            min: 0,
+                            max: 100,
+                            divisions: 20,
+                            label: '$_liquidGlassTransparency%',
+                            onChanged: !_liquidGlassEnabled
+                                ? null
+                                : (value) {
+                                    final next = value.round();
+                                    if (next == _liquidGlassTransparency) {
+                                      return;
+                                    }
+                                    setState(
+                                      () => _liquidGlassTransparency = next,
+                                    );
+                                    LiquidGlassEffectService
+                                        .previewTransparency(next);
+                                  },
+                            onChangeEnd: !_liquidGlassEnabled
+                                ? null
+                                : (value) => _saveLiquidGlassTransparency(
+                                      value.round(),
+                                    ),
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '不透明',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              Text(
+                                '50% 为原有效果',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              Text(
+                                '透明',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
                           ),
                           if (!effectiveLiquidGlassEnabled) ...[
                             const SizedBox(height: 6),
@@ -981,114 +1066,15 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     required ValueChanged<bool>? onChanged,
     Key? switchKey,
   }) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isSelected = value;
-    final iconWidget = AnimatedSwitcher(
-      duration: const Duration(milliseconds: 400),
-      switchInCurve: Curves.easeOutBack,
-      switchOutCurve: Curves.easeInBack,
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return ScaleTransition(
-          scale: animation,
-          child: RotationTransition(
-            turns: Tween<double>(begin: -0.1, end: 0.0).animate(animation),
-            child: child,
-          ),
-        );
-      },
-      child: Icon(
-        icon,
-        key: ValueKey<bool>(isSelected),
-        color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
-        size: isDesktop ? 28 : 32,
-      ),
-    );
-    final switchWidget = SizedBox(
-      height: 24,
-      child: FittedBox(
-        fit: BoxFit.fill,
-        child: LiquidGlassSwitch(
-          key: switchKey,
-          value: value,
-          onChanged: onChanged,
-          activeThumbColor: colorScheme.primary,
-        ),
-      ),
-    );
-    final titleWidget = AnimatedDefaultTextStyle(
-      duration: const Duration(milliseconds: 300),
-      style: TextStyle(
-        fontWeight: FontWeight.bold,
-        fontSize: 14,
-        color: isSelected
-            ? colorScheme.primary
-            : theme.textTheme.bodyMedium?.color,
-        fontFamily: theme.textTheme.bodyMedium?.fontFamily,
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      child: Text(title),
-    );
-    final subtitleWidget = Text(
-      subtitle,
-      maxLines: isDesktop ? 1 : 2,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-    );
-
-    return GestureDetector(
-      onTap: onChanged == null ? null : () => onChanged(!value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-        padding: EdgeInsets.all(isDesktop ? 16 : 12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? colorScheme.primary.withValues(alpha: 0.1)
-              : (theme.brightness == Brightness.dark
-                  ? Colors.grey.shade900
-                  : Colors.grey.shade100),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? colorScheme.primary : Colors.transparent,
-            width: 2,
-          ),
-        ),
-        child: isDesktop
-            ? Row(
-                children: [
-                  iconWidget,
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        titleWidget,
-                        const SizedBox(height: 3),
-                        subtitleWidget,
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  switchWidget,
-                ],
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [iconWidget, switchWidget],
-                  ),
-                  const Spacer(),
-                  titleWidget,
-                  const SizedBox(height: 2),
-                  subtitleWidget,
-                ],
-              ),
-      ),
+    return SettingsToggleCard(
+      isDesktop: isDesktop,
+      title: title,
+      subtitle: subtitle,
+      icon: icon,
+      value: value,
+      onChanged: onChanged,
+      switchKey: switchKey,
+      mobileUseSpacer: true,
     );
   }
 

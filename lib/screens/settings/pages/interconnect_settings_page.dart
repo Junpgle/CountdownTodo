@@ -388,7 +388,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
             16,
             widget.isEmbedded
                 ? 16
-                : floatingGlassSettingsContentTopInset(context, extra: 16),
+                : floatingGlassSettingsContentTopInset(context),
             16,
             16,
           ),
@@ -421,6 +421,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
               ],
               if (AppPlatform.isAndroid) _buildBandServiceToggle(),
               GridView.count(
+                padding: EdgeInsets.zero,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,

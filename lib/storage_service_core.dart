@@ -366,7 +366,9 @@ mixin _StorageCore on _StorageServiceBase {
         sync: sync,
         isSyncSource: isSyncSource,
         hasSubstantialChange: _hasSubstantialChange,
-        recordLocalAudit: _recordLocalAuditOptimized,
+        recordLocalAudit: (table, uuid, afterData, teamUuid, existingData) =>
+            _recordLocalAuditOptimized(
+                username, table, uuid, afterData, teamUuid, existingData),
         requestSync: requestSync,
         onCommitted: () {
           _inflightTodoRequests.clear();

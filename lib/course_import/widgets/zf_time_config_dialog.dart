@@ -37,7 +37,7 @@ class _ZfTimeConfigDialogState extends State<ZfTimeConfigDialog> {
       helpText: "设置第 ${index + 1} 节课${isStart ? '开始' : '结束'}时间",
     );
 
-    if (picked != null) {
+    if (picked != null && mounted) {
       setState(() {
         if (isStart) {
           t['sH'] = picked.hour;

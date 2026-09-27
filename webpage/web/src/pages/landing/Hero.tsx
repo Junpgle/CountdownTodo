@@ -1,5 +1,14 @@
-import { type ReactElement, cloneElement, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Download, Globe, Github, Sparkles, Watch, Smartphone, Monitor, Database, Shield, Command } from 'lucide-react';
+
+const particleStyles = Array.from({ length: 8 }, (_, index) => ({
+  width: (10 + (index * 17) % 25) + 'px',
+  height: (10 + (index * 11) % 25) + 'px',
+  left: ((index * 37 + 11) % 100) + '%',
+  top: ((index * 29 + 7) % 100) + '%',
+  animationDelay: ((index * 3) % 5) + 's',
+  animationDuration: (8 + (index * 7) % 12) + 's',
+}));
 
 export const Hero = ({ version, date }: { version?: string, date?: string }) => {
   const [activeMessageIndex, setActiveMessageIndex] = useState(0);
@@ -29,18 +38,11 @@ export const Hero = ({ version, date }: { version?: string, date?: string }) => 
         <div className="absolute bottom-[-10%] left-[20%] w-[35%] h-[35%] bg-gradient-to-br from-rose-200/40 to-orange-200/40 rounded-full blur-[120px] animate-blob animation-delay-4000"></div>
         
         {/* Particles */}
-        {[...Array(8)].map((_, i) => (
+        {particleStyles.map((style, i) => (
           <div 
             key={i} 
             className="absolute bg-indigo-500/10 rounded-full blur-[2px] animate-float"
-            style={{
-              width: Math.random() * 25 + 10 + 'px',
-              height: Math.random() * 25 + 10 + 'px',
-              left: Math.random() * 100 + '%',
-              top: Math.random() * 100 + '%',
-              animationDelay: Math.random() * 5 + 's',
-              animationDuration: Math.random() * 12 + 8 + 's'
-            }}
+            style={style}
           />
         ))}
 
@@ -84,26 +86,26 @@ export const Hero = ({ version, date }: { version?: string, date?: string }) => 
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                 <Download className="w-7 h-7" /> 立即下载
               </a>
-              <a href="#download" className="group flex items-center justify-center gap-4 bg-white/50 backdrop-blur-xl text-slate-900 border border-slate-200 px-12 py-6 rounded-[2rem] text-xl font-bold hover:bg-white transition-all hover:-translate-y-1.5 shadow-xl shadow-slate-100/50 w-full sm:w-auto">
-                <Globe className="w-7 h-7 text-indigo-600 group-hover:rotate-12 transition-transform" /> 网页站入口
+              <a href="https://cdt.junpgle.me/" target="_blank" rel="noreferrer" className="group flex items-center justify-center gap-4 bg-white/50 backdrop-blur-xl text-slate-900 border border-slate-200 px-12 py-6 rounded-[2rem] text-xl font-bold hover:bg-white transition-all hover:-translate-y-1.5 shadow-xl shadow-slate-100/50 w-full sm:w-auto">
+                <Globe className="w-7 h-7 text-indigo-600 group-hover:rotate-12 transition-transform" /> 网页版 Beta
               </a>
             </div>
 
             {/* Premium Badges Grid */}
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-4 sm:gap-6 opacity-30 grayscale hover:grayscale-0 transition-all duration-700">
                {[
-                 { icon: <Monitor />, label: "Windows" },
-                 { icon: <Command />, label: "macOS" },
-                 { icon: <Smartphone />, label: "Android" },
-                 { icon: <Watch />, label: "Mi Band" },
-                 { icon: <Globe />, label: "Web Pro" },
-                 { icon: <Github />, label: "Source" }
-               ].map((item, i) => (
+                 { Icon: Monitor, label: "Windows" },
+                 { Icon: Command, label: "macOS" },
+                 { Icon: Smartphone, label: "Android" },
+                 { Icon: Watch, label: "Mi Band" },
+                 { Icon: Globe, label: "Web Beta" },
+                 { Icon: Github, label: "Source" }
+               ].map(({ Icon, label }, i) => (
                  <div key={i} className="flex flex-col items-center lg:items-start gap-2 group cursor-default">
                     <div className="p-2 rounded-lg bg-slate-100 group-hover:bg-indigo-50 transition-colors">
-                      {cloneElement(item.icon as ReactElement<any>, { className: "w-5 h-5 group-hover:text-indigo-600" })}
+                      <Icon className="w-5 h-5 group-hover:text-indigo-600" />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">{item.label}</span>
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">{label}</span>
                  </div>
                ))}
             </div>
@@ -198,4 +200,3 @@ export const Hero = ({ version, date }: { version?: string, date?: string }) => 
     </section>
   );
 };
-

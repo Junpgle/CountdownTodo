@@ -674,6 +674,9 @@ class UpdateService {
   static Future<bool> hasUsableDeltaPackage(AppManifest manifest) async =>
       false;
 
+  static Future<String?> readDownloadedPackageVersion(String filePath) async =>
+      null;
+
   static Future<bool> prepareForDownload(String targetVersionName) async =>
       true;
 

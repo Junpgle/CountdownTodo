@@ -182,9 +182,7 @@ class _DataExportPageState extends State<DataExportPage> {
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
         16,
-        standalone
-            ? floatingGlassSettingsContentTopInset(context, extra: 16)
-            : 16,
+        standalone ? floatingGlassSettingsContentTopInset(context) : 16,
         16,
         16,
       ),

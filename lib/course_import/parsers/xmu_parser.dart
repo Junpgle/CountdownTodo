@@ -2,15 +2,14 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart';
-import 'package:intl/intl.dart';
 import '../../models.dart';
+import '../course_schedule_semantics.dart';
 
 class XmuScheduleParser {
   /// 传入 MHTML/HTML 字符串和 本学期第一周的周一日期
   static List<CourseItem> parseHtml(
       String htmlString, DateTime semesterStartDate) {
     List<CourseItem> courses = [];
-
     // 🚀 核心修复：执行绝对安全的底层解码，确保绝不破坏 HTML 标签和现有中文字符
     String cleanHtml = _decodeMhtml(htmlString);
 
@@ -61,11 +60,11 @@ class XmuScheduleParser {
 
       // 5. 因为 CourseItem 需要具体的 date，通过周次和星期推算出来
       for (int week in activeWeeks) {
-        DateTime classDate = semesterStartDate
-            .add(Duration(days: (week - 1) * 7)) // 加上周的偏移
-            .add(Duration(days: weekday - 1)); // 加上星期的偏移
-
-        String dateStr = DateFormat('yyyy-MM-dd').format(classDate);
+        final dateStr = CourseScheduleSemantics.dateFor(
+          semesterStart: semesterStartDate,
+          weekIndex: week,
+          weekday: weekday,
+        );
 
         courses.add(CourseItem(
           courseName: courseName,
@@ -128,15 +127,14 @@ class XmuScheduleParser {
     }
   }
 
-  /// 辅助方法：解析 "1-15周", "2-14双周", "9-15单周" 为数组
+  /// 辅助方法：解析 "1周", "1-15周", "2-14双周", "9-15单周" 为数组
   static List<int> _parseWeeks(String weekStr) {
     List<int> weeks = [];
-    RegExp regExp = RegExp(r'(\d+)-(\d+)(单|双)?周');
-    var match = regExp.firstMatch(weekStr);
+    RegExp regExp = RegExp(r'(\d+)(?:-(\d+))?\s*(单|双)?周');
 
-    if (match != null) {
+    for (final match in regExp.allMatches(weekStr)) {
       int start = int.parse(match.group(1)!);
-      int end = int.parse(match.group(2)!);
+      int end = int.tryParse(match.group(2) ?? '') ?? start;
       String? type = match.group(3);
 
       for (int i = start; i <= end; i++) {

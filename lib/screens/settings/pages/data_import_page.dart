@@ -71,7 +71,7 @@ class _DataImportPageState extends State<DataImportPage> {
       final currentUserId = ApiService.currentUserId;
       final currentUsername = await StorageService.getCurrentUsername();
       final json = jsonDecode(jsonString) as Map<String, dynamic>;
-      final fileUserId = json['userId'] as int?;
+      final fileUserId = int.tryParse(json['userId']?.toString() ?? '');
       final fileUsername = json['username']?.toString();
 
       // 判断逻辑（优先使用 userId）
@@ -273,9 +273,7 @@ class _DataImportPageState extends State<DataImportPage> {
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
         16,
-        standalone
-            ? floatingGlassSettingsContentTopInset(context, extra: 16)
-            : 16,
+        standalone ? floatingGlassSettingsContentTopInset(context) : 16,
         16,
         16,
       ),

@@ -42,17 +42,11 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
 
   useEffect(() => {
     if (cooldown <= 0) return;
-    const timer = setInterval(() => {
-      setCooldown(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
-        return prev - 1;
-      });
+    const timer = setTimeout(() => {
+      setCooldown(prev => Math.max(0, prev - 1));
     }, 1000);
-    return () => clearInterval(timer);
-  }, [cooldown > 0]);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
 
   const handleLogin = async () => {
     try {

@@ -12,6 +12,7 @@ import 'course_service.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
 import 'pomodoro_service.dart';
+import 'storage/habit_storage.dart';
 
 class DataExportService {
   static const int _exportVersion = 2;
@@ -27,6 +28,12 @@ class DataExportService {
     final courses = await CourseService.getAllCourses(username);
     final tags = await PomodoroService.getTags();
     final records = await PomodoroService.getRecords();
+    final habitGoals = await HabitStorage.getHabitGoals(includeDeleted: true);
+    final habitRules =
+        await HabitStorage.getRuleRevisions(includeDeleted: true);
+    final habitCheckIns = await HabitStorage.getCheckIns(includeDeleted: true);
+    final sleepPlans =
+        await HabitStorage.getSleepCoachingPlans(includeDeleted: true);
     final financeBundle = await FinanceStorage.getExportBundle();
     final financeTransactions =
         (financeBundle['transactions'] as List<dynamic>? ?? const [])
@@ -115,6 +122,16 @@ class DataExportService {
         icon: Icons.timer,
         count: records.where((r) => !r.isDeleted).length,
         description: '番茄钟专注记录',
+      ),
+      ExportTypeOption(
+        key: 'habits',
+        label: '习惯与睡眠训练',
+        icon: Icons.track_changes_outlined,
+        count: habitGoals.where((goal) => !goal.isDeleted).length +
+            habitRules.where((rule) => !rule.isDeleted).length +
+            habitCheckIns.where((checkIn) => !checkIn.isDeleted).length +
+            sleepPlans.where((plan) => !plan.isDeleted).length,
+        description: '习惯目标、规则、打卡记录和睡眠训练计划',
       ),
       ExportTypeOption(
         key: 'finance',
@@ -315,6 +332,49 @@ class DataExportService {
         totalItems += items.length;
       }
 
+      if (selectedTypes.contains('habits')) {
+        final goals = await HabitStorage.getHabitGoals(includeDeleted: true);
+        final rules = await HabitStorage.getRuleRevisions(includeDeleted: true);
+        final checkIns = await HabitStorage.getCheckIns(includeDeleted: true);
+        final sleepPlans =
+            await HabitStorage.getSleepCoachingPlans(includeDeleted: true);
+
+        if (options.removeDeviceId) {
+          for (final goal in goals) {
+            goal.deviceId = null;
+          }
+          for (final rule in rules) {
+            rule.deviceId = null;
+          }
+          for (final checkIn in checkIns) {
+            checkIn.deviceId = null;
+          }
+          for (final plan in sleepPlans) {
+            plan.deviceId = null;
+          }
+        }
+        if (options.removeConflictData) {
+          for (final goal in goals) {
+            goal.hasConflict = false;
+            goal.conflictData = null;
+          }
+          for (final rule in rules) {
+            rule.hasConflict = false;
+            rule.conflictData = null;
+          }
+        }
+
+        data['habits'] = {
+          'goals': goals.map((goal) => goal.toJson()).toList(),
+          'rules': rules.map((rule) => rule.toJson()).toList(),
+          'check_ins': checkIns.map((checkIn) => checkIn.toJson()).toList(),
+          'sleep_coaching_plans':
+              sleepPlans.map((plan) => plan.toJson()).toList(),
+        };
+        totalItems +=
+            goals.length + rules.length + checkIns.length + sleepPlans.length;
+      }
+
       if (selectedTypes.contains('finance')) {
         final bundle = await FinanceStorage.getExportBundle();
         if (options.removeDeviceId) {
@@ -415,10 +475,32 @@ class DataExportService {
 
     // 用户特定的键后缀
     final userSuffix = '_$username';
+    final semesterSettings = {
+      StorageService.keySemesterStart,
+      StorageService.keySemesterEnd,
+      StorageService.keySemesters,
+      StorageService.keyActiveSemester,
+    };
 
     for (final key in keys) {
       // 跳过排除的键
       if (excludedKeys.contains(key)) continue;
+
+      // 多学期设置也按账号隔离。导出时统一还原为基础键名，避免把源账号
+      // 后缀带到另一台设备后无法被当前账号读取。
+      final matchingSemesterKey = semesterSettings.firstWhere(
+        (baseKey) => key == '$baseKey$userSuffix',
+        orElse: () => '',
+      );
+      if (matchingSemesterKey.isNotEmpty) {
+        final value = prefs.get(key);
+        if (value != null) settings[matchingSemesterKey] = value;
+        continue;
+      }
+      if (semesterSettings.contains(key) &&
+          prefs.containsKey('$key$userSuffix')) {
+        continue;
+      }
 
       // 跳过其他用户的数据（包含 _ 且不是当前用户的）
       if (key.contains('_') &&

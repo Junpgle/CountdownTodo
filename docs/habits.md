@@ -5,7 +5,7 @@
 **适用客户端：** Android、Windows、macOS、Web
 **核心原则：** 复用现有待办和专注能力，仅为现有功能无法表达的习惯新增独立打卡模型。
 
-> **实现状态（2026-08-25 核对）**：习惯中心核心能力已落地，代码位于
+> **实现状态（2026-09-26 核对）**：习惯中心核心能力已落地，代码位于
 > `lib/features/habits/`（models / repositories / services / widgets / screens），
 > 包含打卡模型与统计、睡眠作息渐进训练、提醒、快捷打卡与小组件打卡；
 > 首页展示为 `habit_today_section`。本文其余部分保留原始设计背景，
@@ -836,9 +836,11 @@ wearable
 
 # 十四、本地数据库
 
-当前 SQLite 架构版本为 35，因此习惯模块首次落库建议升级至 **V36**。
+当前 SQLite 架构版本为 **V55**。习惯目标、规则版本和打卡记录已在 **V36**
+首次落库；下方表结构和迁移文字是首版设计快照，不是待执行的迁移清单。
+后续架构变更以 `lib/services/database_schema_history.dart` 为准。
 
-新增表：
+V36 首版涉及的数据表：
 
 ```sql
 CREATE TABLE habit_goals (...);
@@ -846,7 +848,7 @@ CREATE TABLE habit_goal_rule_revisions (...);
 CREATE TABLE habit_checkins (...);
 ```
 
-建议索引：
+V36 首版建议索引：
 
 ```sql
 CREATE INDEX idx_habit_goals_active
@@ -866,7 +868,7 @@ ON habit_checkins(dedupe_key)
 WHERE dedupe_key IS NOT NULL;
 ```
 
-`database_schema_history.dart` 增加：
+V36 已落地的首版架构变更：
 
 ```text
 V36 习惯追踪
@@ -1324,7 +1326,10 @@ habitRuleChanged
 
 ---
 
-# 二十三、开发阶段拆分
+# 二十三、历史开发阶段拆分（原始方案）
+
+以下 PR 拆分保留原方案的开发顺序。习惯中心核心能力已经实现；不要把这份
+阶段列表当作当前待办清单。
 
 ## PR 1：基础模型和数据库
 

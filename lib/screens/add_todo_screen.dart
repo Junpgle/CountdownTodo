@@ -8,6 +8,7 @@ import '../storage_service.dart';
 import '../services/api_service.dart';
 import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
+import '../services/recognized_todo_adapter.dart';
 import '../services/ai_recognition_chat_bridge.dart';
 import '../services/database_helper.dart';
 import '../screens/home_settings_screen.dart';
@@ -34,8 +35,8 @@ enum _ManualCaptureKind { todo, fixedSchedule }
 enum AddTodoInitialMode { todo, fixedSchedule }
 
 class AddTodoScreen extends StatefulWidget {
-  final Function(TodoItem) onTodoAdded;
-  final Function(List<TodoItem>)? onTodosBatchAdded;
+  final FutureOr<void> Function(TodoItem) onTodoAdded;
+  final FutureOr<void> Function(List<TodoItem>)? onTodosBatchAdded;
   final Future<void> Function(FixedScheduleItem)? onFixedScheduleAdded;
   final Function(
           List<Map<String, dynamic>>, String?, String?, String?, String?)?
@@ -87,6 +88,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   int _selectedTabIndex = 0;
   bool _isParsing = false;
+  bool _isSaving = false;
   List<ParsedTodoResult> _parsedResults = [];
   int _currentParseIndex = 0;
   String? _currentOriginalText;
@@ -620,10 +622,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     } catch (_) {}
 
     try {
-      final results = await LLMService.parseTodoWithLLM(
+      final rawResults = await LLMService.parseTodoWithLLM(
         input,
         onUsage: (usage) => recognitionUsage = usage,
       );
+      final results = RecognizedTodoAdapter.normalizeResults(rawResults);
 
       if (widget.onLLMResultsParsed != null && results.length > 1) {
         if (recognitionHandle != null) {
@@ -646,35 +649,46 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         return;
       }
 
-      final parsedResultsList = results.map((result) {
-        final startTime = result['startTime'] != null
-            ? DateTime.tryParse(result['startTime'])
-            : null;
-        final endTime = result['endTime'] != null
-            ? DateTime.tryParse(result['endTime'])
-            : null;
-        final isAllDay = result['isAllDay'] ?? false;
+      final parsedResultsList = results.map((rawResult) {
+        final result = RecognizedTodoAdapter.normalizeResult(rawResult);
+        final startTime = RecognizedTodoAdapter.parseDateTime(
+          result['startTime'] ??
+              result['start_time'] ??
+              result['createdDate'] ??
+              result['created_date'],
+        );
+        final endTime = RecognizedTodoAdapter.parseDateTime(
+          result['endTime'] ??
+              result['end_time'] ??
+              result['dueDate'] ??
+              result['due_date'],
+        );
+        final isAllDay = RecognizedTodoAdapter.parseBool(
+          result['isAllDay'] ?? result['is_all_day'],
+        );
         return ParsedTodoResult(
-          title: result['title'] ?? input,
-          remark: result['remark'],
+          title: result['title']?.toString() ?? input,
+          remark: (result['remark'] ?? result['notes'] ?? result['note'])
+              ?.toString(),
           location: result['location']?.toString(),
           isAllDay: isAllDay,
           startTime: startTime,
           endTime: endTime,
           timeSemantics: _parseTimeSemantics(
-            result['timeMode'],
+            result['timeMode'] ?? result['time_mode'],
             isAllDay: isAllDay,
             startTime: startTime,
             endTime: endTime,
           ),
-          recurrence: _parseRecurrenceType(result['recurrence']),
-          customIntervalDays: result['customIntervalDays'],
-          recurrenceEndDate: DateTime.tryParse(
-            (result['recurrenceEndDate'] ?? result['recurrence_end_date'] ?? '')
-                .toString(),
+          recurrence: _parseRecurrenceType(result['recurrence']?.toString()),
+          customIntervalDays:
+              result['customIntervalDays'] ?? result['custom_interval_days'],
+          recurrenceEndDate: RecognizedTodoAdapter.parseDateTime(
+            result['recurrenceEndDate'] ?? result['recurrence_end_date'],
           ),
-          reminderMinutes: result['reminderMinutes'],
-          itemKind: result['itemKind']?.toString(),
+          reminderMinutes:
+              result['reminderMinutes'] ?? result['reminder_minutes'],
+          itemKind: (result['itemKind'] ?? result['item_kind'])?.toString(),
           originalText: input,
         );
       }).toList();
@@ -818,6 +832,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   }
 
   Future<void> _addTodo() async {
+    if (_isSaving) return;
     if (_titleCtrl.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(
@@ -828,92 +843,104 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       ));
       return;
     }
-    if (_manualCaptureKind == _ManualCaptureKind.fixedSchedule) {
-      final saved = await _saveManualFixedSchedule();
-      if (saved && mounted) Navigator.pop(context);
-      return;
-    }
-    final sourceText = _currentOriginalText ?? _titleCtrl.text;
-    final currentParsed =
-        _parsedResults.isEmpty ? null : _parsedResults[_currentParseIndex];
-    final saveTarget = await _confirmCaptureIntent(
-      sourceText,
-      declaredKind: currentParsed?.itemKind,
-      semanticText: '${_titleCtrl.text} ${_remarkCtrl.text}',
-    );
-    if (saveTarget == _CaptureSaveTarget.cancel) return;
-    if (saveTarget == _CaptureSaveTarget.fixedSchedule) {
-      final hasParsedDate = currentParsed?.startTime != null ||
-          currentParsed?.endTime != null ||
-          _isAllDay ||
-          _dueDate != null;
-      final editedParsed = currentParsed == null
-          ? null
-          : ParsedTodoResult(
-              title: _titleCtrl.text.trim(),
-              remark: _remarkCtrl.text.trim().isEmpty
-                  ? null
-                  : _remarkCtrl.text.trim(),
-              location: currentParsed.location,
-              isAllDay: _isAllDay,
-              startTime: hasParsedDate ? _createdAt : null,
-              endTime: _dueDate,
-              timeSemantics: currentParsed.timeSemantics,
-              recurrence: _recurrence,
-              customIntervalDays: _customDays,
-              recurrenceEndDate: _recurrenceEndDate,
-              reminderMinutes: _reminderMinutes,
-              itemKind: currentParsed.itemKind,
-              originalText: sourceText,
-            );
-      final saved = await _saveFixedScheduleFromText(
+    setState(() => _isSaving = true);
+    try {
+      if (_manualCaptureKind == _ManualCaptureKind.fixedSchedule) {
+        final saved = await _saveManualFixedSchedule();
+        if (saved && mounted) Navigator.pop(context);
+        return;
+      }
+      final sourceText = _currentOriginalText ?? _titleCtrl.text;
+      final currentParsed =
+          _parsedResults.isEmpty ? null : _parsedResults[_currentParseIndex];
+      final saveTarget = await _confirmCaptureIntent(
         sourceText,
-        parsedResult: editedParsed,
+        declaredKind: currentParsed?.itemKind,
+        semanticText: '${_titleCtrl.text} ${_remarkCtrl.text}',
       );
-      if (saved && mounted) Navigator.pop(context);
-      return;
-    }
+      if (saveTarget == _CaptureSaveTarget.cancel) return;
+      if (saveTarget == _CaptureSaveTarget.fixedSchedule) {
+        final hasParsedDate = currentParsed?.startTime != null ||
+            currentParsed?.endTime != null ||
+            _isAllDay ||
+            _dueDate != null;
+        final editedParsed = currentParsed == null
+            ? null
+            : ParsedTodoResult(
+                title: _titleCtrl.text.trim(),
+                remark: _remarkCtrl.text.trim().isEmpty
+                    ? null
+                    : _remarkCtrl.text.trim(),
+                location: currentParsed.location,
+                isAllDay: _isAllDay,
+                startTime: hasParsedDate ? _createdAt : null,
+                endTime: _dueDate,
+                timeSemantics: currentParsed.timeSemantics,
+                recurrence: _recurrence,
+                customIntervalDays: _customDays,
+                recurrenceEndDate: _recurrenceEndDate,
+                reminderMinutes: _reminderMinutes,
+                itemKind: currentParsed.itemKind,
+                originalText: sourceText,
+              );
+        final saved = await _saveFixedScheduleFromText(
+          sourceText,
+          parsedResult: editedParsed,
+        );
+        if (saved && mounted) Navigator.pop(context);
+        return;
+      }
 
-    final normalizedTime = TodoItem.normalizeTimeForWrite(
-      selectedDate: _createdAt,
-      dueDate: _dueDate,
-      isDateOnly: _isAllDay,
-    );
-    if (_recurrence != RecurrenceType.none && normalizedTime.start == null) {
+      final normalizedTime = TodoItem.normalizeTimeForWrite(
+        selectedDate: _createdAt,
+        dueDate: _dueDate,
+        isDateOnly: _isAllDay,
+      );
+      if (_recurrence != RecurrenceType.none && normalizedTime.start == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('重复待办需要先设置首次完成日期')),
+        );
+        return;
+      }
+
+      final persistentImagePath = await _persistAttachmentImageIfNeeded();
+      final selectedTeam = _selectedTeamUuid != null
+          ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull
+          : null;
+
+      final todo = TodoItem(
+        title: _titleCtrl.text,
+        recurrence: _recurrence,
+        customIntervalDays: _customDays,
+        recurrenceEndDate: _recurrenceEndDate,
+        dueDate: normalizedTime.due,
+        createdDate: normalizedTime.start?.millisecondsSinceEpoch,
+        remark:
+            _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim(),
+        originalText: _currentOriginalText,
+        imagePath: persistentImagePath,
+        groupId: _selectedGroupId,
+        reminderMinutes: _reminderMinutes,
+        teamUuid: _selectedTeamUuid,
+        teamName: selectedTeam?.name,
+        creatorName: _username,
+        collabType: _collabType,
+        isAllDay: _isAllDay,
+      );
+
+      await widget.onTodoAdded(todo);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('重复待办需要先设置首次完成日期')),
-      );
-      return;
+      Navigator.pop(context);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存失败，请重试：$error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
-
-    final persistentImagePath = await _persistAttachmentImageIfNeeded();
-    final selectedTeam = _selectedTeamUuid != null
-        ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull
-        : null;
-
-    final todo = TodoItem(
-      title: _titleCtrl.text,
-      recurrence: _recurrence,
-      customIntervalDays: _customDays,
-      recurrenceEndDate: _recurrenceEndDate,
-      dueDate: normalizedTime.due,
-      createdDate: normalizedTime.start?.millisecondsSinceEpoch,
-      remark: _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim(),
-      originalText: _currentOriginalText,
-      imagePath: persistentImagePath,
-      groupId: _selectedGroupId,
-      reminderMinutes: _reminderMinutes,
-      teamUuid: _selectedTeamUuid,
-      teamName: selectedTeam?.name,
-      creatorName: _username,
-      collabType: _collabType,
-      isAllDay: _isAllDay,
-    );
-
-    widget.onTodoAdded(todo);
-    if (!mounted) return;
-    Navigator.pop(context);
   }
 
   Future<_CaptureSaveTarget> _confirmCaptureIntent(
@@ -1097,99 +1124,111 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   }
 
   Future<void> _addBatchTodos() async {
-    if (_parsedResults.isEmpty) return;
+    if (_isSaving || _parsedResults.isEmpty) return;
 
-    final todoResults = <ParsedTodoResult>[];
-    for (final result in _parsedResults) {
-      final sourceText = result.originalText ?? result.title;
-      final saveTarget = await _confirmCaptureIntent(
-        sourceText,
-        declaredKind: result.itemKind,
-        semanticText: '${result.title} ${result.remark ?? ''}',
-      );
-      if (saveTarget == _CaptureSaveTarget.cancel) return;
-      if (saveTarget == _CaptureSaveTarget.fixedSchedule) {
-        await _saveFixedScheduleFromText(
+    setState(() => _isSaving = true);
+    try {
+      final todoResults = <ParsedTodoResult>[];
+      for (final result in _parsedResults) {
+        final sourceText = result.originalText ?? result.title;
+        final saveTarget = await _confirmCaptureIntent(
           sourceText,
-          parsedResult: result,
+          declaredKind: result.itemKind,
+          semanticText: '${result.title} ${result.remark ?? ''}',
         );
-      } else {
-        todoResults.add(result);
-      }
-    }
-
-    final persistentImagePath = await _persistAttachmentImageIfNeeded();
-    final selectedTeam = _selectedTeamUuid != null
-        ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull
-        : null;
-
-    final List<TodoItem> todos = [];
-    for (final r in todoResults) {
-      final parsedDueDate = r.endTime ??
-          (r.isAllDay && r.startTime != null
-              ? DateTime(
-                  r.startTime!.year,
-                  r.startTime!.month,
-                  r.startTime!.day,
-                  23,
-                  59,
-                )
-              : null);
-      final normalizedTime = TodoItem.normalizeTimeForWrite(
-        selectedDate: r.startTime,
-        dueDate: parsedDueDate,
-        isDateOnly: r.isAllDay,
-      );
-      if (r.recurrence != RecurrenceType.none && normalizedTime.start == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('“${r.title}”是重复待办，请先设置首次完成日期')),
-        );
-        return;
-      }
-      final classification = await TodoClassificationService.recommendForText(
-        title: r.title,
-        remark: r.remark ?? '',
-        groups: _localTodoGroups,
-        categoryReminderDefaults: _categoryReminderDefaults,
-        dueDate: parsedDueDate,
-      );
-      final suggestedGroupId =
-          classification.confidence >= 0.20 ? classification.groupId : null;
-      todos.add(TodoItem(
-        title: r.title,
-        recurrence: r.recurrence,
-        customIntervalDays: r.customIntervalDays,
-        recurrenceEndDate: r.recurrenceEndDate,
-        dueDate: normalizedTime.due,
-        createdDate: normalizedTime.start?.millisecondsSinceEpoch,
-        remark: r.remark,
-        originalText: _currentOriginalText,
-        imagePath: persistentImagePath,
-        groupId: suggestedGroupId,
-        reminderMinutes: r.reminderMinutes ??
-            (suggestedGroupId != null
-                ? classification.reminderMinutes
-                : _reminderMinutes),
-        teamUuid: _selectedTeamUuid,
-        teamName: selectedTeam?.name,
-        creatorName: _username,
-        collabType: _collabType,
-        isAllDay: r.isAllDay,
-      ));
-    }
-
-    if (todos.isNotEmpty) {
-      if (widget.onTodosBatchAdded != null) {
-        widget.onTodosBatchAdded!(todos);
-      } else {
-        for (var t in todos) {
-          widget.onTodoAdded(t);
+        if (saveTarget == _CaptureSaveTarget.cancel) return;
+        if (saveTarget == _CaptureSaveTarget.fixedSchedule) {
+          await _saveFixedScheduleFromText(
+            sourceText,
+            parsedResult: result,
+          );
+        } else {
+          todoResults.add(result);
         }
       }
+
+      final persistentImagePath = await _persistAttachmentImageIfNeeded();
+      final selectedTeam = _selectedTeamUuid != null
+          ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull
+          : null;
+
+      final List<TodoItem> todos = [];
+      for (final r in todoResults) {
+        final parsedDueDate = r.endTime ??
+            (r.isAllDay && r.startTime != null
+                ? DateTime(
+                    r.startTime!.year,
+                    r.startTime!.month,
+                    r.startTime!.day,
+                    23,
+                    59,
+                  )
+                : null);
+        final normalizedTime = TodoItem.normalizeTimeForWrite(
+          selectedDate: r.startTime,
+          dueDate: parsedDueDate,
+          isDateOnly: r.isAllDay,
+        );
+        if (r.recurrence != RecurrenceType.none &&
+            normalizedTime.start == null) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('“${r.title}”是重复待办，请先设置首次完成日期')),
+          );
+          return;
+        }
+        final classification = await TodoClassificationService.recommendForText(
+          title: r.title,
+          remark: r.remark ?? '',
+          groups: _localTodoGroups,
+          categoryReminderDefaults: _categoryReminderDefaults,
+          dueDate: parsedDueDate,
+        );
+        final suggestedGroupId =
+            classification.confidence >= 0.20 ? classification.groupId : null;
+        todos.add(TodoItem(
+          title: r.title,
+          recurrence: r.recurrence,
+          customIntervalDays: r.customIntervalDays,
+          recurrenceEndDate: r.recurrenceEndDate,
+          dueDate: normalizedTime.due,
+          createdDate: normalizedTime.start?.millisecondsSinceEpoch,
+          remark: r.remark,
+          originalText: _currentOriginalText,
+          imagePath: persistentImagePath,
+          groupId: suggestedGroupId,
+          reminderMinutes: r.reminderMinutes ??
+              (suggestedGroupId != null
+                  ? classification.reminderMinutes
+                  : _reminderMinutes),
+          teamUuid: _selectedTeamUuid,
+          teamName: selectedTeam?.name,
+          creatorName: _username,
+          collabType: _collabType,
+          isAllDay: r.isAllDay,
+        ));
+      }
+
+      if (todos.isNotEmpty) {
+        if (widget.onTodosBatchAdded != null) {
+          await widget.onTodosBatchAdded!(todos);
+        } else {
+          for (var t in todos) {
+            await widget.onTodoAdded(t);
+          }
+        }
+      }
+      if (!mounted) return;
+      Navigator.pop(context);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存失败，请重试：$error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
-    if (!mounted) return;
-    Navigator.pop(context);
   }
 
   // ================= 自定义统一分段控制器 (替代容易崩溃的原生 SegmentedButton) =================
@@ -1644,10 +1683,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final bgColor = theme.brightness == Brightness.light
         ? const Color(0xFFF2F2F7)
         : theme.colorScheme.surface;
-    final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+    final topBarHeight = floatingGlassTopBarHeight(context);
 
     return Scaffold(
-      extendBody: useFloatingBottomBar,
+      extendBody: true,
+      extendBodyBehindAppBar: true,
       backgroundColor: bgColor,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
@@ -1669,7 +1709,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         actions: [
           TextButton(
             key: _saveButtonKey,
-            onPressed: _selectedTabIndex == 0 ? _addTodo : _addBatchTodos,
+            onPressed: _isSaving
+                ? null
+                : (_selectedTabIndex == 0 ? _addTodo : _addBatchTodos),
             child: const Text(
               "完成",
               maxLines: 1,
@@ -1680,14 +1722,18 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           const SizedBox(width: 8),
         ],
       ),
-      bottomNavigationBar: useFloatingBottomBar && _selectedTabIndex == 0
-          ? _buildManualKindBottomBar()
-          : null,
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        child: _selectedTabIndex == 0
-            ? _buildManualInputTab(key: const ValueKey('manual'))
-            : _buildAIRecognitionTab(key: const ValueKey('ai')),
+      bottomNavigationBar:
+          _selectedTabIndex == 0 ? _buildManualKindBottomBar() : null,
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: _selectedTabIndex == 0
+              ? _buildManualInputTab(
+                  key: const ValueKey('manual'), topPadding: topBarHeight)
+              : _buildAIRecognitionTab(
+                  key: const ValueKey('ai'), topPadding: topBarHeight),
+        ),
       ),
     );
   }
@@ -1831,32 +1877,16 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     );
   }
 
-  Widget _buildManualInputTab({Key? key}) {
+  Widget _buildManualInputTab({Key? key, double topPadding = 0}) {
     final colors = Theme.of(context).colorScheme;
-    return LayoutBuilder(builder: (context, constraints) {
-      final useFloatingBottomBar = floatingBottomBarShouldFloat(context);
+    return LayoutBuilder(builder: (context, _) {
       return SingleChildScrollView(
         key: key,
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: EdgeInsets.fromLTRB(16, topPadding + 8, 16, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Type Switcher
-            if (!useFloatingBottomBar) ...[
-              Center(
-                child: SizedBox(
-                  width: 200,
-                  child: _buildCustomSegmentedControl(
-                    labels: const ["待办", "日程"],
-                    selectedIndex:
-                        _manualCaptureKind == _ManualCaptureKind.todo ? 0 : 1,
-                    onChanged: _selectManualCaptureKind,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
             // Input Section
             OptionalLiquidGlassCard(
               borderRadius: 24,
@@ -2356,7 +2386,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 ),
               ),
             ],
-            const SizedBox(height: 60),
+            SizedBox(
+              height: floatingBottomNavigationContentPaddingFor(context),
+            ),
           ],
         ),
       );
@@ -2365,6 +2397,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   Widget _buildManualKindBottomBar() {
     return FloatingBottomNavigationBar(
+      mobilePortraitOnly: false,
       items: const [
         FloatingBottomNavigationItem(
           icon: Icons.check_circle_outline_rounded,
@@ -2473,10 +2506,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   }
 
   // ================= AI 识别界面 (保持卡片风格) =================
-  Widget _buildAIRecognitionTab({Key? key}) {
+  Widget _buildAIRecognitionTab({Key? key, double topPadding = 0}) {
     return SingleChildScrollView(
       key: key,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.fromLTRB(16, topPadding + 8, 16, 8),
       child: Column(
         children: [
           // 🚀 待确认的图片识别事项入口

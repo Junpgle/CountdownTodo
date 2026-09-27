@@ -36,6 +36,11 @@ class BandSyncService {
   static DateTime? _lastSyncTime;
   static final List<String> _logs = [];
   static final List<Map<String, dynamic>> _receivedMessages = [];
+  static final Map<String, Future<void>> _sendTails = {};
+  static final Map<String, Completer<bool>> _pendingSyncResults = {};
+  static int _transferSequence = 0;
+  static bool _supportsSyncResult = false;
+  static bool get supportsSyncResult => _supportsSyncResult;
   static Completer<bool>? _permissionRequestCompleter;
 
   static final _pomodoroActionCtrl =
@@ -48,6 +53,7 @@ class BandSyncService {
     _isInitialized = false;
     serviceEnabledNotifier.value = false;
     _cancelPermissionRequest();
+    _failPendingSyncResults();
     unawaited(_shutdownNativeService());
     _resetConnectionState(notify: false);
     if (!_pomodoroActionCtrl.isClosed) _pomodoroActionCtrl.close();
@@ -235,9 +241,19 @@ class BandSyncService {
   static void _resetConnectionState({bool notify = true}) {
     final wasConnected = _isConnected;
     _isConnected = false;
+    _supportsSyncResult = false;
+    _failPendingSyncResults();
     _nodeId = '';
     _deviceName = '';
     if (notify && wasConnected) _onDeviceDisconnected?.call();
+  }
+
+  static void _failPendingSyncResults() {
+    final pending = _pendingSyncResults.values.toList();
+    _pendingSyncResults.clear();
+    for (final result in pending) {
+      if (!result.isCompleted) result.complete(false);
+    }
   }
 
   static void _cancelPermissionRequest() {
@@ -261,11 +277,8 @@ class BandSyncService {
 
       case 'onDeviceDisconnected':
         if (!serviceEnabledNotifier.value) break;
-        _isConnected = false;
-        _nodeId = '';
-        _deviceName = '';
         _addLog('设备已断开');
-        _onDeviceDisconnected?.call();
+        _resetConnectionState();
         break;
 
       case 'onMessageReceived':
@@ -294,15 +307,26 @@ class BandSyncService {
               final version = jsonData['version'] as String? ?? '未知';
               final versionCode = jsonData['version_code'] as int? ?? 0;
               _bandVersion = '$version (v$versionCode)';
+              _supportsSyncResult = jsonData['supports_sync_result'] == true;
               bandVersionNotifier.value = _bandVersion;
               _addLog('手环版本: $_bandVersion');
+            }
+
+            if (jsonData['type'] == 'sync_result') {
+              final transferId = jsonData['transferId'] as String?;
+              final result = _pendingSyncResults[transferId];
+              if (result != null && !result.isCompleted) {
+                result.complete(jsonData['success'] == true);
+              }
+              _addLog('手环同步回执: ${jsonData['syncType']} ${jsonData['success']}');
+              break;
             }
 
             if (jsonData['action'] == 'request_sync') {
               final type = jsonData['type'] as String? ?? '';
               _addLog('手环请求同步: $type');
               // 内部直接处理同步请求，不依赖外部回调
-              await _handleSyncRequest(type);
+              unawaited(_handleSyncRequest(type));
             } else {
               _onMessageReceived?.call(jsonData);
             }
@@ -382,33 +406,12 @@ class BandSyncService {
     }
     try {
       final dataList = await provider(type);
-      if (dataList.isEmpty) {
-        _addLog('同步 $type: 无数据');
-        await sendData(type, dataList);
-        return;
-      }
-
-      // 自动分批发送，避免消息体过大
-      const maxBatchSize = 5;
-      final totalBatches = (dataList.length / maxBatchSize).ceil();
-      _addLog('同步 $type: 共 ${dataList.length} 条，分 $totalBatches 批');
-
-      for (int i = 0; i < totalBatches; i++) {
-        final start = i * maxBatchSize;
-        final end = (start + maxBatchSize < dataList.length)
-            ? start + maxBatchSize
-            : dataList.length;
-        final batch = dataList.sublist(start, end);
-        final success = await sendData(type, batch,
-            batchNum: i + 1, totalBatches: totalBatches);
-        if (!success) {
-          _addLog('同步 $type: 第 ${i + 1} 批发送失败');
-          break;
-        }
-        // 每批之间间隔，避免 SDK 限流
-        await Future.delayed(const Duration(milliseconds: 200));
-      }
-      _addLog('已同步 $type: ${dataList.length} 条');
+      final success = await _sendListData(type, dataList);
+      _addLog(success
+          ? (_supportsSyncResult
+              ? '已同步 $type: ${dataList.length} 条'
+              : '已发送 $type: ${dataList.length} 条，手环未提供回执')
+          : '同步 $type 失败，未确认手环完整写入');
     } catch (e) {
       _addLog('同步 $type 异常: $e');
     }
@@ -431,7 +434,7 @@ class BandSyncService {
 
   /// 发送数据到手环（带批次信息）
   static Future<bool> sendData(String type, dynamic data,
-      {int batchNum = 1, int totalBatches = 1}) async {
+      {int batchNum = 1, int totalBatches = 1, String? transferId}) async {
     if (!_nativeServiceStarted || !serviceEnabledNotifier.value) {
       _addLog('手环服务未开启');
       return false;
@@ -448,6 +451,7 @@ class BandSyncService {
         'data': sanitizedData,
         'batchNum': batchNum,
         'totalBatches': totalBatches,
+        if (transferId != null) 'transferId': transferId,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       };
 
@@ -466,8 +470,11 @@ class BandSyncService {
         return false;
       }
 
-      await _channel.invokeMethod('sendMessage', {'data': message});
-      return true;
+      return await _channel
+              .invokeMethod<bool>('sendMessage', {'data': message}).timeout(
+                  const Duration(seconds: 15),
+                  onTimeout: () => false) ==
+          true;
     } catch (e) {
       _addLog('发送数据失败: $e');
       return false;
@@ -534,10 +541,25 @@ class BandSyncService {
 
   static Future<bool> _sendListData(
       String type, List<Map<String, dynamic>> items) async {
-    if (items.isEmpty) {
-      return sendData(type, const [], batchNum: 1, totalBatches: 1);
+    final previous = _sendTails[type];
+    final completion = Completer<void>();
+    final completionFuture = completion.future;
+    _sendTails[type] = completionFuture;
+    if (previous != null) await previous;
+    try {
+      return await _sendListDataUnlocked(type, items);
+    } finally {
+      completion.complete();
+      if (identical(_sendTails[type], completionFuture)) {
+        _sendTails.remove(type);
+      }
     }
+  }
 
+  static Future<bool> _sendListDataUnlocked(
+      String type, List<Map<String, dynamic>> items) async {
+    final transferId =
+        '$type-${DateTime.now().microsecondsSinceEpoch}-${++_transferSequence}';
     final chunks = <List<Map<String, dynamic>>>[];
     var current = <Map<String, dynamic>>[];
 
@@ -545,44 +567,80 @@ class BandSyncService {
       final sanitizedItem =
           Map<String, dynamic>.from(_sanitizeForBand(item) as Map);
       final candidate = [...current, sanitizedItem];
-      if (_estimatePayloadBytes(type, candidate) > _maxPlatformMessageBytes) {
+      if (candidate.length > 5 ||
+          _estimatePayloadBytes(type, candidate, transferId) >
+              _maxPlatformMessageBytes) {
         if (current.isEmpty) {
-          _addLog('同步 $type 失败: 单条数据过大，已跳过');
-          continue;
+          _addLog('同步 $type 失败: 单条数据过大');
+          return false;
         }
         chunks.add(current);
-        if (_estimatePayloadBytes(type, [sanitizedItem]) >
+        if (_estimatePayloadBytes(type, [sanitizedItem], transferId) >
             _maxPlatformMessageBytes) {
-          _addLog('同步 $type 失败: 单条数据过大，已跳过');
-          current = [];
-        } else {
-          current = [sanitizedItem];
+          _addLog('同步 $type 失败: 单条数据过大');
+          return false;
         }
+        current = [sanitizedItem];
       } else {
         current = candidate;
       }
     }
     if (current.isNotEmpty) chunks.add(current);
+    if (chunks.isEmpty) chunks.add(<Map<String, dynamic>>[]);
 
-    if (chunks.isEmpty) return false;
-
-    var allSuccess = true;
-    for (var i = 0; i < chunks.length; i++) {
-      final success = await sendData(type, chunks[i],
-          batchNum: i + 1, totalBatches: chunks.length);
-      if (!success) allSuccess = false;
-      await Future.delayed(const Duration(milliseconds: 200));
+    final result = _supportsSyncResult ? Completer<bool>() : null;
+    if (result != null) _pendingSyncResults[transferId] = result;
+    _addLog('同步 $type: 共 ${items.length} 条，分 ${chunks.length} 批');
+    try {
+      for (var i = 0; i < chunks.length; i++) {
+        var success = false;
+        for (var attempt = 1; attempt <= 3; attempt++) {
+          success = await sendData(
+            type,
+            chunks[i],
+            batchNum: i + 1,
+            totalBatches: chunks.length,
+            transferId: transferId,
+          );
+          if (success) break;
+          if (attempt < 3) {
+            _addLog('同步 $type: 第 ${i + 1} 批发送失败，重试');
+            await Future.delayed(const Duration(seconds: 1));
+          }
+        }
+        if (!success) {
+          _addLog('同步 $type: 第 ${i + 1}/${chunks.length} 批发送失败');
+          return false;
+        }
+        if (i + 1 < chunks.length) {
+          await Future.delayed(const Duration(milliseconds: 200));
+        }
+      }
+      if (result != null) {
+        final confirmed = await result.future.timeout(
+          const Duration(seconds: 15),
+          onTimeout: () => false,
+        );
+        if (!confirmed) _addLog('同步 $type 失败: 手环未确认完整写入');
+        return confirmed;
+      }
+      _addLog('手环未声明同步回执，仅确认数据已发送');
+      return true;
+    } finally {
+      if (result != null) {
+        _pendingSyncResults.remove(transferId);
+      }
     }
-    return allSuccess;
   }
 
   static int _estimatePayloadBytes(
-      String type, List<Map<String, dynamic>> data) {
+      String type, List<Map<String, dynamic>> data, String transferId) {
     final payload = {
       'type': type,
       'data': data,
       'batchNum': 1,
       'totalBatches': 1,
+      'transferId': transferId,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     };
     return utf8.encode(jsonEncode(payload)).length;

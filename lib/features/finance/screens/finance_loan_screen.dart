@@ -230,10 +230,10 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen> {
     );
   }
 
-  Widget _buildBody(ColorScheme colorScheme) {
+  Widget _buildBody(ColorScheme colorScheme, double topPadding) {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
     if (_loadError != null) {
-      return FinancePageList(children: [
+      return FinancePageList(topPadding: topPadding, children: [
         FinanceEmptyState(
             icon: Icons.error_outline_rounded,
             title: '贷款加载失败',
@@ -250,78 +250,92 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen> {
         0, (sum, item) => sum + item.outstandingPrincipalMinor);
     return RefreshIndicator(
       onRefresh: _load,
-      child: FinancePageList(bottomPadding: 112, children: [
-        const FinancePageIntro(
-            icon: Icons.account_balance_outlined,
-            title: '贷款与还款',
-            description: '本金、利息与还款进度，清楚地分开记录。'),
-        const SizedBox(height: 24),
-        FinanceSectionCard(
-          color: colorScheme.primaryContainer,
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('剩余待还本金',
-                style: TextStyle(color: colorScheme.onPrimaryContainer)),
-            const SizedBox(height: 10),
-            Text(formatFinanceAmount(remaining),
-                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                    color: colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.w800)),
-            const SizedBox(height: 10),
-            Text(
-                '${_overviews.where((item) => !item.isPaidOff).length} 笔还款中 · ${_overviews.where((item) => item.isPaidOff).length} 笔已还清',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color:
-                        colorScheme.onPrimaryContainer.withValues(alpha: 0.8))),
+      child: FinancePageList(
+          topPadding: topPadding,
+          bottomPadding: 112,
+          children: [
+            const FinancePageIntro(
+                icon: Icons.account_balance_outlined,
+                title: '贷款与还款',
+                description: '本金、利息与还款进度，清楚地分开记录。'),
+            const SizedBox(height: 24),
+            FinanceSectionCard(
+              color: colorScheme.primaryContainer,
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('剩余待还本金',
+                        style:
+                            TextStyle(color: colorScheme.onPrimaryContainer)),
+                    const SizedBox(height: 10),
+                    Text(formatFinanceAmount(remaining),
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineLarge
+                            ?.copyWith(
+                                color: colorScheme.onPrimaryContainer,
+                                fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 10),
+                    Text(
+                        '${_overviews.where((item) => !item.isPaidOff).length} 笔还款中 · ${_overviews.where((item) => item.isPaidOff).length} 笔已还清',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onPrimaryContainer
+                                .withValues(alpha: 0.8))),
+                  ]),
+            ),
+            const SizedBox(height: 18),
+            Wrap(spacing: 8, runSpacing: 6, children: [
+              ChoiceChip(
+                  label: const Text('全部'),
+                  selected: _paidOffFilter == null,
+                  showCheckmark: false,
+                  onSelected: (_) => setState(() => _paidOffFilter = null)),
+              ChoiceChip(
+                  label: const Text('还款中'),
+                  selected: _paidOffFilter == false,
+                  showCheckmark: false,
+                  onSelected: (_) => setState(() => _paidOffFilter = false)),
+              ChoiceChip(
+                  label: const Text('已还清'),
+                  selected: _paidOffFilter == true,
+                  showCheckmark: false,
+                  onSelected: (_) => setState(() => _paidOffFilter = true)),
+            ]),
+            const SizedBox(height: 16),
+            if (visible.isEmpty)
+              FinanceEmptyState(
+                icon: Icons.account_balance_wallet_outlined,
+                title: _overviews.isEmpty ? '还没有贷款记录' : '这个分组暂无贷款',
+                description:
+                    _overviews.isEmpty ? '添加一笔贷款，自动生成每期还款计划。' : '切换分组查看其他贷款。',
+                actionLabel: _overviews.isEmpty ? '新增贷款' : '查看全部',
+                onAction: _overviews.isEmpty
+                    ? () => _openEditor()
+                    : () => setState(() => _paidOffFilter = null),
+              )
+            else
+              FinanceAdaptiveFields(minChildWidth: 330, children: [
+                for (final overview in visible)
+                  _buildLoanCard(context, overview)
+              ]),
           ]),
-        ),
-        const SizedBox(height: 18),
-        Wrap(spacing: 8, runSpacing: 6, children: [
-          ChoiceChip(
-              label: const Text('全部'),
-              selected: _paidOffFilter == null,
-              showCheckmark: false,
-              onSelected: (_) => setState(() => _paidOffFilter = null)),
-          ChoiceChip(
-              label: const Text('还款中'),
-              selected: _paidOffFilter == false,
-              showCheckmark: false,
-              onSelected: (_) => setState(() => _paidOffFilter = false)),
-          ChoiceChip(
-              label: const Text('已还清'),
-              selected: _paidOffFilter == true,
-              showCheckmark: false,
-              onSelected: (_) => setState(() => _paidOffFilter = true)),
-        ]),
-        const SizedBox(height: 16),
-        if (visible.isEmpty)
-          FinanceEmptyState(
-            icon: Icons.account_balance_wallet_outlined,
-            title: _overviews.isEmpty ? '还没有贷款记录' : '这个分组暂无贷款',
-            description:
-                _overviews.isEmpty ? '添加一笔贷款，自动生成每期还款计划。' : '切换分组查看其他贷款。',
-            actionLabel: _overviews.isEmpty ? '新增贷款' : '查看全部',
-            onAction: _overviews.isEmpty
-                ? () => _openEditor()
-                : () => setState(() => _paidOffFilter = null),
-          )
-        else
-          FinanceAdaptiveFields(minChildWidth: 330, children: [
-            for (final overview in visible) _buildLoanCard(context, overview)
-          ]),
-      ]),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('贷款'),
       ),
-      body: _buildBody(colorScheme),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _buildBody(colorScheme, topBarHeight),
+      ),
       floatingActionButton: _isLoading || _loadError != null
           ? null
           : FloatingGlassActionButton.extended(
@@ -543,10 +557,10 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
     ]);
   }
 
-  Widget _buildBody(ColorScheme colorScheme) {
+  Widget _buildBody(ColorScheme colorScheme, double topPadding) {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
     if (_loadError != null) {
-      return FinancePageList(children: [
+      return FinancePageList(topPadding: topPadding, children: [
         FinanceEmptyState(
             icon: Icons.error_outline_rounded,
             title: '贷款加载失败',
@@ -563,7 +577,7 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
     final paidCount = _installments.where((item) => item.isPaid).length;
     return RefreshIndicator(
       onRefresh: _load,
-      child: FinancePageList(maxWidth: 840, children: [
+      child: FinancePageList(topPadding: topPadding, maxWidth: 840, children: [
         _buildSummary(context, overview),
         const SizedBox(height: 24),
         Text('还款计划',
@@ -611,7 +625,9 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         flexibleSpace: const FloatingGlassTopBarBackground(),
         title: const Text('贷款详情'),
@@ -623,7 +639,10 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
           ),
         ],
       ),
-      body: _buildBody(Theme.of(context).colorScheme),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _buildBody(Theme.of(context).colorScheme, topBarHeight),
+      ),
     );
   }
 }

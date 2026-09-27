@@ -523,13 +523,12 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             child: Row(
               children: [
                 if (_isBatchMode) ...[
-                  IconButton(
-                    onPressed: () => setState(() {
+                  _buildAppBarAction(
+                    onTap: () => setState(() {
                       _isBatchMode = false;
                       _selectedConflictIds.clear();
                     }),
-                    icon: const Icon(Icons.close_rounded),
-                    color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
+                    icon: Icons.close_rounded,
                     tooltip: '取消批量模式',
                   ),
                   const SizedBox(width: 8),
@@ -546,10 +545,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                     ),
                   ),
                 ] else ...[
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    color: isDark ? Colors.white70 : Colors.blueGrey.shade700,
+                  _buildAppBarAction(
+                    onTap: () => Navigator.of(context).pop(),
+                    icon: Icons.arrow_back_rounded,
                     tooltip: '返回',
                   ),
                   const SizedBox(width: 8),

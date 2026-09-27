@@ -31,11 +31,17 @@ import 'settings/pages/interconnect_settings_page.dart';
 import 'settings/pages/platform_specific_settings_page.dart';
 import 'settings/pages/permission_settings_page.dart';
 import 'settings/pages/minor_mode_settings_page.dart';
+import 'settings/pages/ai_assistant_settings_page.dart';
 import 'settings/llm_config_page.dart';
 
 class SettingsPage extends StatefulWidget {
   final String? initialTarget;
-  const SettingsPage({super.key, this.initialTarget});
+  final bool openInitialTargetAsRoot;
+  const SettingsPage({
+    super.key,
+    this.initialTarget,
+    this.openInitialTargetAsRoot = false,
+  });
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -56,6 +62,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   String? _selectedPaneId;
   Widget Function()? _selectedRightPaneBuilder;
+  Widget Function()? _initialTargetRootBuilder;
 
   GlobalKey<NavigatorState> _nestedNavigatorKey = GlobalKey<NavigatorState>();
   final GlobalKey _updateSettingsSectionKey = GlobalKey();
@@ -81,6 +88,12 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _handleInitialTarget(String target) {
+    if (widget.openInitialTargetAsRoot && _username == '加载中...') {
+      _loadSettings().then((_) {
+        if (mounted) _handleInitialTarget(target);
+      });
+      return;
+    }
     if (AppPlatform.isWeb &&
         {
           'permissions',
@@ -102,10 +115,10 @@ class _SettingsPageState extends State<SettingsPage> {
       'sync_interval',
       'conflict_detection',
       'server_choice',
+      'llm_retry',
       'update',
       'force_download',
       'update_source',
-      'changelog',
     ];
     final preferenceTargets = [
       'theme',
@@ -142,7 +155,6 @@ class _SettingsPageState extends State<SettingsPage> {
       'data_import',
     ];
     final advancedTargets = [
-      'llm_retry',
       'migration',
       'cache',
       'storage',
@@ -162,6 +174,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'mac_status_bar',
       'mac_island_reminders',
       'mac_island_clipboard_links',
+      'mac_island_clipboard_browser',
       'mac_island_test',
       'mac_island_without_notch'
     ];
@@ -194,6 +207,9 @@ class _SettingsPageState extends State<SettingsPage> {
     } else if (target == 'llm_config') {
       paneId = 'llm_config';
       paneBuilder = () => const LLMConfigPage(isEmbedded: true);
+    } else if (target == 'ai_assistant') {
+      paneId = 'ai_assistant';
+      paneBuilder = () => const AiAssistantSettingsPage(isEmbedded: true);
     } else if (target == 'animation') {
       paneId = 'animation';
       paneBuilder = () => const AnimationSettingsPage(isEmbedded: true);
@@ -214,7 +230,18 @@ class _SettingsPageState extends State<SettingsPage> {
       return; // unknown target
     }
 
-    final isWide = MediaQuery.of(context).size.width >= 800;
+    if (widget.openInitialTargetAsRoot && paneId == 'account') {
+      setState(() {
+        _initialTargetRootBuilder = () => Scaffold(
+              appBar: const FloatingGlassAppBar(title: Text('账户与同步')),
+              body: _buildAccountAndAnnouncementsPane(),
+            );
+      });
+      return;
+    }
+
+    final isWide = MediaQuery.of(context).size.width >= 800 &&
+        !widget.openInitialTargetAsRoot;
     if (isWide) {
       setState(() {
         _selectedPaneId = paneId;
@@ -242,6 +269,8 @@ class _SettingsPageState extends State<SettingsPage> {
             initialTarget: target, username: _username);
       } else if (paneId == 'llm_config') {
         pushWidget = const LLMConfigPage();
+      } else if (paneId == 'ai_assistant') {
+        pushWidget = const AiAssistantSettingsPage();
       } else if (paneId == 'animation') {
         pushWidget = const AnimationSettingsPage();
       } else if (paneId == 'platform') {
@@ -254,7 +283,11 @@ class _SettingsPageState extends State<SettingsPage> {
         pushWidget = const AboutScreen();
       }
 
-      Navigator.push(context, PageTransitions.slideHorizontal(pushWidget));
+      if (widget.openInitialTargetAsRoot) {
+        setState(() => _initialTargetRootBuilder = () => pushWidget);
+      } else {
+        Navigator.push(context, PageTransitions.slideHorizontal(pushWidget));
+      }
     }
   }
 
@@ -284,14 +317,17 @@ class _SettingsPageState extends State<SettingsPage> {
   void _loadAllData() {
     _loadSettings().then((_) async {
       await Future.delayed(const Duration(milliseconds: 200));
-      if (mounted) setState(() => _isInitialLoading = false);
-      _fetchAccountStatus();
+      if (!mounted) return;
+      setState(() => _isInitialLoading = false);
+      if (!mounted) return;
+      await _fetchAccountStatus();
     });
     _loadSettingsAnnouncements();
   }
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       _username = prefs.getString(StorageService.keyCurrentUser) ?? "未登录";
       _userId = prefs.getInt('current_user_id');
@@ -526,11 +562,25 @@ class _SettingsPageState extends State<SettingsPage> {
               onChangePassword: _showChangePasswordDialog,
             ),
             UpdateSettingsSection(key: _embeddedUpdateSettingsSectionKey),
-            SyncSettingsSection(username: _username),
+            SyncSettingsSection(
+              username: _username,
+              initialTarget: _accountSyncTarget,
+            ),
           ],
         ),
       ),
     );
+  }
+
+  String? get _accountSyncTarget {
+    const targets = {
+      'sync_interval',
+      'conflict_detection',
+      'server_choice',
+      'llm_retry',
+    };
+    final target = widget.initialTarget;
+    return targets.contains(target) ? target : null;
   }
 
   Future<void> _rescheduleReminders() async {
@@ -540,7 +590,11 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final todos = await StorageService.getTodos(_username);
       final courses = await CourseService.getAllCourses(_username);
-      await ReminderScheduleService.scheduleAll(todos: todos, courses: courses);
+      await ReminderScheduleService.scheduleAll(
+        todos: todos,
+        courses: courses,
+        expectedUsername: _username,
+      );
     } catch (e) {
       // Reminder rescheduling should not block the settings page.
     }
@@ -642,6 +696,7 @@ class _SettingsPageState extends State<SettingsPage> {
         }
         return;
       }
+      await ReminderScheduleService.clearScheduledReminders();
       await StorageService.clearLoginSession();
       if (mounted) {
         Navigator.pushAndRemoveUntil(
@@ -704,6 +759,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return '数据与互联';
       case 'llm_config':
         return '模型与 API 配置';
+      case 'ai_assistant':
+        return 'AI 助手设置';
       case 'platform':
         return AppPlatform.isWindows
             ? 'Windows 专属'
@@ -723,6 +780,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_initialTargetRootBuilder != null) return _initialTargetRootBuilder!();
     final isWide = MediaQuery.of(context).size.width >= 800;
     final paneTitle = _getPaneTitle();
     final colorScheme = Theme.of(context).colorScheme;
@@ -1027,6 +1085,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: '模型与 API 配置',
                   widgetBuilder: () => const LLMConfigPage(isEmbedded: true),
                 ),
+                _buildMacSidebarItem(
+                  id: 'ai_assistant',
+                  icon: Icons.auto_awesome_rounded,
+                  color: theme.colorScheme.tertiary,
+                  title: 'AI 助手设置',
+                  widgetBuilder: () =>
+                      const AiAssistantSettingsPage(isEmbedded: true),
+                ),
 
                 const SizedBox(height: 12),
                 const Divider(height: 1),
@@ -1207,7 +1273,10 @@ class _SettingsPageState extends State<SettingsPage> {
             onChangePassword: _showChangePasswordDialog,
           ),
           UpdateSettingsSection(key: _updateSettingsSectionKey),
-          SyncSettingsSection(username: _username),
+          SyncSettingsSection(
+            username: _username,
+            initialTarget: _accountSyncTarget,
+          ),
           const SizedBox(height: 24),
           const Padding(
             padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
@@ -1294,6 +1363,19 @@ class _SettingsPageState extends State<SettingsPage> {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(context,
                       PageTransitions.slideHorizontal(const LLMConfigPage())),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  leading: Icon(Icons.auto_awesome_rounded,
+                      color: Theme.of(context).colorScheme.tertiary),
+                  title: const Text('AI 助手设置'),
+                  subtitle: const Text('智能上下文、提示词、预览与深度思考'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(
+                        const AiAssistantSettingsPage()),
+                  ),
                 ),
               ],
             ),

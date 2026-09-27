@@ -119,8 +119,10 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
       return ['message', 'team_name', 'username'].any(
           (key) => (msg[key]?.toString() ?? '').toLowerCase().contains(query));
     }).toList();
+    final topBarHeight = floatingGlassTopBarHeight(context);
     return Scaffold(
       backgroundColor: scheme.surface,
+      extendBodyBehindAppBar: true,
       appBar: FloatingGlassAppBar(
         title: const Text('消息中心'),
         flexibleSpace: const FloatingGlassTopBarBackground(),
@@ -131,54 +133,63 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
               icon: const Icon(Icons.refresh_rounded))
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadAllMessages,
-              child: ManagementPage(maxWidth: 900, children: [
-                const ManagementIntro(
-                    icon: Icons.forum_outlined,
-                    title: '团队动态，一处处理',
-                    description: '查看所管理团队的系统消息，及时处理入队申请。'),
-                if (_loadError != null) ...[
-                  ManagementLoadError(
-                      inline: true,
-                      title: _loadError!,
-                      onRetry: _loadAllMessages),
-                ],
-                ManagementSearchField(
-                    controller: _searchController,
-                    hintText: '搜索消息、团队或成员',
-                    onChanged: (_) => setState(() {})),
-                const SizedBox(height: 14),
-                ManagementFilterBar<bool>(
-                    value: _pendingOnly,
-                    onChanged: (value) => setState(() => _pendingOnly = value),
-                    options: [
-                      ManagementFilterOption(
-                          value: false, label: '全部 ${_messages.length}'),
-                      ManagementFilterOption(value: true, label: '待处理 $pending')
-                    ]),
-                const SizedBox(height: 16),
-                if (visible.isEmpty && _loadError == null)
-                  ManagementEmptyState(
-                    icon: _pendingOnly
-                        ? Icons.task_alt_rounded
-                        : Icons.mark_email_read_outlined,
-                    title: query.isNotEmpty
-                        ? '没有找到匹配的消息'
-                        : _pendingOnly
-                            ? '暂时没有待处理申请'
-                            : '暂无系统消息',
-                    description: query.isNotEmpty
-                        ? '试试其他关键词，或清空搜索。'
-                        : _pendingOnly
-                            ? '新的入队申请会显示在这里。'
-                            : '团队申请和成员变动会汇总在这里。',
-                  ),
-                ...visible.map(_buildMessageCard),
-              ]),
-            ),
+      body: FloatingGlassTopBarContentFade(
+        topBarHeight: topBarHeight,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadAllMessages,
+                child: ManagementPage(
+                  topPadding: topBarHeight,
+                  maxWidth: 900,
+                  children: [
+                    const ManagementIntro(
+                        icon: Icons.forum_outlined,
+                        title: '团队动态，一处处理',
+                        description: '查看所管理团队的系统消息，及时处理入队申请。'),
+                    if (_loadError != null) ...[
+                      ManagementLoadError(
+                          inline: true,
+                          title: _loadError!,
+                          onRetry: _loadAllMessages),
+                    ],
+                    ManagementSearchField(
+                        controller: _searchController,
+                        hintText: '搜索消息、团队或成员',
+                        onChanged: (_) => setState(() {})),
+                    const SizedBox(height: 14),
+                    ManagementFilterBar<bool>(
+                        value: _pendingOnly,
+                        onChanged: (value) =>
+                            setState(() => _pendingOnly = value),
+                        options: [
+                          ManagementFilterOption(
+                              value: false, label: '全部 ${_messages.length}'),
+                          ManagementFilterOption(
+                              value: true, label: '待处理 $pending')
+                        ]),
+                    const SizedBox(height: 16),
+                    if (visible.isEmpty && _loadError == null)
+                      ManagementEmptyState(
+                        icon: _pendingOnly
+                            ? Icons.task_alt_rounded
+                            : Icons.mark_email_read_outlined,
+                        title: query.isNotEmpty
+                            ? '没有找到匹配的消息'
+                            : _pendingOnly
+                                ? '暂时没有待处理申请'
+                                : '暂无系统消息',
+                        description: query.isNotEmpty
+                            ? '试试其他关键词，或清空搜索。'
+                            : _pendingOnly
+                                ? '新的入队申请会显示在这里。'
+                                : '团队申请和成员变动会汇总在这里。',
+                      ),
+                    ...visible.map(_buildMessageCard),
+                  ],
+                ),
+              ),
+      ),
     );
   }
 

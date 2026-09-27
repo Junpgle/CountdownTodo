@@ -27,6 +27,7 @@ class MigrationService {
     required Function(String) onProgress,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+    final activeUsername = await StorageService.getLoginSession();
 
     // 🌟 防弹机制 1：临时忽略所有 SSL 证书问题
     HttpOverrides.global = _IgnoreSslHttpOverrides();
@@ -59,6 +60,7 @@ class MigrationService {
       final int oldUserId = user['id'] ?? user['user_id'] ?? 0;
       final String oldToken = loginRes['token'] ?? '';
       final String username = user['username'] ?? '';
+      final String storageUsername = activeUsername ?? username;
       final String tier = user['tier'] ?? 'free';
       final int? semesterStart = user['semester_start'];
       final int? semesterEnd = user['semester_end'];
@@ -74,20 +76,20 @@ class MigrationService {
       onProgress("📥 拉取旧待办事项...");
       final todosRaw = await ApiService.fetchTodos(oldUserId);
       final todos = todosRaw.map((e) => TodoItem.fromJson(e)).toList();
-      await StorageService.saveTodos(oldUserId.toString(), todos,
+      await StorageService.saveTodos(storageUsername, todos,
           sync: false, isSyncSource: true);
 
       onProgress("📥 拉取旧倒计时...");
       final countdownsRaw = await ApiService.fetchCountdowns(oldUserId);
       final countdowns =
           countdownsRaw.map((e) => CountdownItem.fromJson(e)).toList();
-      await StorageService.saveCountdowns(oldUserId.toString(), countdowns,
+      await StorageService.saveCountdowns(storageUsername, countdowns,
           sync: false, isSyncSource: true);
 
       onProgress("📥 拉取时间记录...");
       final timeLogsRaw = await ApiService.fetchTimeLogs(oldUserId);
       final timeLogs = timeLogsRaw.map((e) => TimeLogItem.fromJson(e)).toList();
-      await StorageService.saveTimeLogs(oldUserId.toString(), timeLogs);
+      await StorageService.saveTimeLogs(storageUsername, timeLogs);
 
       onProgress("📥 拉取专注历史与设置...");
       List<dynamic> pomodoroRecords = [];
@@ -99,13 +101,13 @@ class MigrationService {
       try {
         pomodoroTags = await ApiService.fetchPomodoroTags(oldUserId);
         await StorageService.savePomodoroTags(
-            oldUserId.toString(), pomodoroTags.cast<Map<String, dynamic>>());
+            storageUsername, pomodoroTags.cast<Map<String, dynamic>>());
       } catch (_) {}
 
       onProgress("📥 拉取课表数据...");
       List<dynamic> courses = [];
       try {
-        courses = await ApiService.fetchCourses(oldUserId);
+        courses = await ApiService.fetchAllCourses(oldUserId);
       } catch (_) {}
 
       if (courses.isNotEmpty) {
@@ -120,9 +122,14 @@ class MigrationService {
                   weekIndex: (c['week_index'] as num?)?.toInt() ?? 1,
                   lessonType: c['lesson_type'] ?? '',
                   date: c['date'] ?? '',
+                  semesterId: (c['semester'] ??
+                          c['semester_id'] ??
+                          c['semesterId'] ??
+                          'default')
+                      .toString(),
                 ))
             .toList();
-        await CourseService.saveCourses(oldUserId.toString(), courseItems);
+        await CourseService.saveCourses(storageUsername, courseItems);
       }
 
       // ==========================================
@@ -196,12 +203,12 @@ class MigrationService {
       // 4. 全量上传数据到新服务器
       // ==========================================
       onProgress("📤 上传待办事项、倒计时与时间记录...");
-      await StorageService.syncData(newUserId.toString(),
+      await StorageService.syncData(storageUsername,
           forceFullSync: true, uploadAllLocal: true);
 
       if (courses.isNotEmpty) {
         onProgress("📤 上传课表...");
-        await CourseService.syncCoursesToCloud(newUserId.toString(), newUserId);
+        await CourseService.syncCoursesToCloud(storageUsername, newUserId);
       }
 
       if (pomodoroRecords.isNotEmpty) {
