@@ -7,6 +7,32 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('restores the authenticated user id after a cold start', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'alice',
+      'auth_session_token': 'token',
+      'current_user_id': 42,
+    });
+    ApiService.currentUserId = 0;
+    ApiService.setToken('');
+
+    expect(await UserSessionStorage.getLoginSession(), 'alice');
+    expect(ApiService.getToken(), 'token');
+    expect(ApiService.currentUserId, 42);
+  });
+
+  test('does not restore an orphaned user id without an active session',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'auth_session_token': 'stale-token',
+      'current_user_id': 42,
+    });
+    ApiService.currentUserId = 99;
+
+    expect(await UserSessionStorage.getLoginSession(), isNull);
+    expect(ApiService.currentUserId, 0);
+  });
+
   test('clearLoginSession clears identity and auth state together', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'alice',

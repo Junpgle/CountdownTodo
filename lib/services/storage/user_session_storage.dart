@@ -95,6 +95,16 @@ class UserSessionStorage {
     final storage = prefs ?? await _prefs;
     final token = storage.getString(_authToken);
     ApiService.setToken(token ?? '');
+    final username = storage.getString(_currentUser)?.trim();
+    final storedUserId = storage.getInt('current_user_id');
+    ApiService.currentUserId = token != null &&
+            token.isNotEmpty &&
+            username != null &&
+            username.isNotEmpty &&
+            storedUserId != null &&
+            storedUserId > 0
+        ? storedUserId
+        : 0;
     return token;
   }
 
