@@ -186,7 +186,7 @@ class CountdownSectionWidget extends StatefulWidget {
   final bool isLight;
   final VoidCallback onDataChanged;
   final Key? addKey; // 🚀 新增 addKey 用于高亮引导
-  final Key? historyKey; // 🚀 新增 historyKey 用于高亮引导
+  final GlobalKey? historyKey; // 用于历史页共享容器转场
 
   const CountdownSectionWidget({
     super.key,
@@ -205,7 +205,10 @@ class CountdownSectionWidget extends StatefulWidget {
 class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     with TickerProviderStateMixin {
   final Map<String, AnimationController> _pulseControllers = {};
+  final GlobalKey _localHistoryKey = GlobalKey();
   String? _selectedTeamUuid; // 🚀 选中的团队视口
+
+  GlobalKey get _historySourceKey => widget.historyKey ?? _localHistoryKey;
 
   static const _holidayKeywords = [
     '假期',
@@ -357,17 +360,20 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                   },
                 ),
               SizedBox(
-                key: widget.historyKey,
+                key: _historySourceKey,
                 child: IconButton(
                   style: floatingGlassPlainIconButtonStyle(),
                   icon: Icon(Icons.history,
                       color: useDarkUI ? Colors.white70 : Colors.grey),
                   onPressed: () async {
-                    await Navigator.push(
-                        context,
-                        PageTransitions.slideHorizontal(
-                            HistoricalCountdownsScreen(
-                                username: widget.username)));
+                    await PageTransitions.pushFromRect(
+                      context: context,
+                      page: HistoricalCountdownsScreen(
+                        username: widget.username,
+                      ),
+                      sourceKey: _historySourceKey,
+                      placeholderIcon: Icons.history_rounded,
+                    );
                     widget.onDataChanged();
                   },
                 ),

@@ -1269,10 +1269,12 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _openHomeFinanceQuickEntry() async {
-    await Navigator.of(context).push<FinanceTransaction>(
-      PageTransitions.slideHorizontal(
-        const FinanceEntryScreen(),
-      ),
+    await PageTransitions.pushFromRect<FinanceTransaction>(
+      context: context,
+      page: const FinanceEntryScreen(),
+      sourceKey: _homeAddActionKey,
+      placeholderIcon: Icons.account_balance_wallet_outlined,
+      sourceBorderRadius: const BorderRadius.all(Radius.circular(22)),
     );
   }
 
@@ -1376,6 +1378,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     required IconData icon,
     required String title,
     required String subtitle,
+    void Function(ModalRoute<_HomeAddAction>?)? onBeforeSelect,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     return Material(
@@ -1384,7 +1387,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         key: key,
-        onTap: () => Navigator.of(context).pop(action),
+        onTap: () {
+          onBeforeSelect?.call(ModalRoute.of<_HomeAddAction>(context));
+          Navigator.of(context).pop(action);
+        },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
           child: Column(
@@ -1430,6 +1436,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _openHomeAddMenu() async {
+    ModalRoute<_HomeAddAction>? menuRoute;
     final action = await showModalBottomSheet<_HomeAddAction>(
       context: context,
       showDragHandle: true,
@@ -1484,6 +1491,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                       icon: Icons.account_balance_wallet_outlined,
                       title: '记账',
                       subtitle: '收入或支出',
+                      onBeforeSelect: (route) => menuRoute = route,
                     ),
                   ),
                 ],
@@ -1494,6 +1502,12 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       ),
     );
     if (!mounted || action == null) return;
+
+    if (action == _HomeAddAction.finance) {
+      // The sheet result arrives before its exit animation finishes.
+      await menuRoute?.completed;
+      if (!mounted) return;
+    }
 
     switch (action) {
       case _HomeAddAction.todo:

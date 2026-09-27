@@ -93,8 +93,8 @@ class TodoSectionWidget extends StatefulWidget {
 
   final Function(String?, String?)? onTeamChanged; // 🚀 传参：ID, Name
 
-  final Key? folderKey;
-  final Key? historyKey;
+  final GlobalKey? folderKey;
+  final GlobalKey? historyKey;
 
   const TodoSectionWidget({
     super.key,
@@ -220,6 +220,8 @@ abstract class _TodoSectionStateBase extends State<TodoSectionWidget>
   bool _hasInitializedExpansion = false;
 
   final Map<String, GlobalKey> _todoCardKeys = {};
+  final GlobalKey _folderManagementButtonKey = GlobalKey();
+  final GlobalKey _historicalTodosButtonKey = GlobalKey();
   final Map<String, Key> _todoDismissKeys = {};
   final Map<String, AnimationController> _completingAnimations = {};
   final Map<String, bool> _isCompleting = {};
