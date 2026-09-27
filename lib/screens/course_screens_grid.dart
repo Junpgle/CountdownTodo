@@ -291,7 +291,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                       ? colorScheme.onTertiary
                       : colorScheme.onSecondary));
 
-          final currentDay = monday.add(Duration(days: index));
+          final currentDay = CalendarDateMath.addDays(monday, index);
           final dayKey = DateFormat('yyyy-MM-dd').format(currentDay);
           final allDaySourceKey = deviceEvents.isEmpty
               ? null
@@ -480,7 +480,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
           bool isToday = false;
 
           if (monday != null) {
-            currentDate = monday.add(Duration(days: index));
+            currentDate = CalendarDateMath.addDays(monday, index);
             dateStr = DateFormat('M/dd').format(currentDate);
             isToday = DateFormat('yyyy-MM-dd').format(currentDate) == todayStr;
           }
@@ -1282,7 +1282,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             monday.month,
             monday.day + weekday - 1,
           );
-          final dayEnd = dayStart.add(const Duration(days: 1));
+          final dayEnd = CalendarDateMath.addDays(dayStart, 1);
           for (final schedule in (_fixedSchedulesPerDay[weekday] ?? const [])
               .where((item) => item.startTime != null)) {
             final scheduleStart =
@@ -1328,7 +1328,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                     : Colors.white;
             final fixedScheduleCardKey =
                 _getFixedScheduleCardKey(schedule.id, weekday);
-          eventsPerDay[weekday]!.add(_TimelineEvent(
+            eventsPerDay[weekday]!.add(_TimelineEvent(
               top: top,
               bottom: top + height,
               collisionBottom: bottom,
@@ -1508,11 +1508,11 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
                 .toList()
                 .indexOf(record);
 
-          eventsPerDay[weekday]!.add(_TimelineEvent(
-              top: top,
-              bottom: top + height,
-              collisionBottom: bottom,
-              builder: (left, width) {
+            eventsPerDay[weekday]!.add(_TimelineEvent(
+                top: top,
+                bottom: top + height,
+                collisionBottom: bottom,
+                builder: (left, width) {
                   final double fontScale =
                       (width / (cellWidth - 2)).clamp(0.4, 1.0);
                   final double titleFontSize =
@@ -1635,7 +1635,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
             monday.month,
             monday.day + weekday - 1,
           );
-          final dayEnd = dayStart.add(const Duration(days: 1));
+          final dayEnd = CalendarDateMath.addDays(dayStart, 1);
           for (final event in _timedDeviceCalendarEventsPerDay[weekday] ??
               const <DeviceCalendarEvent>[]) {
             final sliceStart =
@@ -1668,7 +1668,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
               surface: 'week-timed',
             );
 
-          eventsPerDay[weekday]!.add(_TimelineEvent(
+            eventsPerDay[weekday]!.add(_TimelineEvent(
               top: top,
               bottom: top + height,
               collisionBottom: bottom,
@@ -1950,10 +1950,8 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
     if (now.hour >= startHour && now.hour <= endHour) {
       if (_semesterMonday != null) {
         DateTime currentMonday =
-            _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
-        int diffDays = DateTime(now.year, now.month, now.day)
-            .difference(currentMonday)
-            .inDays;
+            CalendarDateMath.addDays(_semesterMonday!, (_currentWeek - 1) * 7);
+        int diffDays = CalendarDateMath.daysBetween(currentMonday, now);
 
         if (diffDays >= 0 && diffDays <= 6) {
           double nowY = _timeToY(now.hour, now.minute, minuteHeight);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../storage_service.dart';
+import '../utils/calendar_date_math.dart';
 import 'course_schedule_semantics.dart';
 
 /// Performs the checks that must succeed before a course import starts.
@@ -224,10 +225,9 @@ class CourseImportPreflight {
                         onPressed: () async {
                           final picked = await showDatePicker(
                             context: dialogContext,
-                            initialDate: startDate?.add(
-                                  const Duration(days: 120),
-                                ) ??
-                                DateTime.now(),
+                            initialDate: startDate == null
+                                ? DateTime.now()
+                                : CalendarDateMath.addDays(startDate!, 120),
                             firstDate: DateTime(2020),
                             lastDate: DateTime(2100),
                             helpText: '选择放假日期',

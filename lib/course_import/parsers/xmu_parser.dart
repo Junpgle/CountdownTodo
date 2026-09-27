@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart';
-import 'package:intl/intl.dart';
 import '../../models.dart';
 import '../course_schedule_semantics.dart';
 
@@ -11,8 +10,6 @@ class XmuScheduleParser {
   static List<CourseItem> parseHtml(
       String htmlString, DateTime semesterStartDate) {
     List<CourseItem> courses = [];
-    final semesterMonday = CourseScheduleSemantics.mondayOf(semesterStartDate);
-
     // 🚀 核心修复：执行绝对安全的底层解码，确保绝不破坏 HTML 标签和现有中文字符
     String cleanHtml = _decodeMhtml(htmlString);
 
@@ -63,11 +60,11 @@ class XmuScheduleParser {
 
       // 5. 因为 CourseItem 需要具体的 date，通过周次和星期推算出来
       for (int week in activeWeeks) {
-        DateTime classDate = semesterMonday
-            .add(Duration(days: (week - 1) * 7)) // 加上周的偏移
-            .add(Duration(days: weekday - 1)); // 加上星期的偏移
-
-        String dateStr = DateFormat('yyyy-MM-dd').format(classDate);
+        final dateStr = CourseScheduleSemantics.dateFor(
+          semesterStart: semesterStartDate,
+          weekIndex: week,
+          weekday: weekday,
+        );
 
         courses.add(CourseItem(
           courseName: courseName,

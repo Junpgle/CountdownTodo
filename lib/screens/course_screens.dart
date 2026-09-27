@@ -12,6 +12,7 @@ import '../storage_service.dart';
 import '../utils/app_color_utils.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/android_energy_policy.dart';
+import '../utils/calendar_date_math.dart';
 import '../utils/local_image_provider.dart';
 import '../utils/page_transitions.dart';
 import 'time_log_screen.dart';
@@ -62,6 +63,7 @@ class _HiddenTimeRange {
 class _TimelineEvent {
   final double top;
   final double bottom;
+
   /// The actual time boundary used for column allocation. [bottom] may be
   /// extended for a readable minimum card height without making adjacent
   /// records look like overlapping events.

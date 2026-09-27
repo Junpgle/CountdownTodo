@@ -48,6 +48,21 @@ void main() {
       );
     });
 
+    test('daily dates stay unique through daylight-saving fall back', () {
+      final dates = FixedScheduleRecurrenceService.occurrenceDates(
+        startDate: DateTime(2026, 10, 31),
+        endDate: DateTime(2026, 11, 3),
+        recurrence: RecurrenceType.daily,
+      );
+
+      expect(dates, [
+        DateTime(2026, 10, 31),
+        DateTime(2026, 11, 1),
+        DateTime(2026, 11, 2),
+        DateTime(2026, 11, 3),
+      ]);
+    });
+
     test('custom day intervals from AI capture are materialized exactly', () {
       final dates = FixedScheduleRecurrenceService.occurrenceDates(
         startDate: DateTime(2026, 7, 1),

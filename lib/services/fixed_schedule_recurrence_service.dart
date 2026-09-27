@@ -1,6 +1,7 @@
 import 'package:intl/intl.dart';
 
 import '../models.dart';
+import '../utils/calendar_date_math.dart';
 
 class FixedScheduleRecurrenceLimitException implements Exception {
   const FixedScheduleRecurrenceLimitException(this.maxOccurrences);
@@ -33,11 +34,10 @@ class FixedScheduleRecurrenceService {
       RecurrenceType.daily ||
       RecurrenceType.weekdays ||
       RecurrenceType.weekly =>
-        start.add(const Duration(days: 56)),
-      RecurrenceType.customDays => start.add(
-          Duration(
-            days: customIntervalDays * 8 > 56 ? customIntervalDays * 8 : 56,
-          ),
+        CalendarDateMath.addDays(start, 56),
+      RecurrenceType.customDays => CalendarDateMath.addDays(
+          start,
+          customIntervalDays * 8 > 56 ? customIntervalDays * 8 : 56,
         ),
       RecurrenceType.monthly => _addMonths(start, 12, start.day),
       RecurrenceType.yearly => _addYears(start, 5, start.month, start.day),
@@ -65,14 +65,15 @@ class FixedScheduleRecurrenceService {
       cursor = switch (recurrence) {
         RecurrenceType.daily ||
         RecurrenceType.weekdays =>
-          cursor.add(const Duration(days: 1)),
-        RecurrenceType.weekly => cursor.add(const Duration(days: 7)),
+          CalendarDateMath.addDays(cursor, 1),
+        RecurrenceType.weekly => CalendarDateMath.addDays(cursor, 7),
         RecurrenceType.monthly => _addMonths(cursor, 1, start.day),
         RecurrenceType.yearly => _addYears(cursor, 1, start.month, start.day),
-        RecurrenceType.customDays => cursor.add(
-            Duration(days: customIntervalDays.clamp(1, 3650).toInt()),
+        RecurrenceType.customDays => CalendarDateMath.addDays(
+            cursor,
+            customIntervalDays.clamp(1, 3650).toInt(),
           ),
-        RecurrenceType.none => end.add(const Duration(days: 1)),
+        RecurrenceType.none => CalendarDateMath.addDays(end, 1),
       };
     }
     if (!cursor.isAfter(end)) {
@@ -211,8 +212,7 @@ class FixedScheduleRecurrenceService {
     ).millisecondsSinceEpoch;
   }
 
-  static DateTime _day(DateTime value) =>
-      DateTime(value.year, value.month, value.day);
+  static DateTime _day(DateTime value) => CalendarDateMath.dateOnly(value);
 
   static String _dateKey(DateTime value) =>
       DateFormat('yyyy-MM-dd').format(value);

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../course_import/course_schedule_semantics.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import '../utils/calendar_date_math.dart';
 import 'storage/storage_key_scope.dart';
 
 class CourseDayTransfer {
@@ -302,9 +303,9 @@ class CourseCalendarAdjustmentService {
           .map((date) => _df.parseStrict(date))
           .toList()
         ..sort();
-      final first = dates.first
-          .subtract(const Duration(days: _officialHolidayPromptLeadDays));
-      final last = dates.last.add(const Duration(days: 7));
+      final first = CalendarDateMath.addDays(
+          dates.first, -_officialHolidayPromptLeadDays);
+      final last = CalendarDateMath.addDays(dates.last, 7);
       if (!current.isBefore(first) &&
           !current.isAfter(last) &&
           !await _isOfficialHolidaySnoozedToday(window.key, current)) {
@@ -426,7 +427,10 @@ class CourseCalendarAdjustmentService {
         final semesterMonday = await semesterMondayFor(course);
         final targetWeekIndex = semesterMonday == null
             ? course.weekIndex
-            : targetDate.difference(semesterMonday).inDays ~/ 7 + 1;
+            : CourseScheduleSemantics.weekIndexForDate(
+                semesterMonday,
+                targetDate,
+              );
         adjusted.add(_copyCourseForDate(
           course,
           date: transfer.toDate,
@@ -448,8 +452,7 @@ class CourseCalendarAdjustmentService {
       List<CourseItem> courses) async {
     final semStart = await StorageService.getSemesterStart();
     if (semStart != null) {
-      final normalized = DateTime(semStart.year, semStart.month, semStart.day);
-      return normalized.subtract(Duration(days: normalized.weekday - 1));
+      return CourseScheduleSemantics.mondayOf(semStart);
     }
 
     final dated = courses.where((c) => c.date.isNotEmpty).toList()
@@ -458,9 +461,10 @@ class CourseCalendarAdjustmentService {
     try {
       final first = dated.first;
       final firstDate = _df.parseStrict(first.date);
-      return DateTime(firstDate.year, firstDate.month, firstDate.day)
-          .subtract(Duration(days: first.weekday - 1))
-          .subtract(Duration(days: (first.weekIndex - 1) * 7));
+      return CalendarDateMath.addDays(
+        CalendarDateMath.dateOnly(firstDate),
+        -(first.weekday - 1) - (first.weekIndex - 1) * 7,
+      );
     } catch (_) {
       return null;
     }

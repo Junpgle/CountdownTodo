@@ -77,7 +77,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     }
 
     final currentWeekMonday =
-        _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
+        CalendarDateMath.addDays(_semesterMonday!, (_currentWeek - 1) * 7);
     final targetSemester = _semesterForDate(currentWeekMonday);
     if (targetSemester != null) {
       final relativeWeek =
@@ -85,7 +85,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
       return '${targetSemester.name} 第 $relativeWeek 周';
     }
 
-    final sunday = currentWeekMonday.add(const Duration(days: 6));
+    final sunday = CalendarDateMath.addDays(currentWeekMonday, 6);
     return '${DateFormat('M/d').format(currentWeekMonday)}-${DateFormat('M/d').format(sunday)}';
   }
 
@@ -96,8 +96,8 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
 
     // 计算当前周次对应的周一日期
     DateTime w1Monday =
-        _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
-    DateTime w2Monday = w1Monday.add(const Duration(days: 7));
+        CalendarDateMath.addDays(_semesterMonday!, (_currentWeek - 1) * 7);
+    DateTime w2Monday = CalendarDateMath.addDays(w1Monday, 7);
 
     // 找到这两个日期属于哪个学期
     String getSemesterWeekLabel(DateTime date) {
@@ -206,8 +206,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
   void _jumpToCurrentWeek() {
     if (_semesterMonday == null) return;
     DateTime now = DateTime.now();
-    int daysDiff = now.difference(_semesterMonday!).inDays;
-    int week = (daysDiff ~/ 7) + 1;
+    int week = CourseScheduleSemantics.weekIndexForDate(_semesterMonday!, now);
     if (week < 1) week = 1;
     _jumpToWeek(week);
   }
@@ -890,7 +889,10 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
 
   DateTime? _getMondayOfCurrentWeek() {
     if (_semesterMonday != null) {
-      return _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
+      return CalendarDateMath.addDays(
+        _semesterMonday!,
+        (_currentWeek - 1) * 7,
+      );
     }
     return null;
   }
@@ -985,7 +987,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
 
       final weekStart =
           DateTime(weekMonday.year, weekMonday.month, weekMonday.day);
-      final weekEnd = weekStart.add(const Duration(days: 7));
+      final weekEnd = CalendarDateMath.addDays(weekStart, 7);
       DateTime start =
           DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
       DateTime end =
@@ -997,7 +999,7 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
 
       DateTime dayStart = DateTime(start.year, start.month, start.day);
       while (dayStart.isBefore(end)) {
-        final dayEnd = dayStart.add(const Duration(days: 1));
+        final dayEnd = CalendarDateMath.addDays(dayStart, 1);
         final sliceStart = start.isAfter(dayStart) ? start : dayStart;
         final sliceEnd = end.isBefore(dayEnd) ? end : dayEnd;
         if (sliceEnd.isAfter(sliceStart)) {

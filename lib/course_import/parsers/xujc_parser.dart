@@ -1,6 +1,5 @@
 import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart';
-import 'package:intl/intl.dart';
 import '../../models.dart';
 import '../course_schedule_semantics.dart';
 
@@ -26,8 +25,6 @@ class XujcScheduleParser {
       String htmlString, DateTime semesterStartDate) {
     List<CourseItem> courses = [];
     Document document = parser.parse(htmlString);
-    final semesterMonday = CourseScheduleSemantics.mondayOf(semesterStartDate);
-
     // 嘉庚学院课表通常在 class="data small solid" 的 table 中
     Element? table = document.querySelector('table.solid');
     if (table == null) return [];
@@ -95,11 +92,11 @@ class XujcScheduleParser {
           int endTime = timeMap[endJc]?[1] ?? (timeMap[startJc]?[1] ?? 845);
 
           for (int week in activeWeeks) {
-            DateTime classDate = semesterMonday
-                .add(Duration(days: (week - 1) * 7))
-                .add(Duration(days: weekday - 1));
-
-            String dateStr = DateFormat('yyyy-MM-dd').format(classDate);
+            final dateStr = CourseScheduleSemantics.dateFor(
+              semesterStart: semesterStartDate,
+              weekIndex: week,
+              weekday: weekday,
+            );
 
             courses.add(CourseItem(
               courseName: courseName,

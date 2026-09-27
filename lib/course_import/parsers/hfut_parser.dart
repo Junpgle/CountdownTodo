@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../../models.dart';
+import '../course_schedule_semantics.dart';
 
 class HfutScheduleParser {
   /// 校验传入的字符串（JSON或HTML）是否符合课表格式
@@ -44,18 +45,15 @@ class HfutScheduleParser {
     // 🚀 核心逻辑：结合开学日期补全具体日期
     List<CourseItem> finalCourses = initialCourses;
     if (semesterStart != null) {
-      // 无论用户选的是哪一天，都先对齐到该周的周一
-      final semesterMonday =
-          semesterStart.subtract(Duration(days: semesterStart.weekday - 1));
-
       finalCourses = initialCourses.map((c) {
         if (c.date.isNotEmpty) return c;
         // 🚀 修复点1：计算日期: 该周周一 + ((周次 - 1) * 7) + (星期 - 1)
         // 以前 c.weekIndex 是0导致第一周倒退7天，现在统一 c.weekIndex 是基于1 of the week index
-        final courseDate = semesterMonday
-            .add(Duration(days: (c.weekIndex - 1) * 7 + (c.weekday - 1)));
-        final dateStr =
-            "${courseDate.year}-${courseDate.month.toString().padLeft(2, '0')}-${courseDate.day.toString().padLeft(2, '0')}";
+        final dateStr = CourseScheduleSemantics.dateFor(
+          semesterStart: semesterStart,
+          weekIndex: c.weekIndex,
+          weekday: c.weekday,
+        );
         return CourseItem(
           courseName: c.courseName,
           teacherName: c.teacherName,

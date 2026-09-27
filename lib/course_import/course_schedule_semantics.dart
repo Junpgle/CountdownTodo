@@ -1,6 +1,7 @@
 import 'package:intl/intl.dart';
 
 import '../models.dart';
+import '../utils/calendar_date_math.dart';
 
 /// Aggregated schedule information for all occurrences of one course series.
 class CourseSeriesSummary {
@@ -27,8 +28,8 @@ abstract final class CourseScheduleSemantics {
   static final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
 
   static DateTime mondayOf(DateTime startDate) {
-    final normalized = DateTime(startDate.year, startDate.month, startDate.day);
-    return normalized.subtract(Duration(days: normalized.weekday - 1));
+    final normalized = CalendarDateMath.dateOnly(startDate);
+    return CalendarDateMath.addDays(normalized, 1 - normalized.weekday);
   }
 
   static String dateFor({
@@ -38,11 +39,15 @@ abstract final class CourseScheduleSemantics {
   }) {
     final safeWeek = weekIndex < 1 ? 1 : weekIndex;
     final safeWeekday = weekday.clamp(DateTime.monday, DateTime.sunday).toInt();
-    final date = mondayOf(semesterStart).add(Duration(
-      days: (safeWeek - 1) * 7 + (safeWeekday - 1),
-    ));
+    final date = CalendarDateMath.addDays(
+      mondayOf(semesterStart),
+      (safeWeek - 1) * 7 + safeWeekday - 1,
+    );
     return _dateFormat.format(date);
   }
+
+  static int weekIndexForDate(DateTime semesterStart, DateTime date) =>
+      CalendarDateMath.daysBetween(mondayOf(semesterStart), date) ~/ 7 + 1;
 
   /// Course times are stored as HHMM integers.  Zero, malformed minutes, and
   /// reversed ranges mean that the parser did not produce a usable slot.

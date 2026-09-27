@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 import '../services/course_legacy_recovery.dart';
 import '../services/course_calendar_adjustment_service.dart';
 import '../storage_service.dart';
+import '../utils/calendar_date_math.dart';
 import '../utils/text_file_reader.dart';
 
 // 引入不同高校的解析器
@@ -791,7 +792,7 @@ class CourseService {
       if (courses.isEmpty) return {'title': '暂无课表', 'courses': <CourseItem>[]};
 
       DateTime now = DateTime.now();
-      DateTime todayNormalized = DateTime(now.year, now.month, now.day);
+      DateTime todayNormalized = CalendarDateMath.dateOnly(now);
       String todayStr = DateFormat('yyyy-MM-dd').format(now);
       int currentHHMM = now.hour * 100 + now.minute;
       final semesters = await StorageService.getSemesters();
@@ -827,7 +828,8 @@ class CourseService {
         todayCourses = courses.where((c) {
           final monday = semesterMondayFor(c);
           if (monday == null) return false;
-          final todayWeek = todayNormalized.difference(monday).inDays ~/ 7 + 1;
+          final todayWeek =
+              CourseScheduleSemantics.weekIndexForDate(monday, todayNormalized);
           return c.weekIndex == todayWeek && c.weekday == todayWeekday;
         }).toList();
       }
@@ -842,9 +844,8 @@ class CourseService {
       }
 
       // 2. 今天的课没排，或者“今天的课都上完了”，找明天的
-      DateTime tomorrow = now.add(const Duration(days: 1));
-      DateTime tomorrowNormalized =
-          DateTime(tomorrow.year, tomorrow.month, tomorrow.day);
+      DateTime tomorrow = CalendarDateMath.addDays(todayNormalized, 1);
+      DateTime tomorrowNormalized = tomorrow;
       String tomorrowStr = DateFormat('yyyy-MM-dd').format(tomorrow);
       List<CourseItem> tomorrowCourses =
           courses.where((c) => c.date == tomorrowStr).toList();
@@ -855,8 +856,10 @@ class CourseService {
         tomorrowCourses = courses.where((c) {
           final monday = semesterMondayFor(c);
           if (monday == null) return false;
-          final tomorrowWeek =
-              tomorrowNormalized.difference(monday).inDays ~/ 7 + 1;
+          final tomorrowWeek = CourseScheduleSemantics.weekIndexForDate(
+            monday,
+            tomorrowNormalized,
+          );
           return c.weekIndex == tomorrowWeek && c.weekday == tomorrowWeekday;
         }).toList();
       }
@@ -879,8 +882,9 @@ class CourseService {
         }
         final semMonday = semesterMondayFor(c);
         if (courseDay == null && semMonday != null && c.weekIndex > 0) {
-          courseDay = semMonday.add(
-            Duration(days: (c.weekIndex - 1) * 7 + c.weekday - 1),
+          courseDay = CalendarDateMath.addDays(
+            semMonday,
+            (c.weekIndex - 1) * 7 + c.weekday - 1,
           );
         }
         if (courseDay == null) continue;
@@ -904,7 +908,7 @@ class CourseService {
             .map((entry) => entry.value)
             .toList()
           ..sort((a, b) => a.startTime.compareTo(b.startTime));
-        final days = nextDay.difference(todayNormalized).inDays;
+        final days = CalendarDateMath.daysBetween(todayNormalized, nextDay);
         return {'title': '$days天后课程', 'courses': nextCourses};
       }
 
