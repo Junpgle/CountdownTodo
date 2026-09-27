@@ -122,9 +122,12 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
         isUtc: true,
       ).toLocal();
       if (previousStart != null && todo.recurrence != RecurrenceType.none) {
-        var missingStart = _nextRecurrenceStart(previousStart, todo);
+        var missingStart =
+            TodoRecurrenceDateService.nextDate(previousStart, todo);
         var guard = 0;
-        while (missingStart.isBefore(start) && guard < 90) {
+        while (missingStart != null &&
+            missingStart.isBefore(start) &&
+            guard < 90) {
           allNodes.add(TodoRecurrenceProgressNode(
             date: missingStart,
             state: missingStart.isAfter(now)
@@ -133,7 +136,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
                     ? TodoRecurrenceNodeState.overdue
                     : TodoRecurrenceNodeState.pending,
           ));
-          missingStart = _nextRecurrenceStart(missingStart, todo);
+          missingStart = TodoRecurrenceDateService.nextDate(missingStart, todo);
           guard++;
         }
       }
@@ -186,7 +189,10 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
             futureCount >= openEndedFuturePreviewCount) {
           break;
         }
-        projectedStart = _nextRecurrenceStart(projectedStart, todo);
+        final nextStart =
+            TodoRecurrenceDateService.nextDate(projectedStart, todo);
+        if (nextStart == null) break;
+        projectedStart = nextStart;
         final projectedDay = DateTime(
           projectedStart.year,
           projectedStart.month,
@@ -398,56 +404,6 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
         ),
       ),
     );
-  }
-
-  DateTime _nextRecurrenceStart(DateTime current, TodoItem todo) {
-    switch (todo.recurrence) {
-      case RecurrenceType.daily:
-        return DateTime(current.year, current.month, current.day + 1,
-            current.hour, current.minute, current.second, current.millisecond);
-      case RecurrenceType.customDays:
-        final days = todo.customIntervalDays ?? 1;
-        return DateTime(current.year, current.month, current.day + days,
-            current.hour, current.minute, current.second, current.millisecond);
-      case RecurrenceType.weekly:
-        return DateTime(current.year, current.month, current.day + 7,
-            current.hour, current.minute, current.second, current.millisecond);
-      case RecurrenceType.weekdays:
-        var next = DateTime(current.year, current.month, current.day + 1,
-            current.hour, current.minute, current.second, current.millisecond);
-        while (next.weekday == DateTime.saturday ||
-            next.weekday == DateTime.sunday) {
-          next = DateTime(next.year, next.month, next.day + 1, next.hour,
-              next.minute, next.second, next.millisecond);
-        }
-        return next;
-      case RecurrenceType.monthly:
-        final targetMonth = DateTime(current.year, current.month + 1);
-        final lastDay =
-            DateTime(targetMonth.year, targetMonth.month + 1, 0).day;
-        return DateTime(
-          targetMonth.year,
-          targetMonth.month,
-          current.day.clamp(1, lastDay),
-          current.hour,
-          current.minute,
-          current.second,
-          current.millisecond,
-        );
-      case RecurrenceType.yearly:
-        final lastDay = DateTime(current.year + 1, current.month + 1, 0).day;
-        return DateTime(
-          current.year + 1,
-          current.month,
-          current.day.clamp(1, lastDay),
-          current.hour,
-          current.minute,
-          current.second,
-          current.millisecond,
-        );
-      case RecurrenceType.none:
-        return current;
-    }
   }
 
   // ─────────────────────────────────────────────

@@ -35,6 +35,7 @@ import '../services/pomodoro_sync_service.dart';
 import '../services/feature_tip_service.dart';
 import '../services/item_semantics_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
+import '../services/todo_recurrence_date_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/recognized_todo_adapter.dart';
 import '../widgets/coach_mark_overlay.dart';

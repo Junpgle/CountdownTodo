@@ -113,8 +113,6 @@ mixin _TodoSectionContract {
 
   Future<void> _showRecurrenceManagement(TodoItem todo);
 
-  DateTime _nextRecurrenceStart(DateTime current, TodoItem todo);
-
   Widget _buildTodoItemCard(
     TodoItem todo, {
     required bool isPast,

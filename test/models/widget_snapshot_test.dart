@@ -1,4 +1,6 @@
+import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/models/widget_snapshot.dart';
+import 'package:countdown_todo/utils/widget_recurrence_series.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -71,6 +73,27 @@ void main() {
     });
 
     expect(restored.recurrenceSeries, isEmpty);
+  });
+
+  test('invalid custom interval is inactive in the widget projection', () {
+    final start = DateTime(2026, 9, 27, 9);
+    final todo = TodoItem(
+      id: 'occurrence-1',
+      title: '旧版循环待办',
+      recurrenceSeriesId: 'series-1',
+      recurrence: RecurrenceType.customDays,
+      customIntervalDays: 0,
+      createdDate: start.millisecondsSinceEpoch,
+    );
+
+    final series = buildWidgetRecurrenceSeries(
+      [todo],
+      now: DateTime(2026, 9, 27, 10),
+    ).single;
+
+    expect(series.isActive, isFalse);
+    expect(series.occurrences, hasLength(1));
+    expect(series.occurrences.single.isProjected, isFalse);
   });
 
   test('habit items survive a widget snapshot JSON round trip', () {

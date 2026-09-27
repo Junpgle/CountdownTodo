@@ -16,6 +16,7 @@ import 'services/database_helper.dart'; // 🚀 引入 Uni-Sync 新引擎
 import 'services/sync_capability_service.dart';
 import 'services/sync_oplog_policy.dart';
 import 'services/todo_lww_service.dart';
+import 'services/todo_recurrence_date_service.dart';
 import 'services/storage/app_settings_storage.dart';
 import 'services/storage/countdown_storage.dart';
 import 'services/storage/habit_storage.dart';
