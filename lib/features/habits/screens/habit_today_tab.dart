@@ -1,9 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
-import '../../../screens/pomodoro_screen.dart';
-import '../../../services/pomodoro_control_service.dart';
-import '../../../services/pomodoro_service.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/platform_backdrop_filter.dart';
@@ -12,6 +9,7 @@ import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import '../services/habit_day_loader.dart';
 import '../services/habit_sleep_duration_service.dart';
+import '../services/habit_focus_launcher.dart';
 import '../widgets/habit_card.dart';
 import 'habit_detail_screen.dart';
 import 'habit_edit_screen.dart';
@@ -125,43 +123,12 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
   }
 
   /// 时长型：启动专注并跳转番茄钟，默认时长为习惯设置的默认时长。
-  Future<void> _startFocus(HabitGoal goal) async {
-    final tagUuids = goal.sourceType == HabitSourceType.pomodoroTag
-        ? goal.sourceIds
-        : const <String>[];
-    final running = await PomodoroService.loadRunState();
-    if (running != null &&
-        (running.phase == PomodoroPhase.focusing ||
-            running.phase == PomodoroPhase.breaking)) {
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        PageTransitions.material(
-          builder: (_) => PomodoroScreen(username: widget.username),
-        ),
+  Future<void> _startFocus(HabitGoal goal) => HabitFocusLauncher.open(
+        context: context,
+        username: widget.username,
+        goal: goal,
+        onReturned: _handleChanged,
       );
-      return;
-    }
-    try {
-      final settings = await PomodoroService.getSettings();
-      await PomodoroControlService.startFocus(
-        settings: settings,
-        tagUuids: tagUuids,
-        durationMinutes: goal.defaultFocusMinutes,
-      );
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        PageTransitions.material(
-          builder: (_) => PomodoroScreen(username: widget.username),
-        ),
-      );
-      if (mounted) _handleChanged();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('启动专注失败: $e')),
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
