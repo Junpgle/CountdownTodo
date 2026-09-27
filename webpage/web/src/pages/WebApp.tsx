@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useEffectEvent } from 'react';
 import {
   Plus, Trash2, Clock, CheckCircle2, Check, X, RefreshCw, LogOut,
   ChevronDown, ChevronRight, LayoutDashboard, PieChart as PieChartIcon,
@@ -250,11 +250,20 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     return () => clearInterval(id);
   }, []);
 
+  const runDataTask = useEffectEvent((task: 'load' | 'sync' | 'teams' | 'announcements') => {
+    switch (task) {
+      case 'load': void loadLocalData(); break;
+      case 'sync': void handleSync(); break;
+      case 'teams': void fetchUserTeams(); break;
+      case 'announcements': void fetchPriorityAnns(); break;
+    }
+  });
+
   useEffect(() => {
-    loadLocalData();
-    handleSync();
-    fetchUserTeams();
-    fetchPriorityAnns();
+    runDataTask('load');
+    runDataTask('sync');
+    runDataTask('teams');
+    runDataTask('announcements');
 
     const ws = WsService.getInstance();
     ws.connect(user.id);
@@ -352,22 +361,22 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
       const now = Date.now();
       if (now - lastSyncDataTimeRef.current < SYNC_DATA_COOLDOWN_MS) return;
       lastSyncDataTimeRef.current = now;
-      handleSync();
+      runDataTask('sync');
     });
     const unsubTeamUpdate = ws.on('TEAM_UPDATE', () => {
-      handleSync();
-      fetchUserTeams();
-      fetchPriorityAnns();
+      runDataTask('sync');
+      runDataTask('teams');
+      runDataTask('announcements');
     });
-    const unsubNewAnnouncement = ws.on('NEW_ANNOUNCEMENT', () => { fetchPriorityAnns(); });
-    const unsubNewJoinRequest = ws.on('NEW_JOIN_REQUEST', () => { fetchUserTeams(); });
+    const unsubNewAnnouncement = ws.on('NEW_ANNOUNCEMENT', () => { runDataTask('announcements'); });
+    const unsubNewJoinRequest = ws.on('NEW_JOIN_REQUEST', () => { runDataTask('teams'); });
     const unsubMemberLeft = ws.on('TEAM_MEMBER_LEFT', () => {
-      fetchUserTeams();
-      fetchPriorityAnns();
+      runDataTask('teams');
+      runDataTask('announcements');
     });
     const unsubTeamRemoved = ws.on('TEAM_REMOVED', () => {
-      fetchUserTeams();
-      fetchPriorityAnns();
+      runDataTask('teams');
+      runDataTask('announcements');
     });
 
     // 新设备上线告知服务端当前空闲
@@ -377,7 +386,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
       setNowMs(Date.now());
     }, 60000);
     const annPollTimer = setInterval(() => {
-      fetchPriorityAnns();
+      runDataTask('announcements');
     }, 300000);
 
     const checkWebUpdate = async () => {
@@ -417,7 +426,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
       unsubTeamRemoved();
       ws.disconnect();
     };
-  }, []);
+  }, [user.id]);
 
   const fetchUserTeams = async () => {
     try {

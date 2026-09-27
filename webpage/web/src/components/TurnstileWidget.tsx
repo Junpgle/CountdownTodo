@@ -32,7 +32,9 @@ export const TurnstileWidget = forwardRef<TurnstileWidgetRef, TurnstileWidgetPro
 
     // 所有回调和配置都用 ref，不进 useEffect 依赖
     const configRef = useRef({ action, onVerified, onExpired, onError });
-    configRef.current = { action, onVerified, onExpired, onError };
+    useEffect(() => {
+      configRef.current = { action, onVerified, onExpired, onError };
+    }, [action, onVerified, onExpired, onError]);
 
     // 暴露 reset 给父组件
     useImperativeHandle(ref, () => ({
@@ -40,7 +42,9 @@ export const TurnstileWidget = forwardRef<TurnstileWidgetRef, TurnstileWidgetPro
         if (window.turnstile && widgetIdRef.current) {
           try {
             window.turnstile.reset(widgetIdRef.current);
-          } catch (_) {}
+          } catch {
+            // The widget may already have been removed.
+          }
         }
       },
     }));
@@ -123,7 +127,9 @@ export const TurnstileWidget = forwardRef<TurnstileWidgetRef, TurnstileWidgetPro
       return () => {
         cancelled = true;
         if (widgetIdRef.current && window.turnstile) {
-          try { window.turnstile.remove(widgetIdRef.current); } catch (_) {}
+          try { window.turnstile.remove(widgetIdRef.current); } catch {
+            // The widget may already have been removed.
+          }
           widgetIdRef.current = null;
           renderedRef.current = false;
         }

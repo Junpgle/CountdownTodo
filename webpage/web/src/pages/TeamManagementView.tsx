@@ -1,17 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Users, Plus, LogOut, Trash2, X, User,
   Link as LinkIcon, ChevronRight, Loader2, AlertCircle,
   MessageSquare, UserPlus, ShieldCheck, Search,
   Megaphone, Clock, Activity
 } from 'lucide-react';
-import { ApiService } from '../services/api';
+import { ApiRequestError, ApiService } from '../services/api';
 import type { Team, TeamMember, JoinRequest, User as UserType, TeamAnnouncement } from '../types';
 
 interface TeamManagementViewProps {
   user: UserType;
   onBack: () => void;
 }
+
+interface ActivityLog {
+  type: string;
+  request_status?: number | null;
+  message: string;
+  timestamp: number;
+  username: string;
+  user_id: number;
+}
+
+const errorMessage = (error: unknown, fallback: string): string =>
+  error instanceof Error && error.message ? error.message : fallback;
 
 export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) => {
   const [teams, setTeams] = useState<Team[]>([]);
@@ -36,19 +48,11 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
   const [isPriority, setIsPriority] = useState(false);
   
   // Activity Logs
-  const [activityLogs, setActivityLogs] = useState<any[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
 
   useEffect(() => {
     fetchInitialData();
   }, []);
-
-  useEffect(() => {
-    if (activeTeamId) {
-      fetchTeamDetails(activeTeamId);
-      fetchAnnouncements(activeTeamId);
-      fetchActivityLogs(activeTeamId);
-    }
-  }, [activeTeamId]);
 
   const fetchInitialData = async () => {
     setLoading(true);
@@ -57,14 +61,14 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
       const invRes = await ApiService.request('/api/teams/invitations');
       if (teamsRes.success) setTeams(teamsRes.teams as Team[]);
       if (invRes.success) setInvitations(invRes.invitations as JoinRequest[]);
-    } catch (e: any) {
-      console.error(e?.message || '获取数据失败');
+    } catch (e: unknown) {
+      console.error(errorMessage(e, '获取数据失败'));
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchTeamDetails = async (teamUuid: string) => {
+  const fetchTeamDetails = useCallback(async (teamUuid: string) => {
     try {
       const membersRes = await ApiService.request(`/api/teams/members?team_uuid=${teamUuid}`);
       if (membersRes.success) setTeamMembers(membersRes.members as TeamMember[]);
@@ -74,10 +78,10 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
         const reqRes = await ApiService.request(`/api/teams/pending_requests?team_uuid=${teamUuid}`);
         if (reqRes.success) setJoinRequests(reqRes.requests as JoinRequest[]);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('获取团队详情失败', e);
     }
-  };
+  }, [teams]);
 
   const fetchAnnouncements = async (teamUuid: string) => {
     try {
@@ -91,11 +95,19 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
   const fetchActivityLogs = async (teamUuid: string) => {
     try {
       const res = await ApiService.request(`/api/teams/system_messages?team_uuid=${teamUuid}`);
-      if (res.success) setActivityLogs((res.messages ?? []) as any[]);
+      if (res.success) setActivityLogs((res.messages ?? []) as ActivityLog[]);
     } catch (e) {
       console.error('获取动态失败', e);
     }
   };
+
+  useEffect(() => {
+    if (activeTeamId) {
+      fetchTeamDetails(activeTeamId);
+      fetchAnnouncements(activeTeamId);
+      fetchActivityLogs(activeTeamId);
+    }
+  }, [activeTeamId, fetchTeamDetails]);
 
   const handleCreateTeam = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,8 +123,8 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
         setShowCreateModal(false);
         fetchInitialData();
       }
-    } catch (e: any) {
-      alert(e?.message || '创建团队失败');
+    } catch (e: unknown) {
+      alert(errorMessage(e, '创建团队失败'));
     } finally {
       setActionLoading(false);
     }
@@ -133,8 +145,8 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
         setShowJoinModal(false);
         alert(res.message || '申请已提交');
       }
-    } catch (e: any) {
-      alert(e?.message || '加入团队失败');
+    } catch (e: unknown) {
+      alert(errorMessage(e, '加入团队失败'));
     } finally {
       setActionLoading(false);
     }
@@ -153,8 +165,8 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
       if (res.success) {
         fetchInitialData();
       }
-    } catch (e: any) {
-      alert(e.message);
+    } catch (e: unknown) {
+      alert(errorMessage(e, '处理邀请失败'));
     }
   };
 
@@ -174,17 +186,19 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
         fetchAnnouncements(activeTeamId);
         fetchActivityLogs(activeTeamId);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       // 🚀 Uni-Sync 4.0: 处理 409 冲突（已在其他设备处理过）
-      const isHandled = e.status === 409 || e.message?.includes('已处理') || e.message?.includes('并行处理');
+      const message = errorMessage(e, '操作失败');
+      const isHandled = (e instanceof ApiRequestError && e.status === 409) ||
+        message.includes('已处理') || message.includes('并行处理');
       
       if (isHandled) {
-        alert(e.message || '该申请已在其他设备处理');
+        alert(message);
         fetchTeamDetails(activeTeamId);
         fetchAnnouncements(activeTeamId);
         fetchActivityLogs(activeTeamId);
       } else {
-        alert(e.message || '操作失败');
+        alert(message);
       }
     }
   };
@@ -200,8 +214,8 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
         if (activeTeamId === teamUuid) setActiveTeamId(null);
         fetchInitialData();
       }
-    } catch (e: any) {
-      alert(e.message);
+    } catch (e: unknown) {
+      alert(errorMessage(e, '退出团队失败'));
     }
   };
 
@@ -216,8 +230,8 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
         if (activeTeamId === teamUuid) setActiveTeamId(null);
         fetchInitialData();
       }
-    } catch (e: any) {
-      alert(e.message);
+    } catch (e: unknown) {
+      alert(errorMessage(e, '解散团队失败'));
     }
   };
 
@@ -232,8 +246,8 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
       if (res.success) {
         fetchTeamDetails(activeTeamId);
       }
-    } catch (e: any) {
-      alert(e.message);
+    } catch (e: unknown) {
+      alert(errorMessage(e, '移除成员失败'));
     }
   };
 
@@ -258,8 +272,8 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
         setShowAnnounceModal(false);
         fetchAnnouncements(activeTeamId);
       }
-    } catch (e: any) {
-      alert(e.message);
+    } catch (e: unknown) {
+      alert(errorMessage(e, '发布公告失败'));
     } finally {
       setActionLoading(false);
     }
@@ -275,8 +289,8 @@ export const TeamManagementView = ({ user, onBack }: TeamManagementViewProps) =>
       if (res.success && activeTeamId) {
         fetchAnnouncements(activeTeamId);
       }
-    } catch (e: any) {
-      alert(e.message);
+    } catch (e: unknown) {
+      alert(errorMessage(e, '撤回公告失败'));
     }
   };
 

@@ -3,6 +3,7 @@ import { ApiService } from '../services/api';
 import { SyncEngine } from '../services/sync';
 import { WsService } from '../services/websocket';
 import { readDayCache, writeDayCache } from './webapp-utils';
+import type { TodoGroup } from '../types';
 import { ZoomIn, ZoomOut, X, Clock, Calendar, User as UserIcon, CheckCircle2, RefreshCcw, Tag, Layers, ArrowLeft } from 'lucide-react';
 
 const TOMATO_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 21C16.9706 21 21 17.4183 21 13C21 8.58172 16.9706 5 12 5C7.02944 5 3 8.58172 3 13C3 17.4183 7.02944 21 12 21Z" fill="url(#tomatoGrad)"/><path d="M7.5 10C6.5 11 6 12.5 6 13.5C6 14 6.2 14.2 6.5 14C7 13.5 8 11.5 8 10.5C8 10.1 7.8 9.7 7.5 10Z" fill="white" fill-opacity="0.5"/><path d="M12 5V2.5C12 2.22386 12.2239 2 12.5 2C12.7761 2 13 2.22386 13 2.5V5H12Z" fill="#2ECC71"/><path d="M12 5.5C10 4.5 7.5 4.5 6.5 5C8 6 10.5 6 12 5.5Z" fill="#27AE60"/><path d="M12 5.5C14 4.5 16.5 4.5 17.5 5C16 6 13.5 6 12 5.5Z" fill="#27AE60"/><path d="M12 5.5C12 3.5 11 1.5 9.5 1C10.5 2.5 11.5 4 12 5.5Z" fill="#219A52"/><path d="M12 5.5C12 3.5 13 1.5 14.5 1C13.5 2.5 12.5 4 12 5.5Z" fill="#219A52"/><defs><radialGradient id="tomatoGrad" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(10 10) rotate(45) scale(12 12)"><stop offset="0%" stop-color="#FF6B6B"/><stop offset="60%" stop-color="#FF4757"/><stop offset="100%" stop-color="#D63031"/></radialGradient></defs></svg>`;
@@ -123,11 +124,11 @@ const TodayHourlyTimeline: React.FC<{ todos: Todo[], courses: Course[], semester
     return week;
   }, [semesterStart]);
 
-  const todayCourses = useMemo(() => {
+  const todayCourses = (() => {
     const jsDay = currentWeekday === 0 ? 7 : currentWeekday;
     // 只有在明确周数或者课程是全周(0)时才显示
     return courses.filter(c => c.weekday === jsDay && (c.week_index === 0 || c.week_index === currentWeek));
-  }, [courses, currentWeekday, currentWeek]);
+  })();
 
   const { floatingTasks, hourlyTasks } = useMemo(() => {
     const floating: Todo[] = [];
@@ -222,7 +223,7 @@ const TodayHourlyTimeline: React.FC<{ todos: Todo[], courses: Course[], semester
   );
 };
 
-const TaskDetailModal: React.FC<{ task: Todo; todoGroups: any[]; onClose: () => void }> = ({ task, todoGroups, onClose }) => {
+const TaskDetailModal: React.FC<{ task: Todo; todoGroups: TodoGroup[]; onClose: () => void }> = ({ task, todoGroups, onClose }) => {
   const rMap: Record<number, string> = { 0: '无', 1: '每天', 2: '每周', 3: '每月', 4: '每年', 5: '工作日' };
   const groupName = useMemo(() => {
     if (!task.category_id) return '默认分组';
@@ -300,7 +301,7 @@ const GanttChart: React.FC<{ todos: Todo[], dayWidth: number, onTaskClick: (task
       const rows: (typeof enriched)[] = [];
       enriched.forEach(item => {
         let placed = false;
-        for (let row of rows) {
+        for (const row of rows) {
           if (item.start >= row[row.length - 1].end + dayMs * 0.5) {
             row.push(item);
             placed = true;
@@ -429,7 +430,7 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
   const [courses, setCourses] = useState<Course[]>([]);
   const [semesterStart, setSemesterStart] = useState<number | undefined>();
   const [teamCountdowns, setTeamCountdowns] = useState<Countdown[]>([]);
-  const [todoGroups, setTodoGroups] = useState<any[]>([]);
+  const [todoGroups, setTodoGroups] = useState<TodoGroup[]>([]);
   const [announcements, setAnnouncements] = useState<TeamAnnouncement[]>([]);
   const [dayWidth, setDayWidth] = useState(() => window.innerWidth < 768 ? 60 : 100);
   const [detailTask, setDetailTask] = useState<Todo | null>(null);
@@ -493,7 +494,7 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
       // 3. 文件夹
       const rawGroups = SyncEngine.getLocalTodoGroups(user.id);
       const allGroups = (Array.isArray(rawGroups) ? rawGroups : []).filter(g => g && !g.is_deleted);
-      setTodoGroups(Array.from(new Map(allGroups.map(g => [g.uuid || (g as any).id, g])).values()));
+      setTodoGroups(Array.from(new Map(allGroups.map(g => [g.uuid || g.id, g])).values()));
 
       // 4. 加载课程与设置缓存
       const cachedCourses = readDayCache<Course[]>(`u${user.id}_courses`);
@@ -514,7 +515,7 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
 
     try {
       // 1. 并行获取非同步核心数据
-      const requests: Promise<any>[] = [
+      const requests: Promise<Record<string, unknown>>[] = [
         ApiService.request(`/api/courses?user_id=${user.id}`),
         ApiService.request('/api/settings')
       ];
@@ -529,7 +530,9 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
       // 2. 触发后台同步
       await SyncEngine.syncData(user.id);
 
-      if (announcementsData && announcementsData.success) setAnnouncements(announcementsData.announcements);
+      if (announcementsData && announcementsData.success) {
+        setAnnouncements((announcementsData.announcements ?? []) as TeamAnnouncement[]);
+      }
       if (Array.isArray(coursesData)) {
         setCourses(coursesData);
         writeDayCache(`u${user.id}_courses`, coursesData);
@@ -551,10 +554,10 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
   // 1. 初始化加载：进入即读取缓存
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000);
-    if (user) loadLocalData();
-    
+
     const initLoad = async () => {
       if (!user) return;
+      await Promise.resolve();
       loadLocalData();
       try {
         const data = await ApiService.request('/api/teams');
@@ -624,7 +627,7 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
     if (!user) return;
     const ws = WsService.getInstance();
     ws.connect(user.id);
-    checkInitialPomState();
+    void Promise.resolve().then(checkInitialPomState);
     const unsubSyncFocus = ws.on('SYNC_FOCUS', (data) => {
       const p = {
         active: true,
@@ -660,11 +663,11 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
     return () => {
       unsubSyncFocus(); unsubStart(); unsubStop(); unsubClear();
     };
-  }, [user]);
+  }, [user, checkInitialPomState]);
 
   // 5. 详细数据与同步逻辑
   useEffect(() => { 
-    if (user) fetchTeamData(selectedTeam?.uuid || ''); 
+    if (user) void Promise.resolve().then(() => fetchTeamData(selectedTeam?.uuid || ''));
   }, [selectedTeam, user, fetchTeamData]);
 
   useEffect(() => {
@@ -733,7 +736,7 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
             className="hidden sm:flex items-center gap-2 lg:gap-4 overflow-x-auto hide-scrollbar max-w-full px-4 py-1 select-none cursor-grab"
           >
             {teamCountdowns.map(cd => {
-              const diff = cd.target_time - Date.now();
+              const diff = cd.target_time - time.getTime();
               const days = Math.floor(diff / 86400000);
               const isUrgent = days < 3;
               return (
@@ -784,7 +787,7 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
                       <div className="text-[9px] font-black text-blue-400/50 uppercase tracking-widest px-1">优先待办事项</div>
                       <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-2">
                         {incompleteDisplayTodos.map(t => {
-                          const isOverdue = t.due_date && t.due_date < Date.now();
+                          const isOverdue = t.due_date && t.due_date < time.getTime();
                           return (
                             <div key={t.uuid} className={`group p-2.5 rounded-xl border transition-all flex items-center gap-3 ${isOverdue ? 'bg-red-500/5 border-red-500/20' : 'bg-white/[0.02] border-white/5'}`}>
                               <div className="shrink-0 w-1.5 h-1.5 rounded-full bg-blue-500/40" />

@@ -106,7 +106,7 @@ export const ApiService = {
     let data: Record<string, unknown> = {};
     try {
       data = await res.json() as Record<string, unknown>;
-    } catch (_) {
+    } catch {
       data = {};
     }
 
