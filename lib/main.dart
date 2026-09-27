@@ -1064,6 +1064,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                               ),
                               enabled: liquidGlassConfiguration.enabled,
                               mode: liquidGlassConfiguration.mode,
+                              transparencyPercent:
+                                  liquidGlassConfiguration.transparencyPercent,
                             );
                             final darkTheme = applyAppLiquidGlassTheme(
                               ThemeData(
@@ -1078,6 +1080,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                               ),
                               enabled: liquidGlassConfiguration.enabled,
                               mode: liquidGlassConfiguration.mode,
+                              transparencyPercent:
+                                  liquidGlassConfiguration.transparencyPercent,
                             );
 
                             return MacosMenuBar(

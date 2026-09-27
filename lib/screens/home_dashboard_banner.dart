@@ -1,6 +1,16 @@
 part of 'home_dashboard.dart';
 // ignore_for_file: annotate_overrides
 
+String _formatDashboardPomodoroTimeInfo(
+  int secondsRemaining, {
+  required bool countUp,
+}) {
+  if (countUp) return '已专注 ${secondsRemaining ~/ 60}m';
+  return secondsRemaining > 60
+      ? '${secondsRemaining ~/ 60} 分钟'
+      : formatTimerMMSS(secondsRemaining);
+}
+
 mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
   Widget _buildChallengeParticipationBanner(bool isLight) {
     final scheme = Theme.of(context).colorScheme;
@@ -466,10 +476,10 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
           ? ((nowMs - _localPomodoro!.sessionStartMs) / 1000).floor()
           : ((_localPomodoro!.targetEndMs - nowMs) / 1000).ceil();
 
-      final m = rem ~/ 60;
-      final timeStr = isCountUp
-          ? '已专注 ${rem ~/ 60}m'
-          : (rem > 60 ? '$m 分钟' : formatTimerMMSS(rem));
+      final timeStr = _formatDashboardPomodoroTimeInfo(
+        rem,
+        countUp: isCountUp,
+      );
 
       // 规划块即将结束时显示停止按钮
       final hasActivePlanBlock = _planBlocks
@@ -502,11 +512,11 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
               .substring(0, 8) ??
           '其他设备';
       final rem = _remotePomodoroRemaining;
-      final m = rem ~/ 60;
       final isCountUp = _remotePomodoro!.mode == 1;
-      final timeStr = isCountUp
-          ? '已专注 ${rem ~/ 60}m'
-          : (rem > 60 ? '$m 分钟' : formatTimerMMSS(rem));
+      final timeStr = _formatDashboardPomodoroTimeInfo(
+        rem,
+        countUp: isCountUp,
+      );
 
       events.add(HomeBannerEvent(
         type: 'pomodoro',

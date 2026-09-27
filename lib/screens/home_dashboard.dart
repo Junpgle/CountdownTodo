@@ -264,6 +264,9 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   }
 
   int _selectedTabIndex = 0;
+  bool _focusTabVisited = false;
+  double _lastHomeHeaderExtent = 112.0;
+  double _lastFocusHeaderExtent = 0.0;
 
   // 待确认的事项数据（从图片识别来）
   Map<String, dynamic>? _pendingTodoConfirm;
@@ -474,17 +477,23 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
           image: provider,
           fit: BoxFit.cover,
           filterQuality: FilterQuality.medium,
+          color: const Color(0x66000000),
+          colorBlendMode: BlendMode.srcOver,
         );
       },
       placeholder: (context, url) => Image.asset(
         'assets/images/default_wallpaper.webp',
         fit: BoxFit.cover,
+        color: const Color(0x66000000),
+        colorBlendMode: BlendMode.srcOver,
       ),
       errorWidget: (context, url, error) {
         _reportFailure();
         return Image.asset(
           'assets/images/default_wallpaper.webp',
           fit: BoxFit.cover,
+          color: const Color(0x66000000),
+          colorBlendMode: BlendMode.srcOver,
         );
       },
     );

@@ -335,12 +335,22 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
         return;
       }
       if (isCountUp) {
+        final previousTimeInfo = _formatDashboardPomodoroTimeInfo(
+          _remotePomodoroRemaining,
+          countUp: true,
+        );
         final startedAt = _remotePomodoro?.timestamp;
         _remotePomodoroRemaining = startedAt == null
             ? _remotePomodoroRemaining + 1
             : ((DateTime.now().millisecondsSinceEpoch - startedAt) / 1000)
                 .floor();
-        _pomodoroTickNotifier.value++;
+        if (_formatDashboardPomodoroTimeInfo(
+              _remotePomodoroRemaining,
+              countUp: true,
+            ) !=
+            previousTimeInfo) {
+          _pomodoroTickNotifier.value++;
+        }
       } else {
         final rem =
             ((targetEndMs - DateTime.now().millisecondsSinceEpoch) / 1000)
@@ -353,8 +363,18 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
           _remotePomodoroTicker?.cancel();
           if (mounted) setState(() => _remotePomodoro = null);
         } else {
+          final previousTimeInfo = _formatDashboardPomodoroTimeInfo(
+            _remotePomodoroRemaining,
+            countUp: false,
+          );
           _remotePomodoroRemaining = rem;
-          _pomodoroTickNotifier.value++;
+          if (_formatDashboardPomodoroTimeInfo(
+                rem,
+                countUp: false,
+              ) !=
+              previousTimeInfo) {
+            _pomodoroTickNotifier.value++;
+          }
         }
       }
     });
@@ -467,12 +487,22 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
           ? ((now - _localPomodoro!.sessionStartMs) / 1000).floor()
           : ((_localPomodoro!.targetEndMs - now) / 1000).ceil();
 
+      final previousTimeInfo = _formatDashboardPomodoroTimeInfo(
+        _localPomodoroRemaining,
+        countUp: isActuallyCountUp,
+      );
       _localPomodoroRemaining = rem;
       if (!isActuallyCountUp && _localPomodoroRemaining <= 0) {
         _localPomodoroRemaining = 0;
         _stopLocalTicker();
       }
-      _pomodoroTickNotifier.value++;
+      if (_formatDashboardPomodoroTimeInfo(
+            _localPomodoroRemaining,
+            countUp: isActuallyCountUp,
+          ) !=
+          previousTimeInfo) {
+        _pomodoroTickNotifier.value++;
+      }
     });
   }
 

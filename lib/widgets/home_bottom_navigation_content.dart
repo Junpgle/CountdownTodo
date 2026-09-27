@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../services/liquid_glass_effect_service.dart';
+import '../utils/app_platform.dart';
 
 /// The radius shared by the floating navigation shell and its selection lens.
 ///
@@ -507,6 +508,8 @@ class _FloatingBottomNavigationContentState
     required GlassQuality quality,
     required bool paintBackground,
     required bool paintGlass,
+    required Color indicatorColor,
+    required LiquidGlassSettings indicatorSettings,
   }) {
     return Positioned.fill(
       child: IgnorePointer(
@@ -538,13 +541,13 @@ class _FloatingBottomNavigationContentState
                   alignment: alignment,
                   thickness: thickness,
                   quality: quality,
-                  indicatorColor: widget.selectedBackgroundColor,
+                  indicatorColor: indicatorColor,
                   isBackgroundIndicator: false,
                   paintBackground: paintBackground,
                   paintGlass: paintGlass,
                   padding: EdgeInsets.zero,
                   expansion: _indicatorExpansion,
-                  settings: _indicatorSettings,
+                  settings: indicatorSettings,
                   borderRadius: widget.borderRadius,
                   pinchStrength: 0.85,
                   shadows: paintBackground
@@ -584,6 +587,31 @@ class _FloatingBottomNavigationContentState
             .clamp(-14.0, 14.0)
             .toDouble();
     final jellyTransform = _jellyTransform(velocity, quality);
+    final customTransparency = configuration.enabled &&
+        configuration.transparencyPercent !=
+            LiquidGlassEffectConfiguration.defaultTransparencyPercent;
+    final indicatorColor = customTransparency
+        ? widget.selectedBackgroundColor.withValues(
+            alpha: liquidGlassBackerOpacity(
+              widget.selectedBackgroundColor.a,
+              configuration,
+            ),
+          )
+        : widget.selectedBackgroundColor;
+    final indicatorSettings = customTransparency
+        ? _indicatorSettings.copyWith(
+            glassColor: _indicatorSettings.glassColor.withValues(
+              alpha: liquidGlassBackerOpacity(
+                _indicatorSettings.glassColor.a,
+                configuration,
+              ),
+            ),
+          )
+        : _indicatorSettings;
+    // The two selection masks clip icon rows; an extra offscreen save layer
+    // for each mask is costly while Android rasterizes the scrolling page.
+    final selectionClipBehavior =
+        AppPlatform.isAndroid ? Clip.antiAlias : Clip.antiAliasWithSaveLayer;
     final directionalMotion = (velocity / 14).clamp(-1.0, 1.0).toDouble();
     final contentTransform = Matrix4.identity()
       ..translateByDouble(
@@ -656,6 +684,8 @@ class _FloatingBottomNavigationContentState
                         quality: quality,
                         paintBackground: true,
                         paintGlass: false,
+                        indicatorColor: indicatorColor,
+                        indicatorSettings: indicatorSettings,
                       ),
                       RepaintBoundary(
                         key: _indicatorBackgroundKey,
@@ -664,7 +694,7 @@ class _FloatingBottomNavigationContentState
                           clipBehavior: Clip.none,
                           children: [
                             ClipPath(
-                              clipBehavior: Clip.antiAliasWithSaveLayer,
+                              clipBehavior: selectionClipBehavior,
                               clipper: _OverflowingJellyClipper(
                                 itemCount: _slotCount,
                                 alignment: alignment,
@@ -684,7 +714,7 @@ class _FloatingBottomNavigationContentState
                             ExcludeSemantics(
                               child: IgnorePointer(
                                 child: ClipPath(
-                                  clipBehavior: Clip.antiAliasWithSaveLayer,
+                                  clipBehavior: selectionClipBehavior,
                                   clipper: _OverflowingJellyClipper(
                                     itemCount: _slotCount,
                                     alignment: alignment,
@@ -716,6 +746,8 @@ class _FloatingBottomNavigationContentState
                         quality: quality,
                         paintBackground: false,
                         paintGlass: true,
+                        indicatorColor: indicatorColor,
+                        indicatorSettings: indicatorSettings,
                       ),
                     ],
                   ),

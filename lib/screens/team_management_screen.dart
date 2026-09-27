@@ -2646,7 +2646,9 @@ class _TeamMembersSearchScreenState extends State<TeamMembersSearchScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text('${widget.team.name} · 团队成员')),
+        appBar: FloatingGlassAppBar(
+          title: Text('${widget.team.name} · 团队成员'),
+        ),
         body: _TeamMembersView(
           team: widget.team,
           scrollController: _scrollController,

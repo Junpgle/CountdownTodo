@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 
@@ -134,7 +135,7 @@ class _FinanceCategoryDetailScreenState
     final hasSubcategories = root != null && _childCategories(root).isNotEmpty;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('支出分类详情')),
+      appBar: const FloatingGlassAppBar(title: Text('支出分类详情')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: [

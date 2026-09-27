@@ -40,55 +40,61 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         children: [
           if (showWallpaper)
             Positioned.fill(
-              child: _wallpaperUrl!.startsWith('assets/')
-                  ? Builder(
-                      builder: (context) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (_wallpaperDominantColor == null) {
-                            _extractColorFromProvider(
-                                AssetImage(_wallpaperUrl!), _wallpaperUrl!);
-                          }
-                        });
-                        return Image.asset(
-                          _wallpaperUrl!,
-                          fit: BoxFit.cover,
-                        );
-                      },
-                    )
-                  : _isLocalFilePath(_wallpaperUrl!) &&
-                          localImageProvider(_wallpaperUrl!) != null
-                      ? Builder(
-                          builder: (context) {
-                            final provider =
-                                localImageProvider(_wallpaperUrl!)!;
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (_wallpaperDominantColor == null) {
-                                _extractColorFromProvider(
-                                    provider, _wallpaperUrl!);
-                              }
-                            });
-                            return Image(
-                              image: provider,
-                              fit: BoxFit.cover,
-                            );
-                          },
-                        )
-                      : _WallpaperNetworkImage(
-                          url: _wallpaperUrl!,
-                          onImageProvider: (provider) {
-                            _extractColorFromProvider(provider, _wallpaperUrl!);
-                          },
-                          onSuccess: () {
-                            _wallpaperRetryCount = 0;
-                          },
-                          onError: () {
-                            _handleWallpaperError();
-                          },
-                        ),
+              child: RepaintBoundary(
+                // Darken the image in its draw pass. A separate full-screen
+                // scrim adds another alpha-blended pass on every GPU frame.
+                child: _wallpaperUrl!.startsWith('assets/')
+                    ? Builder(
+                        builder: (context) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (_wallpaperDominantColor == null) {
+                              _extractColorFromProvider(
+                                  AssetImage(_wallpaperUrl!), _wallpaperUrl!);
+                            }
+                          });
+                          return Image.asset(
+                            _wallpaperUrl!,
+                            fit: BoxFit.cover,
+                            color: const Color(0x66000000),
+                            colorBlendMode: BlendMode.srcOver,
+                          );
+                        },
+                      )
+                    : _isLocalFilePath(_wallpaperUrl!) &&
+                            localImageProvider(_wallpaperUrl!) != null
+                        ? Builder(
+                            builder: (context) {
+                              final provider =
+                                  localImageProvider(_wallpaperUrl!)!;
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (_wallpaperDominantColor == null) {
+                                  _extractColorFromProvider(
+                                      provider, _wallpaperUrl!);
+                                }
+                              });
+                              return Image(
+                                image: provider,
+                                fit: BoxFit.cover,
+                                color: const Color(0x66000000),
+                                colorBlendMode: BlendMode.srcOver,
+                              );
+                            },
+                          )
+                        : _WallpaperNetworkImage(
+                            url: _wallpaperUrl!,
+                            onImageProvider: (provider) {
+                              _extractColorFromProvider(
+                                  provider, _wallpaperUrl!);
+                            },
+                            onSuccess: () {
+                              _wallpaperRetryCount = 0;
+                            },
+                            onError: () {
+                              _handleWallpaperError();
+                            },
+                          ),
+              ),
             ),
-          if (showWallpaper)
-            Positioned.fill(
-                child: Container(color: Colors.black.withValues(alpha: 0.4))),
           SafeArea(
             // 仅避让顶部状态栏。列表需要继续绘制到 Android 手势导航区
             // 后方，末尾的滚动余量再保证卡片操作不会被底栏遮挡。
@@ -674,12 +680,99 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
 
                                       final showFocusTab = _selectedTabIndex ==
                                           _homeFocusTabIndex;
-                                      final activeWidgets = showFocusTab
-                                          ? tab3Widgets
-                                          : tab1Widgets;
                                       final hasCopyright =
                                           _wallpaperCopyright?.isNotEmpty ??
                                               false;
+
+                                      Widget buildMobileList(
+                                        bool focusPage,
+                                        double listHeaderExtent,
+                                      ) {
+                                        final widgets = focusPage
+                                            ? tab3Widgets
+                                            : tab1Widgets;
+                                        return RepaintBoundary(
+                                          key: ValueKey<String>(focusPage
+                                              ? 'home-focus-tab-content'
+                                              : 'home-main-tab-content'),
+                                          child:
+                                              OptionalLiquidGlassScrollOptimizer(
+                                            child: ListView.builder(
+                                              key: PageStorageKey<String>(
+                                                focusPage
+                                                    ? 'home-focus-sections'
+                                                    : 'home-main-sections',
+                                              ),
+                                              padding: EdgeInsets.fromLTRB(
+                                                16,
+                                                listHeaderExtent + 16,
+                                                16,
+                                                16,
+                                              ),
+                                              itemCount: widgets.length +
+                                                  (hasCopyright ? 1 : 0) +
+                                                  1,
+                                              itemBuilder: (context, index) {
+                                                if (index < widgets.length) {
+                                                  return widgets[index];
+                                                }
+                                                if (hasCopyright &&
+                                                    index == widgets.length) {
+                                                  return _buildWallpaperCopyright(
+                                                      isLight);
+                                                }
+                                                return SizedBox(
+                                                  // The header overlays the list, so
+                                                  // reserve it at the trailing edge
+                                                  // to keep short pages scrollable.
+                                                  height:
+                                                      homeDashboardPhoneScrollTailExtent(
+                                                    headerExtent:
+                                                        listHeaderExtent,
+                                                    bottomInset:
+                                                        bottomSystemInset,
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        );
+                                      }
+
+                                      if (AppPlatform.isAndroid) {
+                                        if (showFocusTab) {
+                                          _lastFocusHeaderExtent = headerExtent;
+                                        } else {
+                                          _lastHomeHeaderExtent = headerExtent;
+                                        }
+                                        // Keep each visited list mounted so a
+                                        // tab switch can reuse its painted card
+                                        // layers and scroll position. The hidden
+                                        // list neither paints nor runs tickers.
+                                        return Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            Offstage(
+                                              offstage: showFocusTab,
+                                              child: TickerMode(
+                                                enabled: !showFocusTab,
+                                                child: buildMobileList(false,
+                                                    _lastHomeHeaderExtent),
+                                              ),
+                                            ),
+                                            if (_focusTabVisited)
+                                              Offstage(
+                                                offstage: !showFocusTab,
+                                                child: TickerMode(
+                                                  enabled: showFocusTab,
+                                                  child: buildMobileList(true,
+                                                      _lastFocusHeaderExtent),
+                                                ),
+                                              ),
+                                          ],
+                                        );
+                                      }
+
                                       return AnimatedSwitcher(
                                         duration:
                                             const Duration(milliseconds: 280),
@@ -702,69 +795,22 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                           final focusPage = child.key ==
                                               const ValueKey<String>(
                                                   'home-focus-tab-content');
+                                          final enteringPage = SlideTransition(
+                                            position: Tween<Offset>(
+                                              begin: Offset(
+                                                  focusPage ? 0.035 : -0.035,
+                                                  0),
+                                              end: Offset.zero,
+                                            ).animate(animation),
+                                            child: child,
+                                          );
                                           return FadeTransition(
                                             opacity: animation,
-                                            child: SlideTransition(
-                                              position: Tween<Offset>(
-                                                begin: Offset(
-                                                    focusPage ? 0.035 : -0.035,
-                                                    0),
-                                                end: Offset.zero,
-                                              ).animate(animation),
-                                              child: child,
-                                            ),
+                                            child: enteringPage,
                                           );
                                         },
-                                        child: RepaintBoundary(
-                                          key: ValueKey<String>(showFocusTab
-                                              ? 'home-focus-tab-content'
-                                              : 'home-main-tab-content'),
-                                          child:
-                                              OptionalLiquidGlassScrollOptimizer(
-                                            child: ListView.builder(
-                                              key: PageStorageKey<String>(
-                                                showFocusTab
-                                                    ? 'home-focus-sections'
-                                                    : 'home-main-sections',
-                                              ),
-                                              padding: EdgeInsets.fromLTRB(
-                                                16,
-                                                headerExtent + 16,
-                                                16,
-                                                16,
-                                              ),
-                                              itemCount: activeWidgets.length +
-                                                  (hasCopyright ? 1 : 0) +
-                                                  1,
-                                              itemBuilder: (context, index) {
-                                                if (index <
-                                                    activeWidgets.length) {
-                                                  return activeWidgets[index];
-                                                }
-                                                if (hasCopyright &&
-                                                    index ==
-                                                        activeWidgets.length) {
-                                                  return _buildWallpaperCopyright(
-                                                      isLight);
-                                                }
-                                                return SizedBox(
-                                                  // The header is an overlay rather
-                                                  // than a ListView inset. Reserve it
-                                                  // at the trailing edge too, so a
-                                                  // short home page can actually move
-                                                  // past the fixed header instead of
-                                                  // springing back at offset zero.
-                                                  height:
-                                                      homeDashboardPhoneScrollTailExtent(
-                                                    headerExtent: headerExtent,
-                                                    bottomInset:
-                                                        bottomSystemInset,
-                                                  ),
-                                                );
-                                              },
-                                            ),
-                                          ),
-                                        ),
+                                        child: buildMobileList(
+                                            showFocusTab, headerExtent),
                                       );
                                     }
 
@@ -798,17 +844,30 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               (_sectionVisibility[key] ??
                                                   true) &&
                                               sectionsMap.containsKey(key))
-                                          .map((key) => AppSystemUiRegion(
-                                                backgroundBrightness:
-                                                    cardBackgroundBrightness,
-                                                child: Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                          bottom: 24.0),
-                                                  child: sectionsMap[key]!,
-                                                ),
-                                              ))
-                                          .toList();
+                                          .map((key) {
+                                        final section = sectionsMap[key]!;
+                                        final isolateTabletSection = isTablet &&
+                                            const <String>{
+                                              'courses',
+                                              'countdowns',
+                                              'todos',
+                                              'timeline',
+                                            }.contains(key);
+                                        return AppSystemUiRegion(
+                                          backgroundBrightness:
+                                              cardBackgroundBrightness,
+                                          child: Padding(
+                                            padding: const EdgeInsets.only(
+                                              bottom: 24.0,
+                                            ),
+                                            child: isolateTabletSection
+                                                ? RepaintBoundary(
+                                                    child: section,
+                                                  )
+                                                : section,
+                                          ),
+                                        );
+                                      }).toList();
                                     }
 
                                     List<Widget> leftWidgets =
@@ -1495,7 +1554,12 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       isDarkMode: isDarkMode,
       glassTint: glassTint,
       onTabSelected: (index) {
-        setState(() => _selectedTabIndex = index);
+        setState(() {
+          _selectedTabIndex = index;
+          if (index == _homeFocusTabIndex) {
+            _focusTabVisited = true;
+          }
+        });
         if (index == _homeFocusTabIndex) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _checkFocusTabCoachMarks();

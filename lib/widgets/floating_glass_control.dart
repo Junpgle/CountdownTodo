@@ -648,16 +648,111 @@ class FloatingGlassTopBarContentFade extends StatelessWidget {
         // safest fallback and prevents the page from becoming blank.
         if (disableShader) return child!;
 
-        return ShaderMask(
-          blendMode: BlendMode.dstIn,
-          shaderCallback: (bounds) => floatingGlassTopBarContentFadeShader(
-            bounds,
-            fadeHeight: topBarHeight + tailExtent,
-          ),
+        return _FloatingGlassTopBarContentFadeBox(
+          fadeHeight: topBarHeight + tailExtent,
           child: child,
         );
       },
     );
+  }
+}
+
+/// Applies the pinned-header alpha fade only to the top fade band.
+///
+/// A normal [ShaderMask] allocates its blend layer for the full scrollable
+/// viewport even though this gradient becomes fully opaque below the toolbar.
+/// Restricting the mask rectangle to the fade band preserves the same result
+/// while avoiding a full-screen offscreen blend on every scroll frame.
+class _FloatingGlassTopBarContentFadeBox extends SingleChildRenderObjectWidget {
+  const _FloatingGlassTopBarContentFadeBox({
+    required this.fadeHeight,
+    required super.child,
+  });
+
+  final double fadeHeight;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderFloatingGlassTopBarContentFadeBox(fadeHeight: fadeHeight);
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderFloatingGlassTopBarContentFadeBox renderObject,
+  ) {
+    renderObject.fadeHeight = fadeHeight;
+  }
+}
+
+class _RenderFloatingGlassTopBarContentFadeBox extends RenderProxyBox {
+  _RenderFloatingGlassTopBarContentFadeBox({required double fadeHeight})
+      : _fadeHeight = fadeHeight;
+
+  @override
+  ShaderMaskLayer? get layer => super.layer as ShaderMaskLayer?;
+
+  double _fadeHeight;
+
+  double get fadeHeight => _fadeHeight;
+
+  set fadeHeight(double value) {
+    if (_fadeHeight == value) return;
+    _fadeHeight = value;
+    markNeedsPaint();
+  }
+
+  @override
+  bool get alwaysNeedsCompositing =>
+      child != null &&
+      !AndroidWindowRenderingPolicy.disableShaderContentFade.value;
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    AndroidWindowRenderingPolicy.disableShaderContentFade
+        .addListener(_handleRenderingPolicyChanged);
+  }
+
+  @override
+  void detach() {
+    AndroidWindowRenderingPolicy.disableShaderContentFade
+        .removeListener(_handleRenderingPolicyChanged);
+    super.detach();
+  }
+
+  void _handleRenderingPolicyChanged() {
+    markNeedsCompositingBitsUpdate();
+    markNeedsPaint();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final child = this.child;
+    if (child == null) return;
+
+    if (AndroidWindowRenderingPolicy.disableShaderContentFade.value) {
+      context.paintChild(child, offset);
+      return;
+    }
+
+    final maskHeight = math.min(size.height, math.max(0.0, _fadeHeight));
+    if (size.width <= 0.0 || maskHeight <= 0.0) {
+      context.paintChild(child, offset);
+      return;
+    }
+
+    final maskRect =
+        Rect.fromLTWH(offset.dx, offset.dy, size.width, maskHeight);
+    layer ??= ShaderMaskLayer();
+    layer!
+      ..shader = floatingGlassTopBarContentFadeShader(
+        Rect.fromLTWH(0.0, 0.0, size.width, maskHeight),
+        fadeHeight: maskHeight,
+      )
+      ..maskRect = maskRect
+      ..blendMode = BlendMode.dstIn;
+    context.pushLayer(layer!, super.paint, offset);
   }
 }
 
@@ -797,17 +892,23 @@ class _RenderFloatingGlassSliverContentFade extends RenderProxySliver {
       return;
     }
 
+    final maskHeight = math.min(viewportHeight, math.max(0.0, fadeHeight));
+    if (maskHeight <= 0.0) {
+      context.paintChild(child, offset);
+      return;
+    }
+
     final maskRect = Rect.fromLTWH(
       offset.dx,
       0.0,
       viewportWidth,
-      viewportHeight,
+      maskHeight,
     );
     layer ??= ShaderMaskLayer();
     layer!
       ..shader = floatingGlassTopBarContentFadeShader(
-        Rect.fromLTWH(0.0, 0.0, viewportWidth, viewportHeight),
-        fadeHeight: fadeHeight,
+        Rect.fromLTWH(0.0, 0.0, viewportWidth, maskHeight),
+        fadeHeight: maskHeight,
       )
       ..maskRect = maskRect
       ..blendMode = BlendMode.dstIn;
@@ -1508,6 +1609,13 @@ class _FloatingGlassAppBarActionContent extends StatelessWidget {
         final target =
             ((value - transitionStart) / transitionRange).clamp(0.0, 1.0);
 
+        // Scroll notifications already provide a frame-by-frame progress
+        // signal. Animating each new target again with a 180 ms tween makes
+        // Android controls trail the scroll and schedules redundant work.
+        if (AppPlatform.isAndroid) {
+          return _buildForProgress(context, target);
+        }
+
         return TweenAnimationBuilder<double>(
           tween: Tween<double>(end: target),
           duration: const Duration(milliseconds: 180),
@@ -1872,10 +1980,21 @@ bool _isFloatingGlassAppBarLayoutOnly(Widget action) {
       action is SegmentedButton<dynamic>;
 }
 
+Color _floatingAppBarResolvedBackground(
+  ColorScheme colorScheme,
+  Color? backgroundColor,
+) {
+  final surface = colorScheme.surfaceContainerLow;
+  return backgroundColor == null
+      ? surface
+      : Color.alphaBlend(backgroundColor, surface);
+}
+
 Color _floatingAppBarTint(ColorScheme colorScheme, Color? backgroundColor) {
-  final base = backgroundColor == null || backgroundColor.a == 0
-      ? colorScheme.surfaceContainerLow
-      : backgroundColor;
+  final base = _floatingAppBarResolvedBackground(
+    colorScheme,
+    backgroundColor,
+  );
   // Keep the lens in the same tonal family as the page. A very small primary
   // lift prevents transparent AppBars from falling back to a detached gray
   // disk while still letting the backdrop show through the glass.
@@ -1891,8 +2010,14 @@ bool _floatingAppBarIsDark(
   ColorScheme colorScheme,
   Color? backgroundColor,
 ) {
-  return colorScheme.brightness == Brightness.dark ||
-      (backgroundColor != null && backgroundColor.computeLuminance() < 0.22);
+  // A transparent Color has black RGB channels. Reading its raw luminance
+  // classifies a light page's transparent AppBar as dark and paints a dark
+  // circle behind its leading and action icons.
+  return _floatingAppBarResolvedBackground(
+        colorScheme,
+        backgroundColor,
+      ).computeLuminance() <
+      0.22;
 }
 
 enum _FloatingGlassSliverAppBarVariant { small, medium, large }
@@ -2437,7 +2562,12 @@ class FloatingGlassActionButton extends StatelessWidget {
               ? LiquidRoundedSuperellipse(borderRadius: borderRadius)
               : const LiquidOval(),
           settings: LiquidGlassSettings(
-            glassColor: resolvedTint.withValues(alpha: isDark ? 0.18 : 0.12),
+            glassColor: resolvedTint.withValues(
+              alpha: liquidGlassBackerOpacity(
+                isDark ? 0.18 : 0.12,
+                configuration,
+              ),
+            ),
             thickness: enhanced ? 22 : 18,
             blur: enhanced ? 11 : 8,
             chromaticAberration: 0.0015,

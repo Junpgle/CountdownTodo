@@ -233,7 +233,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (widget.openInitialTargetAsRoot && paneId == 'account') {
       setState(() {
         _initialTargetRootBuilder = () => Scaffold(
-              appBar: AppBar(title: const Text('账户与同步')),
+              appBar: const FloatingGlassAppBar(title: Text('账户与同步')),
               body: _buildAccountAndAnnouncementsPane(),
             );
       });

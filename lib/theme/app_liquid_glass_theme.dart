@@ -35,17 +35,20 @@ ButtonLayerBuilder _glassButtonBackgroundBuilder({
   required double Function(Set<WidgetState> states) opacityForStates,
   required bool isDark,
   required double borderRadius,
+  required LiquidGlassEffectConfiguration configuration,
   bool circular = false,
 }) {
   return (context, states, child) {
-    final configuration = LiquidGlassEffectService.configuration;
     final colorScheme = Theme.of(context).colorScheme;
     final tint = tintForStates(states);
     final base = Color.alphaBlend(
       tint.withValues(alpha: isDark ? 0.16 : 0.12),
       isDark ? colorScheme.scrim : colorScheme.surface,
     );
-    final opacity = _clampOpacity(opacityForStates(states));
+    final opacity = liquidGlassBackerOpacity(
+      _clampOpacity(opacityForStates(states)),
+      configuration,
+    );
     final backer = base.withValues(alpha: opacity);
     final highlight = (isDark
             ? colorScheme.surfaceBright
@@ -99,14 +102,25 @@ ThemeData applyAppLiquidGlassTheme(
   ThemeData base, {
   required bool enabled,
   LiquidGlassEffectMode mode = LiquidGlassEffectMode.standard,
+  int transparencyPercent =
+      LiquidGlassEffectConfiguration.defaultTransparencyPercent,
 }) {
   if (!enabled) return base;
 
   final scheme = base.colorScheme;
   final isDark = scheme.brightness == Brightness.dark;
   final enhanced = mode == LiquidGlassEffectMode.enhanced;
+  final configuration = LiquidGlassEffectConfiguration(
+    enabled: enabled,
+    mode: mode,
+    transparencyPercent: transparencyPercent,
+  );
+  double materialOpacity(double opacity) =>
+      liquidGlassBackerOpacity(opacity, configuration);
   final surface = scheme.surface.withValues(
-    alpha: isDark ? (enhanced ? 0.8 : 0.86) : (enhanced ? 0.84 : 0.9),
+    alpha: materialOpacity(
+      isDark ? (enhanced ? 0.8 : 0.86) : (enhanced ? 0.84 : 0.9),
+    ),
   );
   final elevatedSurface = Color.alphaBlend(
     scheme.primary.withValues(
@@ -114,13 +128,17 @@ ThemeData applyAppLiquidGlassTheme(
     ),
     scheme.surface,
   ).withValues(
-    alpha: isDark ? (enhanced ? 0.84 : 0.9) : (enhanced ? 0.88 : 0.93),
+    alpha: materialOpacity(
+      isDark ? (enhanced ? 0.84 : 0.9) : (enhanced ? 0.88 : 0.93),
+    ),
   );
   final quietSurface = Color.alphaBlend(
     scheme.primary.withValues(alpha: enhanced ? 0.1 : 0.05),
     scheme.surfaceContainerLow,
   ).withValues(
-    alpha: isDark ? (enhanced ? 0.7 : 0.78) : (enhanced ? 0.76 : 0.84),
+    alpha: materialOpacity(
+      isDark ? (enhanced ? 0.7 : 0.78) : (enhanced ? 0.76 : 0.84),
+    ),
   );
   final outline = scheme.outlineVariant.withValues(
     alpha: isDark ? (enhanced ? 0.58 : 0.46) : (enhanced ? 0.68 : 0.58),
@@ -139,6 +157,7 @@ ThemeData applyAppLiquidGlassTheme(
           isDark ? (enhanced ? 0.74 : 0.68) : (enhanced ? 0.84 : 0.78),
       isDark: isDark,
       borderRadius: 18,
+      configuration: configuration,
     ),
     foregroundColor: _glassButtonForeground(scheme.onPrimaryContainer),
     overlayColor: _glassButtonOverlay(scheme.onPrimaryContainer),
@@ -158,6 +177,7 @@ ThemeData applyAppLiquidGlassTheme(
           isDark ? (enhanced ? 0.62 : 0.56) : (enhanced ? 0.72 : 0.66),
       isDark: isDark,
       borderRadius: 18,
+      configuration: configuration,
     ),
     foregroundColor: _glassButtonForeground(scheme.onSurface),
     overlayColor: _glassButtonOverlay(scheme.primary),
@@ -176,6 +196,7 @@ ThemeData applyAppLiquidGlassTheme(
       opacityForStates: (_) => isDark ? 0.24 : 0.2,
       isDark: isDark,
       borderRadius: 18,
+      configuration: configuration,
     ),
     foregroundColor: _glassButtonForeground(scheme.primary),
     overlayColor: _glassButtonOverlay(scheme.primary),
@@ -194,6 +215,7 @@ ThemeData applyAppLiquidGlassTheme(
       opacityForStates: (_) => isDark ? 0.18 : 0.14,
       isDark: isDark,
       borderRadius: 16,
+      configuration: configuration,
     ),
     foregroundColor: _glassButtonForeground(scheme.primary),
     overlayColor: _glassButtonOverlay(scheme.primary),
@@ -213,6 +235,7 @@ ThemeData applyAppLiquidGlassTheme(
           isDark ? (enhanced ? 0.4 : 0.34) : (enhanced ? 0.46 : 0.4),
       isDark: isDark,
       borderRadius: 22,
+      configuration: configuration,
       circular: true,
     ),
     foregroundColor: _glassButtonForeground(scheme.onSurface),
@@ -238,6 +261,7 @@ ThemeData applyAppLiquidGlassTheme(
       },
       isDark: isDark,
       borderRadius: 16,
+      configuration: configuration,
     ),
     foregroundColor: WidgetStateProperty.resolveWith((states) {
       return states.contains(WidgetState.selected)
@@ -359,7 +383,9 @@ ThemeData applyAppLiquidGlassTheme(
     navigationBarTheme: base.navigationBarTheme.copyWith(
       backgroundColor: surface,
       surfaceTintColor: scheme.primary.withValues(alpha: 0.08),
-      indicatorColor: scheme.primaryContainer.withValues(alpha: 0.76),
+      indicatorColor: scheme.primaryContainer.withValues(
+        alpha: materialOpacity(0.76),
+      ),
       shadowColor: scheme.shadow.withValues(alpha: 0.12),
       elevation: 1,
     ),
@@ -377,13 +403,15 @@ ThemeData applyAppLiquidGlassTheme(
       backgroundColor: Color.alphaBlend(
         scheme.primary.withValues(alpha: 0.1),
         scheme.inverseSurface,
-      ).withValues(alpha: 0.94),
+      ).withValues(alpha: materialOpacity(0.94)),
       elevation: 4,
       behavior: SnackBarBehavior.floating,
       shape: rounded(18),
     ),
     floatingActionButtonTheme: base.floatingActionButtonTheme.copyWith(
-      backgroundColor: scheme.primaryContainer.withValues(alpha: 0.88),
+      backgroundColor: scheme.primaryContainer.withValues(
+        alpha: materialOpacity(0.88),
+      ),
       foregroundColor: scheme.onPrimaryContainer,
       elevation: 2,
       focusElevation: 3,
@@ -409,7 +437,9 @@ ThemeData applyAppLiquidGlassTheme(
     ),
     chipTheme: base.chipTheme.copyWith(
       backgroundColor: quietSurface,
-      selectedColor: scheme.secondaryContainer.withValues(alpha: 0.82),
+      selectedColor: scheme.secondaryContainer.withValues(
+        alpha: materialOpacity(0.82),
+      ),
       side: BorderSide(color: outline),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
