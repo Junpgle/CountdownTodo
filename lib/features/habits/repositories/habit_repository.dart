@@ -41,6 +41,20 @@ abstract final class HabitRepository {
   static Future<List<HabitGoal>> getActiveGoals() async =>
       HabitStorage.getHabitGoals(includeArchived: false);
 
+  /// 循环待办来源且仅在习惯模块展示的活动习惯系列。
+  ///
+  /// 首页待办列表会隐藏这些系列；逾期待办统计也应遵循相同展示口径。
+  static Future<Set<String>> getHabitOnlyRecurringTodoSeriesIds() async {
+    final goals = await getActiveGoals();
+    return goals
+        .where((goal) =>
+            goal.sourceType == HabitSourceType.recurringTodo &&
+            goal.displayMode == HabitDisplayMode.habitOnly)
+        .expand((goal) => goal.sourceIds)
+        .where((seriesId) => seriesId.isNotEmpty)
+        .toSet();
+  }
+
   static Future<List<HabitGoalRuleRevision>> getRules({String? habitUuid}) =>
       HabitStorage.getRuleRevisions(habitUuid: habitUuid);
 

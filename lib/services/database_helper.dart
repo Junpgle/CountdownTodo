@@ -2405,8 +2405,18 @@ class DatabaseHelper {
     return rows;
   }
 
-  Future<int> countOverdueTodos(int beforeExclusive) async {
+  Future<int> countOverdueTodos(
+    int beforeExclusive, {
+    Set<String> excludedRecurrenceSeriesIds = const <String>{},
+  }) async {
     final db = await instance.database;
+    final excludedSeriesIds = excludedRecurrenceSeriesIds
+        .where((seriesId) => seriesId.isNotEmpty)
+        .toList(growable: false);
+    final excludedSeriesClause = excludedSeriesIds.isEmpty
+        ? ''
+        : 'AND (recurrence_series_id IS NULL OR recurrence_series_id NOT IN '
+            '(${List.filled(excludedSeriesIds.length, '?').join(', ')}))';
     return Sqflite.firstIntValue(await db.rawQuery('''
       SELECT COUNT(*)
       FROM todos
@@ -2415,7 +2425,8 @@ class DatabaseHelper {
         AND due_date IS NOT NULL
         AND due_date != 0
         AND due_date < ?
-    ''', [beforeExclusive])) ?? 0;
+        $excludedSeriesClause
+    ''', [beforeExclusive, ...excludedSeriesIds])) ?? 0;
   }
 
   Future<List<Map<String, dynamic>>> searchTodoGroups(String query) async {

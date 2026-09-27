@@ -1560,7 +1560,12 @@ class SearchService {
     final coursesFuture =
         CourseService.getAllCourses(username).catchError((_) => <CourseItem>[]);
     final overdueCountFuture =
-        db.countOverdueTodos(now.millisecondsSinceEpoch).catchError((_) => 0);
+        HabitRepository.getHabitOnlyRecurringTodoSeriesIds()
+            .then((seriesIds) => db.countOverdueTodos(
+                  now.millisecondsSinceEpoch,
+                  excludedRecurrenceSeriesIds: seriesIds,
+                ))
+            .catchError((_) => 0);
     final topHistoryFuture = db
         .getRecentSearches(limit: 1)
         .catchError((_) => <Map<String, dynamic>>[]);
@@ -1764,13 +1769,19 @@ class SearchNavigationHandler {
         await _navigateByRoute(context, route ?? '', data, sourceKey);
       } else if (action == 'filter_overdue') {
         final username = await StorageService.getLoginSession() ?? 'default';
-        final todos = await StorageService.getTodos(username);
+        final results = await Future.wait<dynamic>([
+          StorageService.getTodos(username),
+          HabitRepository.getHabitOnlyRecurringTodoSeriesIds(),
+        ]);
+        final todos = results[0] as List<TodoItem>;
+        final habitOnlySeriesIds = results[1] as Set<String>;
         final overdue = todos
             .where((item) =>
                 !item.isDeleted &&
                 !item.isDone &&
                 item.dueDate != null &&
-                item.dueDate!.isBefore(DateTime.now()))
+                item.dueDate!.isBefore(DateTime.now()) &&
+                !habitOnlySeriesIds.contains(item.recurrenceSeriesId))
             .toList();
         if (!context.mounted) return;
         await _push(

@@ -27,6 +27,7 @@ import '../features/finance/screens/finance_entry_screen.dart';
 import '../features/finance/screens/finance_home_screen.dart';
 import '../features/finance/services/finance_repository.dart';
 import '../features/finance/services/finance_storage.dart';
+import '../features/habits/repositories/habit_repository.dart';
 import 'medal_wall_page.dart';
 
 enum TimelineDimension { daily, weekly, monthly, yearly }
@@ -247,6 +248,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       }
 
       final todos = await StorageService.getTodos(widget.username);
+      final habitOnlyRecurringSeriesIds =
+          await HabitRepository.getHabitOnlyRecurringTodoSeriesIds();
       final completedTodos = todos.where((todo) {
         return !todo.isDeleted &&
             todo.isDone &&
@@ -293,6 +296,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         planBlocks: planBlocks,
         todos: todos,
         tags: tags,
+        excludedRecurrenceSeriesIds: habitOnlyRecurringSeriesIds,
       );
       final totalSecs = rangeStatistics.totalFocusSeconds;
       final regularTotalCount = regularPlannedTodos.isEmpty
