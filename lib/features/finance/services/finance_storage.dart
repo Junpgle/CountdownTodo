@@ -1629,46 +1629,7 @@ abstract final class FinanceStorage {
     required DateTime to,
   }) async {
     final transactions = await getTransactions(from: from, to: to);
-    var income = 0;
-    var expense = 0;
-    var refund = 0;
-    final expenseByCategory = <String, int>{};
-    final incomeByCategory = <String, int>{};
-    final expenseByDate = <String, int>{};
-
-    for (final transaction in transactions) {
-      final categoryUuid = transaction.categoryUuid ?? '';
-      switch (transaction.type) {
-        case FinanceTransactionType.income:
-          income += transaction.amountMinor;
-          incomeByCategory[categoryUuid] =
-              (incomeByCategory[categoryUuid] ?? 0) + transaction.amountMinor;
-        case FinanceTransactionType.expense:
-          expense += transaction.amountMinor;
-          expenseByCategory[categoryUuid] =
-              (expenseByCategory[categoryUuid] ?? 0) + transaction.amountMinor;
-          expenseByDate[transaction.transactionDate] =
-              (expenseByDate[transaction.transactionDate] ?? 0) +
-                  transaction.amountMinor;
-        case FinanceTransactionType.refund:
-          refund += transaction.amountMinor;
-          expenseByCategory[categoryUuid] =
-              (expenseByCategory[categoryUuid] ?? 0) - transaction.amountMinor;
-          expenseByDate[transaction.transactionDate] =
-              (expenseByDate[transaction.transactionDate] ?? 0) -
-                  transaction.amountMinor;
-      }
-    }
-
-    return FinanceSummary(
-      incomeMinor: income,
-      expenseMinor: expense,
-      refundMinor: refund,
-      transactionCount: transactions.length,
-      expenseByCategory: expenseByCategory,
-      incomeByCategory: incomeByCategory,
-      expenseByDate: expenseByDate,
-    );
+    return FinanceSummary.fromTransactions(transactions);
   }
 
   static Future<Map<String, dynamic>> getExportBundle() async {

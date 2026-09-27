@@ -173,7 +173,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     final periodTransactions = _transactionsInRange(range);
     final periodSummary = _view == _FinanceOverviewView.month
         ? summary
-        : _summarizeFinanceTransactions(periodTransactions);
+        : FinanceRepository.summarizeTransactions(periodTransactions);
     final title = switch (_view) {
       _FinanceOverviewView.month => '${month.year} 年 ${month.month} 月',
       _FinanceOverviewView.week =>
@@ -1227,53 +1227,6 @@ class _FinanceCategoryTotal {
     required this.categoryUuid,
     required this.value,
   });
-}
-
-FinanceSummary _summarizeFinanceTransactions(
-  Iterable<FinanceTransaction> transactions,
-) {
-  var income = 0;
-  var expense = 0;
-  var refund = 0;
-  var transactionCount = 0;
-  final expenseByCategory = <String, int>{};
-  final incomeByCategory = <String, int>{};
-  final expenseByDate = <String, int>{};
-
-  for (final transaction in transactions) {
-    transactionCount++;
-    final categoryUuid = transaction.categoryUuid ?? '';
-    switch (transaction.type) {
-      case FinanceTransactionType.income:
-        income += transaction.amountMinor;
-        incomeByCategory[categoryUuid] =
-            (incomeByCategory[categoryUuid] ?? 0) + transaction.amountMinor;
-      case FinanceTransactionType.expense:
-        expense += transaction.amountMinor;
-        expenseByCategory[categoryUuid] =
-            (expenseByCategory[categoryUuid] ?? 0) + transaction.amountMinor;
-        expenseByDate[transaction.transactionDate] =
-            (expenseByDate[transaction.transactionDate] ?? 0) +
-                transaction.amountMinor;
-      case FinanceTransactionType.refund:
-        refund += transaction.amountMinor;
-        expenseByCategory[categoryUuid] =
-            (expenseByCategory[categoryUuid] ?? 0) - transaction.amountMinor;
-        expenseByDate[transaction.transactionDate] =
-            (expenseByDate[transaction.transactionDate] ?? 0) -
-                transaction.amountMinor;
-    }
-  }
-
-  return FinanceSummary(
-    incomeMinor: income,
-    expenseMinor: expense,
-    refundMinor: refund,
-    transactionCount: transactionCount,
-    expenseByCategory: expenseByCategory,
-    incomeByCategory: incomeByCategory,
-    expenseByDate: expenseByDate,
-  );
 }
 
 String _formatFinanceDateRange(DateTime from, DateTime to) {
