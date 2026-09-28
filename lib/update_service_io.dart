@@ -1023,6 +1023,39 @@ class UpdateService {
     return null;
   }
 
+  static Future<void> clearDownloadedPackage(String filePath) async {
+    if (_isDownloading) {
+      throw StateError('更新包正在下载，无法清除');
+    }
+
+    final file = File(filePath);
+    final fileName = file.uri.pathSegments.last;
+    final relatedNames = <String>{fileName};
+    if (fileName.toLowerCase().endsWith('.zip')) {
+      relatedNames.add(fileName.substring(0, fileName.length - 4));
+    } else {
+      relatedNames.add('$fileName.zip');
+    }
+
+    final pathsToClear = <String>{file.path};
+    for (final directory in await _getDownloadDirectories()) {
+      for (final relatedName in relatedNames) {
+        pathsToClear.add('$directory/$relatedName');
+      }
+    }
+    for (final path in pathsToClear) {
+      final relatedFile = File(path);
+      if (await relatedFile.exists()) await relatedFile.delete();
+    }
+
+    if (_localPackagePath != null && pathsToClear.contains(_localPackagePath)) {
+      _localPackagePath = null;
+      _isDownloaded = false;
+      _downloadProgress = 0;
+      _uiProgressCallback?.call(0);
+    }
+  }
+
   static Future<List<String>> _getDownloadDirectories() async {
     final directories = <String>[];
     final publicDirectory = await getDownloadDirectory();

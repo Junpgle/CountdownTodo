@@ -430,6 +430,47 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     await UpdateService.installPackage(path);
   }
 
+  Future<void> _clearDownloadedPackage() async {
+    final path = _downloadedPackagePath;
+    if (path == null || _isDownloading || _isForceDownloading) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('清除已下载的安装包'),
+        content: const Text('清除后可以重新下载最新版完整安装包。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('清除安装包'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await UpdateService.clearDownloadedPackage(path);
+      if (!mounted) return;
+      setState(() {
+        _downloadedPackagePath = null;
+        _downloadedPackageVersion = null;
+        _forceDownloadProgress = 0;
+      });
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('已清除安装包')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('清除安装包失败：$error')),
+      );
+    }
+  }
+
   Future<void> _promptInstall(String path) async {
     if (AppPlatform.isWeb) {
       ScaffoldMessenger.of(context)
@@ -1092,47 +1133,72 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
             : 'v$downloadedVersion';
     return Material(
       color: Colors.transparent,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-        leading: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(12),
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+            leading: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.download_rounded,
+                  color: colorScheme.onPrimaryContainer),
+            ),
+            title: Text(
+                packageReady ? '立即安装 $downloadedVersionLabel' : '强制下载最新版完整包'),
+            subtitle: packageReady
+                ? Text('完整安装包 $downloadedVersionLabel 已下载完成，确认后开始安装')
+                : _isForceDownloading
+                    ? Text(
+                        '下载中 ${(_forceDownloadProgress * 100).toStringAsFixed(0)}%',
+                        style:
+                            TextStyle(fontSize: 12, color: colorScheme.primary),
+                      )
+                    : const Text('忽略当前版本检查，下载清单中的最新完整安装包'),
+            trailing: packageReady
+                ? Icon(Icons.system_update_alt_rounded,
+                    color: colorScheme.primary)
+                : _isForceDownloading
+                    ? SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          value: _forceDownloadProgress > 0
+                              ? _forceDownloadProgress
+                              : null,
+                          color: colorScheme.primary,
+                        ),
+                      )
+                    : Icon(Icons.file_download_outlined,
+                        color: colorScheme.onSurfaceVariant),
+            onTap: packageReady
+                ? _installDownloadedPackage
+                : (_isForceDownloading ? null : _forceDownloadLatest),
           ),
-          child: Icon(Icons.download_rounded,
-              color: colorScheme.onPrimaryContainer),
-        ),
-        title:
-            Text(packageReady ? '立即安装 $downloadedVersionLabel' : '强制下载最新版完整包'),
-        subtitle: packageReady
-            ? Text('完整安装包 $downloadedVersionLabel 已下载完成，确认后开始安装')
-            : _isForceDownloading
-                ? Text(
-                    '下载中 ${(_forceDownloadProgress * 100).toStringAsFixed(0)}%',
-                    style: TextStyle(fontSize: 12, color: colorScheme.primary),
-                  )
-                : const Text('忽略当前版本检查，下载清单中的最新完整安装包'),
-        trailing: packageReady
-            ? Icon(Icons.system_update_alt_rounded, color: colorScheme.primary)
-            : _isForceDownloading
-                ? SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      value: _forceDownloadProgress > 0
-                          ? _forceDownloadProgress
-                          : null,
-                      color: colorScheme.primary,
-                    ),
-                  )
-                : Icon(Icons.file_download_outlined,
-                    color: colorScheme.onSurfaceVariant),
-        onTap: packageReady
-            ? _installDownloadedPackage
-            : (_isForceDownloading ? null : _forceDownloadLatest),
+          if (packageReady && !AppPlatform.isWeb)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(68, 0, 12, 8),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: OutlinedButton.icon(
+                  onPressed: _isDownloading || _isForceDownloading
+                      ? null
+                      : _clearDownloadedPackage,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  label: const Text('清除安装包'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: colorScheme.error,
+                    side: BorderSide(color: colorScheme.error),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

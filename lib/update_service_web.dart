@@ -659,6 +659,8 @@ class UpdateService {
   static Future<String?> isPackageAlreadyDownloaded(String versionName) async =>
       null;
 
+  static Future<void> clearDownloadedPackage(String filePath) async {}
+
   static Future<void> autoDownloadLatestOnWifi(
     BuildContext context,
     AppManifest manifest, {
