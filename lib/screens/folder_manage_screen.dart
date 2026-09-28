@@ -107,7 +107,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
   }
 
   Future<void> _showCreateOrEditDialog([TodoGroup? existing]) async {
-    final name = await showDialog<String>(
+    final name = await showAppDialog<String>(
       context: context,
       builder: (_) => _FolderNameDialog(initialName: existing?.name),
     );
@@ -126,7 +126,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
   }
 
   void _deleteGroup(TodoGroup g) {
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('解散文件夹？'),
@@ -171,8 +171,8 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
         _todos.where((t) => t.groupId == null && !t.isDeleted).toList();
 
     if (unassigned.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('没有待分配的独立待办')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('没有待分配的独立待办')));
       return;
     }
 

@@ -136,7 +136,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
       }
     }
 
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
@@ -238,7 +238,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                         color: Theme.of(context).colorScheme.primary,
                       ),
                       onTap: () async {
-                        final pickedDate = await showDatePicker(
+                        final pickedDate = await showAppDatePicker(
                           context: context,
                           firstDate: DateTime(2000),
                           lastDate: DateTime(2100),
@@ -266,7 +266,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                             );
                           } else {
                             if (!context.mounted) return;
-                            final pickedTime = await showTimePicker(
+                            final pickedTime = await showAppTimePicker(
                               context: context,
                               initialTime: TimeOfDay.fromDateTime(createdAt),
                             );
@@ -299,7 +299,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                         color: Theme.of(context).colorScheme.primary,
                       ),
                       onTap: () async {
-                        final pickedDate = await showDatePicker(
+                        final pickedDate = await showAppDatePicker(
                           context: context,
                           firstDate: DateTime(2000),
                           lastDate: DateTime(2100),
@@ -318,7 +318,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                             );
                           } else {
                             if (!context.mounted) return;
-                            final pickedTime = await showTimePicker(
+                            final pickedTime = await showAppTimePicker(
                               context: context,
                               initialTime: TimeOfDay.fromDateTime(
                                 dueDate ?? DateTime.now(),
@@ -409,7 +409,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                         color: Theme.of(context).colorScheme.primary,
                       ),
                       onTap: () async {
-                        final picked = await showDatePicker(
+                        final picked = await showAppDatePicker(
                           context: context,
                           firstDate: DateTime.now(),
                           lastDate: DateTime(2100),
@@ -575,7 +575,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                               ? null
                               : () async {
                                   if (aiInputCtrl.text.trim().isEmpty) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
+                                    AppSnackBars.showSnackBar(
+                                      context,
                                       const SnackBar(content: Text("请输入事项内容")),
                                     );
                                     return;
@@ -584,7 +585,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                   final config = await LLMService.getConfig();
                                   if (config == null || !config.isConfigured) {
                                     if (!context.mounted) return;
-                                    final goToSettings = await showDialog<bool>(
+                                    final goToSettings =
+                                        await showAppDialog<bool>(
                                       context: context,
                                       builder: (ctx) => AlertDialog(
                                         title: const Text("未配置大模型"),
@@ -724,9 +726,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                       });
 
                                       if (mounted) {
-                                        ScaffoldMessenger.of(
+                                        AppSnackBars.showSnackBar(
                                           context,
-                                        ).showSnackBar(
                                           SnackBar(
                                             content: Text(
                                               "大模型解析成功，共${parsedResults.length}个事项",
@@ -751,9 +752,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                       isParsing = false;
                                     });
                                     if (mounted) {
-                                      ScaffoldMessenger.of(
+                                      AppSnackBars.showSnackBar(
                                         context,
-                                      ).showSnackBar(
                                         SnackBar(content: Text("大模型解析失败: $e")),
                                       );
                                     }
@@ -777,7 +777,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                               ? null
                               : () async {
                                   if (aiInputCtrl.text.trim().isEmpty) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
+                                    AppSnackBars.showSnackBar(
+                                      context,
                                       const SnackBar(content: Text("请输入事项内容")),
                                     );
                                     return;
@@ -786,7 +787,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                   final config = await LLMService.getConfig();
                                   if (config == null || !config.isConfigured) {
                                     if (!context.mounted) return;
-                                    final goToSettings = await showDialog<bool>(
+                                    final goToSettings =
+                                        await showAppDialog<bool>(
                                       context: context,
                                       builder: (ctx) => AlertDialog(
                                         title: const Text("未配置大模型"),
@@ -950,9 +952,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                       });
 
                                       if (mounted) {
-                                        ScaffoldMessenger.of(
+                                        AppSnackBars.showSnackBar(
                                           context,
-                                        ).showSnackBar(
                                           SnackBar(
                                             content: Text(
                                               "大模型解析成功，共${parsedResults.length}个事项，请确认或修改后保存",
@@ -978,9 +979,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                                       isParsing = false;
                                     });
                                     if (mounted) {
-                                      ScaffoldMessenger.of(
+                                      AppSnackBars.showSnackBar(
                                         context,
-                                      ).showSnackBar(
                                         SnackBar(content: Text("大模型解析失败: $e")),
                                       );
                                     }
@@ -1221,7 +1221,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
                     );
                     if (recurrence != RecurrenceType.none &&
                         normalizedTime.start == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      AppSnackBars.showSnackBar(
+                        context,
                         const SnackBar(
                           content: Text('重复待办需要先设置首次完成日期'),
                         ),
@@ -1286,7 +1287,7 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
         ),
       CaptureIntentKind.todo => ('', ''),
     };
-    return await showDialog<_QuickCaptureTarget>(
+    return await showAppDialog<_QuickCaptureTarget>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: Text(title),
@@ -1324,7 +1325,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
     final dateSource = parsed.startTime ?? parsed.endTime;
     if (dateSource == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('固定日程需要先确认日期')),
         );
       }
@@ -1374,7 +1376,8 @@ mixin _TodoSectionCaptureMixin on _TodoSectionStateBase {
         );
       } on FixedScheduleRecurrenceLimitException catch (error) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             SnackBar(content: Text(error.toString())),
           );
         }

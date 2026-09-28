@@ -11,6 +11,7 @@ import 'package:webview_win_floating/webview_win_floating.dart';
 import 'dart:convert'; // 🚀 添加了 jsonDecode 必需的包
 import '../../storage_service.dart';
 import '../../widgets/floating_glass_control.dart';
+import '../../utils/app_dialogs.dart';
 
 class CourseWebViewScreen extends StatefulWidget {
   final String initialUrl;
@@ -239,7 +240,8 @@ class _CourseWebViewScreenState extends State<CourseWebViewScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('抓取失败: $e')),
         );
       }

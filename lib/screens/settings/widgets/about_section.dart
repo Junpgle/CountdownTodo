@@ -124,7 +124,7 @@ class _AboutSectionState extends State<AboutSection> {
   }
 
   void _showChangelogDialog() {
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
@@ -204,7 +204,7 @@ class _AboutSectionState extends State<AboutSection> {
   }
 
   void _showDeveloperContact() {
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('开发者联系'),
@@ -252,7 +252,7 @@ class _AboutSectionState extends State<AboutSection> {
           subtitle: const Text('CountDownTodo - 您的个人效率助手'),
           trailing: const Icon(Icons.chevron_right),
           onTap: () {
-            showDialog(
+            showAppDialog(
               context: context,
               builder: (ctx) => AlertDialog(
                 title: const Text('软件介绍'),

@@ -5,6 +5,7 @@ import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../widgets/finance_management_widgets.dart';
 import 'finance_loan_entry_screen.dart';
+import '../../../utils/app_dialogs.dart';
 
 class FinanceLoanScreen extends StatefulWidget {
   const FinanceLoanScreen({super.key});
@@ -78,7 +79,7 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen> {
   }
 
   Future<void> _deleteLoan(FinanceLoan loan) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除贷款？'),
@@ -99,7 +100,8 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen> {
     try {
       await FinanceRepository.deleteLoan(loan.uuid);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('贷款已删除')),
       );
       await _load();
@@ -110,7 +112,8 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       SnackBar(content: Text(message)),
     );
   }
@@ -418,8 +421,8 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
       await _load();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('更新还款状态失败：$error')));
+      AppSnackBars.showSnackBar(context,
+          SnackBar(content: Text('更新还款状态失败：$error')));
     } finally {
       _updating.remove(installment.uuid);
       if (mounted) setState(() {});

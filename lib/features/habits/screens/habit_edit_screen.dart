@@ -13,6 +13,7 @@ import '../services/habit_rule_resolver.dart';
 import '../widgets/habit_adaptation_panel.dart';
 import '../widgets/habit_water_target_picker.dart';
 import '../../../widgets/floating_glass_control.dart';
+import '../../../utils/app_dialogs.dart';
 
 /// 新建 / 编辑习惯。
 ///
@@ -656,7 +657,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
   Future<void> _save() async {
     final error = _validate();
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text(error)),
       );
       return;
@@ -729,7 +731,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('保存失败: $e')),
       );
     } finally {
@@ -1059,9 +1062,11 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                   : () {
                       final error = _validateStep(_step);
                       if (error != null) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content: Text(error),
-                            behavior: SnackBarBehavior.floating));
+                        AppSnackBars.showSnackBar(
+                            context,
+                            SnackBar(
+                                content: Text(error),
+                                behavior: SnackBarBehavior.floating));
                         return;
                       }
                       setState(() => _step++);
@@ -1445,7 +1450,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
   }
 
   Future<void> _showIconDialog() async {
-    final selected = await showDialog<String>(
+    final selected = await showAppDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('选择图标'),
@@ -2003,7 +2008,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             ),
           ],
         ),
-        Slider(
+        LiquidGlassSlider(
           value: _targetMinutes.toDouble().clamp(6 * 60, 12 * 60),
           min: 6 * 60,
           max: 12 * 60,
@@ -2039,7 +2044,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             ),
           ],
         ),
-        Slider(
+        LiquidGlassSlider(
           value: _targetMinutes.toDouble(),
           min: 5,
           max: 240,
@@ -2748,7 +2753,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             ),
             FilledButton.tonalIcon(
               onPressed: () async {
-                final picked = await showTimePicker(
+                final picked = await showAppTimePicker(
                   context: context,
                   initialTime: _targetTime,
                 );
@@ -3000,12 +3005,13 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                 label: const Text('添加'),
                 onPressed: () async {
                   if (_fixedTimes.length >= 3) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    AppSnackBars.showSnackBar(
+                      context,
                       const SnackBar(content: Text('最多添加 3 个提醒时间')),
                     );
                     return;
                   }
-                  final picked = await showTimePicker(
+                  final picked = await showAppTimePicker(
                     context: context,
                     initialTime: const TimeOfDay(hour: 20, minute: 0),
                   );

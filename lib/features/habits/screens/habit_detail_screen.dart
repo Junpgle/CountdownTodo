@@ -28,6 +28,7 @@ import '../services/habit_sleep_log_migration_service.dart';
 import '../services/habit_sleep_duration_service.dart';
 import '../services/habit_focus_launcher.dart';
 import '../services/habit_sleep_coaching_service.dart';
+import '../../../utils/app_dialogs.dart';
 
 /// 习惯详情：今日进度 + 今日打卡记录 + 目标信息 + 管理操作。
 ///
@@ -169,7 +170,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       if (mounted) setState(() => _sleepCoachingSnapshot = snapshot);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('训练计划开启失败，请稍后重试')),
       );
     }
@@ -197,7 +199,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('训练状态更新失败，请稍后重试')),
         );
       }
@@ -226,7 +229,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('训练开关更新失败，请稍后重试')),
         );
       }
@@ -259,7 +263,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('训练节奏更新失败，请稍后重试')),
         );
       }
@@ -346,7 +351,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   }
 
   Future<void> _deleteHabit() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除习惯'),
@@ -625,7 +630,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     var timeSelection = HabitSleepLogTimeSelection.startTime;
     var sleepKind = HabitSleepLogKind.fullSleep;
-    final options = await showDialog<HabitSleepLogMigrationOptions>(
+    final options = await showAppDialog<HabitSleepLogMigrationOptions>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
@@ -817,13 +822,15 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       );
       await HabitSleepDurationService.syncAll();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('已导入 $imported 条$habitLabel历史打卡')),
       );
       _loadData();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('导入失败：$e')),
       );
     }
@@ -1617,7 +1624,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
 
   Future<void> _editRecord(HabitCheckIn? checkIn) async {
     if (checkIn == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('$_displayPeriodLabel还没有记录')),
       );
       return;
@@ -1650,7 +1658,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     // 局部 controller：对话框每次打开都是空值，避免残留上一次输入。
     final valueController = TextEditingController();
 
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -1666,7 +1674,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                   '${date.day.toString().padLeft(2, '0')}',
                 ),
                 onTap: () async {
-                  final picked = await showDatePicker(
+                  final picked = await showAppDatePicker(
                     context: context,
                     initialDate: date,
                     firstDate: now.subtract(const Duration(days: 90)),
@@ -1688,7 +1696,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                   '${time.minute.toString().padLeft(2, '0')}',
                 ),
                 onTap: () async {
-                  final picked = await showTimePicker(
+                  final picked = await showAppTimePicker(
                     context: context,
                     initialTime: time,
                   );
@@ -1744,7 +1752,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       final parsed = double.tryParse(valueController.text.trim());
       valueController.dispose();
       if (parsed == null || parsed <= 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('请输入有效的数量')),
         );
         return;

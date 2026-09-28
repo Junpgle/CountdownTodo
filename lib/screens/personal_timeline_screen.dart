@@ -622,7 +622,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   void _navigateToMedalWall() {
     // 勋章墙必须展示全纪录统计，不能受当前时段切换影响
     if (_allTimeRecommendation == null || _allTimeSummary == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('正在汇总全纪录数据，请稍候...')),
       );
       return;
@@ -789,7 +790,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         return StatefulBuilder(
           builder: (context, setModalState) {
             Future<void> pickPeriod() async {
-              final picked = await showDatePicker(
+              final picked = await showAppDatePicker(
                 context: context,
                 initialDate: selectedDate,
                 firstDate: DateTime(2020),
@@ -1197,11 +1198,13 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             text: 'CountDownTodo ${_getPeriodName()} 总结',
           );
         } catch (e) {
-          messenger.showSnackBar(
+          AppSnackBars.showSnackBarFromMessenger(
+            messenger,
             SnackBar(content: Text('打开分享失败：$e')),
           );
         }
-        messenger.showSnackBar(
+        AppSnackBars.showSnackBarFromMessenger(
+          messenger,
           SnackBar(content: Text('长图已保存，可从本地文件继续使用：$filePath')),
         );
       }
@@ -1212,7 +1215,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             'path': filePath,
           });
         }
-        messenger.showSnackBar(
+        AppSnackBars.showSnackBarFromMessenger(
+          messenger,
           SnackBar(
             content: Text(!kIsWeb && AppPlatform.isAndroid
                 ? '长图已保存到相册'
@@ -1229,7 +1233,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     } catch (e) {
       // debugPrint('保存时间线长图失败: $e');
       if (mounted) {
-        messenger.showSnackBar(
+        AppSnackBars.showSnackBarFromMessenger(
+          messenger,
           SnackBar(content: Text('保存长图失败：$e')),
         );
       }

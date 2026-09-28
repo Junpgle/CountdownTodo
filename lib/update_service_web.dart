@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:web/web.dart' as web;
 import 'services/github_resource_service.dart';
+import './utils/app_dialogs.dart';
 
 class ChangelogEntry {
   final String versionName;
@@ -782,8 +783,8 @@ class UpdateService {
     );
     if (manifest == null) {
       if (isManual && context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('检查失败，请检查网络')));
+        AppSnackBars.showSnackBar(context,
+            const SnackBar(content: Text('检查失败，请检查网络')));
       }
       return;
     }
@@ -810,7 +811,7 @@ class UpdateService {
 
     if (!hasUpdate && !hasNotice) {
       if (isManual && context.mounted) {
-        showDialog(
+        showAppDialog(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('检查完成'),
@@ -929,7 +930,7 @@ class UpdateService {
       return;
     }
 
-    await showDialog(
+    await showAppDialog(
       context: context,
       barrierDismissible: true,
       builder: (_) => _AnnouncementCarouselDialog(
@@ -977,7 +978,7 @@ class UpdateService {
       return;
     }
 
-    await showDialog(
+    await showAppDialog(
       context: context,
       barrierDismissible: !manifest.forceUpdate,
       builder: (ctx) {

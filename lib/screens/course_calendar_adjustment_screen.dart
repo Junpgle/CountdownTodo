@@ -59,7 +59,7 @@ class _CourseCalendarAdjustmentScreenState
 
   Future<DateTime?> _pickDate({DateTime? initial}) {
     final now = DateTime.now();
-    return showDatePicker(
+    return showAppDatePicker(
       context: context,
       initialDate: initial ?? now,
       firstDate: DateTime(now.year - 2, 1, 1),
@@ -154,7 +154,7 @@ class _CourseCalendarAdjustmentScreenState
     );
 
     if (width >= 700) {
-      return showDialog<_AddAction>(
+      return showAppDialog<_AddAction>(
         context: context,
         builder: (ctx) => Dialog(
           clipBehavior: Clip.antiAlias,

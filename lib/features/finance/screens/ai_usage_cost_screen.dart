@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../widgets/floating_glass_control.dart';
 import '../services/ai_usage_cost_service.dart';
+import '../../../utils/app_dialogs.dart';
 
 class AiUsageCostScreen extends StatefulWidget {
   const AiUsageCostScreen({super.key});
@@ -105,7 +106,7 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
           ? ''
           : AiUsageCostService.microsToYuan(current.audioMicrosPerHour),
     );
-    final result = await showDialog<AiUsagePricing>(
+    final result = await showAppDialog<AiUsagePricing>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(current == null ? '添加模型单价' : '编辑模型单价'),

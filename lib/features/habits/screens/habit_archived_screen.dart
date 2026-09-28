@@ -7,6 +7,7 @@ import '../models/habit_goal.dart';
 import '../repositories/habit_repository.dart';
 import '../widgets/habit_format.dart';
 import 'habit_detail_screen.dart';
+import '../../../utils/app_dialogs.dart';
 
 /// 已归档习惯列表：归档只隐藏日常入口，不删除习惯和历史记录。
 class HabitArchivedScreen extends StatefulWidget {
@@ -94,8 +95,8 @@ class _HabitArchivedScreenState extends State<HabitArchivedScreen> {
       Navigator.of(context).pop(true);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('恢复失败，请稍后重试')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('恢复失败，请稍后重试')));
     } finally {
       if (mounted) setState(() => _restoring = null);
     }

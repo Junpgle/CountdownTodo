@@ -15,6 +15,7 @@ import '../services/recognized_todo_adapter.dart';
 import '../services/ai_recognition_chat_bridge.dart';
 import '../utils/local_image_provider.dart';
 import '../utils/persistent_image_storage.dart';
+import '../utils/app_dialogs.dart';
 
 enum _TodoConfirmationAction { addTodo, addFixedSchedule, cancel }
 
@@ -415,7 +416,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     final customDaysCtrl =
         TextEditingController(text: customDays?.toString() ?? '');
 
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
@@ -493,7 +494,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                         '完成日期: ${DateFormat('yyyy-MM-dd').format(createdAt)}',
                       ),
                       onTap: () async {
-                        final pickedDate = await showDatePicker(
+                        final pickedDate = await showAppDatePicker(
                           context: context,
                           firstDate: DateTime(2000),
                           lastDate: DateTime(2100),
@@ -517,7 +518,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                             });
                           } else {
                             if (!context.mounted) return;
-                            final pickedTime = await showTimePicker(
+                            final pickedTime = await showAppTimePicker(
                               context: context,
                               initialTime: TimeOfDay.fromDateTime(createdAt),
                             );
@@ -543,7 +544,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                             : '${DateFormat('yyyy-MM-dd HH:mm').format(dueDate!)} 前完成',
                       ),
                       onTap: () async {
-                        final pickedDate = await showDatePicker(
+                        final pickedDate = await showAppDatePicker(
                           context: context,
                           firstDate: DateTime(2000),
                           lastDate: DateTime(2100),
@@ -560,7 +561,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                                 ));
                           } else {
                             if (!context.mounted) return;
-                            final pickedTime = await showTimePicker(
+                            final pickedTime = await showAppTimePicker(
                               context: context,
                               initialTime: TimeOfDay.fromDateTime(dueDate ??
                                   createdAt.add(const Duration(hours: 1))),
@@ -711,7 +712,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       ),
                       trailing: const Icon(Icons.event_busy, size: 20),
                       onTap: () async {
-                        final picked = await showDatePicker(
+                        final picked = await showAppDatePicker(
                           context: context,
                           initialDate: recurrenceEndDate ?? DateTime.now(),
                           firstDate: DateTime.now(),
@@ -795,7 +796,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         isDateOnly: todo.isAllDay,
       );
       if (normalizedTime.start == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               intent == CaptureIntentKind.fixedSchedule
@@ -828,7 +830,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         ),
       CaptureIntentKind.todo => ('', ''),
     };
-    return await showDialog<_TodoConfirmationAction>(
+    return await showAppDialog<_TodoConfirmationAction>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: Text(title),
@@ -878,7 +880,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     final dateSource = todo.startTime ?? todo.endTime;
     if (dateSource == null) {
       if (!mounted) return false;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('固定日程需要先确认日期')),
       );
       return false;
@@ -941,7 +944,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       );
     } on FixedScheduleRecurrenceLimitException catch (error) {
       if (!mounted) return false;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text(error.toString())),
       );
       return false;
@@ -983,7 +987,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   Future<void> _finishConfirm() async {
     if (_isSaving) return;
     if (_confirmedTodos.isEmpty && _fixedScheduleCount == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('没有添加任何内容')),
       );
       widget.onSkip?.call();
@@ -1022,7 +1027,8 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       Navigator.pop(context, _confirmedTodos);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('保存失败，请重试：$error')),
         );
       }

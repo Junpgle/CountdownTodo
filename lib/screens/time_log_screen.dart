@@ -402,7 +402,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
               _focusedDate = _focusedDate.subtract(const Duration(days: 1)))),
       GestureDetector(
         onTap: () async {
-          final p = await showDatePicker(
+          final p = await showAppDatePicker(
               context: context,
               initialDate: _focusedDate,
               firstDate: DateTime(2020),

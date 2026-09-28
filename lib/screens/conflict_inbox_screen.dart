@@ -176,14 +176,16 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       final pp = result['personal_personal'] ?? 0;
       final pt = result['personal_team'] ?? 0;
       final tt = result['team_team'] ?? 0;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
           content: Text('扫描完成：$total 项冲突，个人-个人 $pp，个人-团队 $pt，团队-团队 $tt'),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('扫描失败: $e'), backgroundColor: Colors.red),
       );
     } finally {
@@ -722,7 +724,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('打开AI助手失败: $e')),
         );
       }
@@ -1448,7 +1451,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
   Future<void> _batchResolveGhostConflicts(List<dynamic> items) async {
     final messenger = ScaffoldMessenger.of(context);
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("一键修复"),
@@ -1544,7 +1547,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     await _loadConflicts();
 
     if (mounted) {
-      messenger.showSnackBar(
+      AppSnackBars.showSnackBarFromMessenger(
+        messenger,
         const SnackBar(content: Text("损坏的冲突已批量修复")),
       );
     }
@@ -1987,7 +1991,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         _selectedConflictIds.clear();
         _isBatchMode = false;
         await _loadConflicts();
-        messenger.showSnackBar(
+        AppSnackBars.showSnackBarFromMessenger(
+          messenger,
           SnackBar(
             content: Text(scheduleSkippedCount > 0
                 ? '已保留本地版本，成功处理 $successCount 项版本冲突；$scheduleSkippedCount 项时间冲突需单独处理'
@@ -1998,7 +2003,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('批量操作失败: $e'), backgroundColor: Colors.red),
         );
       }
@@ -2079,7 +2085,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         _selectedConflictIds.clear();
         _isBatchMode = false;
         await _loadConflicts();
-        messenger.showSnackBar(
+        AppSnackBars.showSnackBarFromMessenger(
+          messenger,
           SnackBar(
             content: Text(scheduleSkippedCount > 0
                 ? '已采用服务器版本，成功处理 $successCount 项版本冲突；$scheduleSkippedCount 项时间冲突需单独处理'
@@ -2090,7 +2097,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
+        AppSnackBars.showSnackBarFromMessenger(
+          messenger,
           SnackBar(content: Text('批量操作失败: $e'), backgroundColor: Colors.red),
         );
       }
@@ -2280,7 +2288,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         final message = scheduleSkippedCount > 0
             ? '已应用推荐方案，成功处理 $successCount 项版本冲突；$scheduleSkippedCount 项时间冲突需单独处理'
             : '已应用推荐方案，成功处理 $successCount 项冲突';
-        messenger.showSnackBar(
+        AppSnackBars.showSnackBarFromMessenger(
+          messenger,
           SnackBar(
             content: Text(message),
             backgroundColor: Colors.green,
@@ -2289,7 +2298,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
+        AppSnackBars.showSnackBarFromMessenger(
+          messenger,
           SnackBar(content: Text('批量操作失败: $e'), backgroundColor: Colors.red),
         );
       }
@@ -2305,7 +2315,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     if (refresh) {
       await _loadConflicts();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text("已强制保留本地并加入同步队列")),
         );
       }
@@ -2489,7 +2500,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                                               widget.username, item);
                                       await _loadConflicts();
                                       if (!mounted) return;
-                                      messenger.showSnackBar(
+                                      AppSnackBars.showSnackBarFromMessenger(
+                                        messenger,
                                         const SnackBar(
                                           content: Text('已保留现有时间安排，不再提示这组冲突'),
                                         ),
@@ -3143,13 +3155,15 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       } else if (mounted) {
         Navigator.pop(context);
       }
-      messenger.showSnackBar(
+      AppSnackBars.showSnackBarFromMessenger(
+        messenger,
         SnackBar(content: Text(successMessage)),
       );
       await _loadConflicts();
     } catch (e) {
       if (!mounted) return;
-      messenger.showSnackBar(
+      AppSnackBars.showSnackBarFromMessenger(
+        messenger,
         SnackBar(content: Text('处理失败: $e'), backgroundColor: Colors.red),
       );
     } finally {
@@ -3881,14 +3895,16 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
         if (!widget.isEmbedded) {
           Navigator.pop(context);
         }
-        messenger.showSnackBar(
+        AppSnackBars.showSnackBarFromMessenger(
+          messenger,
           const SnackBar(
               content: Text('已保留本地版本，冲突已解决'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('操作失败: $e'), backgroundColor: Colors.red),
         );
       }
@@ -3899,7 +3915,8 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
 
   Future<void> _acceptServer() async {
     if (!_hasServerData) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(
             content: Text('服务器版本数据不可用，请先同步'), backgroundColor: Colors.orange),
       );
@@ -3948,14 +3965,16 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
         if (!widget.isEmbedded) {
           Navigator.pop(context);
         }
-        messenger.showSnackBar(
+        AppSnackBars.showSnackBarFromMessenger(
+          messenger,
           const SnackBar(
               content: Text('已采用服务器版本，冲突已解决'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('操作失败: $e'), backgroundColor: Colors.red),
         );
       }

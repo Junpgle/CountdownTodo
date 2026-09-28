@@ -5,6 +5,7 @@ import '../models.dart';
 import '../services/api_service.dart';
 import '../services/team_share_link.dart';
 import '../widgets/floating_glass_control.dart';
+import '../utils/app_dialogs.dart';
 
 class TeamShareManageScreen extends StatefulWidget {
   final Team team;
@@ -56,7 +57,7 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
   }
 
   Future<void> _deleteShare(TeamShare share) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除分享'),
@@ -80,7 +81,8 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
       if (result['success'] == true) {
         _loadShares();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             const SnackBar(content: Text('分享链接已删除')),
           );
         }
@@ -104,7 +106,8 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
       shareCode: share.shareCode,
     );
     Clipboard.setData(ClipboardData(text: url));
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       const SnackBar(content: Text('链接已复制到剪贴板')),
     );
   }
@@ -394,7 +397,7 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
         if (mounted) {
           widget.onCreated();
 
-          await showDialog(
+          await showAppDialog(
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('分享创建成功'),
@@ -420,7 +423,8 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
                 TextButton(
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: shareUrl));
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    AppSnackBars.showSnackBar(
+                      context,
                       const SnackBar(content: Text('链接已复制')),
                     );
                   },
@@ -438,7 +442,8 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             SnackBar(content: Text(result['error'] ?? '创建失败')),
           );
         }

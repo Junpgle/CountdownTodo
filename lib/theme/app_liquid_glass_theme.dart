@@ -60,6 +60,7 @@ ButtonLayerBuilder _glassButtonBackgroundBuilder({
           ? const LiquidOval()
           : LiquidRoundedSuperellipse(borderRadius: borderRadius),
       settings: LiquidGlassSettings(
+        bodyMode: GlassBodyMode.clear,
         glassColor: tint.withValues(alpha: isDark ? 0.12 : 0.1),
         thickness:
             configuration.mode == LiquidGlassEffectMode.enhanced ? 20 : 16,
@@ -307,6 +308,10 @@ ThemeData applyAppLiquidGlassTheme(
       );
 
   return base.copyWith(
+    // Legacy DropdownButton and DropdownButtonFormField paint their popup
+    // from ThemeData.canvasColor. Keep those native selectors in the same
+    // translucent palette as the shared app glass surfaces.
+    canvasColor: elevatedSurface,
     appBarTheme: base.appBarTheme.copyWith(
       // Keep stock AppBars transparent and elevation-free. The shared
       // FloatingGlassTopBarBackground is supplied at each AppBar callsite
@@ -362,6 +367,80 @@ ThemeData applyAppLiquidGlassTheme(
       clipBehavior: Clip.antiAlias,
       shape: rounded(28),
     ),
+    datePickerTheme: base.datePickerTheme.copyWith(
+      backgroundColor: elevatedSurface,
+      elevation: 8,
+      shadowColor: scheme.shadow.withValues(alpha: 0.2),
+      surfaceTintColor: Colors.transparent,
+      shape: rounded(28),
+      headerBackgroundColor: scheme.primaryContainer.withValues(
+        alpha: materialOpacity(0.82),
+      ),
+      headerForegroundColor: scheme.onPrimaryContainer,
+      dividerColor: outline,
+      dayForegroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) {
+          return scheme.onSurface.withValues(alpha: 0.38);
+        }
+        if (states.contains(WidgetState.selected)) {
+          return scheme.onPrimaryContainer;
+        }
+        return scheme.onSurface;
+      }),
+      dayBackgroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? scheme.primaryContainer.withValues(
+                  alpha: materialOpacity(0.82),
+                )
+              : null),
+      dayOverlayColor: WidgetStatePropertyAll(
+        scheme.primary.withValues(alpha: 0.12),
+      ),
+      todayForegroundColor: WidgetStatePropertyAll(scheme.primary),
+      todayBackgroundColor: WidgetStatePropertyAll(
+        scheme.secondaryContainer.withValues(alpha: 0.42),
+      ),
+      todayBorder: BorderSide(color: scheme.primary.withValues(alpha: 0.62)),
+      rangePickerBackgroundColor: elevatedSurface,
+      rangePickerElevation: 8,
+      rangePickerShadowColor: scheme.shadow.withValues(alpha: 0.2),
+      rangePickerSurfaceTintColor: Colors.transparent,
+      rangePickerShape: rounded(28),
+      rangePickerHeaderBackgroundColor: scheme.primaryContainer.withValues(
+        alpha: materialOpacity(0.82),
+      ),
+      rangePickerHeaderForegroundColor: scheme.onPrimaryContainer,
+      rangeSelectionBackgroundColor: scheme.primaryContainer.withValues(
+        alpha: materialOpacity(0.56),
+      ),
+    ),
+    timePickerTheme: base.timePickerTheme.copyWith(
+      backgroundColor: elevatedSurface,
+      elevation: 8,
+      shape: rounded(28),
+      dialBackgroundColor: quietSurface,
+      dialHandColor: scheme.primary,
+      dialTextColor: scheme.onSurface,
+      hourMinuteColor: scheme.primaryContainer.withValues(
+        alpha: materialOpacity(0.82),
+      ),
+      hourMinuteTextColor: scheme.onPrimaryContainer,
+      dayPeriodColor: WidgetStateColor.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? scheme.primaryContainer.withValues(
+                  alpha: materialOpacity(0.82),
+                )
+              : Colors.transparent),
+      dayPeriodTextColor: WidgetStateColor.resolveWith((states) =>
+          states.contains(WidgetState.selected)
+              ? scheme.onPrimaryContainer
+              : scheme.onSurfaceVariant),
+      dayPeriodBorderSide: BorderSide(color: outline),
+      dayPeriodShape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      timeSelectorSeparatorColor: WidgetStatePropertyAll(outline),
+    ),
     bottomSheetTheme: base.bottomSheetTheme.copyWith(
       backgroundColor: elevatedSurface,
       modalBackgroundColor: elevatedSurface,
@@ -398,6 +477,21 @@ ThemeData applyAppLiquidGlassTheme(
       surfaceTintColor: scheme.primary.withValues(alpha: 0.08),
       elevation: 4,
       shape: rounded(18),
+    ),
+    dropdownMenuTheme: base.dropdownMenuTheme.copyWith(
+      textStyle: base.textTheme.bodyLarge?.copyWith(color: scheme.onSurface),
+      menuStyle: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(elevatedSurface),
+        surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+        elevation: const WidgetStatePropertyAll(4),
+        shape: WidgetStatePropertyAll(rounded(18)),
+      ),
+    ),
+    tabBarTheme: base.tabBarTheme.copyWith(
+      labelColor: scheme.primary,
+      unselectedLabelColor: scheme.onSurfaceVariant,
+      indicatorColor: scheme.primary,
+      dividerColor: outline,
     ),
     snackBarTheme: base.snackBarTheme.copyWith(
       backgroundColor: Color.alphaBlend(

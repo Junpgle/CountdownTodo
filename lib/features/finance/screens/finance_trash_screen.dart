@@ -6,6 +6,7 @@ import '../services/finance_repository.dart';
 import '../services/finance_storage.dart';
 import '../widgets/finance_management_widgets.dart';
 import '../widgets/finance_trash_manager.dart';
+import '../../../utils/app_dialogs.dart';
 
 class FinanceTrashScreen extends StatefulWidget {
   const FinanceTrashScreen({super.key});
@@ -75,7 +76,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
 
   Future<void> _restore(FinanceTransaction transaction) async {
     final restoreMode = transaction.isInstallment
-        ? await showDialog<String>(
+        ? await showAppDialog<String>(
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('恢复分期账单？'),
@@ -108,7 +109,8 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
       await FinanceStorage.restoreTransaction(transaction.uuid);
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       const SnackBar(content: Text('账单已恢复')),
     );
     await _load();
@@ -119,13 +121,15 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
       await FinanceStorage.restoreBudget(budget.uuid);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('恢复预算失败：$error')),
       );
       return;
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       const SnackBar(content: Text('预算已恢复')),
     );
     await _load();
@@ -136,13 +140,15 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
       await FinanceStorage.restoreLoan(loan.uuid);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('恢复贷款失败：$error')),
       );
       return;
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       const SnackBar(content: Text('贷款已恢复')),
     );
     await _load();
@@ -151,7 +157,8 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   Future<void> _restoreRule(FinanceRecurringRule rule) async {
     await FinanceStorage.restoreRecurringRule(rule.uuid);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       const SnackBar(content: Text('周期账单已恢复')),
     );
     await _load();
@@ -160,7 +167,8 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   Future<void> _restoreTemplate(FinanceEntryTemplate template) async {
     await FinanceStorage.restoreTemplate(template.uuid);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       const SnackBar(content: Text('快捷模板已恢复')),
     );
     await _load();

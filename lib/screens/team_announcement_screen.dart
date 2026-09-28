@@ -49,7 +49,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
   }
 
   Future<void> _deleteAnnouncement(String uuid) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('确认撤回'),
@@ -70,8 +70,8 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
     if (!mounted) return;
     if (res['success'] == true) {
       _loadAnnouncements();
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('公告已撤回')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('公告已撤回')));
     }
   }
 
@@ -217,7 +217,8 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                       : () async {
                           if (titleController.text.isEmpty ||
                               contentController.text.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            AppSnackBars.showSnackBar(
+                                context,
                                 const SnackBar(content: Text('标题和内容不能为空')));
                             return;
                           }
@@ -240,12 +241,16 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                             final messenger = ScaffoldMessenger.of(context);
                             Navigator.pop(context);
                             _loadAnnouncements();
-                            messenger.showSnackBar(const SnackBar(
-                                content: Text('公告已发布 🚀'),
-                                backgroundColor: Colors.green));
+                            AppSnackBars.showSnackBarFromMessenger(
+                                messenger,
+                                const SnackBar(
+                                    content: Text('公告已发布 🚀'),
+                                    backgroundColor: Colors.green));
                           } else {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                content: Text(res['error'] ?? '发布失败')));
+                            AppSnackBars.showSnackBar(
+                                context,
+                                SnackBar(
+                                    content: Text(res['error'] ?? '发布失败')));
                             setModalState(() => isPosting = false);
                           }
                         },
@@ -264,7 +269,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
   }
 
   void _showAnnouncementStats(TeamAnnouncement announcement) async {
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (context) => const Center(child: CircularProgressIndicator()),
     );

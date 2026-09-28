@@ -7,6 +7,7 @@ import '../../services/minor_mode_policy.dart';
 import '../../services/minor_mode_service.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
+import '../../utils/app_dialogs.dart';
 
 class TextModelInfo {
   final String id;
@@ -695,7 +696,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
 
       final result = await LLMService.testConnection();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
                 '连接成功！响应: ${result.substring(0, result.length > 50 ? 50 : result.length)}...'),
@@ -705,7 +707,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text('连接失败: $e'),
             backgroundColor: Colors.red,
@@ -722,7 +725,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     final textModel = _selectedTextModel ?? '';
     if (textModel.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('请选择文本模型')),
         );
       }
@@ -770,7 +774,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     await LLMService.saveConfig(config);
     if (mounted) {
       Navigator.pop(context, true);
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('大模型配置已保存')),
       );
     }
@@ -783,7 +788,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       MinorModeAction.llmConfiguration,
     );
     if (!authorized && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
           content: Text(
             MinorModeService.instance.authorizationFailureMessage(
@@ -1031,7 +1037,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           await launchUrl(Uri.parse(url), mode: LaunchMode.platformDefault);
         } catch (e) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             SnackBar(content: Text('无法打开链接: $e')),
           );
         }
@@ -1187,7 +1194,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                             mode: LaunchMode.platformDefault);
                       } catch (e) {
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppSnackBars.showSnackBar(
+                          context,
                           SnackBar(content: Text('无法打开链接: $e')),
                         );
                       }
@@ -1269,7 +1277,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                             mode: LaunchMode.platformDefault);
                       } catch (e) {
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppSnackBars.showSnackBar(
+                          context,
                           SnackBar(content: Text('无法打开链接: $e')),
                         );
                       }
@@ -1327,14 +1336,16 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
 
     if (apiKey.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('请先在上一步填写 $providerName API Key')),
         );
       }
       return;
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('正在拉取 $providerName 模型列表...')),
       );
     }
@@ -1372,19 +1383,21 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       });
 
       if (newModels.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('$providerName 模型列表已是最新')),
         );
         return;
       }
       final count = newModels.length;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('已拉取 $count 个 $providerName 模型')),
       );
       for (final id in newModels) {
         debugPrint('[$providerName] 可用模型: $id');
       }
-      showDialog(
+      showAppDialog(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text('可用 $providerName 模型'),
@@ -1425,7 +1438,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('$providerName 模型列表拉取失败: $e')),
         );
       }
@@ -2076,7 +2090,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                   : [
                       IconButton(
                         onPressed: () async {
-                          final confirmed = await showDialog<bool>(
+                          final confirmed = await showAppDialog<bool>(
                             context: context,
                             builder: (ctx) => AlertDialog(
                               title: const Text('清除配置'),
@@ -2103,7 +2117,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                             await LLMService.clearConfig();
                             if (context.mounted) {
                               Navigator.pop(context, true);
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              AppSnackBars.showSnackBar(
+                                context,
                                 const SnackBar(content: Text('已清除大模型配置')),
                               );
                             }
@@ -2152,7 +2167,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     final apiKeyCtrl = TextEditingController(text: existing?.apiKey ?? '');
     final formKey = GlobalKey<FormState>();
 
-    await showDialog(
+    await showAppDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(existing == null ? '添加自定义文本模型' : '编辑自定义文本模型'),
@@ -2252,7 +2267,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
 
   Future<void> _deleteCustomTextModel(CustomTextModel model) async {
     if (!await _ensureLlmConfigurationAllowed() || !mounted) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除确认'),
@@ -2298,7 +2313,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       ...?existing?.modalities,
     };
 
-    await showDialog(
+    await showAppDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -2440,7 +2455,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
 
   Future<void> _deleteCustomVisionModel(CustomVisionModel model) async {
     if (!await _ensureLlmConfigurationAllowed() || !mounted) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除确认'),

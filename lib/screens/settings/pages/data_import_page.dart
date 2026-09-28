@@ -13,6 +13,7 @@ import '../../../storage_service.dart';
 import '../../../utils/text_file_reader.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
+import '../../../utils/app_dialogs.dart';
 
 class DataImportPage extends StatefulWidget {
   final bool isEmbedded;
@@ -102,7 +103,8 @@ class _DataImportPageState extends State<DataImportPage> {
     } catch (e) {
       if (mounted) {
         setState(() => _isParsing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('文件解析失败: $e')),
         );
       }
@@ -121,7 +123,7 @@ class _DataImportPageState extends State<DataImportPage> {
       message = '检测到备份文件来自不同账号，导入时将自动重新生成所有数据的 UUID 以避免冲突。';
     }
 
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('跨账号导入'),
@@ -157,7 +159,8 @@ class _DataImportPageState extends State<DataImportPage> {
     );
     if (!authorized) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               MinorModeService.instance.authorizationFailureMessage(
@@ -176,7 +179,8 @@ class _DataImportPageState extends State<DataImportPage> {
     if (username == null || username.isEmpty) {
       if (mounted) {
         setState(() => _isImporting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('请先登录')),
         );
       }
@@ -209,7 +213,8 @@ class _DataImportPageState extends State<DataImportPage> {
       });
 
       if (result.success) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               '导入成功: 新增 ${result.importedCount} 条，更新 ${result.updatedCount} 条，跳过 ${result.skippedCount} 条',
@@ -218,7 +223,8 @@ class _DataImportPageState extends State<DataImportPage> {
           ),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('导入失败: ${result.errorMessage}')),
         );
       }

@@ -40,6 +40,7 @@ import '../features/habits/screens/habit_center_screen.dart';
 import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
 import '../features/thirty_day_challenge/screens/challenge_center_screen.dart';
 import '../utils/app_platform.dart';
+import '../utils/app_dialogs.dart';
 
 class SearchResultWithScore {
   final SearchResult result;
@@ -1760,9 +1761,11 @@ class SearchNavigationHandler {
     if (action != null) {
       if ((action == 'ai_query' || action == 'apply_query') && query != null) {
         // 交给 UI 层处理：重新设置 Search Bar 的文本并触发搜索
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text("正在搜索: $query"),
-            duration: const Duration(seconds: 1)));
+        AppSnackBars.showSnackBar(
+            context,
+            SnackBar(
+                content: Text("正在搜索: $query"),
+                duration: const Duration(seconds: 1)));
       } else if (action == 'new_todo') {
         await _executeAction(context, action, sourceKey);
       } else if (action == 'navigate') {
@@ -1926,7 +1929,8 @@ class SearchNavigationHandler {
 
   static void _showMissingRecord(BuildContext context) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       const SnackBar(content: Text('这条记录已不存在，请重新搜索')),
     );
   }
@@ -2011,7 +2015,8 @@ class SearchNavigationHandler {
             onTodosChanged: (newList) async {
               await StorageService.saveTodos(username, newList);
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                AppSnackBars.showSnackBar(
+                  context,
                   const SnackBar(
                       content: Text("待办已更新"),
                       behavior: SnackBarBehavior.floating),

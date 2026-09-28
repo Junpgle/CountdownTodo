@@ -233,7 +233,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     final now = DateTime.now();
     final first = DateTime(now.year - 2, 1, 1);
     final last = DateTime(now.year + 2, 12, 31);
-    final start = await showDatePicker(
+    final start = await showAppDatePicker(
       context: context,
       initialDate: _customInjectStart ?? now,
       firstDate: first,
@@ -241,7 +241,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       helpText: '选择注入开始日期',
     );
     if (start == null || !mounted) return;
-    final end = await showDatePicker(
+    final end = await showAppDatePicker(
       context: context,
       initialDate: _customInjectEnd ?? start,
       firstDate: start,

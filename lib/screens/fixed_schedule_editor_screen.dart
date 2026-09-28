@@ -10,6 +10,7 @@ import '../services/fixed_schedule_recurrence_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/schedule_conflict_service.dart';
 import '../storage_service.dart';
+import '../utils/app_dialogs.dart';
 
 class FixedScheduleEditorScreen extends StatefulWidget {
   const FixedScheduleEditorScreen({
@@ -117,7 +118,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   }
 
   Future<void> _pickDate() async {
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
@@ -140,7 +141,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   }
 
   Future<void> _pickStartTime() async {
-    final picked = await showTimePicker(
+    final picked = await showAppTimePicker(
       context: context,
       initialTime: _startTime,
     );
@@ -148,7 +149,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   }
 
   Future<void> _pickEndTime() async {
-    final picked = await showTimePicker(
+    final picked = await showAppTimePicker(
       context: context,
       initialTime: _endTime,
     );
@@ -156,7 +157,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   }
 
   Future<void> _pickRecurrenceEndDate() async {
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
       firstDate: _date,
       lastDate: DateTime(_date.year + 5, 12, 31),
@@ -239,7 +240,8 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   Future<void> _save() async {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('请输入固定日程名称')),
       );
       return;
@@ -248,14 +250,16 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     final start = _timeTbd ? null : _atTime(_startTime);
     final end = _timeTbd || _endTimeTbd ? null : _atTime(_endTime);
     if (start != null && end != null && !end.isAfter(start)) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('结束时间必须晚于开始时间')),
       );
       return;
     }
     if (_recurrence != RecurrenceType.none &&
         _recurrenceEndDate.isBefore(_date)) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('重复结束日期不能早于首次日期')),
       );
       return;
@@ -264,7 +268,8 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
         int.tryParse(_customIntervalController.text.trim());
     if (_recurrence == RecurrenceType.customDays &&
         (customIntervalDays == null || customIntervalDays < 1)) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('请输入大于 0 的自定义重复天数')),
       );
       return;
@@ -318,7 +323,8 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     } on FixedScheduleRecurrenceLimitException catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text(error.toString())),
       );
       return;
@@ -393,7 +399,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
         .where((item) => item.severity == ScheduleConflictSeverity.hard)
         .length;
     final softCount = conflicts.length - hardCount;
-    return await showDialog<bool>(
+    return await showAppDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: Text(hardCount > 0 ? '存在固定日程冲突' : '与规划块重叠'),
@@ -430,7 +436,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   Future<void> _delete() async {
     final item = widget.item;
     if (item == null) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('删除固定日程'),

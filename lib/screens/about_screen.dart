@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import '../../utils/page_transitions.dart';
 import '../utils/app_performance_monitor.dart';
@@ -282,7 +282,8 @@ class _AboutScreenState extends State<AboutScreen> {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('无法打开链接: $url')),
         );
       }
@@ -305,7 +306,7 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Future<void> _showWithdrawConfirmation() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('撤回隐私同意'),
@@ -345,7 +346,7 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Future<void> _runDeduplication() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('课程去重'),
@@ -364,13 +365,13 @@ class _AboutScreenState extends State<AboutScreen> {
 
     if (confirmed == true) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('正在执行数据库深度清理...')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('正在执行数据库深度清理...')));
 
       final count = await DatabaseHelper.instance.deduplicateCourses();
 
       if (mounted) {
-        showDialog(
+        showAppDialog(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('清理完成'),

@@ -22,6 +22,7 @@ import 'finance_settings_screen.dart';
 import 'finance_text_recognition_screen.dart';
 import 'finance_trash_screen.dart';
 import 'finance_transaction_detail_screen.dart';
+import '../../../utils/app_dialogs.dart';
 
 typedef _FinanceHomeData = ({
   List<FinanceTransaction> transactions,
@@ -291,7 +292,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         await FinanceRepository.getRemainingRefundableMinor(original.uuid);
     if (!mounted) return;
     if (remaining <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('该账单已全部退款')),
       );
       return;
@@ -375,7 +377,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
 
   Future<void> _deleteTransaction(FinanceTransaction transaction) async {
     final deleteMode = transaction.isInstallment
-        ? await showDialog<String>(
+        ? await showAppDialog<String>(
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('删除分期账单？'),
@@ -399,7 +401,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
               ],
             ),
           )
-        : await showDialog<String>(
+        : await showAppDialog<String>(
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('删除账单？'),
@@ -425,7 +427,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       await FinanceRepository.deleteTransaction(transaction.uuid);
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
           content: Text(deleteMode == 'group' ? '整组分期账单已删除' : '账单已删除'),
         ),
@@ -441,7 +444,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       paymentMethods: _paymentMethodMap,
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       SnackBar(
         content: Text(
             path == null ? '已取消导出' : '已导出本月账单${path.isEmpty ? '' : '：$path'}'),

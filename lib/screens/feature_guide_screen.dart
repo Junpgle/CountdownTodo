@@ -35,6 +35,7 @@ import '../widgets/optional_liquid_glass_surface.dart';
 import 'animation_settings_page.dart';
 import '../services/device_calendar_read_service.dart';
 import 'settings/device_calendar_read_page.dart';
+import '../utils/app_dialogs.dart';
 
 /// 控制功能页的入口展示范围。
 enum FeatureGuideMode {
@@ -548,7 +549,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       );
       if (mounted) {
         setState(() => _hasCloudCourses = false);
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(
             content: Text('课表已从云端导入成功'),
             backgroundColor: Colors.green,
@@ -557,7 +559,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('导入失败: $e'), backgroundColor: Colors.red),
         );
       }
@@ -586,7 +589,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           _semesterEnd = _cloudSemesterEnd;
           _hasCloudSemester = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(
             content: Text('开学/放假时间已从云端同步'),
             backgroundColor: Colors.green,
@@ -595,7 +599,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('同步失败: $e'), backgroundColor: Colors.red),
         );
       }
@@ -843,7 +848,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   Future<void> _pickMinorBirthDate() async {
     final today = DateUtils.dateOnly(DateTime.now());
     final defaultDate = DateTime(today.year - 12, today.month, today.day);
-    final selected = await showDatePicker(
+    final selected = await showAppDatePicker(
       context: context,
       initialDate: _minorBirthDate ?? defaultDate,
       firstDate: DateTime(1900),
@@ -1329,7 +1334,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           );
         } else {
           // 首次使用：仅提示位置
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             SnackBar(
               content: Text('📍 ${feature.title}：${feature.subtitle}'),
               duration: const Duration(seconds: 2),
@@ -1822,13 +1828,15 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                 // 调用 MethodChannel (对应 MainActivity.kt 中的 requestPinWidget)
                 final result = await platform.invokeMethod('requestPinWidget');
                 if (result == false && mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  AppSnackBars.showSnackBar(
+                    context,
                     const SnackBar(content: Text('您的系统/启动器不支持一键添加，请按下方步骤手动添加')),
                   );
                 }
               } catch (e) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  AppSnackBars.showSnackBar(
+                    context,
                     const SnackBar(content: Text('自动添加失败，请手动添加')),
                   );
                 }
@@ -2041,7 +2049,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                         setState(() => _taiDbPath = path);
                       } else {
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppSnackBars.showSnackBar(context,
                             const SnackBar(content: Text('⚠️ 选定的文件无效Tai数据库')));
                       }
                     }
@@ -2061,12 +2069,14 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                       await TaiService.saveDbPath(path);
                       if (!mounted) return;
                       setState(() => _taiDbPath = path);
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      AppSnackBars.showSnackBar(context,
                           const SnackBar(content: Text('✅ 自动检测并绑定成功！')));
                     } else {
                       if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text('⚠️ 未能找到默认路径，请确认是否安装或手动选择。')));
+                      AppSnackBars.showSnackBar(
+                          context,
+                          const SnackBar(
+                              content: Text('⚠️ 未能找到默认路径，请确认是否安装或手动选择。')));
                     }
                   },
                 ),
@@ -2329,7 +2339,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     final DateTime initDate = isStart
         ? (_semesterStart ?? DateTime.now())
         : (_semesterEnd ?? DateTime.now().add(const Duration(days: 120)));
-    final DateTime? picked = await showDatePicker(
+    final DateTime? picked = await showAppDatePicker(
       context: context,
       initialDate: initDate,
       firstDate: DateTime(2020),

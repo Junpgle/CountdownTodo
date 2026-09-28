@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/app_platform.dart';
+import '../utils/app_dialogs.dart';
 import 'band_sync_service.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
@@ -218,15 +219,19 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
       );
       if (!authorized) {
         if (context.mounted) {
-          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-            SnackBar(
-              content: Text(
-                MinorModeService.instance.authorizationFailureMessage(
-                  MinorModeAction.sensitive,
+          final messenger = ScaffoldMessenger.maybeOf(context);
+          if (messenger != null) {
+            AppSnackBars.showSnackBar(
+              context,
+              SnackBar(
+                content: Text(
+                  MinorModeService.instance.authorizationFailureMessage(
+                    MinorModeAction.sensitive,
+                  ),
                 ),
               ),
-            ),
-          );
+            );
+          }
         }
         return PermissionRequestResult(
           permission: permission,

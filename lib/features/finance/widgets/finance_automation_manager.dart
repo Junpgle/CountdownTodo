@@ -4,6 +4,7 @@ import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import 'finance_management_widgets.dart';
+import '../../../utils/app_dialogs.dart';
 
 enum _AutomationTab { rules, templates }
 
@@ -71,8 +72,8 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
       await action();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('操作失败：$error')));
+        AppSnackBars.showSnackBar(context,
+            SnackBar(content: Text('操作失败：$error')));
       }
     } finally {
       _busy.remove(key);

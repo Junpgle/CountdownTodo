@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../widgets/management_page.dart';
+import '../utils/app_dialogs.dart';
 
 class HistoricalTodosScreen extends StatefulWidget {
   final String username;
@@ -124,13 +125,15 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       }
       await _loadData();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('已移至回收站')),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('删除失败，请稍后再试')),
         );
       }
@@ -147,8 +150,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     }
     await _loadData();
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('待办已取消完成，并退回主页清单')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('待办已取消完成，并退回主页清单')));
     }
   }
 
@@ -170,8 +173,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     await StorageService.updateSingleTodo(widget.username, item);
     await _loadData();
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('待办已成功恢复，并退回首页清单')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('待办已成功恢复，并退回首页清单')));
     }
   }
 
@@ -179,8 +182,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     await StorageService.permanentlyDeleteTodo(widget.username, item.id);
     await _loadData();
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已彻底删除')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('已彻底删除')));
     }
   }
 
@@ -194,14 +197,14 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     }
     await _loadData();
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已修复！待办已回到首页清单')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('已修复！待办已回到首页清单')));
     }
   }
 
   Future<bool> _confirmPermanentDelete({TodoItem? item}) async {
     final scheme = Theme.of(context).colorScheme;
-    return await showDialog<bool>(
+    return await showAppDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
             scrollable: true,
@@ -233,8 +236,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       await action();
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('操作失败，请稍后重试')));
+        AppSnackBars.showSnackBar(context,
+            const SnackBar(content: Text('操作失败，请稍后重试')));
       }
     } finally {
       if (mounted) setState(() => _busyId = null);

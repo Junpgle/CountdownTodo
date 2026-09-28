@@ -59,13 +59,15 @@ class CourseImportHandler {
   /// 返回 ImportMode，如果用户取消则返回 null
   Future<ImportMode?> _askImportMode(List<CourseItem> newCourses) async {
     // 检测是否有时间冲突
-    final conflicts =
-        await CourseService.detectTimeConflicts(username, newCourses);
+    final conflicts = await CourseService.detectTimeConflicts(
+      username,
+      newCourses,
+    );
     if (!context.mounted) return null;
 
     if (conflicts.isNotEmpty) {
       // 有冲突：让用户明确选择按时段共存，或替换整个目标学期。
-      final mode = await showDialog<ImportMode>(
+      final mode = await showAppDialog<ImportMode>(
         context: context,
         builder: (ctx) {
           final colorScheme = Theme.of(ctx).colorScheme;
@@ -77,8 +79,9 @@ class CourseImportHandler {
           }
 
           return AlertDialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             title: Row(
               children: [
                 Icon(Icons.warning_amber_rounded, color: colorScheme.error),
@@ -94,30 +97,35 @@ class CourseImportHandler {
                   Text(
                     '以下 ${conflictSummary.length} 门课程与新课表存在时间冲突，请选择导入方式：',
                     style: TextStyle(
-                        fontSize: 14, color: colorScheme.onSurfaceVariant),
+                      fontSize: 14,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 12),
-                  ...conflictSummary.entries.map((e) => Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Row(
-                          children: [
-                            Icon(Icons.circle,
-                                size: 8, color: colorScheme.error),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                '${e.key}${e.value > 1 ? " (${e.value}节)" : ""}',
-                                style: const TextStyle(fontSize: 13),
-                              ),
+                  ...conflictSummary.entries.map(
+                    (e) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          Icon(Icons.circle, size: 8, color: colorScheme.error),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '${e.key}${e.value > 1 ? " (${e.value}节)" : ""}',
+                              style: const TextStyle(fontSize: 13),
                             ),
-                          ],
-                        ),
-                      )),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   Text(
                     '共存导入仅替换冲突时段并保留其他课程；替换当前学期会清空该学期旧课表。',
                     style: TextStyle(
-                        fontSize: 13, color: colorScheme.onSurfaceVariant),
+                      fontSize: 13,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -143,13 +151,14 @@ class CourseImportHandler {
       return mode;
     } else {
       // 无冲突：让用户选择导入方式
-      final mode = await showDialog<ImportMode>(
+      final mode = await showAppDialog<ImportMode>(
         context: context,
         builder: (ctx) {
           final colorScheme = Theme.of(ctx).colorScheme;
           return AlertDialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             title: Row(
               children: [
                 Icon(Icons.school_outlined, color: colorScheme.primary),
@@ -172,22 +181,26 @@ class CourseImportHandler {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.swap_horiz_rounded,
-                            color: colorScheme.secondary),
+                        Icon(
+                          Icons.swap_horiz_rounded,
+                          color: colorScheme.secondary,
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('替换现有课表',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.bold)),
+                              const Text(
+                                '替换现有课表',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
                               const SizedBox(height: 4),
                               Text(
                                 '清除该学期旧课表，仅保留新导入的课程',
                                 style: TextStyle(
-                                    fontSize: 12,
-                                    color: colorScheme.onSurfaceVariant),
+                                  fontSize: 12,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
                               ),
                             ],
                           ),
@@ -215,16 +228,20 @@ class CourseImportHandler {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('与现有课表共存',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: colorScheme.primary)),
+                              Text(
+                                '与现有课表共存',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: colorScheme.primary,
+                                ),
+                              ),
                               const SizedBox(height: 4),
                               Text(
                                 '替换该学期的冲突课程，保留其他学期的课表',
                                 style: TextStyle(
-                                    fontSize: 12,
-                                    color: colorScheme.onSurfaceVariant),
+                                  fontSize: 12,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
                               ),
                             ],
                           ),
@@ -250,7 +267,8 @@ class CourseImportHandler {
   }
 
   Future<List<CourseItem>?> _repairMissingTimes(
-      List<CourseItem> courses) async {
+    List<CourseItem> courses,
+  ) async {
     if (courses.every(CourseScheduleSemantics.hasUsableTime)) {
       return courses;
     }
@@ -268,6 +286,7 @@ class CourseImportHandler {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true, // 允许弹窗超过半屏
+      useGlassSheet: false,
       builder: (context) {
         return Container(
           decoration: BoxDecoration(
@@ -277,47 +296,87 @@ class CourseImportHandler {
           child: SafeArea(
             child: SingleChildScrollView(
               padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom),
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const SizedBox(height: 12),
                   Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(2))),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                   Padding(
                     padding: EdgeInsets.symmetric(vertical: 20, horizontal: 24),
                     child: Row(
                       children: [
-                        Icon(Icons.school_outlined,
-                            color: Theme.of(context).colorScheme.secondary),
+                        Icon(
+                          Icons.school_outlined,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
                         SizedBox(width: 12),
-                        Text('请选择所属高校/系统',
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold)),
+                        Text(
+                          '请选择所属高校/系统',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ],
                     ),
                   ),
                   _buildSchoolTile(
-                      context,
-                      'hf',
-                      '合肥工业大学',
-                      '支持 聚在工大JSON/教务网页HTML 格式',
-                      Icons.engineering_rounded,
-                      Colors.orange),
-                  _buildSchoolTile(context, 'xm', '厦门大学', '支持 MHTML/HTML 导出文件',
-                      Icons.account_balance_rounded, Colors.blue),
-                  _buildSchoolTile(context, 'xj', '厦门大学嘉庚学院', '支持教务网页 HTML 格式',
-                      Icons.school_rounded, Colors.redAccent),
-                  _buildSchoolTile(context, 'xd', '西安电子科技大学', '支持 .ics 日历文件',
-                      Icons.wifi_protected_setup_rounded, Colors.indigo),
-                  _buildSchoolTile(context, 'zf', '通用正方教务系统', '支持大多数学校的教务导出',
-                      Icons.grid_view_rounded, Colors.teal),
-                  _buildSchoolTile(context, 'hl', '河南财经政法大学',
-                      '支持教务html/mhtml格式', Icons.gavel_rounded, Colors.green),
+                    context,
+                    'hf',
+                    '合肥工业大学',
+                    '支持 聚在工大JSON/教务网页HTML 格式',
+                    Icons.engineering_rounded,
+                    Colors.orange,
+                  ),
+                  _buildSchoolTile(
+                    context,
+                    'xm',
+                    '厦门大学',
+                    '支持 MHTML/HTML 导出文件',
+                    Icons.account_balance_rounded,
+                    Colors.blue,
+                  ),
+                  _buildSchoolTile(
+                    context,
+                    'xj',
+                    '厦门大学嘉庚学院',
+                    '支持教务网页 HTML 格式',
+                    Icons.school_rounded,
+                    Colors.redAccent,
+                  ),
+                  _buildSchoolTile(
+                    context,
+                    'xd',
+                    '西安电子科技大学',
+                    '支持 .ics 日历文件',
+                    Icons.wifi_protected_setup_rounded,
+                    Colors.indigo,
+                  ),
+                  _buildSchoolTile(
+                    context,
+                    'zf',
+                    '通用正方教务系统',
+                    '支持大多数学校的教务导出',
+                    Icons.grid_view_rounded,
+                    Colors.teal,
+                  ),
+                  _buildSchoolTile(
+                    context,
+                    'hl',
+                    '河南财经政法大学',
+                    '支持教务html/mhtml格式',
+                    Icons.gavel_rounded,
+                    Colors.green,
+                  ),
                   const SizedBox(height: 20),
                 ],
               ),
@@ -384,11 +443,11 @@ class CourseImportHandler {
           await _closeLoadingDialog();
           if (!context.mounted) return;
           Map<int, Map<String, int>>? userAdjustedTimes =
-              await showDialog<Map<int, Map<String, int>>>(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => const ZfTimeConfigDialog(),
-          );
+              await showAppDialog<Map<int, Map<String, int>>>(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const ZfTimeConfigDialog(),
+              );
           if (userAdjustedTimes == null) return;
           _showLoadingDialog("正在解析课表...");
           parsedCourses = ZfSoftScheduleParser.parseHtml(
@@ -399,8 +458,10 @@ class CourseImportHandler {
           break;
         case 'xm':
           sourceName = "厦门大学";
-          parsedCourses =
-              XmuScheduleParser.parseHtml(content, targetSemester.startDate);
+          parsedCourses = XmuScheduleParser.parseHtml(
+            content,
+            targetSemester.startDate,
+          );
           break;
         case 'xj':
           sourceName = "厦门大学嘉庚学院";
@@ -473,14 +534,21 @@ class CourseImportHandler {
     }
   }
 
-  Widget _buildSchoolTile(BuildContext context, String id, String name,
-      String sub, IconData icon, Color color) {
+  Widget _buildSchoolTile(
+    BuildContext context,
+    String id,
+    String name,
+    String sub,
+    IconData icon,
+    Color color,
+  ) {
     return ListTile(
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12)),
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
         child: Icon(icon, color: color),
       ),
       title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -509,6 +577,7 @@ class CourseImportHandler {
     var selectedUrl = await showAppModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
+      useGlassSheet: false,
       builder: (context) {
         return Container(
           decoration: BoxDecoration(
@@ -522,48 +591,68 @@ class CourseImportHandler {
                 children: [
                   const SizedBox(height: 12),
                   Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(2))),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                   Padding(
                     padding: EdgeInsets.symmetric(vertical: 20, horizontal: 24),
                     child: Row(
                       children: [
-                        Icon(Icons.public,
-                            color: Theme.of(context).colorScheme.secondary),
+                        Icon(
+                          Icons.public,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
                         SizedBox(width: 12),
-                        Text('选择教务入口',
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold)),
+                        Text(
+                          '选择教务入口',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  ...schoolUrls.entries.map((e) => ListTile(
-                        leading: Icon(Icons.language_rounded,
-                            color: Theme.of(context).colorScheme.secondary),
-                        title: Text(e.key),
-                        subtitle: Text(e.value,
-                            style: const TextStyle(fontSize: 12),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                        onTap: () => Navigator.pop(context, e.value),
-                      )),
+                  ...schoolUrls.entries.map(
+                    (e) => ListTile(
+                      leading: Icon(
+                        Icons.language_rounded,
+                        color: Theme.of(context).colorScheme.secondary,
+                      ),
+                      title: Text(e.key),
+                      subtitle: Text(
+                        e.value,
+                        style: const TextStyle(fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: () => Navigator.pop(context, e.value),
+                    ),
+                  ),
                   if (lastUrl != null && !schoolUrls.values.contains(lastUrl))
                     ListTile(
-                      leading: const Icon(Icons.history_rounded,
-                          color: Colors.orangeAccent),
+                      leading: const Icon(
+                        Icons.history_rounded,
+                        color: Colors.orangeAccent,
+                      ),
                       title: const Text('上次抓取的链接'),
-                      subtitle: Text(lastUrl,
-                          style: const TextStyle(fontSize: 12),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
+                      subtitle: Text(
+                        lastUrl,
+                        style: const TextStyle(fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       onTap: () => Navigator.pop(context, lastUrl),
                     ),
                   ListTile(
-                    leading:
-                        const Icon(Icons.input_rounded, color: Colors.grey),
+                    leading: const Icon(
+                      Icons.input_rounded,
+                      color: Colors.grey,
+                    ),
                     title: const Text('手动输入'),
                     onTap: () => Navigator.pop(context, manualInputSelection),
                   ),
@@ -587,8 +676,8 @@ class CourseImportHandler {
     // 修复电脑端返回时因为复杂动画导致的 WebView 进程卡死问题
     final bool isDesktop =
         Theme.of(context).platform == TargetPlatform.windows ||
-            Theme.of(context).platform == TargetPlatform.macOS ||
-            Theme.of(context).platform == TargetPlatform.linux;
+        Theme.of(context).platform == TargetPlatform.macOS ||
+        Theme.of(context).platform == TargetPlatform.linux;
 
     final Route<String> route = isDesktop
         ? PageRouteBuilder(
@@ -598,12 +687,10 @@ class CourseImportHandler {
             reverseTransitionDuration: Duration.zero,
           )
         : PageTransitions.slideHorizontal(
-            CourseWebViewScreen(initialUrl: resolvedUrl));
+            CourseWebViewScreen(initialUrl: resolvedUrl),
+          );
 
-    final String? htmlContent = await Navigator.push<String>(
-      context,
-      route,
-    );
+    final String? htmlContent = await Navigator.push<String>(context, route);
 
     if (htmlContent == null || htmlContent.isEmpty || !context.mounted) return;
 
@@ -634,12 +721,16 @@ class CourseImportHandler {
       // 第一步：解析课程（不保存）
       if (jsonCandidate != null && HfutScheduleParser.isValid(jsonCandidate)) {
         sourceName = "合肥工业大学";
-        parsedCourses = HfutScheduleParser.parse(jsonCandidate,
-            semesterStart: targetSemester.startDate);
+        parsedCourses = HfutScheduleParser.parse(
+          jsonCandidate,
+          semesterStart: targetSemester.startDate,
+        );
       } else if (HfutScheduleParser.isValid(htmlContent)) {
         sourceName = "合肥工业大学";
-        parsedCourses = HfutScheduleParser.parse(htmlContent,
-            semesterStart: targetSemester.startDate);
+        parsedCourses = HfutScheduleParser.parse(
+          htmlContent,
+          semesterStart: targetSemester.startDate,
+        );
       } else if (htmlContent.contains('timetable_con') ||
           htmlContent.contains('id="table1"') ||
           htmlContent.contains('kbgrid_table')) {
@@ -648,11 +739,11 @@ class CourseImportHandler {
         if (!context.mounted) return;
 
         Map<int, Map<String, int>>? userAdjustedTimes =
-            await showDialog<Map<int, Map<String, int>>>(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => const ZfTimeConfigDialog(),
-        );
+            await showAppDialog<Map<int, Map<String, int>>>(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => const ZfTimeConfigDialog(),
+            );
 
         if (userAdjustedTimes == null) return;
 
@@ -669,18 +760,20 @@ class CourseImportHandler {
             normalizedUrl.contains('xujc.com')) {
           sourceName = "厦门大学嘉庚学院";
           parsedCourses = XujcScheduleParser.parseHtml(
-              htmlContent, targetSemester.startDate);
+            htmlContent,
+            targetSemester.startDate,
+          );
         } else if (normalizedUrl.contains('huel.edu.cn')) {
           sourceName = "河南财经政法大学";
           await _closeLoadingDialog();
           if (!context.mounted) return;
 
           final userAdjustedTimes =
-              await showDialog<Map<int, Map<String, int>>>(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => const ZfTimeConfigDialog(),
-          );
+              await showAppDialog<Map<int, Map<String, int>>>(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => const ZfTimeConfigDialog(),
+              );
           if (userAdjustedTimes == null) return;
 
           _showLoadingDialog("正在解析课表...");
@@ -693,7 +786,9 @@ class CourseImportHandler {
             normalizedUrl.contains('xmu.edu.cn')) {
           sourceName = "厦门大学";
           parsedCourses = XmuScheduleParser.parseHtml(
-              htmlContent, targetSemester.startDate);
+            htmlContent,
+            targetSemester.startDate,
+          );
         }
       }
 
@@ -791,7 +886,7 @@ class CourseImportHandler {
     String? errorText;
 
     try {
-      return await showDialog<String>(
+      return await showAppDialog<String>(
         context: context,
         builder: (dialogContext) {
           return StatefulBuilder(
@@ -799,7 +894,8 @@ class CourseImportHandler {
               void submit() {
                 final value = controller.text.trim();
                 final uri = Uri.tryParse(value);
-                final valid = uri != null &&
+                final valid =
+                    uri != null &&
                     (uri.scheme == 'http' || uri.scheme == 'https') &&
                     uri.host.isNotEmpty;
                 if (!valid) {
@@ -827,10 +923,7 @@ class CourseImportHandler {
                     onPressed: () => Navigator.pop(dialogContext),
                     child: const Text('取消'),
                   ),
-                  FilledButton(
-                    onPressed: submit,
-                    child: const Text('打开'),
-                  ),
+                  FilledButton(onPressed: submit, child: const Text('打开')),
                 ],
               );
             },
@@ -870,7 +963,9 @@ class CourseImportHandler {
   }
 
   Future<void> _observeLoadingDialog(
-      Route<void> route, Future<void> dialogFuture) async {
+    Route<void> route,
+    Future<void> dialogFuture,
+  ) async {
     try {
       await dialogFuture;
     } catch (error, stackTrace) {

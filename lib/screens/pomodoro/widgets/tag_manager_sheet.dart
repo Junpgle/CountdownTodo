@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../utils/app_color_utils.dart';
+import '../../../utils/app_dialogs.dart';
 
 class TagManagerSheet extends StatefulWidget {
   final List<PomodoroTag> allTags;
@@ -47,7 +48,7 @@ class _TagManagerSheetState extends State<TagManagerSheet>
   void _addTag() {
     final ctrl = TextEditingController();
     String pickedColor = _presetColors[0];
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, sd) => AlertDialog(

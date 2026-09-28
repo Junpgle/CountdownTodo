@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../utils/app_dialogs.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
@@ -633,7 +634,7 @@ class _HabitCardState extends State<HabitCard> {
 
   Future<void> _openTimePicker(DateTime? existing) async {
     final now = DateTime.now();
-    final picked = await showTimePicker(
+    final picked = await showAppTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(existing ?? now),
       helpText: '记录「${widget.goal.name}」的时间',
@@ -661,24 +662,25 @@ class _HabitCardState extends State<HabitCard> {
 
   void _showUndoSnackBar(String message, HabitCheckIn checkIn) {
     final wasReplacement = checkIn.replacedPrevious;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            wasReplacement ? '$message（已覆盖上一条记录）' : message,
-          ),
-          duration: const Duration(seconds: 4),
-          action: wasReplacement
-              ? null
-              : SnackBarAction(
-                  label: '撤销',
-                  onPressed: () async {
-                    await HabitRepository.deleteCheckIn(checkIn);
-                    widget.onChanged();
-                  },
-                ),
+    final messenger = ScaffoldMessenger.of(context);
+    AppSnackBars.hideCurrent(messenger);
+    AppSnackBars.showSnackBar(
+      context,
+      SnackBar(
+        content: Text(
+          wasReplacement ? '$message（已覆盖上一条记录）' : message,
         ),
-      );
+        duration: const Duration(seconds: 4),
+        action: wasReplacement
+            ? null
+            : SnackBarAction(
+                label: '撤销',
+                onPressed: () async {
+                  await HabitRepository.deleteCheckIn(checkIn);
+                  widget.onChanged();
+                },
+              ),
+      ),
+    );
   }
 }

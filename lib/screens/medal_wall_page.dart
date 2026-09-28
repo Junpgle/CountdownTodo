@@ -988,7 +988,7 @@ class _MedalWallPageState extends State<MedalWallPage>
     }
 
     if (isWide) {
-      showDialog(
+      showAppDialog(
         context: context,
         barrierDismissible: true,
         barrierColor: Colors.black54,

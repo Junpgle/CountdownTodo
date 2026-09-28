@@ -5,6 +5,7 @@ import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../services/habit_rule_resolver.dart';
 import 'habit_format.dart';
+import '../../../utils/app_dialogs.dart';
 
 /// 打卡记录编辑结果。返回副本，调用方确认后再交给仓储保存。
 Future<HabitCheckIn?> showHabitCheckInEditor({
@@ -40,7 +41,7 @@ Future<HabitCheckIn?> showHabitCheckInEditor({
   );
 
   try {
-    final saved = await showDialog<bool>(
+    final saved = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -79,7 +80,7 @@ Future<HabitCheckIn?> showHabitCheckInEditor({
                 else
                   FilledButton.tonalIcon(
                     onPressed: () async {
-                      final picked = await showTimePicker(
+                      final picked = await showAppTimePicker(
                         context: context,
                         initialTime: TimeOfDay.fromDateTime(editedTime),
                         helpText: '实际发生时间',

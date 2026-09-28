@@ -5,6 +5,7 @@ import '../models.dart';
 import '../services/api_service.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/share_readonly_widgets.dart';
+import '../utils/app_dialogs.dart';
 
 class ShareViewScreen extends StatefulWidget {
   final String shareCode;
@@ -168,7 +169,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
       await _loadData();
     } else {
       setState(() => _verifying = false);
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text(result['error'] ?? '密码错误')),
       );
     }
@@ -178,7 +180,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     final emailCtrl = TextEditingController();
     final msgCtrl = TextEditingController();
     bool submitting = false;
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDState) => AlertDialog(
@@ -235,7 +237,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                   : () async {
                       final email = emailCtrl.text.trim();
                       if (email.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppSnackBars.showSnackBar(context,
                             const SnackBar(content: Text('请输入邮箱')));
                         return;
                       }
@@ -247,13 +249,15 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                       );
                       if (!ctx.mounted) return;
                       Navigator.pop(ctx);
-                      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-                        content: Text(res['success'] == true
-                            ? '申请已提交，请等待管理员审批'
-                            : res['error'] ?? '提交失败'),
-                        backgroundColor:
-                            res['success'] == true ? Colors.green : null,
-                      ));
+                      AppSnackBars.showSnackBar(
+                          ctx,
+                          SnackBar(
+                            content: Text(res['success'] == true
+                                ? '申请已提交，请等待管理员审批'
+                                : res['error'] ?? '提交失败'),
+                            backgroundColor:
+                                res['success'] == true ? Colors.green : null,
+                          ));
                     },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.secondary,

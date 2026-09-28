@@ -150,6 +150,7 @@ class _FloatingBottomNavigationContentState
   static const double _indicatorHorizontalScale = 1.04;
   static const double _indicatorVerticalScale = 0.92;
   static const LiquidGlassSettings _indicatorSettings = LiquidGlassSettings(
+    bodyMode: GlassBodyMode.clear,
     glassColor: Color(0x3DFFFFFF),
     thickness: 28,
     blur: 0,

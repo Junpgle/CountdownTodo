@@ -27,7 +27,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         provider = globalConfig.provider;
       } else {
         if (!mounted) return;
-        final goToSettings = await showDialog<bool>(
+        final goToSettings = await showAppDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('未配置大模型'),
@@ -103,7 +103,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         };
         if (!capabilities.contains(requiredCapability)) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
+            AppSnackBars.showSnackBar(
+              context,
               SnackBar(
                 content: Text(
                   '当前多模态模型不支持${attachment.typeLabel}输入，'
@@ -116,7 +117,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             const SnackBar(content: Text('请先配置支持该输入的多模态模型')),
           );
         }
@@ -354,7 +356,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           _isLoading = false;
           _cancelGeneration = null;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('AI回复失败: $e')),
         );
       }
@@ -437,7 +440,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       });
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('选择附件失败: $error')),
         );
       }
@@ -558,7 +562,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     _pendingManualSmartContext = _lastRequestSmartContext;
     await Clipboard.setData(ClipboardData(text: manualPrompt));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       const SnackBar(content: Text('已复制完整提示词，可粘贴到外部AI')),
     );
   }
@@ -568,7 +573,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     if (!mounted) return;
     final replyCtrl = TextEditingController(text: data?.text?.trim() ?? '');
 
-    final reply = await showDialog<String>(
+    final reply = await showAppDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('粘贴AI回复并识别'),
@@ -780,7 +785,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   }
 
   Future<void> _clearHistory() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('清空聊天记录'),
@@ -840,7 +845,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       });
     }
 
-    await showDialog(
+    await showAppDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -1024,7 +1029,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       todoGroups: widget.todoGroups,
     );
 
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('提示词预览'),

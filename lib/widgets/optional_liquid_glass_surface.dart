@@ -365,6 +365,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
                 ? const LiquidOval()
                 : LiquidRoundedSuperellipse(borderRadius: borderRadius),
             settings: LiquidGlassSettings(
+              bodyMode: GlassBodyMode.clear,
               glassColor: resolvedTint,
               thickness: enhanced ? 24 : 18,
               blur: enhanced ? 16 : 12,
@@ -551,6 +552,7 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
           height: height,
           shape: LiquidRoundedSuperellipse(borderRadius: borderRadius),
           settings: LiquidGlassSettings(
+            bodyMode: GlassBodyMode.clear,
             glassColor: tint,
             thickness: 20,
             blur: 12,
@@ -661,6 +663,7 @@ class _TopBarLiquidGlassSurface extends StatelessWidget {
       height: height,
       shape: LiquidOval(),
       settings: LiquidGlassSettings(
+        bodyMode: GlassBodyMode.clear,
         glassColor: glassColor,
         thickness: isDark ? 12 : 10,
         blur: isDark ? 6 : 5,

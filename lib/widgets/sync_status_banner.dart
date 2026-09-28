@@ -6,6 +6,7 @@ import '../services/pomodoro_sync_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../utils/android_energy_policy.dart';
 import 'platform_backdrop_filter.dart';
+import '../utils/app_dialogs.dart';
 
 enum SyncPathStatus { online, connecting, offline, serverError, success }
 
@@ -368,8 +369,8 @@ class _SyncStatusBannerState extends State<SyncStatusBanner>
                                           updateStatus(
                                               SyncPathStatus.connecting,
                                               message: "正在尝试手动重连...");
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
+                                          AppSnackBars.showSnackBar(
+                                            context,
                                             const SnackBar(
                                                 content: Text('已触发手动同步重连...'),
                                                 duration: Duration(seconds: 1)),

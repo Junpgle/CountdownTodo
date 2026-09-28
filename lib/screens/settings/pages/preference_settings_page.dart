@@ -144,7 +144,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   }
 
   Future<void> _showMigrationDialog() async {
-    await showDialog(
+    await showAppDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => MigrationDialog(
@@ -185,7 +185,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   Future<void> _handlePickCustomThemeColor() async {
     Color pickerColor =
         _customThemeColor ?? Theme.of(context).colorScheme.primary;
-    await showDialog(
+    await showAppDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('选择自定义颜色'),

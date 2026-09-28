@@ -434,7 +434,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
               _isAddingNewTag = false;
             });
             _notifyChanges();
-            ScaffoldMessenger.of(context).showSnackBar(
+            AppSnackBars.showSnackBar(
+              context,
               const SnackBar(
                   content: Text('添加成功'), duration: Duration(seconds: 1)),
             );
@@ -458,7 +459,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
               _editingTag = null;
             });
             _notifyChanges();
-            ScaffoldMessenger.of(context).showSnackBar(
+            AppSnackBars.showSnackBar(
+              context,
               const SnackBar(
                   content: Text('保存成功'), duration: Duration(seconds: 1)),
             );
@@ -781,7 +783,7 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
     Color pickerColor =
         AppColorUtils.hexToColor(_selectedHex, fallback: Colors.grey);
 
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('自定义颜色'),

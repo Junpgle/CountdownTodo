@@ -309,7 +309,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   }
 
   void _pickDate() async {
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
       initialDate: _focusedDate,
       firstDate: DateTime(2020),
@@ -1608,7 +1608,7 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
                         style: TextStyle(fontSize: 12, color: Colors.grey)),
                     TextButton(
                       onPressed: () async {
-                        final t = await showTimePicker(
+                        final t = await showAppTimePicker(
                             context: context,
                             initialTime: TimeOfDay.fromDateTime(_start));
                         if (t != null) {
@@ -1631,7 +1631,7 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
                         style: TextStyle(fontSize: 12, color: Colors.grey)),
                     TextButton(
                       onPressed: () async {
-                        final t = await showTimePicker(
+                        final t = await showAppTimePicker(
                             context: context,
                             initialTime: TimeOfDay.fromDateTime(_end));
                         if (t != null) {

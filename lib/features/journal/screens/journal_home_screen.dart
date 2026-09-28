@@ -8,6 +8,7 @@ import '../services/journal_storage.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'journal_detail_screen.dart';
 import 'journal_editor_screen.dart';
+import '../../../utils/app_dialogs.dart';
 
 class JournalHomeScreen extends StatefulWidget {
   final String username;
@@ -268,7 +269,7 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
 
   Future<void> _showSearch(BuildContext context) async {
     _searchController.text = _query;
-    final value = await showDialog<String>(
+    final value = await showAppDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('搜索日记'),
@@ -301,8 +302,8 @@ class _JournalHomeScreenState extends State<JournalHomeScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(
+        context, SnackBar(content: Text(message)));
   }
 
   Future<void> _recoverLostImagePick() async {

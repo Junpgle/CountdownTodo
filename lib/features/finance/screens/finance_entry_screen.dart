@@ -8,6 +8,7 @@ import '../services/finance_storage.dart';
 import '../services/finance_text_parser.dart';
 import '../widgets/finance_amount_calculator.dart';
 import '../widgets/finance_catalog_editor.dart';
+import '../../../utils/app_dialogs.dart';
 
 class _FinanceOptionSelection<T> {
   const _FinanceOptionSelection(this.value);
@@ -461,7 +462,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
 
   Future<void> _pickDate() async {
     _dismissKeyboard();
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
       initialDate: _date,
       firstDate: DateTime(2000),
@@ -516,7 +517,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   }
 
   Future<void> _reviewQuickEntries(List<FinanceEntryDraft> drafts) async {
-    final shouldReview = await showModalBottomSheet<bool>(
+    final shouldReview = await showAppModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -826,14 +827,14 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(
+        context, SnackBar(content: Text(message)));
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+    final messenger = ScaffoldMessenger.of(context);
+    AppSnackBars.hideCurrent(messenger);
+    AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
   }
 
   ButtonStyle _plainTextButtonStyle(ColorScheme colorScheme) {
@@ -1141,7 +1142,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   Future<FinanceCategory?> _addSubcategory(FinanceCategory parent) async {
     _dismissKeyboard();
     FinanceCategory? created;
-    final saved = await showDialog<bool>(
+    final saved = await showAppDialog<bool>(
       context: context,
       builder: (_) => FinanceCatalogEditor(
         initialIcon: parent.icon,
@@ -1212,7 +1213,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     Future<T?> Function()? onAdd,
   }) async {
     _dismissKeyboard();
-    final selected = await showModalBottomSheet<_FinanceOptionSelection<T>>(
+    final selected = await showAppModalBottomSheet<_FinanceOptionSelection<T>>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -2052,7 +2053,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
 
   Future<void> _showTemplatePicker() async {
     _dismissKeyboard();
-    final selected = await showModalBottomSheet<FinanceEntryTemplate>(
+    final selected = await showAppModalBottomSheet<FinanceEntryTemplate>(
       context: context,
       showDragHandle: true,
       requestFocus: false,

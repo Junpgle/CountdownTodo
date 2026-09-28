@@ -10,6 +10,7 @@ import '../services/finance_repository.dart';
 import '../widgets/finance_catalog_editor.dart';
 import '../widgets/finance_catalog_manager.dart';
 import 'finance_automation_screen.dart';
+import '../../../utils/app_dialogs.dart';
 
 enum _FinanceSettingsSection { catalog, preferences }
 
@@ -72,7 +73,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
     FinanceCategory? category,
   }) async {
     FinanceCategory? savedCategory;
-    final saved = await showDialog<bool>(
+    final saved = await showAppDialog<bool>(
       context: context,
       builder: (_) => FinanceCatalogEditor(
         initialName: category?.name ?? '',
@@ -124,7 +125,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
   }
 
   Future<void> _addSubcategory(FinanceCategory parent) async {
-    final saved = await showDialog<bool>(
+    final saved = await showAppDialog<bool>(
       context: context,
       builder: (_) => FinanceCatalogEditor(
         initialIcon: parent.icon,
@@ -169,7 +170,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
 
   Future<bool> _showPaymentEditor({FinancePaymentMethod? method}) async {
     if (method?.isSystem == true) return false;
-    final saved = await showDialog<bool>(
+    final saved = await showAppDialog<bool>(
       context: context,
       builder: (_) => FinanceCatalogEditor(
         initialName: method?.name ?? '',
@@ -221,7 +222,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
 
   Future<bool?> _confirmArchive(
       {required String title, required String message}) {
-    return showDialog<bool>(
+    return showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.archive_outlined),
@@ -241,8 +242,8 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(
+        context, SnackBar(content: Text(message)));
   }
 
   @override

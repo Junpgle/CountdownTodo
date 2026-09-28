@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+
+import '../services/liquid_glass_effect_service.dart';
 
 /// Theme-aware card surface. Content and actions remain caller-owned.
 class ManagementCard extends StatelessWidget {
@@ -250,29 +253,90 @@ class ManagementSearchField extends StatelessWidget {
   Widget build(BuildContext context) =>
       ValueListenableBuilder<TextEditingValue>(
         valueListenable: controller,
-        builder: (context, value, _) => TextField(
-          controller: controller,
-          onChanged: onChanged,
-          textInputAction: TextInputAction.search,
-          decoration: InputDecoration(
-            hintText: hintText,
-            prefixIcon: const Icon(Icons.search_rounded),
-            suffixIcon: value.text.isEmpty
-                ? null
-                : IconButton(
-                    tooltip: '清空搜索',
-                    onPressed: () {
-                      controller.clear();
-                      onChanged('');
-                    },
-                    icon: const Icon(Icons.close_rounded),
+        builder: (context, value, _) =>
+            ValueListenableBuilder<LiquidGlassEffectConfiguration>(
+          valueListenable: LiquidGlassEffectService.configurationListenable,
+          builder: (context, configuration, _) {
+            final theme = Theme.of(context);
+            final scheme = theme.colorScheme;
+            if (configuration.enabled) {
+              final isDark = scheme.brightness == Brightness.dark;
+              final enhanced =
+                  configuration.mode == LiquidGlassEffectMode.enhanced;
+              return GlassTextField.search(
+                controller: controller,
+                placeholder: hintText,
+                onChanged: onChanged,
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  color: scheme.onSurfaceVariant,
+                ),
+                suffixIcon: value.text.isEmpty
+                    ? null
+                    : Semantics(
+                        label: '清空搜索',
+                        child: const Icon(Icons.close_rounded),
+                      ),
+                onSuffixTap: value.text.isEmpty
+                    ? null
+                    : () {
+                        controller.clear();
+                        onChanged('');
+                      },
+                textStyle: theme.textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurface,
+                ),
+                placeholderStyle: theme.textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.72),
+                ),
+                height: 56,
+                settings: LiquidGlassSettings(
+                  bodyMode: GlassBodyMode.clear,
+                  glassColor:
+                      scheme.primary.withValues(alpha: isDark ? 0.12 : 0.1),
+                  thickness: enhanced ? 20 : 16,
+                  blur: enhanced ? 12 : 9,
+                  chromaticAberration: 0.0015,
+                  lightIntensity: isDark ? 0.48 : 0.58,
+                  ambientStrength: isDark ? 0.08 : 0.1,
+                  backerColor: scheme.surface.withValues(
+                    alpha: liquidGlassBackerOpacity(
+                      isDark ? 0.5 : 0.58,
+                      configuration,
+                    ),
                   ),
-            filled: true,
-            fillColor: Theme.of(context).colorScheme.surfaceContainerLow,
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none),
-          ),
+                ),
+                useOwnLayer: true,
+                quality:
+                    enhanced ? GlassQuality.premium : GlassQuality.standard,
+              );
+            }
+
+            return TextField(
+              controller: controller,
+              onChanged: onChanged,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: hintText,
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: value.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: '清空搜索',
+                        onPressed: () {
+                          controller.clear();
+                          onChanged('');
+                        },
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                filled: true,
+                fillColor: scheme.surfaceContainerLow,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none),
+              ),
+            );
+          },
         ),
       );
 }

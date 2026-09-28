@@ -697,7 +697,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
   }
 
   void _showHistorySidebar() {
-    showGeneralDialog(
+    showAppGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: '关闭',
@@ -721,23 +721,32 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
               ),
               child: Material(
                 color: Colors.transparent,
-                child: Container(
+                child: OptionalLiquidGlassPanel(
                   width: MediaQuery.of(context).size.width * 0.75,
                   height: MediaQuery.of(context).size.height,
                   margin: const EdgeInsets.only(top: kToolbarHeight + 20),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: const BorderRadius.only(
-                      topRight: Radius.circular(16),
-                      bottomRight: Radius.circular(16),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.15),
-                        blurRadius: 16,
-                        offset: const Offset(4, 0),
+                  borderRadius: 16,
+                  highContrast: true,
+                  tint: Theme.of(context).colorScheme.surface,
+                  fallback: Container(
+                    width: MediaQuery.of(context).size.width * 0.75,
+                    height: MediaQuery.of(context).size.height,
+                    margin: const EdgeInsets.only(top: kToolbarHeight + 20),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(16),
+                        bottomRight: Radius.circular(16),
                       ),
-                    ],
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.15),
+                          blurRadius: 16,
+                          offset: const Offset(4, 0),
+                        ),
+                      ],
+                    ),
+                    child: _buildHistorySidebarContent(ctx, isWideMode: false),
                   ),
                   child: _buildHistorySidebarContent(ctx, isWideMode: false),
                 ),
@@ -881,7 +890,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
   }
 
   Future<void> _deleteAllSessions(BuildContext sidebarCtx) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: sidebarCtx,
       builder: (ctx) => AlertDialog(
         title: const Text('彻底清空对话历史'),
@@ -913,7 +922,8 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
       });
       // 关闭侧边栏
       Navigator.pop(sidebarCtx);
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('已清空所有历史对话')),
       );
     }
@@ -1063,7 +1073,8 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     );
     if (!authorized) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               MinorModeService.instance.authorizationFailureMessage(
@@ -1104,7 +1115,8 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
     );
     if (!authorized) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               MinorModeService.instance.authorizationFailureMessage(
@@ -1134,7 +1146,7 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
         _chatProvider.isNotEmpty ? _chatProvider : globalConfig?.provider ?? '';
     bool useCustom = _chatModel.isNotEmpty;
 
-    await showDialog(
+    await showAppDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -1263,14 +1275,16 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
                   ? () async {
                       if (modelCtrl.text.trim().isEmpty) {
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppSnackBars.showSnackBar(
+                          context,
                           const SnackBar(content: Text('请输入模型名称')),
                         );
                         return;
                       }
                       if (apiKeyCtrl.text.trim().isEmpty) {
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppSnackBars.showSnackBar(
+                          context,
                           const SnackBar(content: Text('请输入API密钥')),
                         );
                         return;

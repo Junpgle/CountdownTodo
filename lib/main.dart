@@ -52,6 +52,7 @@ import 'utils/navigator_utils.dart';
 import 'utils/url_hash.dart';
 import 'utils/app_performance_monitor.dart';
 import 'utils/system_ui_style.dart';
+import './utils/app_dialogs.dart';
 
 typedef CloseDialogCallback = Future<bool> Function();
 CloseDialogCallback? _onShowCloseDialog;
@@ -290,6 +291,7 @@ Future<void> main(List<String> args) async {
         platformReady: platformReady,
         initialShareCode: initialShareCode,
       ),
+      theme: GlassThemeData.simple(quality: GlassQuality.standard),
       brightnessResolver: Theme.maybeBrightnessOf,
     ),
   );
@@ -487,7 +489,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     try {
       // debugPrint('[Main] Attempting to show Flutter dialog...');
-      final result = await showDialog<bool>(
+      final result = await showAppDialog<bool>(
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) => AlertDialog(
@@ -643,7 +645,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     _privacyDialogShowing = true;
     try {
-      final result = await showDialog<bool>(
+      final result = await showAppDialog<bool>(
         context: navContext,
         barrierDismissible: false,
         builder: (dialogContext) => PrivacyPolicyDialog(

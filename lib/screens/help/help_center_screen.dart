@@ -16,6 +16,7 @@ import '../course_screens.dart';
 import '../../features/finance/screens/finance_home_screen.dart';
 import '../../widgets/floating_glass_control.dart';
 import 'help_article_screen.dart';
+import '../../utils/app_dialogs.dart';
 
 class HelpCenterScreen extends StatefulWidget {
   final String? username;
@@ -122,12 +123,14 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
                         await UpdateService.checkManifest(preferCache: false);
                     if (!context.mounted) return;
                     if (manifest != null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      AppSnackBars.showSnackBar(
+                        context,
                         SnackBar(
                             content: Text('当前版本: ${manifest.versionName}')),
                       );
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      AppSnackBars.showSnackBar(
+                        context,
                         const SnackBar(content: Text('当前已是最新版本')),
                       );
                     }
@@ -539,7 +542,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
   }
 
   Future<void> _resetTips(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('重置功能提示'),
@@ -560,7 +563,8 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
     if (confirmed == true) {
       await FeatureTipService.resetAllTips();
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('功能提示已重置')),
         );
       }

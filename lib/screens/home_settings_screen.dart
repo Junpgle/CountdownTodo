@@ -33,6 +33,7 @@ import 'settings/pages/permission_settings_page.dart';
 import 'settings/pages/minor_mode_settings_page.dart';
 import 'settings/pages/ai_assistant_settings_page.dart';
 import 'settings/llm_config_page.dart';
+import '../utils/app_dialogs.dart';
 
 class SettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -604,12 +605,12 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted) return;
 
     if (_username.isEmpty || _userId == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请先登录账号')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('请先登录账号')));
       return;
     }
 
-    final confirm = await showDialog<bool>(
+    final confirm = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('强制全量同步'),
@@ -629,7 +630,8 @@ class _SettingsPageState extends State<SettingsPage> {
     if (confirm != true) return;
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       const SnackBar(
           content: Text('🔄 正在全量同步...'), duration: Duration(seconds: 10)),
     );
@@ -644,17 +646,19 @@ class _SettingsPageState extends State<SettingsPage> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).clearSnackBars();
+        AppSnackBars.clear(ScaffoldMessenger.of(context));
         StorageService.triggerRefresh();
         _rescheduleReminders();
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('✅ 全量同步完成')),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.clear(ScaffoldMessenger.of(context));
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('❌ 同步失败: $e')),
         );
       }
@@ -664,7 +668,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _handleLogout({bool force = false}) async {
     bool confirm = force;
     if (!force) {
-      confirm = await showDialog<bool>(
+      confirm = await showAppDialog<bool>(
             context: context,
             builder: (ctx) => AlertDialog(
               title: const Text("退出账号"),
@@ -690,7 +694,8 @@ class _SettingsPageState extends State<SettingsPage> {
           await MinorModeService.instance.authorizeSensitiveAction();
       if (!authorized) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             const SnackBar(content: Text('需要家长身份认证才能退出账号')),
           );
         }
@@ -717,13 +722,14 @@ class _SettingsPageState extends State<SettingsPage> {
         await MinorModeService.instance.authorizeSensitiveAction();
     if (!authorized || !mounted) {
       if (mounted && !authorized) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('需要家长身份认证才能修改密码')),
         );
       }
       return;
     }
-    await showDialog(
+    await showAppDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => ChangePasswordDialog(

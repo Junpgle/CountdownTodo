@@ -9,6 +9,7 @@ import '../../../services/minor_mode_service.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../handlers/permission_handler.dart' as handlers;
 import '../widgets/permission_section.dart';
+import '../../../utils/app_dialogs.dart';
 
 class PermissionSettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -79,7 +80,7 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
   }
 
   void _revokeAllPermissions() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('撤回所有授权记录'),
@@ -105,7 +106,8 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
       );
       if (!authorized) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             SnackBar(
               content: Text(
                 MinorModeService.instance.authorizationFailureMessage(
@@ -119,7 +121,8 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
       }
       await _permissionHandler.revokeAllAgreements();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('已撤回所有本地授权记录')),
         );
       }
@@ -132,7 +135,8 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
     );
     if (!authorized) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               MinorModeService.instance.authorizationFailureMessage(

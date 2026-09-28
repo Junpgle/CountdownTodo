@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models.dart';
 import '../../../storage_service.dart';
 import '../../../widgets/floating_bottom_bar.dart';
+import '../../../utils/app_dialogs.dart';
 
 class RecurrenceSeriesMergePage extends StatefulWidget {
   final String username;
@@ -128,7 +129,7 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
       return;
     }
     final target = _series.where((summary) => summary.id == targetId).first;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('合并重复待办'),
@@ -167,12 +168,14 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
       _targetSeriesId = null;
       await _loadSeries();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('已合并循环系列，更新 $changedCount 个实例')),
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('合并失败：$error')),
       );
     } finally {

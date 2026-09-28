@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../utils/app_dialogs.dart';
-
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
@@ -210,7 +209,8 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
         minutes < 0 ||
         minutes >= 60 ||
         hours + minutes / 60 <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('请输入有效的睡眠时长')),
       );
       return;
@@ -255,7 +255,8 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
       if (!mounted) return;
       Navigator.of(context).pop();
       widget.onChanged();
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
             content:
                 Text('已保存 $hours 小时 ${minutes.toString().padLeft(2, '0')} 分钟')),
@@ -392,7 +393,8 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
   Future<void> _submitQuantity() async {
     final v = double.tryParse(_controller.text.trim());
     if (v == null || v <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('请填写有效的数量')),
       );
       return;
@@ -419,7 +421,8 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
       final text = value == value.roundToDouble()
           ? value.round().toString()
           : value.toString();
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
           content: Text(
               '已记录 $text${widget.rule.unit}${widget.rule.unit.isNotEmpty ? ' ' : ''}'
@@ -469,7 +472,7 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
             onTap: _busy
                 ? null
                 : () async {
-                    final picked = await showTimePicker(
+                    final picked = await showAppTimePicker(
                       context: context,
                       initialTime: time,
                     );
@@ -534,7 +537,8 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
                         if (!context.mounted) return;
                         Navigator.of(context).pop();
                         widget.onChanged();
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppSnackBars.showSnackBar(
+                          context,
                           SnackBar(
                             content: Text(
                               checkIn.replacedPrevious

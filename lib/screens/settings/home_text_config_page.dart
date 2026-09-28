@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../storage_service.dart';
 import '../../widgets/floating_glass_control.dart';
 import '../../widgets/optional_liquid_glass_surface.dart';
+import '../../utils/app_dialogs.dart';
 
 class GreetingTimeSlot {
   String id;
@@ -367,7 +368,8 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
     };
     await StorageService.saveHomeTextConfig(config);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('保存成功，已立即生效')),
       );
       Navigator.pop(context, true);
@@ -400,7 +402,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
     final slot = _salutationSlots[index];
     final textController = TextEditingController(text: slot.text);
 
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (context) => _SalutationSlotEditDialog(
         slot: slot,
@@ -441,7 +443,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
     final greetingController =
         TextEditingController(text: slot.greetings.join('\n'));
 
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (context) => _TimeSlotEditDialog(
         slot: slot,
@@ -1307,7 +1309,7 @@ class _SalutationSlotEditDialogState extends State<_SalutationSlotEditDialog> {
   }
 
   Future<void> _pickTime(bool isStart) async {
-    final picked = await showTimePicker(
+    final picked = await showAppTimePicker(
       context: context,
       initialTime: isStart ? _startTime : _endTime,
       builder: (context, child) {
@@ -1457,7 +1459,7 @@ class _TimeSlotEditDialogState extends State<_TimeSlotEditDialog> {
   }
 
   Future<void> _pickTime(bool isStart) async {
-    final picked = await showTimePicker(
+    final picked = await showAppTimePicker(
       context: context,
       initialTime: isStart ? _startTime : _endTime,
       builder: (context, child) {

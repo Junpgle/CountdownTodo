@@ -108,6 +108,7 @@ import '../services/device_calendar_read_service.dart';
 import '../services/home_layout_service.dart';
 import '../widgets/floating_bottom_bar.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
+import '../utils/app_dialogs.dart';
 
 part 'home_dashboard_ai.dart';
 part 'home_dashboard_contract.dart';

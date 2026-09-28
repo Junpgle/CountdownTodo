@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../models/finance_models.dart';
+import '../../../utils/app_dialogs.dart';
 
 enum _CatalogSection { expense, income, payment }
 
@@ -209,7 +210,8 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
     } catch (error) {
       debugPrint('记账目录操作失败：$error');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('操作失败，请稍后重试')),
         );
       }

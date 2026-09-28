@@ -9,6 +9,7 @@ import '../services/journal_picker.dart';
 import '../services/journal_picker_context.dart';
 import '../services/journal_storage.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
+import '../../../utils/app_dialogs.dart';
 
 class JournalEditorScreen extends StatefulWidget {
   final String accountId;
@@ -186,7 +187,7 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
   }
 
   Future<void> _selectDate() async {
-    final date = await showDatePicker(
+    final date = await showAppDatePicker(
       context: context,
       initialDate: _occurredAt,
       firstDate: DateTime(2000),
@@ -284,7 +285,7 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
       return false;
     }
     if (!_dirty) return true;
-    final discard = await showDialog<bool>(
+    final discard = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('放弃这篇日记？'),
@@ -314,8 +315,8 @@ class _JournalEditorScreenState extends State<JournalEditorScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(
+        context, SnackBar(content: Text(message)));
   }
 
   @override

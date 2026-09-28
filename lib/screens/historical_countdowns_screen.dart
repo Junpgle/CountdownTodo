@@ -4,6 +4,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/management_page.dart';
+import '../utils/app_dialogs.dart';
 
 class HistoricalCountdownsScreen extends StatefulWidget {
   final String username;
@@ -76,7 +77,7 @@ class _HistoricalCountdownsScreenState
   Future<void> _confirmDelete(CountdownItem item) async {
     if (_deletingId != null) return;
     final scheme = Theme.of(context).colorScheme;
-    final confirm = await showDialog<bool>(
+    final confirm = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         scrollable: true,
@@ -108,12 +109,12 @@ class _HistoricalCountdownsScreenState
       if (!mounted) return;
       await _loadData();
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已彻底删除该历史记录')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('已彻底删除该历史记录')));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('删除失败，请稍后重试')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('删除失败，请稍后重试')));
     } finally {
       if (mounted) setState(() => _deletingId = null);
     }

@@ -14,6 +14,7 @@ import 'data_export_page.dart';
 import 'data_import_page.dart';
 import 'mcp_introduction_page.dart';
 import 'recurrence_series_merge_page.dart';
+import '../../../utils/app_dialogs.dart';
 
 class InterconnectSettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -69,7 +70,8 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
       if (enabled && !started) {
         await BandSyncService.setServiceEnabled(false);
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('手环服务启动失败，请检查小米穿戴 App 是否可用')),
         );
       }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/finance_expression_calculator.dart';
+import '../../../utils/app_dialogs.dart';
 
 Widget _plainButtonLayerBuilder(
   BuildContext context,
@@ -101,7 +102,7 @@ Future<FinanceAmountCalculation?> showFinanceAmountCalculator(
   String initialExpression = '',
 }) {
   final colors = Theme.of(context).colorScheme;
-  return showModalBottomSheet<FinanceAmountCalculation>(
+  return showAppModalBottomSheet<FinanceAmountCalculation>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,

@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../widgets/floating_glass_control.dart';
+import '../../utils/app_dialogs.dart';
 
 /// 适配请求二级界面 - 经过美化重构
 class CourseAdaptationScreen extends StatefulWidget {
@@ -46,8 +47,8 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
     } else {
       await Clipboard.setData(const ClipboardData(text: "674155783"));
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('QQ号已复制到剪贴板')));
+        AppSnackBars.showSnackBar(context,
+            const SnackBar(content: Text('QQ号已复制到剪贴板')));
       }
     }
   }

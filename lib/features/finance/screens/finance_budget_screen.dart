@@ -7,6 +7,7 @@ import '../services/finance_repository.dart';
 import '../widgets/finance_management_widgets.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'finance_budget_entry_screen.dart';
+import '../../../utils/app_dialogs.dart';
 
 class FinanceBudgetScreen extends StatefulWidget {
   final DateTime? initialMonth;
@@ -117,12 +118,13 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         .where((method) => !method.isArchived && !method.isDeleted)
         .toList(growable: false);
     if (methods.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('请先添加或恢复一个付款方式')),
       );
       return;
     }
-    final paymentMethodUuid = await showModalBottomSheet<String>(
+    final paymentMethodUuid = await showAppModalBottomSheet<String>(
       context: context,
       builder: (context) => SafeArea(
         child: ListView(
@@ -163,7 +165,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
 
   Future<void> _deleteBudget(FinanceBudget budget) async {
     final itemName = budget.isPaymentMethod ? '付款方式余额' : '预算';
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('删除$itemName？'),
@@ -185,13 +187,15 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       await FinanceRepository.deleteBudget(budget.uuid);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('删除$itemName失败：$error')),
       );
       return;
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       SnackBar(content: Text('$itemName已删除')),
     );
     await _load();
@@ -203,7 +207,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   }
 
   Future<void> _pickMonth() async {
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
       initialDate: _month,
       firstDate: DateTime(2000),

@@ -345,7 +345,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     await _saveHistorySilently();
     if (!mounted) return;
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       const SnackBar(content: Text('账单已保存')),
     );
   }
@@ -541,7 +542,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final existing = await FinanceRepository.getTransaction(id);
     if (!mounted) return;
     if (existing == null || existing.isDeleted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('这笔账单已不存在或已被删除，请重新查询后再操作')),
       );
       return;
@@ -559,7 +561,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     await _saveHistorySilently();
     if (!mounted) return;
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       const SnackBar(content: Text('账单已更新')),
     );
   }
@@ -675,7 +678,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
   Future<void> _deleteFinanceAction(FinanceAiAction action) async {
     final id = action.transactionId;
     if (id == null || id.isEmpty) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除这笔账单？'),
@@ -699,12 +702,14 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       await _saveHistorySilently();
       if (!mounted) return;
       setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('账单已移入回收站')),
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('删除失败：$error')),
       );
     }
@@ -1452,7 +1457,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final initialDueText = dueCtrl.text;
     final initialReminderText = reminderCtrl.text;
 
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -2236,7 +2241,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       setState(() {});
       _saveHistorySilently();
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
             content: Text(
                 '已执行所选操作 (新待办: ${result.newTodos.length}, 新习惯: ${createdHabits.length}, 整理待办: ${result.updatedTodos.length}, 日程: ${result.newFixedSchedules.length + result.updatedFixedSchedules.length}, 规划: ${result.newPlanBlocks.length + result.updatedPlanBlocks.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: ${result.pomodoroActions.length})')),
@@ -2453,7 +2459,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
 
   Future<void> _showRawReplyDialog(ChatMessage msg) async {
     final colorScheme = Theme.of(context).colorScheme;
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('模型原始回复'),

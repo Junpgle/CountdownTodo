@@ -82,7 +82,8 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('打开AI助手失败: $e')),
       );
     }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/finance_repository.dart';
 import 'finance_management_widgets.dart';
+import '../../../utils/app_dialogs.dart';
 
 enum FinanceTrashKind {
   transaction('账单', Icons.receipt_long_outlined),
@@ -69,7 +70,7 @@ class _FinanceTrashManagerState extends State<FinanceTrashManager> {
       await entry.onRestore();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(context,
             SnackBar(content: Text('恢复${entry.kind.label}失败：$error')));
       }
     } finally {

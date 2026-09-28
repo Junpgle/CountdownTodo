@@ -267,7 +267,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
   }
 
   void _showTokenExpiredDialog() {
-    showDialog(
+    showAppDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
@@ -797,7 +797,7 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         await CourseCalendarAdjustmentService.pendingOfficialHolidayWindow();
     if (window == null || !mounted) return;
 
-    final action = await showDialog<String>(
+    final action = await showAppDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('${window.name}课表调整提醒'),

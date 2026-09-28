@@ -263,7 +263,8 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     );
     if (!authorized) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               MinorModeService.instance.authorizationFailureMessage(
@@ -287,7 +288,8 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _isAutoDownloadOnWifi = previousValue);
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('保存 Wi-Fi 自动下载设置失败：$error')),
       );
     }
@@ -321,8 +323,8 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
           _isDownloading = false;
           _downloadKind = null;
         });
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(message)));
+        AppSnackBars.showSnackBar(
+            context, SnackBar(content: Text(message)));
       },
     );
   }
@@ -330,7 +332,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
   Future<void> _forceDownloadLatest() async {
     if (_isForceDownloading) return;
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('强制下载最新版完整包'),
@@ -369,8 +371,8 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
           _isForceDownloading = false;
           _forceDownloadProgress = 0;
         });
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(message)));
+        AppSnackBars.showSnackBar(
+            context, SnackBar(content: Text(message)));
       },
     );
   }
@@ -434,7 +436,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     final path = _downloadedPackagePath;
     if (path == null || _isDownloading || _isForceDownloading) return;
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('清除已下载的安装包'),
@@ -461,11 +463,12 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         _downloadedPackageVersion = null;
         _forceDownloadProgress = 0;
       });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已清除安装包')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('已清除安装包')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('清除安装包失败：$error')),
       );
     }
@@ -473,12 +476,12 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
 
   Future<void> _promptInstall(String path) async {
     if (AppPlatform.isWeb) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已打开最新版本资源')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('已打开最新版本资源')));
       return;
     }
 
-    final shouldInstall = await showDialog<bool>(
+    final shouldInstall = await showAppDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('下载完成'),
@@ -504,7 +507,8 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('无法打开尝鲜版本下载页面')),
       );
     }

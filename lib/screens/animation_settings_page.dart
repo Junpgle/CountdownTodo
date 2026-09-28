@@ -6,6 +6,7 @@ import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/settings_toggle_card.dart';
 import '../widgets/floating_glass_control.dart';
+import '../utils/app_dialogs.dart';
 
 class AnimationSettingsPage extends StatefulWidget {
   final bool isEmbedded;
@@ -136,7 +137,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _liquidGlassEnabled = previous);
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('Liquid Glass 初始化失败：$error')),
       );
     } finally {
@@ -160,7 +162,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _liquidGlassMode = previous);
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('Liquid Glass 模式切换失败：$error')),
       );
     } finally {
@@ -177,7 +180,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       if (mounted) setState(() => _preset = null);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('玻璃透明度保存失败：$error')),
       );
     }
@@ -592,7 +596,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                               ),
                             ],
                           ),
-                          Slider(
+                          LiquidGlassSlider(
                             key: const ValueKey<String>(
                               'animation-settings-liquid-glass-transparency',
                             ),
@@ -697,7 +701,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                               ],
                             ),
                             const SizedBox(height: 8),
-                            Slider(
+                            LiquidGlassSlider(
                               value: _animationDuration.toDouble(),
                               min: 150,
                               max: 600,
@@ -772,7 +776,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                                     fontSize: 12,
                                     color: colorScheme.onSurfaceVariant)),
                             const SizedBox(height: 8),
-                            Slider(
+                            LiquidGlassSlider(
                               value: _pageLayerDepth.toDouble(),
                               min: 0,
                               max: 100,
@@ -825,7 +829,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                                     fontSize: 12,
                                     color: colorScheme.onSurfaceVariant)),
                             const SizedBox(height: 8),
-                            Slider(
+                            LiquidGlassSlider(
                               value: _containerContentStart.toDouble(),
                               min: 0,
                               max: 60,

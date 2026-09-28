@@ -6,6 +6,8 @@ import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../screens/finance_category_detail_screen.dart';
 
+import '../../../utils/app_dialogs.dart';
+
 /// Leaves enough scrollable room for the shared navigation bar and its bottom
 /// margin, so the final finance card can clear the bar completely.
 double financeBottomContentPaddingFor(BuildContext context) {
@@ -358,7 +360,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   }
 
   Future<void> _pickMonth() async {
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
       initialDate: month,
       firstDate: DateTime(2000),
@@ -372,7 +374,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
 
   Future<void> _pickFocusedDate() async {
     final lastDay = DateTime(month.year, month.month + 1, 0).day;
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
       initialDate: _focusedDate,
       firstDate: DateTime(month.year, month.month),

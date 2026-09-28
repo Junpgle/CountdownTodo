@@ -8,6 +8,7 @@ import '../../../utils/page_transitions.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../llm_config_page.dart';
+import '../../../utils/app_dialogs.dart';
 
 /// Settings that control how the in-app AI assistant builds and presents a
 /// request. Model credentials and model selection remain in [LLMConfigPage].
@@ -125,7 +126,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
 
   void _showPromptPreview() {
     final prompt = _promptController.text.trim();
-    showDialog<void>(
+    showAppDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('提示词预览'),
@@ -150,8 +151,8 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
 
   void _showSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(
+        context, SnackBar(content: Text(message)));
   }
 
   Widget _buildSwitch({

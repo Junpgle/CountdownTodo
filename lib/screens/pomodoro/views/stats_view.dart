@@ -999,7 +999,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                               editSession.endTime ?? editSession.startTime,
                               isUtc: true)
                           .toLocal();
-                      final pickedTime = await showTimePicker(
+                      final pickedTime = await showAppTimePicker(
                           context: ctx,
                           initialTime: TimeOfDay.fromDateTime(currentEnd));
                       if (pickedTime != null) {
@@ -1012,7 +1012,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                         if (newEnd.millisecondsSinceEpoch <=
                             editSession.startTime) {
                           if (ctx.mounted) {
-                            ScaffoldMessenger.of(ctx).showSnackBar(
+                            AppSnackBars.showSnackBar(ctx,
                                 const SnackBar(content: Text('结束时间必须晚于开始时间')));
                           }
                           return;
@@ -1114,7 +1114,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                   InkWell(
                     borderRadius: BorderRadius.circular(12),
                     onTap: () async {
-                      final picked = await showDialog<TodoItem?>(
+                      final picked = await showAppDialog<TodoItem?>(
                         context: ctx,
                         builder: (dctx) => AlertDialog(
                           title: const Text('选择任务'),
@@ -1193,7 +1193,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                     borderRadius: BorderRadius.circular(12),
                     onTap: () async {
                       final ctrl = TextEditingController(text: editNote);
-                      final result = await showDialog<String>(
+                      final result = await showAppDialog<String>(
                         context: ctx,
                         builder: (dctx) => AlertDialog(
                           title: const Text('编辑备注'),
@@ -1334,7 +1334,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
   }
 
   Future<void> _deleteSession(PomodoroSession session) async {
-    final confirm = await showDialog<bool>(
+    final confirm = await showAppDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除记录'),

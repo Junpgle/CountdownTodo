@@ -6,6 +6,7 @@ import '../models/journal_entry.dart';
 import '../services/journal_media_service.dart';
 import '../services/journal_storage.dart';
 import 'journal_editor_screen.dart';
+import '../../../utils/app_dialogs.dart';
 
 class JournalDetailScreen extends StatefulWidget {
   final String accountId;
@@ -49,7 +50,7 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
   }
 
   Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除这篇日记？'),
@@ -82,7 +83,8 @@ class _JournalDetailScreenState extends State<JournalDetailScreen> {
       if (mounted) Navigator.of(context).pop(true);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('删除失败，请稍后重试')),
         );
       }

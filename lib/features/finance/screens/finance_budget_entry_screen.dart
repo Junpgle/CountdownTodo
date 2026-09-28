@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../widgets/finance_management_widgets.dart';
+import '../../../utils/app_dialogs.dart';
 
 class FinanceBudgetEntryScreen extends StatefulWidget {
   final DateTime month;
@@ -221,8 +222,8 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(
+        context, SnackBar(content: Text(message)));
   }
 
   @override

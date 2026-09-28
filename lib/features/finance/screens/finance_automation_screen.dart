@@ -8,6 +8,7 @@ import '../widgets/finance_automation_editor.dart';
 import '../widgets/finance_automation_manager.dart';
 import '../widgets/finance_management_widgets.dart';
 import 'finance_entry_screen.dart';
+import '../../../utils/app_dialogs.dart';
 
 /// 周期账单和快捷记账模板管理。
 class FinanceAutomationScreen extends StatefulWidget {
@@ -61,7 +62,7 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
   }
 
   Future<bool> _openRuleEditor([FinanceRecurringRule? rule]) async {
-    final saved = await showDialog<bool>(
+    final saved = await showAppDialog<bool>(
       context: context,
       builder: (_) => FinanceAutomationEditor.rule(
         rule: rule,
@@ -100,7 +101,7 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
   }
 
   Future<bool> _openTemplateEditor([FinanceEntryTemplate? template]) async {
-    final saved = await showDialog<bool>(
+    final saved = await showAppDialog<bool>(
       context: context,
       builder: (_) => FinanceAutomationEditor.template(
         template: template,
@@ -129,7 +130,7 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
   }
 
   Future<bool> _confirm(String title, String message) async {
-    return await showDialog<bool>(
+    return await showAppDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: Text(title),

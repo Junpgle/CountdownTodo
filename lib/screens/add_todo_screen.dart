@@ -27,6 +27,7 @@ import '../widgets/optional_liquid_glass_surface.dart';
 import '../utils/persistent_image_storage.dart';
 import '../utils/page_transitions.dart';
 import 'dart:async';
+import '../utils/app_dialogs.dart';
 
 enum _CaptureSaveTarget { todo, fixedSchedule, cancel }
 
@@ -266,7 +267,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text('选择图片失败: $e')),
       );
     }
@@ -529,8 +531,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   Future<void> _doSmartParse() async {
     final input = _aiInputCtrl.text.trim();
     if (input.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("请输入事项内容")));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text("请输入事项内容")));
       return;
     }
     setState(() => _isParsing = true);
@@ -573,9 +575,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       _applyParsedResult(_parsedResults[0]);
       setState(() => _selectedTabIndex = 0);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text("解析成功，共${_parsedResults.length}个事项"),
-            duration: const Duration(seconds: 2)));
+        AppSnackBars.showSnackBar(
+            context,
+            SnackBar(
+                content: Text("解析成功，共${_parsedResults.length}个事项"),
+                duration: const Duration(seconds: 2)));
       }
     }
   }
@@ -583,15 +587,15 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   Future<void> _doLLMParse() async {
     final input = _aiInputCtrl.text.trim();
     if (input.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("请输入事项内容")));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text("请输入事项内容")));
       return;
     }
 
     final config = await LLMService.getConfig();
     if (config == null || !config.isConfigured) {
       if (!mounted) return;
-      final goToSettings = await showDialog<bool>(
+      final goToSettings = await showAppDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text("未配置大模型"),
@@ -713,9 +717,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         _applyParsedResult(_parsedResults[0]);
         setState(() => _selectedTabIndex = 0);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text("大模型解析成功，共${_parsedResults.length}个事项"),
-              duration: const Duration(seconds: 2)));
+          AppSnackBars.showSnackBar(
+              context,
+              SnackBar(
+                  content: Text("大模型解析成功，共${_parsedResults.length}个事项"),
+                  duration: const Duration(seconds: 2)));
         }
       }
     } catch (e) {
@@ -725,8 +731,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       setState(() => _isParsing = false);
       _stopParsingAnimation();
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text("大模型解析失败: $e")));
+        AppSnackBars.showSnackBar(context,
+            SnackBar(content: Text("大模型解析失败: $e")));
       }
     }
   }
@@ -736,7 +742,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         index == 1 ? _ManualCaptureKind.fixedSchedule : _ManualCaptureKind.todo;
     if (next == _ManualCaptureKind.fixedSchedule &&
         widget.onFixedScheduleAdded == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('当前入口暂不支持保存日程')),
       );
       return;
@@ -761,7 +768,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       );
 
   Future<void> _pickScheduleDate() async {
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
@@ -778,7 +785,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   }
 
   Future<void> _pickScheduleStartTime() async {
-    final picked = await showTimePicker(
+    final picked = await showAppTimePicker(
       context: context,
       initialTime: _scheduleStartTime,
     );
@@ -788,7 +795,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   }
 
   Future<void> _pickScheduleEndTime() async {
-    final picked = await showTimePicker(
+    final picked = await showAppTimePicker(
       context: context,
       initialTime: _scheduleEndTime,
     );
@@ -803,7 +810,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         ? null
         : _scheduleAt(_scheduleEndTime);
     if (start != null && end != null && !end.isAfter(start)) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('结束时间必须晚于开始时间')),
       );
       return false;
@@ -834,13 +842,15 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   Future<void> _addTodo() async {
     if (_isSaving) return;
     if (_titleCtrl.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-          _manualCaptureKind == _ManualCaptureKind.fixedSchedule
-              ? '请输入日程名称'
-              : '请输入待办内容',
-        ),
-      ));
+      AppSnackBars.showSnackBar(
+          context,
+          SnackBar(
+            content: Text(
+              _manualCaptureKind == _ManualCaptureKind.fixedSchedule
+                  ? '请输入日程名称'
+                  : '请输入待办内容',
+            ),
+          ));
       return;
     }
     setState(() => _isSaving = true);
@@ -898,7 +908,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       );
       if (_recurrence != RecurrenceType.none && normalizedTime.start == null) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('重复待办需要先设置首次完成日期')),
         );
         return;
@@ -934,7 +945,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       Navigator.pop(context);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('保存失败，请重试：$error')),
         );
       }
@@ -974,7 +986,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       CaptureIntentKind.todo => ('', ''),
     };
 
-    return await showDialog<_CaptureSaveTarget>(
+    return await showAppDialog<_CaptureSaveTarget>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: Text(title),
@@ -1016,7 +1028,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final dateSource = parsed.startTime ?? parsed.endTime ?? _dueDate;
     if (dateSource == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('固定日程需要先确认日期')),
         );
       }
@@ -1098,7 +1111,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       );
     } on FixedScheduleRecurrenceLimitException catch (error) {
       if (!mounted) return false;
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(content: Text(error.toString())),
       );
       return false;
@@ -1172,7 +1186,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         if (r.recurrence != RecurrenceType.none &&
             normalizedTime.start == null) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             SnackBar(content: Text('“${r.title}”是重复待办，请先设置首次完成日期')),
           );
           return;
@@ -1222,7 +1237,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       Navigator.pop(context);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('保存失败，请重试：$error')),
         );
       }
@@ -1299,7 +1315,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   // 时间选择助手
   Future<void> _pickStartTime() async {
-    final pickedDate = await showDatePicker(
+    final pickedDate = await showAppDatePicker(
       context: context,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
@@ -1320,7 +1336,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         });
       } else {
         if (!mounted) return;
-        final pickedTime = await showTimePicker(
+        final pickedTime = await showAppTimePicker(
             context: context, initialTime: TimeOfDay.fromDateTime(_createdAt));
         if (pickedTime != null) {
           setState(() {
@@ -1334,7 +1350,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   }
 
   Future<void> _pickEndTime() async {
-    final pickedDate = await showDatePicker(
+    final pickedDate = await showAppDatePicker(
       context: context,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
@@ -1349,7 +1365,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         });
       } else {
         if (!mounted) return;
-        final pickedTime = await showTimePicker(
+        final pickedTime = await showAppTimePicker(
             context: context,
             initialTime: TimeOfDay.fromDateTime(_dueDate ?? DateTime.now()));
         if (pickedTime != null) {
@@ -2214,7 +2230,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                               ],
                               InkWell(
                                 onTap: () async {
-                                  final picked = await showDatePicker(
+                                  final picked = await showAppDatePicker(
                                     context: context,
                                     initialDate:
                                         _recurrenceEndDate ?? DateTime.now(),

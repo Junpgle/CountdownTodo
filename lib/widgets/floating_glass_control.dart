@@ -356,6 +356,111 @@ class _OptimisticGlassSwitchState extends State<_OptimisticGlassSwitch> {
   }
 }
 
+/// Uses the package slider while Liquid Glass is enabled and keeps Material's
+/// standard slider as the preference-off fallback.
+class LiquidGlassSlider extends StatelessWidget {
+  const LiquidGlassSlider({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.onChangeStart,
+    this.onChangeEnd,
+    this.min = 0,
+    this.max = 1,
+    this.divisions,
+    this.label,
+    this.activeColor,
+    this.inactiveColor,
+  });
+
+  final double value;
+  final ValueChanged<double>? onChanged;
+  final ValueChanged<double>? onChangeStart;
+  final ValueChanged<double>? onChangeEnd;
+  final double min;
+  final double max;
+  final int? divisions;
+  final String? label;
+  final Color? activeColor;
+  final Color? inactiveColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<LiquidGlassEffectConfiguration>(
+      valueListenable: LiquidGlassEffectService.configurationListenable,
+      builder: (context, configuration, _) {
+        final colorScheme = Theme.of(context).colorScheme;
+        if (!configuration.enabled) {
+          return Slider(
+            value: value,
+            onChanged: onChanged,
+            onChangeStart: onChangeStart,
+            onChangeEnd: onChangeEnd,
+            min: min,
+            max: max,
+            divisions: divisions,
+            label: label,
+            activeColor: activeColor,
+            inactiveColor: inactiveColor,
+          );
+        }
+
+        final isDark = colorScheme.brightness == Brightness.dark;
+        final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
+        final settings = LiquidGlassSettings(
+          bodyMode: GlassBodyMode.clear,
+          glassColor: colorScheme.primary.withValues(
+            alpha: isDark ? 0.14 : 0.11,
+          ),
+          thickness: enhanced ? 22 : 18,
+          blur: enhanced ? 14 : 10,
+          chromaticAberration: enhanced ? 0.006 : 0.003,
+          lightIntensity: isDark ? 0.56 : 0.62,
+          ambientStrength: isDark ? 0.12 : 0.14,
+          backerColor: colorScheme.surface.withValues(
+            alpha: liquidGlassBackerOpacity(
+              isDark ? (enhanced ? 0.56 : 0.5) : (enhanced ? 0.64 : 0.58),
+              configuration,
+            ),
+          ),
+        );
+        final quality = GlassThemeHelpers.resolveQuality(
+          context,
+          widgetQuality:
+              enhanced ? GlassQuality.premium : GlassQuality.standard,
+        );
+        final slider = GlassSlider(
+          value: value,
+          onChanged: onChanged,
+          onChangeStart: onChangeStart,
+          onChangeEnd: onChangeEnd,
+          min: min,
+          max: max,
+          divisions: divisions,
+          label: label,
+          activeColor: activeColor ?? colorScheme.primary,
+          inactiveColor: inactiveColor ??
+              colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
+          thumbColor: colorScheme.surface,
+          settings: settings,
+          useOwnLayer: true,
+          quality: quality,
+        );
+
+        // Sliders animate the thumb independently from the surrounding panel.
+        // Reopen the package renderer when a settings card provides an outer
+        // glass layer, matching the existing switch treatment.
+        return InheritedLiquidGlass(
+          settings: settings,
+          quality: quality,
+          avoidsRefraction: false,
+          child: slider,
+        );
+      },
+    );
+  }
+}
+
 /// A switch list tile that keeps the familiar Material layout while exposing
 /// the same draggable glass switch used by standalone controls.
 class LiquidGlassSwitchListTile extends StatelessWidget {
@@ -2562,6 +2667,7 @@ class FloatingGlassActionButton extends StatelessWidget {
               ? LiquidRoundedSuperellipse(borderRadius: borderRadius)
               : const LiquidOval(),
           settings: LiquidGlassSettings(
+            bodyMode: GlassBodyMode.clear,
             glassColor: resolvedTint.withValues(
               alpha: liquidGlassBackerOpacity(
                 isDark ? 0.18 : 0.12,

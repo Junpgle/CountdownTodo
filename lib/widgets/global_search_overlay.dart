@@ -2,15 +2,18 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import '../models.dart';
 import '../services/search_service.dart';
 import '../services/global_search_extra_service.dart';
+import '../services/liquid_glass_effect_service.dart';
 import '../storage_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/theme_color_tokens.dart';
 import 'app_state_views.dart';
 import 'platform_backdrop_filter.dart';
 import 'dart:async';
+import '../utils/app_dialogs.dart';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // 类型元数据：名称、图标、颜色
@@ -262,7 +265,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       );
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('打开搜索结果失败：$error')),
         );
       }
@@ -441,6 +445,69 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   // ──────────────────────────────────────────────────────────────────────────
 
   Widget _buildSearchInput(ColorScheme colorScheme, bool isDark) {
+    final glassConfiguration = LiquidGlassEffectService.configuration;
+    if (glassConfiguration.enabled) {
+      final enhanced =
+          glassConfiguration.mode == LiquidGlassEffectMode.enhanced;
+      return GlassTextField.search(
+        controller: _controller,
+        focusNode: _inputFocusNode,
+        placeholder: '多关键词搜全应用',
+        onChanged: _onQueryChanged,
+        prefixIcon:
+            Icon(Icons.search_rounded, color: colorScheme.primary, size: 24),
+        suffixIcon: _isSearching
+            ? const Padding(
+                padding: EdgeInsets.all(14),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: AppLoadingIndicator(),
+                ),
+              )
+            : Semantics(
+                label: '清空搜索',
+                button: true,
+                child: const Icon(Icons.close_rounded),
+              ),
+        onSuffixTap: _isSearching
+            ? null
+            : () {
+                _controller.clear();
+                _onQueryChanged('');
+              },
+        textStyle: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: colorScheme.onSurface,
+        ),
+        placeholderStyle: TextStyle(
+          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
+        ),
+        height: 64,
+        shape: const LiquidRoundedRectangle(borderRadius: 24),
+        settings: LiquidGlassSettings(
+          bodyMode: GlassBodyMode.clear,
+          glassColor: colorScheme.primary.withValues(
+            alpha: isDark ? 0.14 : 0.11,
+          ),
+          thickness: enhanced ? 22 : 18,
+          blur: enhanced ? 14 : 10,
+          chromaticAberration: enhanced ? 0.004 : 0.002,
+          lightIntensity: isDark ? 0.56 : 0.62,
+          ambientStrength: isDark ? 0.12 : 0.14,
+          backerColor: colorScheme.surface.withValues(
+            alpha: liquidGlassBackerOpacity(
+              isDark ? 0.56 : 0.68,
+              glassConfiguration,
+            ),
+          ),
+        ),
+        useOwnLayer: true,
+        quality: enhanced ? GlassQuality.premium : GlassQuality.standard,
+      );
+    }
+
     return Container(
       decoration: BoxDecoration(
         color:

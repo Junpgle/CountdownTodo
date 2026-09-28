@@ -4,6 +4,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../utils/calendar_date_math.dart';
 import 'course_schedule_semantics.dart';
+import '../utils/app_dialogs.dart';
 
 /// Performs the checks that must succeed before a course import starts.
 ///
@@ -45,7 +46,7 @@ class CourseImportPreflight {
 
     if (semesters.length == 1) return semesters.single;
 
-    final selected = await showDialog<SemesterInfo>(
+    final selected = await showAppDialog<SemesterInfo>(
       context: context,
       builder: (ctx) {
         final colorScheme = Theme.of(ctx).colorScheme;
@@ -162,7 +163,7 @@ class CourseImportPreflight {
     DateTime? startDate;
     DateTime? endDate;
 
-    final result = await showDialog<SemesterInfo>(
+    final result = await showAppDialog<SemesterInfo>(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
@@ -196,7 +197,7 @@ class CourseImportPreflight {
                               : '选择开学日期',
                         ),
                         onPressed: () async {
-                          final picked = await showDatePicker(
+                          final picked = await showAppDatePicker(
                             context: dialogContext,
                             initialDate: DateTime.now(),
                             firstDate: DateTime(2020),
@@ -223,7 +224,7 @@ class CourseImportPreflight {
                               : '选择放假日期 (可选)',
                         ),
                         onPressed: () async {
-                          final picked = await showDatePicker(
+                          final picked = await showAppDatePicker(
                             context: dialogContext,
                             initialDate: startDate == null
                                 ? DateTime.now()
@@ -250,14 +251,16 @@ class CourseImportPreflight {
                   onPressed: () {
                     final name = nameController.text.trim();
                     if (name.isEmpty || startDate == null) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                      AppSnackBars.showSnackBar(
+                        dialogContext,
                         const SnackBar(content: Text('请填写学期名称和开学日期')),
                       );
                       return;
                     }
                     if (endDate != null &&
                         _dateOnly(endDate!).isBefore(_dateOnly(startDate!))) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                      AppSnackBars.showSnackBar(
+                        dialogContext,
                         const SnackBar(content: Text('放假日期不能早于开学日期')),
                       );
                       return;

@@ -26,6 +26,7 @@ import '../course_import/course_import_preflight.dart';
 import '../course_import/handlers/course_import_handler.dart';
 import '../course_import/widgets/course_time_repair_dialog.dart';
 import '../course_import/widgets/zf_time_config_dialog.dart';
+import '../utils/app_dialogs.dart';
 
 class _ExternalShareRequest {
   const _ExternalShareRequest({
@@ -97,7 +98,8 @@ class ExternalShareHandler {
       },
       onError: (Object error, StackTrace stack) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             SnackBar(content: Text('无法接收分享内容，请重试: $error')),
           );
         }
@@ -179,7 +181,8 @@ class ExternalShareHandler {
           .timeout(const Duration(seconds: 3));
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('无法读取分享内容，请重试: $error')),
         );
       }
@@ -201,7 +204,8 @@ class ExternalShareHandler {
         if (drafts.isNotEmpty && context.mounted) {
           await onFinanceRecognized?.call(drafts, null);
         } else if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             const SnackBar(content: Text('未识别到符合格式的记账文本')),
           );
         }
@@ -264,7 +268,8 @@ class ExternalShareHandler {
           return;
         }
         if (courseUsername == null || courseUsername.trim().isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             const SnackBar(content: Text('请先登录账号，再导入课表')),
           );
           _finishCurrentRequest();
@@ -278,7 +283,8 @@ class ExternalShareHandler {
         }
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             SnackBar(content: Text('导入准备失败，请先检查登录和学期设置: $e')),
           );
         }
@@ -313,7 +319,7 @@ class ExternalShareHandler {
     }
 
     try {
-      unawaited(showDialog<void>(
+      unawaited(showAppDialog<void>(
         context: context,
         barrierDismissible: false,
         useRootNavigator: true,
@@ -353,7 +359,8 @@ class ExternalShareHandler {
       statusNotifier.dispose();
       _finishCurrentRequest();
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('无法打开分享处理窗口: $error')),
         );
       }
@@ -669,7 +676,7 @@ class ExternalShareHandler {
             closeDialogSafely();
             return;
           }
-          final customTimes = await showDialog<Map<int, Map<String, int>>>(
+          final customTimes = await showAppDialog<Map<int, Map<String, int>>>(
             context: context,
             barrierDismissible: false,
             builder: (_) => const ZfTimeConfigDialog(),

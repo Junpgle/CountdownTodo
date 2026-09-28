@@ -7,6 +7,7 @@ import '../../../services/minor_mode_service.dart';
 import '../../../storage_service.dart';
 import '../../../utils/app_platform.dart';
 import '../../../widgets/floating_glass_control.dart';
+import '../../../utils/app_dialogs.dart';
 
 class DataExportPage extends StatefulWidget {
   final bool isEmbedded;
@@ -74,7 +75,8 @@ class _DataExportPageState extends State<DataExportPage> {
     );
     if (!authorized) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               MinorModeService.instance.authorizationFailureMessage(
@@ -93,7 +95,8 @@ class _DataExportPageState extends State<DataExportPage> {
     if (username == null || username.isEmpty) {
       if (mounted) {
         setState(() => _isExporting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           const SnackBar(content: Text('请先登录')),
         );
       }
@@ -120,12 +123,14 @@ class _DataExportPageState extends State<DataExportPage> {
         if (result.filePath != null) {
           message += '\n已保存到: ${result.filePath}';
         }
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
               content: Text(message), duration: const Duration(seconds: 3)),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('导出失败: ${result.errorMessage}')),
         );
       }

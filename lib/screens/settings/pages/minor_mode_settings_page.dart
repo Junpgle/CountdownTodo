@@ -9,6 +9,7 @@ import '../../../utils/app_platform.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/settings_toggle_card.dart';
 import '../../../widgets/floating_glass_control.dart';
+import '../../../utils/app_dialogs.dart';
 
 class MinorModeSettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -64,7 +65,7 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
   Future<void> _pickManualBirthDate() async {
     final today = DateUtils.dateOnly(DateTime.now());
     final current = MinorModeService.instance.manualBirthDate;
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
       initialDate: current ?? DateTime(today.year - 12, today.month, today.day),
       firstDate: DateTime(1900),
@@ -80,7 +81,8 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
   Future<void> _refresh() async {
     await MinorModeService.instance.refreshMinorModeState();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       const SnackBar(content: Text('系统未成年人模式状态已刷新')),
     );
   }
@@ -88,7 +90,8 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
   Future<void> _openSystemSettings() async {
     final opened = await MinorModeService.instance.openMinorModeSettings();
     if (!mounted || opened) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       const SnackBar(content: Text('当前设备无法打开系统未成年人模式设置')),
     );
   }
@@ -162,7 +165,8 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
   Future<void> _requestGoogleAgeSignals() async {
     final state = await MinorModeService.instance.requestGoogleAgeSignals();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       SnackBar(content: Text(state.status.label)),
     );
   }

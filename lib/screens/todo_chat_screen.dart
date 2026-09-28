@@ -4,7 +4,7 @@ import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
@@ -38,6 +38,7 @@ import '../services/feature_tip_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../widgets/floating_glass_control.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 import '../features/finance/models/finance_models.dart';
 import '../features/finance/models/finance_ai_action.dart';
 import '../features/finance/screens/finance_entry_screen.dart';
@@ -45,6 +46,7 @@ import '../features/finance/services/finance_repository.dart';
 import '../features/finance/services/finance_ai_context_service.dart';
 import '../features/finance/services/finance_text_parser.dart';
 import '../features/finance/services/ai_usage_cost_service.dart';
+import '../utils/app_dialogs.dart';
 
 part 'todo_chat_screen_contract.dart';
 part 'todo_chat_screen_lifecycle.dart';

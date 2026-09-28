@@ -10,6 +10,7 @@ import 'todo_classification_service.dart';
 import 'pomodoro_service.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
+import '../utils/app_dialogs.dart';
 
 class AiTodoChatLauncher {
   static final DateFormat _localDateTimeFormat = DateFormat('yyyy-MM-dd HH:mm');
@@ -37,7 +38,8 @@ class AiTodoChatLauncher {
     final authorized = await MinorModeService.instance.authorizeAiInteraction();
     if (!authorized) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               MinorModeService.instance.authorizationFailureMessage(

@@ -5,6 +5,7 @@ import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../widgets/finance_management_widgets.dart';
+import '../../../utils/app_dialogs.dart';
 
 class FinanceLoanEntryScreen extends StatefulWidget {
   final FinanceLoan? loan;
@@ -74,7 +75,7 @@ class _FinanceLoanEntryScreenState extends State<FinanceLoanEntryScreen> {
   }
 
   Future<void> _pickDate() async {
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
       initialDate: _startDate,
       firstDate: DateTime(2000),
@@ -154,7 +155,8 @@ class _FinanceLoanEntryScreenState extends State<FinanceLoanEntryScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       SnackBar(content: Text(message)),
     );
   }

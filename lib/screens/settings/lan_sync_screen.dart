@@ -8,6 +8,7 @@ import '../../services/lan_sync_service.dart';
 import '../../services/permission_request_coordinator.dart';
 import '../../utils/app_platform.dart';
 import '../../widgets/floating_glass_control.dart';
+import '../../utils/app_dialogs.dart';
 
 class LanSyncScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -83,7 +84,8 @@ class _LanSyncScreenState extends State<LanSyncScreen>
     await _service.stop();
     if (!mounted) return;
     setState(() => _status = '已停止');
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       const SnackBar(
         content: Text('局域网访问权限已撤销，局域网同步已停止。'),
       ),
@@ -96,7 +98,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
     final path = data['path'] ?? '';
     final from = data['from'] ?? '未知设备';
 
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('收到文件'),
@@ -120,7 +122,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
 
   void _showIncomingRequestDialog(LanDevice device) {
     if (!mounted) return;
-    showDialog(
+    showAppDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
@@ -153,7 +155,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
     bool syncPomodoroRecords = true;
     bool syncCourses = true;
 
-    showDialog(
+    showAppDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
@@ -239,7 +241,8 @@ class _LanSyncScreenState extends State<LanSyncScreen>
         _isLoading = false;
         _progressValue = 0;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         SnackBar(
           content: Text(result.success
               ? '同步成功: 待办${result.todosSynced} 倒数日${result.countdownsSynced} 时间日志${result.timeLogsSynced} 番茄标签${result.pomodoroTagsSynced} 番茄记录${result.pomodoroRecordsSynced} 课程${result.coursesSynced}'
@@ -261,7 +264,8 @@ class _LanSyncScreenState extends State<LanSyncScreen>
         );
         if (!mounted) return;
         if (!permission.granted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             const SnackBar(
               content: Text('未获得局域网访问权限，局域网同步未启动。'),
             ),
@@ -279,7 +283,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
   }
 
   void _showCrossAccountWarning(LanDevice device, LanSyncConfig config) {
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('账号不匹配'),
@@ -308,7 +312,8 @@ class _LanSyncScreenState extends State<LanSyncScreen>
     if (mounted) {
       setState(() => _isLoading = false);
       if (!result.success) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(
             content: Text(result.message),
             backgroundColor: Colors.orange,
@@ -321,7 +326,8 @@ class _LanSyncScreenState extends State<LanSyncScreen>
 
   Future<void> _pickAndSendFile(LanDevice device) async {
     if (AppPlatform.isWeb) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      AppSnackBars.showSnackBar(
+        context,
         const SnackBar(content: Text('浏览器暂不支持局域网文件发送')),
       );
       return;
@@ -337,7 +343,8 @@ class _LanSyncScreenState extends State<LanSyncScreen>
             _isLoading = false;
             _progressValue = 0;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
+          AppSnackBars.showSnackBar(
+            context,
             SnackBar(
               content: Text(syncResult.message),
               backgroundColor: syncResult.success ? Colors.green : Colors.red,
@@ -348,7 +355,8 @@ class _LanSyncScreenState extends State<LanSyncScreen>
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('选择文件失败: $e'), backgroundColor: Colors.red),
         );
       }
@@ -358,7 +366,7 @@ class _LanSyncScreenState extends State<LanSyncScreen>
   void _showManualAddDialog() {
     final ipController = TextEditingController();
     final portController = TextEditingController(text: '54322');
-    showDialog(
+    showAppDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('手动添加设备'),

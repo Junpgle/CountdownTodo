@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import '../../services/device_calendar_read_service.dart';
 import '../../utils/app_platform.dart';
 import '../../widgets/floating_glass_control.dart';
+import '../../utils/app_dialogs.dart';
 
 Future<bool> showDeviceCalendarReadOnlyConfirmation(
     BuildContext context) async {
-  return await showDialog<bool>(
+  return await showAppDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('读取手机日历？'),
@@ -72,7 +73,8 @@ class _GuideDeviceCalendarReadToggleState
             await DeviceCalendarReadService.requestPermission();
         if (!granted) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
+            AppSnackBars.showSnackBar(
+              context,
               const SnackBar(content: Text('需要日历读取权限才能展示手机日程')),
             );
           }
@@ -161,7 +163,8 @@ class _DeviceCalendarReadPageState extends State<DeviceCalendarReadPage> {
             await DeviceCalendarReadService.requestPermission();
         if (!granted) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
+            AppSnackBars.showSnackBar(
+              context,
               const SnackBar(content: Text('需要日历读取权限才能展示手机日程')),
             );
           }

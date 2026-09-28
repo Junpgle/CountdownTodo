@@ -210,7 +210,7 @@ class _PlatformSpecificSettingsPageState
       );
 
   Future<void> _editMacIslandShortcut() async {
-    final shortcut = await showDialog<_MacIslandShortcut>(
+    final shortcut = await showAppDialog<_MacIslandShortcut>(
       context: context,
       builder: (context) =>
           _MacIslandShortcutDialog(initialShortcut: _macIslandShortcut),
@@ -307,7 +307,7 @@ class _PlatformSpecificSettingsPageState
   }
 
   void _showIslandPriorityDialog() async {
-    final changed = await showDialog<bool>(
+    final changed = await showAppDialog<bool>(
       context: context,
       builder: (context) => const IslandPriorityDialog(),
     );

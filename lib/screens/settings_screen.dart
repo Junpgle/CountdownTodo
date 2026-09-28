@@ -2,6 +2,7 @@ import '../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../storage_service.dart';
+import '../utils/app_dialogs.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -40,8 +41,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _saveSettings() async {
     if (selectedOps.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请至少选择一种运算符号')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('请至少选择一种运算符号')));
       return;
     }
 
@@ -76,8 +77,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await StorageService.saveSettings(settings);
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('设置已保存')));
+    AppSnackBars.showSnackBar(
+        context, const SnackBar(content: Text('设置已保存')));
     Navigator.pop(context);
   }
 

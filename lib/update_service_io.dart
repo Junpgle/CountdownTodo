@@ -14,6 +14,7 @@ import 'services/android_delta_service.dart';
 import 'services/api_service.dart';
 import 'services/permission_request_coordinator.dart';
 import 'services/github_resource_service.dart';
+import './utils/app_dialogs.dart';
 
 // 数据模型类
 class ChangelogEntry {
@@ -1453,8 +1454,8 @@ class UpdateService {
     );
     if (manifest == null) {
       if (isManual && context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('检查失败，请检查网络')));
+        AppSnackBars.showSnackBar(context,
+            const SnackBar(content: Text('检查失败，请检查网络')));
       }
       return;
     }
@@ -1524,7 +1525,7 @@ class UpdateService {
 
     if (!hasUpdate && !hasNotice) {
       if (isManual && context.mounted) {
-        showDialog(
+        showAppDialog(
             context: context,
             builder: (ctx) => AlertDialog(
                     title: const Text("检查完成"),
@@ -1693,7 +1694,7 @@ class UpdateService {
       return;
     }
 
-    await showDialog(
+    await showAppDialog(
       context: context,
       barrierDismissible: true,
       builder: (ctx) {
@@ -1763,7 +1764,7 @@ class UpdateService {
       unawaited(autoDownloadLatestOnWifi(context, manifest));
     }
 
-    await showDialog(
+    await showAppDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
@@ -1780,8 +1781,8 @@ class UpdateService {
             _uiErrorCallback = (err) {
               if (context.mounted) {
                 setState(() {});
-                ScaffoldMessenger.of(ctx)
-                    .showSnackBar(SnackBar(content: Text(err)));
+                AppSnackBars.showSnackBar(
+                    ctx, SnackBar(content: Text(err)));
               }
             };
 

@@ -6,6 +6,8 @@ import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import 'finance_management_widgets.dart';
 
+import '../../../utils/app_dialogs.dart';
+
 /// The dialog owns its controllers and keeps the draft open if saving fails.
 class FinanceAutomationEditor extends StatefulWidget {
   final FinanceRecurringRule? rule;
@@ -172,7 +174,7 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
     final current = DateTime.tryParse(controller.text.trim()) ??
         DateTime.tryParse(_start.text.trim()) ??
         DateTime.now();
-    final picked = await showDatePicker(
+    final picked = await showAppDatePicker(
       context: context,
       initialDate: current,
       firstDate: DateTime(current.year < 2000 ? current.year : 2000),

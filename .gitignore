@@ -161,6 +161,7 @@ todo.md
 !/test/widgets/notification_settings_page_test.dart
 !/test/widgets/optional_liquid_glass_surface_test.dart
 !/test/widgets/app_status_toast_test.dart
+!/test/widgets/app_dialogs_test.dart
 !/test/widgets/home_bottom_navigation_content_test.dart
 !/test/widgets/floating_bottom_bar_test.dart
 !/test/widgets/finance_transaction_detail_screen_test.dart

@@ -3,6 +3,7 @@ import '../../../services/api_service.dart';
 import '../../../services/migration_service.dart';
 import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
+import '../../../utils/app_dialogs.dart';
 
 class MigrationDialog extends StatefulWidget {
   final VoidCallback onSuccess;
@@ -75,8 +76,8 @@ class _MigrationDialogState extends State<MigrationDialog> {
               FilledButton(
                   onPressed: () async {
                     if (emailCtrl.text.isEmpty || passCtrl.text.isEmpty) {
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(const SnackBar(content: Text('不能留空哦')));
+                      AppSnackBars.showSnackBar(context,
+                          const SnackBar(content: Text('不能留空哦')));
                       return;
                     }
 
@@ -96,7 +97,8 @@ class _MigrationDialogState extends State<MigrationDialog> {
                           isMigrating = false;
                           statusText = "";
                         });
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        AppSnackBars.showSnackBar(
+                          context,
                           SnackBar(
                             content: Text(
                               MinorModeService.instance
@@ -124,8 +126,10 @@ class _MigrationDialogState extends State<MigrationDialog> {
                       if (!context.mounted) return;
                       final messenger = ScaffoldMessenger.of(context);
                       Navigator.pop(context);
-                      messenger.showSnackBar(const SnackBar(
-                          content: Text('✅ 迁移大成功！您的所有数据和账户已落户阿里云。')));
+                      AppSnackBars.showSnackBarFromMessenger(
+                          messenger,
+                          const SnackBar(
+                              content: Text('✅ 迁移大成功！您的所有数据和账户已落户阿里云。')));
                       widget.onSuccess();
                     } catch (e) {
                       if (!context.mounted) return;
@@ -133,8 +137,8 @@ class _MigrationDialogState extends State<MigrationDialog> {
                         isMigrating = false;
                         statusText = "";
                       });
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(SnackBar(content: Text('❌ 迁移失败: $e')));
+                      AppSnackBars.showSnackBar(context,
+                          SnackBar(content: Text('❌ 迁移失败: $e')));
                     }
                   },
                   child: const Text("验证并开始迁移")),

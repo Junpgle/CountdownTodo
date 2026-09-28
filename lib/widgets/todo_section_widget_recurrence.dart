@@ -252,7 +252,8 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
       }
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    AppSnackBars.showSnackBar(
+      context,
       SnackBar(
         content: Text(
           '${DateFormat('M月d日').format(node.date)}的待办实例尚未生成',

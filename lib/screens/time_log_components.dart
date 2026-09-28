@@ -260,7 +260,7 @@ class _DayViewState extends State<_DayView> {
                               constraints: const BoxConstraints(
                                   minWidth: 36, minHeight: 36),
                               onPressed: () {
-                                showDialog(
+                                showAppDialog(
                                     context: ctx,
                                     builder: (dCtx) => AlertDialog(
                                           backgroundColor: _TC.card(ctx),
@@ -1011,7 +1011,7 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
   }
 
   Future<void> _pickTime(bool start) async {
-    final value = await showTimePicker(
+    final value = await showAppTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(start ? _start : _end),
     );
@@ -1035,13 +1035,13 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
 
   TodoPlanBlock? _buildBlock() {
     if (_todoId == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('请先选择待办')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('请先选择待办')));
       return null;
     }
     if (!_end.isAfter(_start)) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('结束时间必须晚于开始时间')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('结束时间必须晚于开始时间')));
       return null;
     }
     final todo = widget.todos
@@ -1284,7 +1284,7 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
   }
 
   Future<void> _pickTime(bool isStart) async {
-    final t = await showTimePicker(
+    final t = await showAppTimePicker(
         context: context,
         initialTime: TimeOfDay.fromDateTime(isStart ? _start : _end));
     if (t == null || !mounted) return;
@@ -1299,7 +1299,7 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
   }
 
   Future<void> _pickDate(bool isStart) async {
-    final d = await showDatePicker(
+    final d = await showAppDatePicker(
         context: context,
         initialDate: isStart ? _start : _end,
         firstDate: DateTime(2020),
@@ -1316,8 +1316,8 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
 
   void _save() {
     if (!_end.isAfter(_start)) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('结束时间必须晚于开始时间')));
+      AppSnackBars.showSnackBar(context,
+          const SnackBar(content: Text('结束时间必须晚于开始时间')));
       return;
     }
 

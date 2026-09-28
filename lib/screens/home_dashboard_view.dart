@@ -1229,14 +1229,16 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         mimeType: 'image/$ext',
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('已保存到 $savedPath')),
         );
       }
     } catch (e) {
       // debugPrint('下载壁纸失败: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        AppSnackBars.showSnackBar(
+          context,
           SnackBar(content: Text('下载失败: $e')),
         );
       }
@@ -1437,7 +1439,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
 
   Future<void> _openHomeAddMenu() async {
     ModalRoute<_HomeAddAction>? menuRoute;
-    final action = await showModalBottomSheet<_HomeAddAction>(
+    final action = await showAppModalBottomSheet<_HomeAddAction>(
       context: context,
       showDragHandle: true,
       useSafeArea: true,
