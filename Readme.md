@@ -1,5 +1,7 @@
 # CountDownTodo / Uni-Sync
 
+<img src="assets/icon/app_icon.png" alt="CountDownTodo" width="128">
+
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 ![Client: Flutter](https://img.shields.io/badge/Client-Flutter-02569B?logo=flutter&logoColor=white)
 ![Backend: Node.js/Express](https://img.shields.io/badge/Backend-Node.js%20%2F%20Express-339933?logo=nodedotjs&logoColor=white)
