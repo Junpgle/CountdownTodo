@@ -3,7 +3,7 @@ description: A new Flutter project.
 publish_to: 'none'
 version: 6.5.0
 environment:
-  sdk: '>=3.5.0 <4.0.0'
+  sdk: '>=3.11.0 <4.0.0'
   flutter: '>=3.41.0'
 
 dependencies:
@@ -15,7 +15,7 @@ dependencies:
 
   home_widget: ^0.9.0
   shared_preferences: ^2.5.5
-  flutter_secure_storage: ^9.2.4
+  flutter_secure_storage: ^10.3.1
   intl: ^0.20.2
   http: ^1.2.0
   package_info_plus: ^9.0.1
@@ -23,16 +23,16 @@ dependencies:
   flutter_downloader: ^1.12.0
   path_provider: ^2.1.2
   path: ^1.9.0
-  permission_handler: ^12.0.1
+  permission_handler: ^13.0.2
   uuid: ^4.2.2
-  cached_network_image: ^3.3.0
+  cached_network_image: ^4.0.2
   flutter_cache_manager: ^3.4.1
   window_manager: ^0.5.0
   desktop_multi_window: ^0.3.0
   ffi: ^2.1.2
   win32: ^5.15.0
-  flutter_local_notifications: ^20.0.0
-  open_file: ^3.5.11
+  flutter_local_notifications: ^22.3.1
+  open_file: ^4.0.0
   device_info_plus: ^12.4.0
   file_picker: ^10.3.10
   receive_sharing_intent: ^1.8.1
@@ -46,7 +46,7 @@ dependencies:
   video_player: ^2.11.1
   video_player_win: ^3.2.2
   flutter_image_compress: ^2.3.0
-  flutter_markdown: ^0.7.1
+  flutter_markdown_plus: ^1.0.12
   encrypt: ^5.0.3
   crypto: ^3.0.3
   pointycastle: ^3.9.1
@@ -57,15 +57,15 @@ dependencies:
   webview_flutter_wkwebview: ^3.24.3
   webview_win_floating: ^3.0.2
   visibility_detector: ^0.4.0+2
-  timezone: ^0.10.1
+  timezone: ^0.11.1
   qr_flutter: ^4.1.0
   dynamic_color: ^1.8.1
-  sensors_plus: ^6.1.1
+  sensors_plus: ^7.1.0
   image_picker: ^1.2.2
   image_cropper: ^8.0.2
   flutter_colorpicker: ^1.1.0
   flutter_zoom_drawer: ^3.2.0
-  liquid_glass_widgets: 0.30.2
+  liquid_glass_widgets: 1.7.2
   palette_generator: ^0.3.3+7
 dev_dependencies:
   flutter_test:
