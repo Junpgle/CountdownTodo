@@ -134,6 +134,8 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("com.google.android.play:age-signals:0.0.4")
     implementation("io.github.d4viddf:hyperisland_kit:0.4.3")
+    // uCrop 2.2.11 calls OkHttp but its published POM omits this dependency.
+    implementation("com.squareup.okhttp3:okhttp:5.1.0")
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
     testImplementation("junit:junit:4.13.2")
