@@ -12,9 +12,9 @@ typedef _RoInitializeNative = Int32 Function(Int32 aptType);
 typedef _RoInitialize = int Function(int aptType);
 
 typedef _RoGetActivationFactoryNative = Int32 Function(
-    IntPtr activatableClassId, Pointer<GUID> iid, Pointer<Pointer> factory);
+    IntPtr activatableClassId, Pointer<GUID> iid, Pointer<VTablePointer> factory);
 typedef _RoGetActivationFactory = int Function(
-    int activatableClassId, Pointer<GUID> iid, Pointer<Pointer> factory);
+    int activatableClassId, Pointer<GUID> iid, Pointer<VTablePointer> factory);
 
 typedef _WindowsCreateStringNative = Int32 Function(
     Pointer<Utf16> sourceString, Uint32 length, Pointer<IntPtr> string);
@@ -190,7 +190,7 @@ class SystemControlService {
 
   // ───────────── 亮度 (Monitor Configuration API) ─────────────────
 
-  static int _physHandle = 0;
+  static HANDLE? _physHandle;
   static int _minBri = 0;
   static int _maxBri = 100;
   static double _cachedBrightness = 0.7;
@@ -204,7 +204,7 @@ class SystemControlService {
       debugPrint('[SCS] hMonitor: $hMon');
 
       final cnt = calloc<Uint32>();
-      if (GetNumberOfPhysicalMonitorsFromHMONITOR(hMon, cnt) == 0) {
+      if (!GetNumberOfPhysicalMonitorsFromHMONITOR(hMon, cnt).value) {
         debugPrint('[SCS] GetNumberOfPhysicalMonitors failed');
         calloc.free(cnt);
         return;
@@ -215,18 +215,18 @@ class SystemControlService {
       if (n == 0) return;
 
       final arr = calloc<PHYSICAL_MONITOR>(n);
-      if (GetPhysicalMonitorsFromHMONITOR(hMon, n, arr) == 0) {
+      if (!GetPhysicalMonitorsFromHMONITOR(hMon, n, arr).value) {
         debugPrint('[SCS] GetPhysicalMonitors failed');
         calloc.free(arr);
         return;
       }
-      _physHandle = arr.cast<IntPtr>().value;
+      _physHandle = arr.ref.hPhysicalMonitor;
       debugPrint('[SCS] physHandle: $_physHandle');
 
       final mn = calloc<Uint32>();
       final cr = calloc<Uint32>();
       final mx = calloc<Uint32>();
-      if (GetMonitorBrightness(_physHandle, mn, cr, mx) != 0) {
+      if (GetMonitorBrightness(_physHandle!, mn, cr, mx).value != 0) {
         _minBri = mn.value;
         _maxBri = mx.value;
         _briSupported = true;
@@ -252,18 +252,19 @@ class SystemControlService {
     _cachedBrightness = value.clamp(0.0, 1.0);
     debugPrint(
         '[SCS] setBrightness($_cachedBrightness) supported=$_briSupported');
-    if (!_briSupported || _physHandle == 0) return;
+    final physHandle = _physHandle;
+    if (!_briSupported || physHandle == null || physHandle.isNull) return;
     try {
       final range = _maxBri - _minBri;
       SetMonitorBrightness(
-          _physHandle, (_minBri + _cachedBrightness * range).round());
+          physHandle, (_minBri + _cachedBrightness * range).round());
     } catch (e) {
       debugPrint('[SCS] setBrightness error: $e');
     }
   }
 
   static void disposeBrightness() {
-    _physHandle = 0;
+    _physHandle = null;
     _briSupported = false;
   }
 
@@ -372,9 +373,9 @@ class SystemControlService {
 
       // ── Step 1: RoGetActivationFactory ──
       debugPrint('[SCS] [1] RoGetActivationFactory...');
-      final factoryPtr = calloc<Pointer<COMObject>>();
+      final factoryPtr = calloc<VTablePointer>();
       final hr = _roGetFactory(
-          _hstrSMTCClass, _iidSMTCManagerStatics, factoryPtr.cast());
+          _hstrSMTCClass, _iidSMTCManagerStatics, factoryPtr);
       debugPrint('[SCS] [1] result: 0x${hr.toRadixString(16)}');
       if (hr != S_OK) {
         calloc.free(factoryPtr);
@@ -390,18 +391,18 @@ class SystemControlService {
       // IGlobalSystemMediaTransportControlsSessionManagerStatics vtable:
       // IUnknown(0-2), IInspectable(3-5), RequestAsync(6)
       debugPrint('[SCS] [2] RequestAsync...');
-      final asyncOpPtr = calloc<Pointer<COMObject>>();
-      final requestAddr = factory.ref.vtable[6];
+      final asyncOpPtr = calloc<VTablePointer>();
+      final requestAddr = factory.value[6];
       debugPrint('[SCS] [2] vtable[6] addr: $requestAddr');
 
       final requestFn = Pointer<
                   NativeFunction<
-                      Int32 Function(Pointer<COMObject> self,
-                          Pointer<Pointer<COMObject>> result)>>.fromAddress(
+                      Int32 Function(VTablePointer self,
+                          Pointer<VTablePointer> result)>>.fromAddress(
               requestAddr)
           .asFunction<
-              int Function(Pointer<COMObject> self,
-                  Pointer<Pointer<COMObject>> result)>();
+              int Function(VTablePointer self,
+                  Pointer<VTablePointer> result)>();
 
       final hr2 = requestFn(factory, asyncOpPtr);
       debugPrint('[SCS] [2] RequestAsync result: 0x${hr2.toRadixString(16)}');
@@ -429,17 +430,17 @@ class SystemControlService {
       // IGlobalSystemMediaTransportControlsSessionManager vtable:
       // IUnknown(0-2), IInspectable(3-5), GetCurrentSession(6)
       debugPrint('[SCS] [4] GetCurrentSession...');
-      final sessionPtr = calloc<Pointer<COMObject>>();
-      final getSessionAddr = sessionManager.ref.vtable[6];
+      final sessionPtr = calloc<VTablePointer>();
+      final getSessionAddr = sessionManager.value[6];
       debugPrint('[SCS] [4] vtable[6] addr: $getSessionAddr');
       final getSessionFn = Pointer<
                   NativeFunction<
-                      Int32 Function(Pointer<COMObject> self,
-                          Pointer<Pointer<COMObject>> result)>>.fromAddress(
+                      Int32 Function(VTablePointer self,
+                          Pointer<VTablePointer> result)>>.fromAddress(
               getSessionAddr)
           .asFunction<
-              int Function(Pointer<COMObject> self,
-                  Pointer<Pointer<COMObject>> result)>();
+              int Function(VTablePointer self,
+                  Pointer<VTablePointer> result)>();
 
       final hr3 = getSessionFn(sessionManager, sessionPtr);
       debugPrint('[SCS] [4] GetCurrentSession: 0x${hr3.toRadixString(16)}');
@@ -467,17 +468,17 @@ class SystemControlService {
       // ...
       debugPrint('[SCS] [5] GetPlaybackInfo...');
       PlaybackStatus status = PlaybackStatus.unknown;
-      final playbackInfoPtr = calloc<Pointer<COMObject>>();
-      final getPlaybackAddr = session.ref.vtable[8];
+      final playbackInfoPtr = calloc<VTablePointer>();
+      final getPlaybackAddr = session.value[8];
       debugPrint('[SCS] [5] vtable[8] addr: $getPlaybackAddr');
       final getPlaybackFn = Pointer<
                   NativeFunction<
-                      Int32 Function(Pointer<COMObject> self,
-                          Pointer<Pointer<COMObject>> result)>>.fromAddress(
+                      Int32 Function(VTablePointer self,
+                          Pointer<VTablePointer> result)>>.fromAddress(
               getPlaybackAddr)
           .asFunction<
-              int Function(Pointer<COMObject> self,
-                  Pointer<Pointer<COMObject>> result)>();
+              int Function(VTablePointer self,
+                  Pointer<VTablePointer> result)>();
 
       final hr4 = getPlaybackFn(session, playbackInfoPtr);
       debugPrint('[SCS] [5] GetPlaybackInfo: 0x${hr4.toRadixString(16)}');
@@ -486,15 +487,15 @@ class SystemControlService {
         // IGlobalSystemMediaTransportControlsSessionPlaybackInfo vtable:
         // IUnknown(0-2), IInspectable(3-5), get_Controls(6), get_PlaybackStatus(7),
         // get_PlaybackType(8), get_AutoRepeatMode(9), get_ShuffleEnabled(10), get_PlaybackRate(11)
-        final getStatusAddr = playbackInfo.ref.vtable[7];
+        final getStatusAddr = playbackInfo.value[7];
         debugPrint(
             '[SCS] [5] get_PlaybackStatus vtable[7] addr: $getStatusAddr');
         final getStatusFn = Pointer<
                 NativeFunction<
-                    Int32 Function(Pointer<COMObject> self,
+                    Int32 Function(VTablePointer self,
                         Pointer<Int32> result)>>.fromAddress(getStatusAddr)
             .asFunction<
-                int Function(Pointer<COMObject> self, Pointer<Int32> result)>();
+                int Function(VTablePointer self, Pointer<Int32> result)>();
 
         final statusPtr = calloc<Int32>();
         final hrS = getStatusFn(playbackInfo, statusPtr);
@@ -522,20 +523,20 @@ class SystemControlService {
 
       // ── Step 6: TryGetMediaPropertiesAsync ──
       debugPrint('[SCS] [6] TryGetMediaPropertiesAsync...');
-      final mediaPropsAsyncPtr = calloc<Pointer<COMObject>>();
+      final mediaPropsAsyncPtr = calloc<VTablePointer>();
       // vtable index for TryGetMediaPropertiesAsync depends on the interface version
       // Try common indices: 10, 11
       int tryGetMediaIndex = 10;
-      final tryGetMediaAddr = session.ref.vtable[tryGetMediaIndex];
+      final tryGetMediaAddr = session.value[tryGetMediaIndex];
       debugPrint('[SCS] [6] vtable[$tryGetMediaIndex] addr: $tryGetMediaAddr');
       final tryGetMediaFn = Pointer<
                   NativeFunction<
-                      Int32 Function(Pointer<COMObject> self,
-                          Pointer<Pointer<COMObject>> result)>>.fromAddress(
+                      Int32 Function(VTablePointer self,
+                          Pointer<VTablePointer> result)>>.fromAddress(
               tryGetMediaAddr)
           .asFunction<
-              int Function(Pointer<COMObject> self,
-                  Pointer<Pointer<COMObject>> result)>();
+              int Function(VTablePointer self,
+                  Pointer<VTablePointer> result)>();
 
       final hr5 = tryGetMediaFn(session, mediaPropsAsyncPtr);
       debugPrint(
@@ -583,15 +584,15 @@ class SystemControlService {
     }
   }
 
-  static String _readHstr(Pointer<COMObject> obj, int idx) {
+  static String _readHstr(VTablePointer obj, int idx) {
     try {
-      final addr = obj.ref.vtable[idx];
+      final addr = obj.value[idx];
       final fn = Pointer<
               NativeFunction<
-                  Int32 Function(Pointer<COMObject> self,
+                  Int32 Function(VTablePointer self,
                       Pointer<IntPtr> result)>>.fromAddress(addr)
           .asFunction<
-              int Function(Pointer<COMObject> self, Pointer<IntPtr> result)>();
+              int Function(VTablePointer self, Pointer<IntPtr> result)>();
       final p = calloc<IntPtr>();
       if (fn(obj, p) == S_OK) {
         final s = _hstringToDart(p.value);
@@ -607,18 +608,18 @@ class SystemControlService {
   }
 
   /// 等待 IAsyncOperation 完成并返回结果
-  static Pointer<COMObject>? _waitForAsync(Pointer<COMObject> asyncOp) {
+  static VTablePointer? _waitForAsync(VTablePointer asyncOp) {
     debugPrint('[SCS] _waitForAsync start');
     try {
       // IAsyncInfo vtable: 3=get_Id, 4=get_Status, ...
-      final getStatusAddr = asyncOp.ref.vtable[4];
+      final getStatusAddr = asyncOp.value[4];
       debugPrint('[SCS] get_Status vtable[4] addr: $getStatusAddr');
       final getStatusFn = Pointer<
               NativeFunction<
-                  Int32 Function(Pointer<COMObject> self,
+                  Int32 Function(VTablePointer self,
                       Pointer<Int32> result)>>.fromAddress(getStatusAddr)
           .asFunction<
-              int Function(Pointer<COMObject> self, Pointer<Int32> result)>();
+              int Function(VTablePointer self, Pointer<Int32> result)>();
 
       final statusPtr = calloc<Int32>();
       final start = DateTime.now();
@@ -656,18 +657,18 @@ class SystemControlService {
       calloc.free(statusPtr);
 
       // IAsyncOperation vtable: IUnknown(0-2), IAsyncInfo(3-7), GetResults(10)
-      final getResultsAddr = asyncOp.ref.vtable[10];
+      final getResultsAddr = asyncOp.value[10];
       debugPrint('[SCS] GetResults vtable[10] addr: $getResultsAddr');
       final getResultsFn = Pointer<
                   NativeFunction<
-                      Int32 Function(Pointer<COMObject> self,
-                          Pointer<Pointer<COMObject>> result)>>.fromAddress(
+                      Int32 Function(VTablePointer self,
+                          Pointer<VTablePointer> result)>>.fromAddress(
               getResultsAddr)
           .asFunction<
-              int Function(Pointer<COMObject> self,
-                  Pointer<Pointer<COMObject>> result)>();
+              int Function(VTablePointer self,
+                  Pointer<VTablePointer> result)>();
 
-      final resultPtr = calloc<Pointer<COMObject>>();
+      final resultPtr = calloc<VTablePointer>();
       final hr = getResultsFn(asyncOp, resultPtr);
       debugPrint('[SCS] GetResults: 0x${hr.toRadixString(16)}');
       IUnknown(asyncOp).release();
@@ -692,8 +693,8 @@ class SystemControlService {
     debugPrint('[SCS] _fallbackMediaInfo');
     try {
       final hwnd = GetForegroundWindow();
-      if (hwnd == 0) return;
-      final len = GetWindowTextLength(hwnd);
+      if (hwnd.isNull) return;
+      final len = GetWindowTextLength(hwnd).value;
       if (len == 0) return;
       final buf = wsalloc(len + 1);
       GetWindowText(hwnd, buf, len + 1);

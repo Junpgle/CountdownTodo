@@ -126,15 +126,15 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
     if (_isImporting) return;
     setState(() => _isImporting = true);
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final pickedFile = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['txt', 'md', 'csv', 'json'],
-        withData: true,
       );
-      if (!mounted || result == null || result.files.isEmpty) return;
+      if (!mounted || pickedFile == null) return;
 
-      final bytes = result.files.single.bytes;
-      if (bytes == null || bytes.isEmpty) {
+      final bytes = await pickedFile.readAsBytes();
+      if (!mounted) return;
+      if (bytes.isEmpty) {
         throw StateError('文件内容为空或当前平台无法读取文件');
       }
       final text = utf8.decode(bytes, allowMalformed: true);

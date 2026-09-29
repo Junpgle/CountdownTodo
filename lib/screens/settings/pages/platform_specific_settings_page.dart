@@ -281,14 +281,14 @@ class _PlatformSpecificSettingsPageState
 
   // --- Windows Methods ---
   Future<void> _pickTaiDatabase() async {
-    final result = await FilePicker.platform.pickFiles(
+    final pickedFile = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: ['db', 'sqlite'],
       dialogTitle: '选择 Tai 数据库文件',
     );
-    if (result == null || result.files.single.path == null) return;
+    if (pickedFile?.path == null) return;
 
-    final path = result.files.single.path!;
+    final path = pickedFile!.path!;
     final valid = await TaiService.validateDb(path);
 
     if (!valid) {

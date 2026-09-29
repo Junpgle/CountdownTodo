@@ -38,18 +38,21 @@ class _DataImportPageState extends State<DataImportPage> {
   TeamDataStrategy _teamStrategy = TeamDataStrategy.skip;
 
   Future<void> _pickFile() async {
-    final result = await FilePicker.platform.pickFiles(
+    final pickedFile = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: ['json'],
-      withData: true,
     );
 
-    if (result == null || result.files.isEmpty) return;
+    if (pickedFile == null) return;
 
-    final pickedFile = result.files.single;
     final filePath = pickedFile.path;
     final fileName = pickedFile.name;
-    final bytes = pickedFile.bytes;
+    List<int>? bytes;
+    try {
+      bytes = await pickedFile.readAsBytes();
+    } catch (_) {
+      // Fall back to the local file path on platforms that expose one.
+    }
     final jsonString = bytes != null
         ? utf8.decode(bytes)
         : (filePath != null ? await readTextFile(filePath) : null);

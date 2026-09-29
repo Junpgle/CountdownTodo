@@ -368,7 +368,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     if (_isLoading || _isPickingAttachment) return;
     setState(() => _isPickingAttachment = true);
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: const [
           'jpg',
@@ -391,13 +391,15 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           'yaml',
           'yml',
         ],
-        allowMultiple: false,
-        withData: true,
       );
-      if (result == null || result.files.isEmpty) return;
-      final file = result.files.single;
+      if (file == null) return;
       final path = file.path ?? '';
-      final bytes = file.bytes;
+      Uint8List? bytes;
+      try {
+        bytes = await file.readAsBytes();
+      } catch (_) {
+        // A local path can still be read later by the message builder.
+      }
       if (path.isEmpty && bytes == null) {
         throw Exception('未读取到附件内容');
       }
@@ -421,15 +423,16 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         'md' => 'text/markdown',
         _ => 'text/plain',
       };
+      final sizeBytes = bytes?.length ?? (await file.length() ?? 0);
       final attachment = ChatImageAttachment(
         path: path,
         name: file.name.isEmpty ? '附件' : file.name,
         mimeType: mimeType,
-        sizeBytes: file.size,
+        sizeBytes: sizeBytes,
         bytes: bytes,
       );
       final maxBytes = AiMultimodalMessageBuilder.maxBytesFor(attachment.kind);
-      if (file.size > maxBytes) {
+      if (sizeBytes > maxBytes) {
         throw Exception(
           '${attachment.typeLabel}过大，请选择 '
           '${(maxBytes / 1024 / 1024).round()}MB 以内的文件',

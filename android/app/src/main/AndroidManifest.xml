@@ -128,6 +128,11 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
+        <activity
+            android:name="com.yalantis.ucrop.UCropActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/Ucrop.CropTheme" />
+
         <!-- 外部分享按用途拆成三个独立目标。代理 Activity 会把原始内容
              转交给 MainActivity，并用私有 MIME 类型标记用户选择的用途。 -->
         <activity

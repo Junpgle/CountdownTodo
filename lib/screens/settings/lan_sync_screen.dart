@@ -333,11 +333,11 @@ class _LanSyncScreenState extends State<LanSyncScreen>
       return;
     }
     try {
-      final result = await FilePicker.platform.pickFiles();
-      if (result != null && result.files.single.path != null) {
+      final pickedFile = await FilePicker.pickFile();
+      if (pickedFile?.path != null) {
         setState(() => _isLoading = true);
         final syncResult =
-            await _service.sendFilePath(device, result.files.single.path!);
+            await _service.sendFilePath(device, pickedFile!.path!);
         if (mounted) {
           setState(() {
             _isLoading = false;

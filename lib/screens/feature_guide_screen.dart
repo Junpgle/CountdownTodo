@@ -2033,15 +2033,14 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                   icon: const Icon(Icons.folder_open),
                   label: const Text('手动选择 data.db 文件'),
                   onPressed: () async {
-                    FilePickerResult? result =
-                        await FilePicker.platform.pickFiles(
+                    final pickedFile = await FilePicker.pickFile(
                       type: FileType.custom,
                       allowedExtensions: ['db'],
                       dialogTitle: '选择 Tai 的 data.db 文件',
                     );
                     if (!mounted) return;
-                    if (result != null && result.files.single.path != null) {
-                      String path = result.files.single.path!;
+                    if (pickedFile?.path != null) {
+                      String path = pickedFile!.path!;
                       bool isValid = await TaiService.validateDb(path);
                       if (!mounted) return;
                       if (isValid) {

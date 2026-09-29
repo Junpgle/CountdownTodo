@@ -247,17 +247,19 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   Future<void> _pickAttachmentImage() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final pickedFile = await FilePicker.pickFile(
         type: FileType.image,
-        allowMultiple: false,
-        withData: true,
       );
-      if (result == null || result.files.isEmpty) return;
+      if (pickedFile == null) return;
 
-      final pickedFile = result.files.single;
       final filePath = pickedFile.path;
-      final bytes = pickedFile.bytes;
-      final imagePath = bytes != null
+      List<int>? bytes;
+      try {
+        bytes = await pickedFile.readAsBytes();
+      } catch (_) {
+        // Keep using the selected local path if the platform cannot read bytes.
+      }
+      final imagePath = bytes != null && bytes.isNotEmpty
           ? _dataUrlFromPickedImage(pickedFile.name, bytes)
           : filePath;
       if (imagePath == null || imagePath.isEmpty) return;

@@ -3,8 +3,8 @@ subprojects {
     configurations.configureEach {
         resolutionStrategy.eachDependency {
             if (requested.group == "androidx.glance") {
-                useVersion("1.1.1")
-                because("home_widget 0.9.0 declares androidx.glance:glance-appwidget:1.+, whose latest alpha requires AGP 9.1 and compileSdk 37.")
+                useVersion("1.2.0")
+                because("home_widget 0.10.0 requires Glance 1.2.0 APIs for widget previews; keep all Glance artifacts on this stable version.")
             }
         }
     }

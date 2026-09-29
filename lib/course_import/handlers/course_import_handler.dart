@@ -389,30 +389,31 @@ class CourseImportHandler {
     if (selectedSchool == null) return;
 
     // 2. 根据学校执行不同的导入方式
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
+    final pickedFile = await FilePicker.pickFile(
       type: FileType.any,
-      withData: true,
     );
 
-    if (result == null) return;
-    final pickedFile = result.files.single;
+    if (pickedFile == null) return;
     final filePath = pickedFile.path;
-    final pickedBytes = pickedFile.bytes;
 
     _showLoadingDialog("处理中...");
 
     try {
       String content;
-      if (pickedBytes != null) {
-        content = utf8.decode(pickedBytes, allowMalformed: true);
-      } else if (filePath != null) {
+      try {
+        content = utf8.decode(
+          await pickedFile.readAsBytes(),
+          allowMalformed: true,
+        );
+      } catch (e) {
+        if (filePath == null) {
+          throw Exception('无法读取文件内容: $e');
+        }
         try {
           content = await readTextFile(filePath);
         } catch (e) {
           throw Exception('无法读取文件内容: $e');
         }
-      } else {
-        throw Exception('无法读取文件');
       }
 
       String sourceName = "";
