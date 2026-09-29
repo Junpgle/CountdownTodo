@@ -51,11 +51,10 @@ class FinanceHomeScreen extends StatefulWidget {
     required this.username,
     required DateTime month,
     required String categoryUuid,
-    required _FinanceHomeData initialData,
+    required this._initialData,
   })  : openQuickEntry = false,
         initialMonth = month,
-        initialCategoryFilterUuid = categoryUuid,
-        _initialData = initialData;
+        initialCategoryFilterUuid = categoryUuid;
 
   @override
   State<FinanceHomeScreen> createState() => _FinanceHomeScreenState();

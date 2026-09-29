@@ -791,8 +791,7 @@ class _FloatingGlassTopBarContentFadeBox extends SingleChildRenderObjectWidget {
 }
 
 class _RenderFloatingGlassTopBarContentFadeBox extends RenderProxyBox {
-  _RenderFloatingGlassTopBarContentFadeBox({required double fadeHeight})
-      : _fadeHeight = fadeHeight;
+  _RenderFloatingGlassTopBarContentFadeBox({required this._fadeHeight});
 
   @override
   ShaderMaskLayer? get layer => super.layer as ShaderMaskLayer?;
@@ -939,8 +938,7 @@ class FloatingGlassSliverContentFade extends SingleChildRenderObjectWidget {
 }
 
 class _RenderFloatingGlassSliverContentFade extends RenderProxySliver {
-  _RenderFloatingGlassSliverContentFade({required double fadeHeight})
-      : _fadeHeight = fadeHeight;
+  _RenderFloatingGlassSliverContentFade({required this._fadeHeight});
 
   double _fadeHeight;
 
