@@ -1,20 +1,22 @@
 name: countdown_todo
 description: A new Flutter project.
 publish_to: 'none'
-version: 6.5.0
+version: 6.5.1
 environment:
-  sdk: '>=3.11.0 <4.0.0'
-  flutter: '>=3.41.6'
+  sdk: '>=3.13.0 <4.0.0'
+  flutter: '>=3.47.0'
 
 dependencies:
   flutter:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  cupertino_icons: ^1.0.8
+  cupertino_icons: ^2.0.0
 
   home_widget: ^0.10.0
   shared_preferences: ^2.5.5
+  # Keep v10 while users can upgrade directly from a public 9.x build: its
+  # Android migration reads legacy ciphers that v11 removes.
   flutter_secure_storage: ^10.3.1
   intl: ^0.20.2
   http: ^1.2.0
@@ -54,7 +56,7 @@ dependencies:
 # to win32_registry 3 for the Win32 6 dependency chain.
   launch_at_startup:
     path: third_party/launch_at_startup
-  tray_manager: ^0.5.2
+  tray_manager: ^0.7.0
   webview_flutter: ^4.13.1
   webview_flutter_android: ^4.11.0
   webview_flutter_wkwebview: ^3.24.3
@@ -62,13 +64,14 @@ dependencies:
   visibility_detector: ^0.4.0+2
   timezone: ^0.11.1
   qr_flutter: ^4.1.0
-  dynamic_color: ^1.8.1
+  dynamic_color: ^2.1.0
+  material_ui: ^1.5.0
   sensors_plus: ^7.1.0
   image_picker: ^1.2.2
-  image_cropper: ^11.0.0
+  image_cropper: ^12.2.1
   flutter_colorpicker: ^1.1.0
   flutter_zoom_drawer: ^3.2.0
-  liquid_glass_widgets: 1.7.2
+  liquid_glass_widgets: 1.8.0
   palette_generator: ^0.3.3+7
 dev_dependencies:
   flutter_test:

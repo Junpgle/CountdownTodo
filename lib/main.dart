@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart'; // 引入 kIsWeb
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:dynamic_color/dynamic_color.dart';
+import 'package:material_ui/material_ui.dart' as material_ui;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 // video_player_win plugin
@@ -45,6 +46,7 @@ import 'services/minor_mode_service.dart';
 import 'services/liquid_glass_effect_service.dart';
 import 'services/power_save_mode_service.dart';
 import 'theme/app_liquid_glass_theme.dart';
+import 'theme/dynamic_color_scheme_adapter.dart';
 import 'widgets/island_debug_host.dart';
 import 'widgets/macos_window_chrome.dart';
 
@@ -1012,16 +1014,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   valueListenable: StorageService.appWallpaperColorNotifier,
                   builder: (context, appWallpaperColor, _) {
                     return DynamicColorBuilder(
-                      builder: (ColorScheme? lightDynamic,
-                          ColorScheme? darkDynamic) {
+                      builder: (material_ui.ColorScheme? lightDynamic,
+                          material_ui.ColorScheme? darkDynamic) {
                         ColorScheme lightScheme;
                         ColorScheme darkScheme;
 
                         if (colorMode == 'system_wallpaper' &&
                             lightDynamic != null &&
                             darkDynamic != null) {
-                          lightScheme = lightDynamic.harmonized();
-                          darkScheme = darkDynamic.harmonized();
+                          lightScheme = flutterColorSchemeFromDynamic(
+                              lightDynamic.harmonized());
+                          darkScheme = flutterColorSchemeFromDynamic(
+                              darkDynamic.harmonized());
                         } else if ((colorMode == 'custom' ||
                                 colorMode == 'image_extracted') &&
                             customColor != null) {
