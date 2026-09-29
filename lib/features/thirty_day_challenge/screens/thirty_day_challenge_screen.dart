@@ -2813,7 +2813,7 @@ class _ShuffleCardStackState extends State<_ShuffleCardStack>
                           fit: StackFit.expand,
                           children: [
                             ...previousChildren,
-                            if (currentChild != null) currentChild,
+                            ?currentChild,
                           ],
                         ),
                         transitionBuilder: (child, animation) {

@@ -4043,7 +4043,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 24),
         itemCount: _mlInsights.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (_, index) => SizedBox(
           width: 260,
           child: _buildInsightItem(_mlInsights[index], cs),

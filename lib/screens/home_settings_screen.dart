@@ -880,10 +880,10 @@ class _SettingsPageState extends State<SettingsPage> {
     final minorModeService = MinorModeService.instance;
     return ValueListenableBuilder<MinorModeState>(
       valueListenable: minorModeService.stateNotifier,
-      builder: (context, _, __) {
+      builder: (context, _, _) {
         return ValueListenableBuilder<MinorAgeSignalState>(
           valueListenable: minorModeService.googleAgeSignalNotifier,
-          builder: (context, _, __) {
+          builder: (context, _, _) {
             final minorModeEnabled =
                 minorModeService.policyState.effectiveMinorMode;
             final colorScheme = theme.colorScheme;

@@ -908,7 +908,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (schedulePanel != null) schedulePanel,
+        ?schedulePanel,
         if (schedulePanel != null && (todoPanel != null || sidePanel != null))
           const SizedBox(height: 16),
         if (todoPanel != null || sidePanel != null)

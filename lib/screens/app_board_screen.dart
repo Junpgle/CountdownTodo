@@ -337,7 +337,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
                     shrinkWrap: true,
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     itemCount: _countdowns.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 16),
+                    separatorBuilder: (_, _) => const SizedBox(width: 16),
                     itemBuilder: (context, index) {
                       final cd = _countdowns[index];
                       final diff = cd.targetDate.difference(_now).inDays;
@@ -664,7 +664,7 @@ class GlassCard extends StatelessWidget {
                   letterSpacing: -0.5,
                 ),
               ),
-              if (headerExtra != null) headerExtra!,
+              ?headerExtra,
             ],
           ),
         ),
@@ -1427,7 +1427,7 @@ class MissionControl extends StatelessWidget {
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             itemCount: displayTasks.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final task = displayTasks[index];
               final isOverdue = task.dueDate != null &&

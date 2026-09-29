@@ -274,7 +274,7 @@ class StorageManagementHandler {
                           ? const Center(child: Text("未发现大于 50KB 的文件"))
                           : ListView.separated(
                               itemCount: topFiles.length,
-                              separatorBuilder: (_, __) =>
+                              separatorBuilder: (_, _) =>
                                   const Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final fileInfo = topFiles[index];

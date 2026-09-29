@@ -81,7 +81,7 @@ FinanceAutomationManager _manager({
       onAddRule: onAdd ?? () async => false,
       onAddTemplate: () async => false,
       onEditRule: onEdit ?? (_) async {},
-      onToggleRule: onToggle ?? (_, __) async {},
+      onToggleRule: onToggle ?? (_, _) async {},
       onDeleteRule: (_) async {},
       onEditTemplate: (_) async {},
       onUseTemplate: onUse ?? (_) async {},

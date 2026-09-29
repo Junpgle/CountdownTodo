@@ -737,7 +737,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 shrinkWrap: true,
                 padding: EdgeInsets.zero,
                 itemCount: _syncFailures.length > 5 ? 5 : _syncFailures.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
+                separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (context, index) {
                   final failure = _syncFailures[index];
                   return ListTile(
@@ -780,7 +780,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
     return ValueListenableBuilder<int>(
       valueListenable: AppPerformanceMonitor.changes,
-      builder: (context, _, __) {
+      builder: (context, _, _) {
         final monitor = AppPerformanceMonitor.snapshot;
         final colorScheme = Theme.of(context).colorScheme;
         final events = monitor.events.take(8).toList();
@@ -1612,7 +1612,7 @@ class _DatabaseChangelogSheet extends StatelessWidget {
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             itemCount: DatabaseSchemaHistory.changes.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
               final entry = DatabaseSchemaHistory.changes[index];
               final isCurrent = entry.version == currentVersion;

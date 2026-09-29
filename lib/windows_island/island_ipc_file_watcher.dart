@@ -59,7 +59,7 @@ class IslandIpcFileWatcher {
           );
       _directorySubscription = events.listen(
         _onDirectoryEvent,
-        onError: (Object _, StackTrace __) => _enterDegradedPolling(),
+        onError: (Object _, StackTrace _) => _enterDegradedPolling(),
         onDone: _enterDegradedPolling,
         cancelOnError: true,
       );

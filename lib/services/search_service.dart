@@ -1149,7 +1149,7 @@ class SearchService {
           'due_date': dueDateMs,
           'team_name': t['team_name'],
           'remark': remarkStr,
-          if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
+          'date_query_hint': ?dateQueryHint,
         },
       ));
     }
@@ -1222,7 +1222,7 @@ class SearchService {
             'week_index': weekIdx,
             'weekday': weekday,
             if (c['course_record'] != null) 'course_record': c['course_record'],
-            if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
+            'date_query_hint': ?dateQueryHint,
           },
         ));
       }
@@ -1284,7 +1284,7 @@ class SearchService {
               '所属团队': cd['team_name']?.toString() ?? '',
             },
             'detail_label': '倒计时',
-            if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
+            'date_query_hint': ?dateQueryHint,
           },
         ));
       }
@@ -1337,7 +1337,7 @@ class SearchService {
           extraData: {
             'uuid': log['uuid'],
             'table': 'time_logs',
-            if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
+            'date_query_hint': ?dateQueryHint,
           },
         ));
       }
@@ -1403,7 +1403,7 @@ class SearchService {
                 'app_name': appName,
                 'route': '/screen_time/app',
                 'search_date_ms': startOfDay!.millisecondsSinceEpoch,
-                if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
+                'date_query_hint': ?dateQueryHint,
               },
             ));
           }
@@ -1507,7 +1507,7 @@ class SearchService {
             extraData: {
               'uuid': p.uuid,
               'table': 'pomodoro_records',
-              if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
+              'date_query_hint': ?dateQueryHint,
             },
           ));
         }

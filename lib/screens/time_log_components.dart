@@ -182,7 +182,7 @@ class _DayViewState extends State<_DayView> {
                         child: ListView.separated(
                       shrinkWrap: true,
                       itemCount: dayLogs.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
                       itemBuilder: (ctx2, i) {
                         final log = dayLogs[i];
                         final tag = log.tagUuids.isNotEmpty
@@ -1814,7 +1814,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
                 child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: allRecs.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 6),
+                    separatorBuilder: (_, _) => const SizedBox(height: 6),
                     itemBuilder: (ctx, i) {
                       final r = allRecs.reversed.elementAt(i);
                       final colorScheme = Theme.of(ctx).colorScheme;

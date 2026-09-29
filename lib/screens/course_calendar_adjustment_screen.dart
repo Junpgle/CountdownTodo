@@ -738,7 +738,7 @@ class _EmptyLine extends StatelessWidget {
               style: TextStyle(color: Theme.of(context).colorScheme.outline),
             ),
           ),
-          if (action != null) action!,
+          ?action,
         ],
       ),
     );

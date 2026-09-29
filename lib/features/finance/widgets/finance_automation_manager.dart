@@ -337,7 +337,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
           [
             _categoryName(category),
             if (_paymentName(payment).isNotEmpty) _paymentName(payment),
-            if (extra != null) extra,
+            ?extra,
           ].join(' · '),
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,

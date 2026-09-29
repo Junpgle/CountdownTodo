@@ -247,7 +247,7 @@ class NotificationService {
         replaceSource: replaceSource,
       ),
     );
-    _scheduleQueue = operation.then<void>((_) {}, onError: (_, __) {});
+    _scheduleQueue = operation.then<void>((_) {}, onError: (_, _) {});
     return operation;
   }
 

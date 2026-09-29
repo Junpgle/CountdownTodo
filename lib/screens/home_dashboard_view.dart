@@ -535,7 +535,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                           _courseDataNotifier,
                                           _scheduleRevision,
                                         ]),
-                                        builder: (_, __) =>
+                                        builder: (_, _) =>
                                             _buildUniversalBanner(isLight),
                                       ),
                                       'courses': courseSection,
@@ -786,8 +786,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                             fit: StackFit.expand,
                                             children: [
                                               ...previousChildren,
-                                              if (currentChild != null)
-                                                currentChild,
+                                              ?currentChild,
                                             ],
                                           );
                                         },

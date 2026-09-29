@@ -65,7 +65,7 @@ abstract final class GlobalSearchExtraService {
         extraData: {
           'detail_label': label,
           'fields': fields,
-          if (record != null) 'record': record,
+          'record': ?record,
           ...data,
         },
       );

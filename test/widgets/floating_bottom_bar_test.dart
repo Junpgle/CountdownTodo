@@ -633,7 +633,7 @@ void main() {
             settings: settings,
             builder: (_) => const SizedBox.shrink(),
           ),
-          onGenerateInitialRoutes: (_, __) => [
+          onGenerateInitialRoutes: (_, _) => [
             MaterialPageRoute<void>(
               builder: (_) => const SizedBox.shrink(),
             ),

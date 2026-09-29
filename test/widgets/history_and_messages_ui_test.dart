@@ -285,7 +285,7 @@ void main() {
             managedTeams: messageTeams(),
             fetchMessages: (_) async =>
                 {'success': true, 'messages': teamMessages()},
-            processRequest: (_, __, ___) async => throw StateError('network')));
+            processRequest: (_, _, _) async => throw StateError('network')));
     await tapVisible(tester, find.text('同意入队'));
     expect(find.text('处理失败，请稍后重试'), findsOneWidget);
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,

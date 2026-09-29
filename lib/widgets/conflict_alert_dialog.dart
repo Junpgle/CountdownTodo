@@ -33,7 +33,7 @@ class ConflictAlertDialog extends StatelessWidget {
         child: ListView.separated(
           shrinkWrap: true,
           itemCount: conflicts.length,
-          separatorBuilder: (_, __) => Divider(),
+          separatorBuilder: (_, _) => Divider(),
           itemBuilder: (context, index) {
             final c = conflicts[index];
             return Column(

@@ -1399,7 +1399,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           'notifId': alarmNotifId,
           'type': 'pomodoro',
           'source': ScheduledReminderSources.pomodoro,
-          if (sessionUuid != null) 'sessionUuid': sessionUuid,
+          'sessionUuid': ?sessionUuid,
         }
       ],
       clearFirst: false,
@@ -2941,7 +2941,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       fit: StackFit.expand,
       children: [
         if (previousChildren.isNotEmpty) previousChildren.last,
-        if (currentChild != null) currentChild,
+        ?currentChild,
       ],
     );
   }
@@ -3445,7 +3445,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   Widget _buildImmersiveTimerWidget() {
     return ValueListenableBuilder<int>(
       valueListenable: _timerTickNotifier,
-      builder: (context, _, __) {
+      builder: (context, _, _) {
         final isCountUp = _settings.mode == TimerMode.countUp;
         final isRemoteCountUp = _remoteState?.duration == 0;
         return ImmersiveTimer(

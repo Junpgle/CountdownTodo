@@ -758,7 +758,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         alignment: Alignment.topCenter,
         child: AnimatedBuilder(
           animation: _sizeController,
-          builder: (_, __) {
+          builder: (_, _) {
             final double borderRadius = _radiusAnimation.value;
             final shadowProgress = _transitioning ? _sizeController.value : 1.0;
             return Container(
@@ -803,7 +803,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                           alignment: Alignment.center,
                           children: [
                             ...previousChildren,
-                            if (currentChild != null) currentChild,
+                            ?currentChild,
                           ],
                         ),
                         transitionBuilder: (child, anim) {
@@ -896,7 +896,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               alignment: Alignment.center,
               child: ValueListenableBuilder<String>(
                 valueListenable: _timeNotifier,
-                builder: (_, t, __) => Text(
+                builder: (_, t, _) => Text(
                   t,
                   style: const TextStyle(
                     color: Colors.white,
@@ -1143,7 +1143,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                       if (!compact) const SizedBox(height: 1),
                       ValueListenableBuilder<String>(
                         valueListenable: _timeNotifier,
-                        builder: (_, time, __) {
+                        builder: (_, time, _) {
                           if (_isCountdown &&
                               _remainingSecs == 0 &&
                               !_isPulsing) {
@@ -1187,7 +1187,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       }
       return ValueListenableBuilder<String>(
         valueListenable: _timeNotifier,
-        builder: (_, time, __) => Text(
+        builder: (_, time, _) => Text(
           time,
           style: const TextStyle(
             color: Colors.white,
@@ -1221,7 +1221,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         child: ValueListenableBuilder<String>(
           key: const ValueKey('idle_time_card'),
           valueListenable: _clockTimeNotifier,
-          builder: (_, time, __) => Text(
+          builder: (_, time, _) => Text(
             time,
             key: ValueKey(time),
             style: const TextStyle(
@@ -1396,7 +1396,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 ),
                 child: ValueListenableBuilder<String>(
                   valueListenable: _timeNotifier,
-                  builder: (_, t, __) => Text(
+                  builder: (_, t, _) => Text(
                     t,
                     style: const TextStyle(
                       color: Colors.white,
@@ -1462,7 +1462,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               builder: (context, pauseTime, _) {
                 return ValueListenableBuilder<String>(
                   valueListenable: _timeNotifier,
-                  builder: (_, t, __) => Text(
+                  builder: (_, t, _) => Text(
                     fd?['isPaused'] == true
                         ? '暂停中 $pauseTime | $t'
                         : '$t | $title',
@@ -1837,7 +1837,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             ),
             ValueListenableBuilder<String>(
               valueListenable: _timeNotifier,
-              builder: (_, time, __) => Text(
+              builder: (_, time, _) => Text(
                 time,
                 style: const TextStyle(
                   color: Colors.white,
@@ -1864,7 +1864,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         alignment: Alignment.center,
         child: ValueListenableBuilder<String>(
           valueListenable: _timeNotifier,
-          builder: (_, time, __) => Text(
+          builder: (_, time, _) => Text(
             time,
             style: const TextStyle(
               color: Colors.white,
@@ -2205,7 +2205,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         children: [
           ValueListenableBuilder<String>(
             valueListenable: _timeNotifier,
-            builder: (_, t, __) => Text(
+            builder: (_, t, _) => Text(
               '$t | $title',
               style: const TextStyle(
                 color: Colors.white,
@@ -2708,7 +2708,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: visibleCards.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            separatorBuilder: (_, _) => const SizedBox(width: 6),
             itemBuilder: (context, index) {
               final card = visibleCards[index];
               final type = card['type'] as String;
@@ -2728,7 +2728,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                     const SizedBox(height: 4),
                     ValueListenableBuilder<String>(
                       valueListenable: _timeNotifier,
-                      builder: (_, time, __) => Text(
+                      builder: (_, time, _) => Text(
                         time,
                         style: const TextStyle(
                           color: Colors.white,
@@ -2922,7 +2922,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         padding: const EdgeInsets.all(14),
         child: ValueListenableBuilder<MediaInfo>(
           valueListenable: SystemControlService.mediaInfoListenable,
-          builder: (context, smtc, __) {
+          builder: (context, smtc, _) {
             final musicData = _currentPayload?['musicData'] as Map?;
             final hasMusic = musicData != null && musicData.isNotEmpty;
             final smtcHasMusic = !smtc.isEmpty;

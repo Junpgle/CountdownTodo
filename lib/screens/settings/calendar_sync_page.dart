@@ -240,7 +240,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                   child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: selected.length,
-                    separatorBuilder: (_, __) => const Divider(height: 16),
+                    separatorBuilder: (_, _) => const Divider(height: 16),
                     itemBuilder: (context, index) {
                       final entry = selected[index];
                       return ListTile(

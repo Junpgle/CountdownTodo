@@ -662,7 +662,7 @@ class ApiService {
       final uri = Uri.parse('$_effectiveBaseUrl/api/courses').replace(
         queryParameters: {
           'user_id': userId.toString(),
-          if (semester != null) 'semester': semester,
+          'semester': ?semester,
         },
       );
       final response = await _request('GET', uri.toString());

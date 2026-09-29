@@ -111,7 +111,7 @@ void main() {
             paymentMethods: const {},
             keyword: '',
             filterType: null,
-            onOpenDetail: (_, __) {},
+            onOpenDetail: (_, _) {},
             onKeywordChanged: (_) {},
             onFilterChanged: (_) {},
             onEdit: (_) {},
@@ -347,7 +347,7 @@ void main() {
             keyword: '',
             filterType: null,
             categoryUuid: categoryFilter,
-            onOpenDetail: (_, __) {},
+            onOpenDetail: (_, _) {},
             onKeywordChanged: (_) {},
             onFilterChanged: (_) {},
             onCategoryChanged: (value) =>
