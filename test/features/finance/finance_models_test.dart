@@ -20,6 +20,12 @@ void main() {
       expect(parseFinanceAmount('1,23'), isNull);
       expect(parseFinanceAmount('abc'), isNull);
     });
+
+    test('付款余额可录入零，普通账单仍拒绝零', () {
+      expect(parseFinanceAmount('0', allowZero: true), 0);
+      expect(parseFinanceAmount('0.00', allowZero: true), 0);
+      expect(parseFinanceAmount('0'), isNull);
+    });
   });
 
   test('交易模型可以在 SQLite/JSON 字段之间往返', () {
@@ -51,6 +57,19 @@ void main() {
     expect(restored.installmentLabel, '2/6 期');
     expect(restored.installmentTotalMinor, 15594);
     expect(restored.pendingSync, isTrue);
+  });
+
+  test('旧交易缺少发生时刻时保留未记录状态', () {
+    final legacy = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: '2026-08-27',
+      createdAt: 1787832000000,
+    ).toMap()
+      ..remove('occurred_at');
+
+    final restored = FinanceTransaction.fromMap(legacy);
+
+    expect(restored.occurredAt, isNull);
   });
 
   test('分期金额按分精确分摊，余数只造成 1 分差异', () {
@@ -299,6 +318,39 @@ void main() {
     ]);
 
     expect(spending, {'payment-card': 7500, 'payment-wallet': -4000});
+  });
+
+  test('付款方式余额按收入和退款增加、支出减少', () {
+    final changes = FinanceRepository.summarizePaymentMethodBalanceChanges([
+      FinanceTransaction(
+        uuid: 'card-expense',
+        amountMinor: 10000,
+        paymentMethodUuid: 'payment-card',
+        transactionDate: '2026-09-01',
+      ),
+      FinanceTransaction(
+        uuid: 'card-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 2500,
+        paymentMethodUuid: 'payment-card',
+        transactionDate: '2026-09-02',
+      ),
+      FinanceTransaction(
+        uuid: 'card-income',
+        type: FinanceTransactionType.income,
+        amountMinor: 9000,
+        paymentMethodUuid: 'payment-card',
+        transactionDate: '2026-09-03',
+      ),
+      FinanceTransaction(
+        uuid: 'unassigned-income',
+        type: FinanceTransactionType.income,
+        amountMinor: 5000,
+        transactionDate: '2026-09-03',
+      ),
+    ]);
+
+    expect(changes, {'payment-card': 1500});
   });
 
   test('默认分类和付款方式使用稳定 ID', () {

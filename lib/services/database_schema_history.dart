@@ -11,10 +11,18 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 55;
+  static const int currentVersion = 56;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 56,
+      title: '付款余额快照时间',
+      changes: [
+        '将付款方式余额的录入时间与记录修改时间分开保存。',
+        '编辑备注或恢复余额记录时，保留原有余额快照时间。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 55,
       title: '记账分类名称自定义',

@@ -85,6 +85,7 @@ void main() {
         'month_key',
         'category_uuid',
         'payment_method_uuid',
+        'balance_snapshot_at',
         'amount_minor',
         'is_deleted',
         'version',
@@ -159,6 +160,221 @@ void main() {
     expect(
       categoryColumns.map((row) => row['name']),
       contains('name_customized'),
+    );
+  });
+
+  test('旧付款方式余额升级时保留原有快照时间', () async {
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(db.close);
+    await db.execute('''
+      CREATE TABLE finance_budgets (
+        uuid TEXT NOT NULL UNIQUE,
+        month_key TEXT NOT NULL,
+        category_uuid TEXT,
+        payment_method_uuid TEXT,
+        amount_minor INTEGER NOT NULL,
+        currency_code TEXT NOT NULL,
+        note TEXT,
+        is_deleted INTEGER NOT NULL,
+        version INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        device_id TEXT,
+        pending_sync INTEGER NOT NULL
+      )
+    ''');
+    await db.insert('finance_budgets', {
+      'uuid': 'legacy-card',
+      'month_key': '2026-09',
+      'payment_method_uuid': 'card',
+      'amount_minor': 10000,
+      'currency_code': 'CNY',
+      'is_deleted': 0,
+      'version': 1,
+      'created_at': 100,
+      'updated_at': 200,
+      'pending_sync': 0,
+    });
+
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureFinanceSchema(db);
+
+    final rows = await db.query('finance_budgets');
+    expect(rows.single['balance_snapshot_at'], 200);
+  });
+
+  test('付款余额修改备注和恢复时保留快照，改金额可设为零', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'balance-snapshot-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final balance = FinanceBudget(
+      monthKey: '2026-09',
+      paymentMethodUuid: 'card',
+      amountMinor: 10000,
+    );
+    await FinanceStorage.saveBudget(balance);
+    await db.update(
+      'finance_budgets',
+      {'balance_snapshot_at': 200},
+      where: 'uuid = ?',
+      whereArgs: [balance.uuid],
+    );
+    final edited = (await FinanceStorage.getBudget(balance.uuid))!
+      ..note = '只修改备注';
+    edited.markAsChanged();
+    await FinanceStorage.saveBudget(edited);
+    expect((await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt, 200);
+
+    final recalibrated = (await FinanceStorage.getBudget(balance.uuid))!;
+    recalibrated.markAsChanged();
+    await FinanceStorage.saveBudget(
+      recalibrated,
+      resetBalanceSnapshot: true,
+    );
+    expect(
+      (await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
+      greaterThan(200),
+      reason: '余额数值未变时，也需要能主动重新记录当前余额',
+    );
+
+    await db.update(
+      'finance_budgets',
+      {'balance_snapshot_at': 200},
+      where: 'uuid = ?',
+      whereArgs: [balance.uuid],
+    );
+
+    await FinanceStorage.deleteBudget(balance.uuid);
+    await FinanceStorage.restoreBudget(balance.uuid);
+    expect((await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt, 200);
+
+    final zero = (await FinanceStorage.getBudget(balance.uuid))!
+      ..amountMinor = 0;
+    zero.markAsChanged();
+    await FinanceStorage.saveBudget(zero);
+    final stored = (await FinanceStorage.getBudget(balance.uuid))!;
+    expect(stored.amountMinor, 0);
+    expect(stored.balanceSnapshotAt, greaterThan(200));
+  });
+
+  test('付款方式余额备份恢复保留快照时间和关联账单', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'balance-backup-test',
+    });
+    final originalDb =
+        await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    final restoredDb =
+        await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await originalDb.close();
+      await restoredDb.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(originalDb);
+    await DatabaseHelper.ensureFinanceSchema(restoredDb);
+    FinanceStorage.databaseOverride = originalDb;
+    await FinanceStorage.ensureReady();
+
+    final now = DateTime.now();
+    final snapshotAt = now
+        .subtract(const Duration(minutes: 5))
+        .millisecondsSinceEpoch;
+    await originalDb.insert(
+      'finance_payment_methods',
+      FinancePaymentMethod(uuid: 'backup-card', name: '备份银行卡').toMap(),
+    );
+    final balance = FinanceBudget(
+      monthKey: financeMonthKey(now),
+      paymentMethodUuid: 'backup-card',
+      amountMinor: 10000,
+    );
+    await FinanceStorage.saveBudget(balance);
+    await originalDb.update(
+      'finance_budgets',
+      {'balance_snapshot_at': snapshotAt},
+      where: 'uuid = ?',
+      whereArgs: [balance.uuid],
+    );
+    await FinanceStorage.saveTransaction(FinanceTransaction(
+      uuid: 'backup-income',
+      type: FinanceTransactionType.income,
+      amountMinor: 2500,
+      paymentMethodUuid: 'backup-card',
+      transactionDate: dateKey(now),
+    ));
+
+    final backup = await FinanceStorage.getExportBundle();
+    FinanceStorage.databaseOverride = restoredDb;
+    await FinanceStorage.importBundle(backup);
+
+    final restoredBalance = (await FinanceStorage.getBudget(balance.uuid))!;
+    final restoredIncome =
+        (await FinanceStorage.getTransaction('backup-income'))!;
+    expect(restoredBalance.balanceSnapshotAt, snapshotAt);
+    expect(restoredBalance.amountMinor, 10000);
+    expect(restoredIncome.paymentMethodUuid, 'backup-card');
+    expect(restoredIncome.amountMinor, 2500);
+  });
+
+  test('历史月份余额可指定对应时间，修改金额仍保留所选时间', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'historical-balance-time-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final now = DateTime.now();
+    final pastMonth = DateTime(now.year, now.month - 1);
+    final snapshotAt = DateTime(
+      pastMonth.year,
+      pastMonth.month,
+      15,
+      9,
+      30,
+    ).millisecondsSinceEpoch;
+    final balance = FinanceBudget(
+      monthKey: financeMonthKey(pastMonth),
+      paymentMethodUuid: 'historical-card',
+      amountMinor: 10000,
+    );
+    await FinanceStorage.saveBudget(
+      balance,
+      balanceSnapshotAt: snapshotAt,
+    );
+    expect((await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
+        snapshotAt);
+
+    final corrected = (await FinanceStorage.getBudget(balance.uuid))!
+      ..amountMinor = 12000;
+    corrected.markAsChanged();
+    await FinanceStorage.saveBudget(
+      corrected,
+      balanceSnapshotAt: snapshotAt,
+    );
+    expect((await FinanceStorage.getBudget(balance.uuid))!.balanceSnapshotAt,
+        snapshotAt);
+
+    await expectLater(
+      FinanceStorage.saveBudget(
+        corrected,
+        balanceSnapshotAt: DateTime.now()
+            .add(const Duration(minutes: 1))
+            .millisecondsSinceEpoch,
+      ),
+      throwsArgumentError,
     );
   });
 

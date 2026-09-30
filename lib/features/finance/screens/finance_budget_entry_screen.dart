@@ -1,5 +1,6 @@
 import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
@@ -38,10 +39,16 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
   bool _isLoading = true;
   String? _loadError;
   bool _isSaving = false;
+  DateTime? _balanceTime;
+  bool _useSaveTime = true;
+  bool _balanceTimeChanged = false;
 
   bool get _isEditing => widget.budget != null;
 
   bool get _isPaymentScope => _scopeValue.startsWith(_paymentPrefix);
+
+  bool get _isCurrentMonth =>
+      financeMonthKey(widget.month) == financeMonthKey(DateTime.now());
 
   String get _screenTitle => _isPaymentScope
       ? (_isEditing ? '更新付款方式余额' : '记录付款方式余额')
@@ -66,6 +73,12 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
               .replaceFirst(RegExp(r'\.00$'), ''),
     );
     _noteController = TextEditingController(text: budget?.note ?? '');
+    if (budget?.isPaymentMethod == true) {
+      _balanceTime = DateTime.fromMillisecondsSinceEpoch(
+        budget!.effectiveBalanceSnapshotAt,
+      );
+      _useSaveTime = false;
+    }
     _loadScopeOptions();
   }
 
@@ -174,17 +187,109 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
     return items;
   }
 
+  Future<void> _pickBalanceTime() async {
+    FocusScope.of(context).unfocus();
+    final firstDate = DateTime(widget.month.year, widget.month.month);
+    final lastOfMonth = DateTime(widget.month.year, widget.month.month + 1, 0);
+    final now = DateTime.now();
+    final lastDate = now.isBefore(lastOfMonth) ? now : lastOfMonth;
+    if (lastDate.isBefore(firstDate)) {
+      _showError('不能为未来月份设置余额对应时间');
+      return;
+    }
+    final initial = _balanceTime ?? now;
+    final initialDate = initial.isBefore(firstDate)
+        ? firstDate
+        : initial.isAfter(lastDate)
+            ? lastDate
+            : initial;
+    final date = await showAppDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
+      helpText: '选择余额对应日期',
+    );
+    if (date == null || !mounted) return;
+    final previousTime = _balanceTime;
+    final initialTime = previousTime != null &&
+            dateKey(previousTime) == dateKey(date)
+        ? TimeOfDay.fromDateTime(previousTime)
+        : TimeOfDay.fromDateTime(now);
+    final time = await showAppTimePicker(
+      context: context,
+      initialTime: initialTime,
+      helpText: '选择余额对应时刻',
+    );
+    if (time == null || !mounted) return;
+    final selected = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+    if (selected.isAfter(DateTime.now())) {
+      _showError('余额对应时间不能晚于现在');
+      return;
+    }
+    setState(() {
+      _balanceTime = selected;
+      _useSaveTime = false;
+      _balanceTimeChanged = true;
+    });
+  }
+
+  void _setBalanceTimeToNow() {
+    setState(() {
+      _useSaveTime = true;
+      _balanceTimeChanged = true;
+    });
+  }
+
   Future<void> _save() async {
     if (_isSaving || _isLoading || !_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
-    final amount = parseFinanceAmount(_amountController.text);
+    final amount = parseFinanceAmount(
+      _amountController.text,
+      allowZero: _isPaymentScope,
+    );
     if (amount == null) {
-      _showError('请输入大于 0 且不超过两位小数的金额');
+      _showError(_isPaymentScope
+          ? '请输入不小于 0 且不超过两位小数的金额'
+          : '请输入大于 0 且不超过两位小数的金额');
       return;
     }
 
-    setState(() => _isSaving = true);
     final old = widget.budget;
+    final paymentMethodUuid = _isPaymentScope
+        ? _scopeValue.substring(_paymentPrefix.length)
+        : null;
+    final changesBalance = old == null ||
+        old.monthKey != financeMonthKey(widget.month) ||
+        old.paymentMethodUuid != paymentMethodUuid ||
+        old.amountMinor != amount ||
+        _balanceTimeChanged;
+    int? selectedBalanceTime;
+    if (_isPaymentScope && changesBalance) {
+      if (_useSaveTime) {
+        if (!_isCurrentMonth) {
+          _showError('请先选择该月份内的余额对应时间');
+          return;
+        }
+      } else {
+        final selected = _balanceTime;
+        if (selected == null ||
+            financeMonthKey(selected) != financeMonthKey(widget.month) ||
+            selected.isAfter(DateTime.now())) {
+          _showError('余额对应时间必须在所选月份内且不晚于现在');
+          return;
+        }
+        selectedBalanceTime = selected.millisecondsSinceEpoch;
+      }
+    }
+
+    setState(() => _isSaving = true);
     final now = DateTime.now().millisecondsSinceEpoch;
     final budget = FinanceBudget(
       uuid: old?.uuid,
@@ -206,7 +311,12 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
     if (old != null) budget.markAsChanged();
 
     try {
-      await FinanceRepository.saveBudget(budget);
+      await FinanceRepository.saveBudget(
+        budget,
+        resetBalanceSnapshot:
+            _isPaymentScope && changesBalance && _useSaveTime,
+        balanceSnapshotAt: selectedBalanceTime,
+      );
       if (!mounted) return;
       Navigator.of(context).pop(budget);
     } catch (error) {
@@ -265,7 +375,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
                                   title:
                                       '${widget.month.year} 年 ${widget.month.month} 月',
                                   description: _isPaymentScope
-                                      ? '保存时会将金额记为当天的余额快照；之后的支出会扣减，退款会加回。'
+                                      ? '填写所选时间点的实际剩余金额；只改备注不会改变余额基准。'
                                       : '预算按这个月份的账单统计。',
                                   icon: _isPaymentScope
                                       ? Icons.account_balance_wallet_outlined
@@ -274,15 +384,52 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
                                     key:
                                         const ValueKey('finance-budget-amount'),
                                     controller: _amountController,
-                                    label: _isPaymentScope ? '录入时剩余金额' : '预算金额',
+                                    label: _isPaymentScope ? '该时点剩余金额' : '预算金额',
+                                    allowZero: _isPaymentScope,
                                   ),
                                 ),
+                                if (_isPaymentScope) ...[
+                                  const SizedBox(height: 16),
+                                  FinanceSectionCard(
+                                    key: const ValueKey(
+                                        'finance-budget-snapshot-time'),
+                                    title: '余额对应时间',
+                                    icon: Icons.schedule_outlined,
+                                    description:
+                                        '余额从此时起按账单发生时刻连续增减，跨月延续；今天未来时刻的账单会在发生后计入。',
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        ListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          title: Text(_useSaveTime
+                                              ? '保存时刻（现在）'
+                                              : DateFormat('yyyy年M月d日 HH:mm')
+                                                  .format(_balanceTime!)),
+                                          subtitle: const Text('点击选择日期和时刻'),
+                                          trailing: const Icon(
+                                              Icons.chevron_right_rounded),
+                                          onTap: _pickBalanceTime,
+                                        ),
+                                        if (!_useSaveTime)
+                                          TextButton.icon(
+                                            onPressed: _isCurrentMonth
+                                                ? _setBalanceTimeToNow
+                                                : null,
+                                            icon: const Icon(Icons.update),
+                                            label: const Text('使用保存时刻'),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                                 const SizedBox(height: 16),
                                 FinanceSectionCard(
                                   title: _isPaymentScope ? '付款方式' : '预算范围',
                                   icon: Icons.track_changes_outlined,
                                   description: _isPaymentScope
-                                      ? '支出按账单记录的付款方式扣减，退款会加回。'
+                                      ? '记到此付款方式的支出会扣减余额，收入和退款会加回。'
                                       : '总预算覆盖全部支出；分类预算和付款方式余额独立统计。',
                                   child: DropdownButtonFormField<String>(
                                     key: ValueKey(

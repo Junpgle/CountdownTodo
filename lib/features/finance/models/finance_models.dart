@@ -58,11 +58,7 @@ abstract final class FinanceInstallmentCalculator {
       );
     }
     if (count > totalMinor) {
-      throw ArgumentError.value(
-        count,
-        'count',
-        '分期月数不能超过金额的分（人民币分）',
-      );
+      throw ArgumentError.value(count, 'count', '分期月数不能超过金额的分（人民币分）');
     }
 
     final baseAmount = totalMinor ~/ count;
@@ -108,10 +104,7 @@ abstract final class FinanceInstallmentCalculator {
 }
 
 /// 贷款的还款方式。
-enum FinanceLoanRepaymentMethod {
-  equalPrincipalInterest,
-  equalPrincipal,
-}
+enum FinanceLoanRepaymentMethod { equalPrincipalInterest, equalPrincipal }
 
 extension FinanceLoanRepaymentMethodLabel on FinanceLoanRepaymentMethod {
   String get label {
@@ -178,27 +171,26 @@ abstract final class FinanceLoanCalculator {
       );
     }
     if (termMonths > principalMinor) {
-      throw ArgumentError.value(
-        termMonths,
-        'termMonths',
-        '贷款期限不能超过本金的分数金额',
-      );
+      throw ArgumentError.value(termMonths, 'termMonths', '贷款期限不能超过本金的分数金额');
     }
     if (repaymentDay < 1 || repaymentDay > 31) {
       throw ArgumentError.value(
-          repaymentDay, 'repaymentDay', '还款日必须在 1-31 日之间');
+        repaymentDay,
+        'repaymentDay',
+        '还款日必须在 1-31 日之间',
+      );
     }
 
     final monthlyRate = annualInterestRateBps / 120000.0;
     final fixedPayment =
         repaymentMethod == FinanceLoanRepaymentMethod.equalPrincipalInterest &&
-                monthlyRate > 0
-            ? _annuityPayment(
-                principalMinor: principalMinor,
-                monthlyRate: monthlyRate,
-                termMonths: termMonths,
-              )
-            : 0;
+            monthlyRate > 0
+        ? _annuityPayment(
+            principalMinor: principalMinor,
+            monthlyRate: monthlyRate,
+            termMonths: termMonths,
+          )
+        : 0;
     final equalPrincipal = principalMinor ~/ termMonths;
     final principalRemainder = principalMinor % termMonths;
     var remaining = principalMinor;
@@ -209,8 +201,9 @@ abstract final class FinanceLoanCalculator {
       if (repaymentMethod ==
               FinanceLoanRepaymentMethod.equalPrincipalInterest &&
           monthlyRate > 0) {
-        principalPayment =
-            index == termMonths - 1 ? remaining : fixedPayment - interest;
+        principalPayment = index == termMonths - 1
+            ? remaining
+            : fixedPayment - interest;
         if (principalPayment <= 0 && remaining > 0) principalPayment = 1;
       } else {
         principalPayment =
@@ -241,14 +234,13 @@ abstract final class FinanceLoanCalculator {
   }
 
   static DateTime _dueDate(
-      DateTime startDate, int repaymentDay, int monthIndex) {
+    DateTime startDate,
+    int repaymentDay,
+    int monthIndex,
+  ) {
     final target = DateTime(startDate.year, startDate.month + monthIndex, 1);
     final lastDay = DateTime(target.year, target.month + 1, 0).day;
-    return DateTime(
-      target.year,
-      target.month,
-      math.min(repaymentDay, lastDay),
-    );
+    return DateTime(target.year, target.month, math.min(repaymentDay, lastDay));
   }
 }
 
@@ -290,9 +282,9 @@ class FinanceLoan {
     int? updatedAt,
     this.deviceId,
     this.pendingSync = false,
-  })  : uuid = uuid ?? const Uuid().v4(),
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : uuid = uuid ?? const Uuid().v4(),
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   void markAsChanged() {
     version++;
@@ -302,24 +294,24 @@ class FinanceLoan {
   }
 
   Map<String, dynamic> toMap() => {
-        'uuid': uuid,
-        'name': name,
-        'lender': lender,
-        'principal_minor': principalMinor,
-        'currency_code': currencyCode,
-        'annual_interest_rate_bps': annualInterestRateBps,
-        'term_months': termMonths,
-        'start_date': startDate,
-        'repayment_day': repaymentDay,
-        'repayment_method': repaymentMethod.name,
-        'note': note,
-        'is_deleted': isDeleted ? 1 : 0,
-        'version': version,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-        'device_id': deviceId,
-        'pending_sync': pendingSync ? 1 : 0,
-      };
+    'uuid': uuid,
+    'name': name,
+    'lender': lender,
+    'principal_minor': principalMinor,
+    'currency_code': currencyCode,
+    'annual_interest_rate_bps': annualInterestRateBps,
+    'term_months': termMonths,
+    'start_date': startDate,
+    'repayment_day': repaymentDay,
+    'repayment_method': repaymentMethod.name,
+    'note': note,
+    'is_deleted': isDeleted ? 1 : 0,
+    'version': version,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+    'device_id': deviceId,
+    'pending_sync': pendingSync ? 1 : 0,
+  };
 
   Map<String, dynamic> toJson() => toMap();
 
@@ -328,9 +320,10 @@ class FinanceLoan {
       uuid: _string(map['uuid'] ?? map['id']) ?? const Uuid().v4(),
       name: _string(map['name']) ?? '未命名贷款',
       lender: _nullableString(map['lender']),
-      principalMinor:
-          _int(map['principal_minor'] ?? map['principalMinor']).abs(),
-      currencyCode: _string(map['currency_code'] ?? map['currencyCode']) ??
+      principalMinor: _int(map['principal_minor'] ?? map['principalMinor'])
+          .abs(),
+      currencyCode:
+          _string(map['currency_code'] ?? map['currencyCode']) ??
           FinanceDefaults.defaultCurrencyCode,
       annualInterestRateBps: _int(
         map['annual_interest_rate_bps'] ?? map['annualInterestRateBps'],
@@ -339,7 +332,8 @@ class FinanceLoan {
         map['term_months'] ?? map['termMonths'],
         fallback: FinanceLoanCalculator.minTermMonths,
       ),
-      startDate: _string(map['start_date'] ?? map['startDate']) ??
+      startDate:
+          _string(map['start_date'] ?? map['startDate']) ??
           dateKey(DateTime.now()),
       repaymentDay: _int(
         map['repayment_day'] ?? map['repaymentDay'],
@@ -397,16 +391,15 @@ class FinanceLoanInstallment {
     int? updatedAt,
     this.deviceId,
     this.pendingSync = false,
-  })  : uuid = uuid ?? const Uuid().v4(),
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : uuid = uuid ?? const Uuid().v4(),
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   bool get isOverdue {
     if (isPaid) return false;
     final today = DateTime.now();
-    return dateFromKey(dueDate).isBefore(
-      DateTime(today.year, today.month, today.day),
-    );
+    return dateFromKey(dueDate)
+        .isBefore(DateTime(today.year, today.month, today.day));
   }
 
   void markAsChanged() {
@@ -417,24 +410,24 @@ class FinanceLoanInstallment {
   }
 
   Map<String, dynamic> toMap() => {
-        'uuid': uuid,
-        'loan_uuid': loanUuid,
-        'installment_index': installmentIndex,
-        'due_date': dueDate,
-        'payment_minor': paymentMinor,
-        'principal_minor': principalMinor,
-        'interest_minor': interestMinor,
-        'remaining_principal_minor': remainingPrincipalMinor,
-        'is_paid': isPaid ? 1 : 0,
-        'paid_at': paidAt,
-        'interest_transaction_uuid': interestTransactionUuid,
-        'is_deleted': isDeleted ? 1 : 0,
-        'version': version,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-        'device_id': deviceId,
-        'pending_sync': pendingSync ? 1 : 0,
-      };
+    'uuid': uuid,
+    'loan_uuid': loanUuid,
+    'installment_index': installmentIndex,
+    'due_date': dueDate,
+    'payment_minor': paymentMinor,
+    'principal_minor': principalMinor,
+    'interest_minor': interestMinor,
+    'remaining_principal_minor': remainingPrincipalMinor,
+    'is_paid': isPaid ? 1 : 0,
+    'paid_at': paidAt,
+    'interest_transaction_uuid': interestTransactionUuid,
+    'is_deleted': isDeleted ? 1 : 0,
+    'version': version,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+    'device_id': deviceId,
+    'pending_sync': pendingSync ? 1 : 0,
+  };
 
   Map<String, dynamic> toJson() => toMap();
 
@@ -449,8 +442,8 @@ class FinanceLoanInstallment {
       dueDate:
           _string(map['due_date'] ?? map['dueDate']) ?? dateKey(DateTime.now()),
       paymentMinor: _int(map['payment_minor'] ?? map['paymentMinor']).abs(),
-      principalMinor:
-          _int(map['principal_minor'] ?? map['principalMinor']).abs(),
+      principalMinor: _int(map['principal_minor'] ?? map['principalMinor'])
+          .abs(),
       interestMinor: _int(map['interest_minor'] ?? map['interestMinor']).abs(),
       remainingPrincipalMinor: _int(
         map['remaining_principal_minor'] ?? map['remainingPrincipalMinor'],
@@ -474,10 +467,7 @@ class FinanceLoanOverview {
   final FinanceLoan loan;
   final List<FinanceLoanInstallment> installments;
 
-  const FinanceLoanOverview({
-    required this.loan,
-    required this.installments,
-  });
+  const FinanceLoanOverview({required this.loan, required this.installments});
 
   int get paidPrincipalMinor => installments
       .where((item) => item.isPaid)
@@ -1261,9 +1251,9 @@ class FinanceCategory {
     int? createdAt,
     int? updatedAt,
     this.pendingSync = false,
-  })  : uuid = uuid ?? const Uuid().v4(),
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : uuid = uuid ?? const Uuid().v4(),
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   void markAsChanged() {
     version++;
@@ -1273,23 +1263,23 @@ class FinanceCategory {
   }
 
   Map<String, dynamic> toMap() => {
-        'uuid': uuid,
-        'name': name,
-        'type': type.name,
-        'icon': icon,
-        'icon_customized': iconCustomized ? 1 : 0,
-        'name_customized': nameCustomized ? 1 : 0,
-        'color_value': colorValue,
-        'parent_uuid': parentUuid,
-        'is_system': isSystem ? 1 : 0,
-        'is_archived': isArchived ? 1 : 0,
-        'is_deleted': isDeleted ? 1 : 0,
-        'sort_order': sortOrder,
-        'version': version,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-        'pending_sync': pendingSync ? 1 : 0,
-      };
+    'uuid': uuid,
+    'name': name,
+    'type': type.name,
+    'icon': icon,
+    'icon_customized': iconCustomized ? 1 : 0,
+    'name_customized': nameCustomized ? 1 : 0,
+    'color_value': colorValue,
+    'parent_uuid': parentUuid,
+    'is_system': isSystem ? 1 : 0,
+    'is_archived': isArchived ? 1 : 0,
+    'is_deleted': isDeleted ? 1 : 0,
+    'sort_order': sortOrder,
+    'version': version,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+    'pending_sync': pendingSync ? 1 : 0,
+  };
 
   Map<String, dynamic> toJson() => toMap();
 
@@ -1368,9 +1358,9 @@ class FinancePaymentMethod {
     int? createdAt,
     int? updatedAt,
     this.pendingSync = false,
-  })  : uuid = uuid ?? const Uuid().v4(),
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : uuid = uuid ?? const Uuid().v4(),
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   void markAsChanged() {
     version++;
@@ -1380,19 +1370,19 @@ class FinancePaymentMethod {
   }
 
   Map<String, dynamic> toMap() => {
-        'uuid': uuid,
-        'name': name,
-        'icon': icon,
-        'color_value': colorValue,
-        'is_system': isSystem ? 1 : 0,
-        'is_archived': isArchived ? 1 : 0,
-        'is_deleted': isDeleted ? 1 : 0,
-        'sort_order': sortOrder,
-        'version': version,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-        'pending_sync': pendingSync ? 1 : 0,
-      };
+    'uuid': uuid,
+    'name': name,
+    'icon': icon,
+    'color_value': colorValue,
+    'is_system': isSystem ? 1 : 0,
+    'is_archived': isArchived ? 1 : 0,
+    'is_deleted': isDeleted ? 1 : 0,
+    'sort_order': sortOrder,
+    'version': version,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+    'pending_sync': pendingSync ? 1 : 0,
+  };
 
   Map<String, dynamic> toJson() => toMap();
 
@@ -1467,10 +1457,10 @@ class FinanceTransaction {
     int? updatedAt,
     this.deviceId,
     this.pendingSync = false,
-  })  : uuid = uuid ?? const Uuid().v4(),
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
-        occurredAt = occurredAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : uuid = uuid ?? const Uuid().v4(),
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
+       occurredAt = occurredAt ?? DateTime.now().millisecondsSinceEpoch;
 
   bool get isExpenseLike =>
       type == FinanceTransactionType.expense ||
@@ -1492,53 +1482,56 @@ class FinanceTransaction {
   }
 
   Map<String, dynamic> toMap() => {
-        'uuid': uuid,
-        'type': type.name,
-        'amount_minor': amountMinor,
-        'currency_code': currencyCode,
-        'category_uuid': categoryUuid,
-        'payment_method_uuid': paymentMethodUuid,
-        'transaction_date': transactionDate,
-        'occurred_at': occurredAt,
-        'timezone_offset_minutes': timezoneOffsetMinutes,
-        'merchant': merchant,
-        'note': note,
-        'source': source.name,
-        'related_todo_uuid': relatedTodoUuid,
-        'related_plan_block_uuid': relatedPlanBlockUuid,
-        'related_transaction_uuid': relatedTransactionUuid,
-        'installment_group_uuid': installmentGroupUuid,
-        'installment_index': installmentIndex,
-        'installment_count': installmentCount,
-        'installment_total_minor': installmentTotalMinor,
-        'is_deleted': isDeleted ? 1 : 0,
-        'version': version,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-        'device_id': deviceId,
-        'pending_sync': pendingSync ? 1 : 0,
-      };
+    'uuid': uuid,
+    'type': type.name,
+    'amount_minor': amountMinor,
+    'currency_code': currencyCode,
+    'category_uuid': categoryUuid,
+    'payment_method_uuid': paymentMethodUuid,
+    'transaction_date': transactionDate,
+    'occurred_at': occurredAt,
+    'timezone_offset_minutes': timezoneOffsetMinutes,
+    'merchant': merchant,
+    'note': note,
+    'source': source.name,
+    'related_todo_uuid': relatedTodoUuid,
+    'related_plan_block_uuid': relatedPlanBlockUuid,
+    'related_transaction_uuid': relatedTransactionUuid,
+    'installment_group_uuid': installmentGroupUuid,
+    'installment_index': installmentIndex,
+    'installment_count': installmentCount,
+    'installment_total_minor': installmentTotalMinor,
+    'is_deleted': isDeleted ? 1 : 0,
+    'version': version,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+    'device_id': deviceId,
+    'pending_sync': pendingSync ? 1 : 0,
+  };
 
   Map<String, dynamic> toJson() => toMap();
 
   factory FinanceTransaction.fromMap(Map<String, dynamic> map) {
     final amount = _int(map['amount_minor'] ?? map['amountMinor']);
-    return FinanceTransaction(
+    final createdAt = _timestamp(map['created_at'] ?? map['createdAt']);
+    final occurredAt = _nullableInt(map['occurred_at'] ?? map['occurredAt']);
+    final transaction = FinanceTransaction(
       uuid: _string(map['uuid'] ?? map['id']) ?? const Uuid().v4(),
       type: _transactionType(map['type']),
       amountMinor: amount < 0 ? -amount : amount,
-      currencyCode: _string(map['currency_code'] ?? map['currencyCode']) ??
+      currencyCode:
+          _string(map['currency_code'] ?? map['currencyCode']) ??
           FinanceDefaults.defaultCurrencyCode,
-      categoryUuid:
-          _nullableString(map['category_uuid'] ?? map['categoryUuid']),
+      categoryUuid: _nullableString(
+        map['category_uuid'] ?? map['categoryUuid'],
+      ),
       paymentMethodUuid: _nullableString(
         map['payment_method_uuid'] ?? map['paymentMethodUuid'],
       ),
-      transactionDate: _string(
-            map['transaction_date'] ?? map['transactionDate'],
-          ) ??
+      transactionDate:
+          _string(map['transaction_date'] ?? map['transactionDate']) ??
           dateKey(DateTime.now()),
-      occurredAt: _nullableInt(map['occurred_at'] ?? map['occurredAt']),
+      occurredAt: occurredAt,
       timezoneOffsetMinutes: _int(
         map['timezone_offset_minutes'] ?? map['timezoneOffsetMinutes'],
       ),
@@ -1568,11 +1561,13 @@ class FinanceTransaction {
       ),
       isDeleted: _bool(map['is_deleted'] ?? map['isDeleted']),
       version: _int(map['version'], fallback: 1),
-      createdAt: _timestamp(map['created_at'] ?? map['createdAt']),
+      createdAt: createdAt,
       updatedAt: _timestamp(map['updated_at'] ?? map['updatedAt']),
       deviceId: _nullableString(map['device_id'] ?? map['deviceId']),
       pendingSync: _bool(map['pending_sync'] ?? map['pendingSync']),
     );
+    if (occurredAt == null) transaction.occurredAt = null;
+    return transaction;
   }
 }
 
@@ -1613,20 +1608,20 @@ class FinanceEntryDraft {
   });
 
   Map<String, dynamic> toJson() => {
-        'type': type.name,
-        'amount_minor': amountMinor,
-        'transaction_date': transactionDate,
-        'category_uuid': categoryUuid,
-        'category_name': categoryName,
-        'payment_method_uuid': paymentMethodUuid,
-        'payment_method_name': paymentMethodName,
-        'merchant': merchant,
-        'note': note,
-        'source': source.name,
-        'original_text': originalText,
-        'is_added': isAdded,
-        'is_ignored': isIgnored,
-      };
+    'type': type.name,
+    'amount_minor': amountMinor,
+    'transaction_date': transactionDate,
+    'category_uuid': categoryUuid,
+    'category_name': categoryName,
+    'payment_method_uuid': paymentMethodUuid,
+    'payment_method_name': paymentMethodName,
+    'merchant': merchant,
+    'note': note,
+    'source': source.name,
+    'original_text': originalText,
+    'is_added': isAdded,
+    'is_ignored': isIgnored,
+  };
 
   factory FinanceEntryDraft.fromJson(Map<String, dynamic> map) {
     final minorValue = map['amount_minor'] ?? map['amountMinor'];
@@ -1647,16 +1642,15 @@ class FinanceEntryDraft {
         map['type'] ?? map['transaction_type'] ?? map['transactionType'],
       ),
       amountMinor: amountMinor,
-      transactionDate: _string(
+      transactionDate:
+          _string(
             map['transaction_date'] ??
                 map['transactionDate'] ??
                 map['date'] ??
                 map['transaction_day'],
           ) ??
           dateKey(DateTime.now()),
-      categoryUuid: _string(
-        map['category_uuid'] ?? map['categoryUuid'],
-      ),
+      categoryUuid: _string(map['category_uuid'] ?? map['categoryUuid']),
       categoryName: _string(
         map['category_name'] ?? map['categoryName'] ?? map['category'],
       ),
@@ -1686,7 +1680,9 @@ class FinanceEntryDraft {
         .replaceAll(',', '')
         .replaceAll(RegExp(r'^[¥￥$€£]'), '')
         .replaceAll(
-            RegExp(r'\s*(?:元|块|人民币|CNY)\s*$', caseSensitive: false), '');
+          RegExp(r'\s*(?:元|块|人民币|CNY)\s*$', caseSensitive: false),
+          '',
+        );
     final parsed = double.tryParse(normalized ?? '');
     return parsed == null ? 0 : (parsed * 100).round().abs();
   }
@@ -1718,6 +1714,7 @@ class FinanceBudget {
   int amountMinor;
   String currencyCode;
   String? note;
+  int? balanceSnapshotAt;
   bool isDeleted;
   int version;
   int createdAt;
@@ -1733,15 +1730,16 @@ class FinanceBudget {
     required this.amountMinor,
     this.currencyCode = FinanceDefaults.defaultCurrencyCode,
     this.note,
+    this.balanceSnapshotAt,
     this.isDeleted = false,
     this.version = 1,
     int? createdAt,
     int? updatedAt,
     this.deviceId,
     this.pendingSync = false,
-  })  : uuid = uuid ?? const Uuid().v4(),
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : uuid = uuid ?? const Uuid().v4(),
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   static String stableUuid(
     String monthKey,
@@ -1751,8 +1749,8 @@ class FinanceBudget {
     final scope = paymentMethodUuid?.trim().isNotEmpty == true
         ? 'payment:${paymentMethodUuid!.trim()}'
         : categoryUuid?.trim().isNotEmpty == true
-            ? categoryUuid!.trim()
-            : 'overall';
+        ? categoryUuid!.trim()
+        : 'overall';
     return const Uuid().v5(
       _uuidNamespace,
       'countdown-todo/finance-budget/v1/$monthKey/$scope',
@@ -1763,6 +1761,10 @@ class FinanceBudget {
 
   bool get isOverall => categoryUuid == null && paymentMethodUuid == null;
 
+  // Older rows used updated_at as the balance snapshot time. Keep that exact
+  // instant even when a snapshot was edited from a different calendar month.
+  int get effectiveBalanceSnapshotAt => balanceSnapshotAt ?? updatedAt;
+
   void markAsChanged() {
     version++;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -1771,37 +1773,44 @@ class FinanceBudget {
   }
 
   Map<String, dynamic> toMap() => {
-        'uuid': uuid,
-        'month_key': monthKey,
-        'category_uuid': categoryUuid,
-        'payment_method_uuid': paymentMethodUuid,
-        'amount_minor': amountMinor,
-        'currency_code': currencyCode,
-        'note': note,
-        'is_deleted': isDeleted ? 1 : 0,
-        'version': version,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-        'device_id': deviceId,
-        'pending_sync': pendingSync ? 1 : 0,
-      };
+    'uuid': uuid,
+    'month_key': monthKey,
+    'category_uuid': categoryUuid,
+    'payment_method_uuid': paymentMethodUuid,
+    'amount_minor': amountMinor,
+    'currency_code': currencyCode,
+    'note': note,
+    'balance_snapshot_at': balanceSnapshotAt,
+    'is_deleted': isDeleted ? 1 : 0,
+    'version': version,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+    'device_id': deviceId,
+    'pending_sync': pendingSync ? 1 : 0,
+  };
 
   Map<String, dynamic> toJson() => toMap();
 
   factory FinanceBudget.fromMap(Map<String, dynamic> map) {
     return FinanceBudget(
       uuid: _string(map['uuid'] ?? map['id']) ?? const Uuid().v4(),
-      monthKey: _string(map['month_key'] ?? map['monthKey']) ??
+      monthKey:
+          _string(map['month_key'] ?? map['monthKey']) ??
           financeMonthKey(DateTime.now()),
-      categoryUuid:
-          _nullableString(map['category_uuid'] ?? map['categoryUuid']),
+      categoryUuid: _nullableString(
+        map['category_uuid'] ?? map['categoryUuid'],
+      ),
       paymentMethodUuid: _nullableString(
         map['payment_method_uuid'] ?? map['paymentMethodUuid'],
       ),
       amountMinor: _int(map['amount_minor'] ?? map['amountMinor']).abs(),
-      currencyCode: _string(map['currency_code'] ?? map['currencyCode']) ??
+      currencyCode:
+          _string(map['currency_code'] ?? map['currencyCode']) ??
           FinanceDefaults.defaultCurrencyCode,
       note: _nullableString(map['note']),
+      balanceSnapshotAt: _nullableInt(
+        map['balance_snapshot_at'] ?? map['balanceSnapshotAt'],
+      ),
       isDeleted: _bool(map['is_deleted'] ?? map['isDeleted']),
       version: _int(map['version'], fallback: 1),
       createdAt: _timestamp(map['created_at'] ?? map['createdAt']),
@@ -1868,9 +1877,9 @@ class FinanceRecurringRule {
     int? updatedAt,
     this.deviceId,
     this.pendingSync = false,
-  })  : uuid = uuid ?? const Uuid().v4(),
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : uuid = uuid ?? const Uuid().v4(),
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   void markAsChanged() {
     version++;
@@ -1880,31 +1889,31 @@ class FinanceRecurringRule {
   }
 
   Map<String, dynamic> toMap() => {
-        'uuid': uuid,
-        'name': name,
-        'type': type.name,
-        'amount_minor': amountMinor,
-        'currency_code': currencyCode,
-        'category_uuid': categoryUuid,
-        'payment_method_uuid': paymentMethodUuid,
-        'merchant': merchant,
-        'note': note,
-        'frequency': frequency.name,
-        'day_of_month': dayOfMonth,
-        'month_of_year': monthOfYear,
-        'start_date': startDate,
-        'end_date': endDate,
-        'reminder_minutes': reminderMinutes,
-        'auto_generate': autoGenerate ? 1 : 0,
-        'is_enabled': isEnabled ? 1 : 0,
-        'is_deleted': isDeleted ? 1 : 0,
-        'last_generated_period': lastGeneratedPeriod,
-        'version': version,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-        'device_id': deviceId,
-        'pending_sync': pendingSync ? 1 : 0,
-      };
+    'uuid': uuid,
+    'name': name,
+    'type': type.name,
+    'amount_minor': amountMinor,
+    'currency_code': currencyCode,
+    'category_uuid': categoryUuid,
+    'payment_method_uuid': paymentMethodUuid,
+    'merchant': merchant,
+    'note': note,
+    'frequency': frequency.name,
+    'day_of_month': dayOfMonth,
+    'month_of_year': monthOfYear,
+    'start_date': startDate,
+    'end_date': endDate,
+    'reminder_minutes': reminderMinutes,
+    'auto_generate': autoGenerate ? 1 : 0,
+    'is_enabled': isEnabled ? 1 : 0,
+    'is_deleted': isDeleted ? 1 : 0,
+    'last_generated_period': lastGeneratedPeriod,
+    'version': version,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+    'device_id': deviceId,
+    'pending_sync': pendingSync ? 1 : 0,
+  };
 
   Map<String, dynamic> toJson() => toMap();
 
@@ -1914,10 +1923,12 @@ class FinanceRecurringRule {
       name: _string(map['name']) ?? '未命名周期账单',
       type: _transactionType(map['type']),
       amountMinor: _int(map['amount_minor'] ?? map['amountMinor']).abs(),
-      currencyCode: _string(map['currency_code'] ?? map['currencyCode']) ??
+      currencyCode:
+          _string(map['currency_code'] ?? map['currencyCode']) ??
           FinanceDefaults.defaultCurrencyCode,
-      categoryUuid:
-          _nullableString(map['category_uuid'] ?? map['categoryUuid']),
+      categoryUuid: _nullableString(
+        map['category_uuid'] ?? map['categoryUuid'],
+      ),
       paymentMethodUuid: _nullableString(
         map['payment_method_uuid'] ?? map['paymentMethodUuid'],
       ),
@@ -1925,9 +1936,12 @@ class FinanceRecurringRule {
       note: _nullableString(map['note']),
       frequency: _recurringFrequency(map['frequency']),
       dayOfMonth: _int(map['day_of_month'] ?? map['dayOfMonth'], fallback: 1),
-      monthOfYear:
-          _int(map['month_of_year'] ?? map['monthOfYear'], fallback: 1),
-      startDate: _string(map['start_date'] ?? map['startDate']) ??
+      monthOfYear: _int(
+        map['month_of_year'] ?? map['monthOfYear'],
+        fallback: 1,
+      ),
+      startDate:
+          _string(map['start_date'] ?? map['startDate']) ??
           dateKey(DateTime.now()),
       endDate: _nullableString(map['end_date'] ?? map['endDate']),
       reminderMinutes: _int(
@@ -1938,10 +1952,7 @@ class FinanceRecurringRule {
         map['auto_generate'] ?? map['autoGenerate'],
         true,
       ),
-      isEnabled: _boolOrDefault(
-        map['is_enabled'] ?? map['isEnabled'],
-        true,
-      ),
+      isEnabled: _boolOrDefault(map['is_enabled'] ?? map['isEnabled'], true),
       isDeleted: _bool(map['is_deleted'] ?? map['isDeleted']),
       lastGeneratedPeriod: _nullableString(
         map['last_generated_period'] ?? map['lastGeneratedPeriod'],
@@ -1993,9 +2004,9 @@ class FinanceEntryTemplate {
     int? updatedAt,
     this.deviceId,
     this.pendingSync = false,
-  })  : uuid = uuid ?? const Uuid().v4(),
-        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
-        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+  }) : uuid = uuid ?? const Uuid().v4(),
+       createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+       updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   void markAsChanged() {
     version++;
@@ -2005,24 +2016,24 @@ class FinanceEntryTemplate {
   }
 
   Map<String, dynamic> toMap() => {
-        'uuid': uuid,
-        'name': name,
-        'type': type.name,
-        'amount_minor': amountMinor,
-        'currency_code': currencyCode,
-        'category_uuid': categoryUuid,
-        'payment_method_uuid': paymentMethodUuid,
-        'merchant': merchant,
-        'note': note,
-        'use_count': useCount,
-        'last_used_at': lastUsedAt,
-        'is_deleted': isDeleted ? 1 : 0,
-        'version': version,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-        'device_id': deviceId,
-        'pending_sync': pendingSync ? 1 : 0,
-      };
+    'uuid': uuid,
+    'name': name,
+    'type': type.name,
+    'amount_minor': amountMinor,
+    'currency_code': currencyCode,
+    'category_uuid': categoryUuid,
+    'payment_method_uuid': paymentMethodUuid,
+    'merchant': merchant,
+    'note': note,
+    'use_count': useCount,
+    'last_used_at': lastUsedAt,
+    'is_deleted': isDeleted ? 1 : 0,
+    'version': version,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+    'device_id': deviceId,
+    'pending_sync': pendingSync ? 1 : 0,
+  };
 
   Map<String, dynamic> toJson() => toMap();
 
@@ -2032,10 +2043,12 @@ class FinanceEntryTemplate {
       name: _string(map['name']) ?? '未命名模板',
       type: _transactionType(map['type']),
       amountMinor: _int(map['amount_minor'] ?? map['amountMinor']).abs(),
-      currencyCode: _string(map['currency_code'] ?? map['currencyCode']) ??
+      currencyCode:
+          _string(map['currency_code'] ?? map['currencyCode']) ??
           FinanceDefaults.defaultCurrencyCode,
-      categoryUuid:
-          _nullableString(map['category_uuid'] ?? map['categoryUuid']),
+      categoryUuid: _nullableString(
+        map['category_uuid'] ?? map['categoryUuid'],
+      ),
       paymentMethodUuid: _nullableString(
         map['payment_method_uuid'] ?? map['paymentMethodUuid'],
       ),
@@ -2097,14 +2110,14 @@ class FinanceSummary {
               (expenseByCategory[categoryUuid] ?? 0) + transaction.amountMinor;
           expenseByDate[transaction.transactionDate] =
               (expenseByDate[transaction.transactionDate] ?? 0) +
-                  transaction.amountMinor;
+              transaction.amountMinor;
         case FinanceTransactionType.refund:
           refund += transaction.amountMinor;
           expenseByCategory[categoryUuid] =
               (expenseByCategory[categoryUuid] ?? 0) - transaction.amountMinor;
           expenseByDate[transaction.transactionDate] =
               (expenseByDate[transaction.transactionDate] ?? 0) -
-                  transaction.amountMinor;
+              transaction.amountMinor;
       }
     }
 
@@ -2124,7 +2137,8 @@ class FinanceSummary {
   int get balanceMinor => incomeMinor - netExpenseMinor;
 }
 
-String dateKey(DateTime date) => '${date.year.toString().padLeft(4, '0')}-'
+String dateKey(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-'
     '${date.month.toString().padLeft(2, '0')}-'
     '${date.day.toString().padLeft(2, '0')}';
 
@@ -2140,8 +2154,10 @@ DateTime dateFromKey(String value) {
 
 FinanceTransactionType _transactionType(dynamic raw) {
   if (raw is num) {
-    final index =
-        raw.toInt().clamp(0, FinanceTransactionType.values.length - 1);
+    final index = raw.toInt().clamp(
+      0,
+      FinanceTransactionType.values.length - 1,
+    );
     return FinanceTransactionType.values[index];
   }
   final value = raw?.toString();
@@ -2153,8 +2169,10 @@ FinanceTransactionType _transactionType(dynamic raw) {
 
 FinanceRecurringFrequency _recurringFrequency(dynamic raw) {
   if (raw is num) {
-    final index =
-        raw.toInt().clamp(0, FinanceRecurringFrequency.values.length - 1);
+    final index = raw.toInt().clamp(
+      0,
+      FinanceRecurringFrequency.values.length - 1,
+    );
     return FinanceRecurringFrequency.values[index];
   }
   final value = raw?.toString();
@@ -2166,8 +2184,10 @@ FinanceRecurringFrequency _recurringFrequency(dynamic raw) {
 
 FinanceLoanRepaymentMethod _loanRepaymentMethod(dynamic raw) {
   if (raw is num) {
-    final index =
-        raw.toInt().clamp(0, FinanceLoanRepaymentMethod.values.length - 1);
+    final index = raw.toInt().clamp(
+      0,
+      FinanceLoanRepaymentMethod.values.length - 1,
+    );
     return FinanceLoanRepaymentMethod.values[index];
   }
   final value = raw?.toString();

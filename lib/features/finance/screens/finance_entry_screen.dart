@@ -1,4 +1,5 @@
 import '../../../widgets/floating_glass_control.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -44,6 +45,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
 
   FinanceTransactionType _type = FinanceTransactionType.expense;
   DateTime _date = DateTime.now();
+  DateTime? _occurredAt;
   List<FinanceCategory> _categories = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
   List<FinanceEntryTemplate> _templates = const [];
@@ -77,32 +79,53 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     _type = widget.originalTransaction != null
         ? FinanceTransactionType.refund
         : transaction?.type ??
-            draft?.type ??
-            template?.type ??
-            FinanceTransactionType.expense;
+              draft?.type ??
+              template?.type ??
+              FinanceTransactionType.expense;
     if (_isEditingInstallment) {
       _installmentEnabled = true;
-      _installmentCount = transaction!.installmentCount ??
+      _installmentCount =
+          transaction!.installmentCount ??
           FinanceInstallmentCalculator.minCount;
     }
     _date = transaction == null
         ? draft == null
-            ? DateTime.now()
-            : dateFromKey(draft.transactionDate)
+              ? DateTime.now()
+              : dateFromKey(draft.transactionDate)
         : dateFromKey(transaction.transactionDate);
+    if (transaction == null) {
+      final now = DateTime.now();
+      _occurredAt = DateTime(
+        _date.year,
+        _date.month,
+        _date.day,
+        now.hour,
+        now.minute,
+      );
+    } else {
+      final occurredAt = transaction.occurredAt;
+      final occurred = occurredAt == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(occurredAt);
+      _occurredAt =
+          occurred != null && dateKey(occurred) == transaction.transactionDate
+          ? occurred
+          : null;
+    }
     _amountController = TextEditingController(
       text: transaction == null
           ? draft != null
-              ? formatFinanceAmount(draft.amountMinor, withSymbol: false)
-              : template == null
-                  ? ''
-                  : formatFinanceAmount(template.amountMinor, withSymbol: false)
+                ? formatFinanceAmount(draft.amountMinor, withSymbol: false)
+                : template == null
+                ? ''
+                : formatFinanceAmount(template.amountMinor, withSymbol: false)
           : (transaction.amountMinor / 100)
-              .toStringAsFixed(2)
-              .replaceFirst(RegExp(r'\.00$'), ''),
+                .toStringAsFixed(2)
+                .replaceFirst(RegExp(r'\.00$'), ''),
     );
     _merchantController = TextEditingController(
-      text: transaction?.merchant ??
+      text:
+          transaction?.merchant ??
           widget.originalTransaction?.merchant ??
           draft?.merchant ??
           template?.merchant ??
@@ -115,11 +138,13 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     _installmentCountController = TextEditingController(
       text: _installmentCount.toString(),
     );
-    _categoryUuid = transaction?.categoryUuid ??
+    _categoryUuid =
+        transaction?.categoryUuid ??
         widget.originalTransaction?.categoryUuid ??
         draft?.categoryUuid ??
         template?.categoryUuid;
-    _paymentMethodUuid = transaction?.paymentMethodUuid ??
+    _paymentMethodUuid =
+        transaction?.paymentMethodUuid ??
         widget.originalTransaction?.paymentMethodUuid ??
         draft?.paymentMethodUuid ??
         template?.paymentMethodUuid;
@@ -139,7 +164,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
 
   Future<void> _loadOptions() async {
     try {
-      final boundOriginalUuid = widget.originalTransaction?.uuid ??
+      final boundOriginalUuid =
+          widget.originalTransaction?.uuid ??
           widget.transaction?.relatedTransactionUuid;
       final options = await Future.wait<dynamic>([
         FinanceStorage.getCategories(includeArchived: true),
@@ -154,8 +180,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         widget.originalTransaction != null
             ? Future.value(widget.originalTransaction)
             : boundOriginalUuid == null
-                ? Future.value(null)
-                : FinanceRepository.getTransaction(boundOriginalUuid),
+            ? Future.value(null)
+            : FinanceRepository.getTransaction(boundOriginalUuid),
         boundOriginalUuid == null
             ? Future.value(0)
             : FinanceRepository.getRemainingRefundableMinor(
@@ -172,7 +198,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           (item) => item.installmentIndex == 1,
           orElse: () => installmentGroup.first,
         );
-        final total = first.installmentTotalMinor ??
+        final total =
+            first.installmentTotalMinor ??
             installmentGroup.fold<int>(
               0,
               (sum, item) => sum + item.amountMinor,
@@ -180,6 +207,15 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         _existingInstallments = installmentGroup;
         _type = first.type;
         _date = dateFromKey(first.transactionDate);
+        final firstOccurredAt = first.occurredAt;
+        final firstOccurred = firstOccurredAt == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(firstOccurredAt);
+        _occurredAt =
+            firstOccurred != null &&
+                dateKey(firstOccurred) == first.transactionDate
+            ? firstOccurred
+            : null;
         _amountExpression = null;
         _amountController.text = formatFinanceAmount(total, withSymbol: false);
         _merchantController.text = first.merchant ?? '';
@@ -243,14 +279,17 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           .where((item) => item.type == categoryType && !item.isDeleted)
           .toList();
       final exact = candidates
-          .where((item) =>
-              _normalizeOptionName(item.name) == wanted ||
-              _normalizeOptionName(
-                    financeCategoryDisplayName(item, _categories),
-                  ) ==
-                  wanted)
+          .where(
+            (item) =>
+                _normalizeOptionName(item.name) == wanted ||
+                _normalizeOptionName(
+                      financeCategoryDisplayName(item, _categories),
+                    ) ==
+                    wanted,
+          )
           .firstOrNull;
-      _categoryUuid = exact?.uuid ??
+      _categoryUuid =
+          exact?.uuid ??
           candidates
               .where((item) {
                 if (semanticWanted == null) return false;
@@ -273,7 +312,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   bool _shouldKeepUnresolvedDraftCategory() {
     final draft = widget.initialDraft;
     if (draft == null || widget.transaction != null) return false;
-    final isRecognitionDraft = draft.source == FinanceEntrySource.ai ||
+    final isRecognitionDraft =
+        draft.source == FinanceEntrySource.ai ||
         draft.source == FinanceEntrySource.import;
     final requestedUuid = draft.categoryUuid?.trim();
     final requestedName = draft.categoryName?.trim();
@@ -284,7 +324,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       return isRecognitionDraft;
     }
     final categoryType = financeCategoryTypeForTransaction(_type);
-    final resolved = _categoryUuid != null &&
+    final resolved =
+        _categoryUuid != null &&
         _categories.any(
           (item) =>
               item.uuid == _categoryUuid &&
@@ -412,8 +453,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           : null;
     }
     if (_paymentMethodUuid != null &&
-        _visiblePaymentMethods
-            .every((item) => item.uuid != _paymentMethodUuid)) {
+        _visiblePaymentMethods.every(
+          (item) => item.uuid != _paymentMethodUuid,
+        )) {
       _paymentMethodUuid = null;
     }
     if (notify && mounted) setState(() {});
@@ -470,7 +512,42 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       helpText: '选择账单日期',
     );
     _dismissKeyboard();
-    if (picked != null && mounted) setState(() => _date = picked);
+    if (picked == null || !mounted) return;
+    setState(() {
+      _date = DateTime(picked.year, picked.month, picked.day);
+      final occurredAt = _occurredAt;
+      if (occurredAt != null) {
+        _occurredAt = DateTime(
+          _date.year,
+          _date.month,
+          _date.day,
+          occurredAt.hour,
+          occurredAt.minute,
+        );
+      }
+    });
+  }
+
+  Future<void> _pickOccurrenceTime() async {
+    if (_isSaving) return;
+    _dismissKeyboard();
+    final current = _occurredAt ?? DateTime.now();
+    final picked = await showAppTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current),
+      helpText: '选择账单发生时刻',
+    );
+    _dismissKeyboard();
+    if (picked == null || !mounted) return;
+    setState(() {
+      _occurredAt = DateTime(
+        _date.year,
+        _date.month,
+        _date.day,
+        picked.hour,
+        picked.minute,
+      );
+    });
   }
 
   Future<void> _applyQuickEntry() async {
@@ -499,9 +576,19 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     setState(() {
       _type = draft.type;
       _date = dateFromKey(draft.transactionDate);
+      final now = DateTime.now();
+      _occurredAt = DateTime(
+        _date.year,
+        _date.month,
+        _date.day,
+        now.hour,
+        now.minute,
+      );
       _amountExpression = null;
-      _amountController.text =
-          formatFinanceAmount(draft.amountMinor, withSymbol: false);
+      _amountController.text = formatFinanceAmount(
+        draft.amountMinor,
+        withSymbol: false,
+      );
       _merchantController.text = draft.merchant ?? '';
       _noteController.text = draft.note ?? '';
       _categoryUuid = draft.categoryUuid;
@@ -540,8 +627,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: Row(
                     children: [
-                      Icon(Icons.receipt_long_rounded,
-                          color: colorScheme.primary),
+                      Icon(
+                        Icons.receipt_long_rounded,
+                        color: colorScheme.primary,
+                      ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
@@ -718,12 +807,13 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       categoryUuid: _categoryUuid,
       paymentMethodUuid: _paymentMethodUuid,
       transactionDate: dateKey(_date),
-      occurredAt: old?.occurredAt ?? now,
+      occurredAt: _occurredAt?.millisecondsSinceEpoch ?? old?.occurredAt ?? now,
       timezoneOffsetMinutes:
           old?.timezoneOffsetMinutes ?? DateTime.now().timeZoneOffset.inMinutes,
       merchant: _emptyToNull(_merchantController.text),
       note: _noteWithCalculation(),
-      source: old?.source ??
+      source:
+          old?.source ??
           widget.initialDraft?.source ??
           FinanceEntrySource.manual,
       relatedTodoUuid: old?.relatedTodoUuid,
@@ -749,8 +839,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           existingInstallments: _existingInstallments.isNotEmpty
               ? _existingInstallments
               : old == null
-                  ? const []
-                  : [old],
+              ? const []
+              : [old],
         );
       } else {
         await FinanceRepository.saveTransaction(transaction);
@@ -827,8 +917,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   }
 
   void _showError(String message) {
-    AppSnackBars.showSnackBar(
-        context, SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
   }
 
   void _showMessage(String message) {
@@ -904,7 +993,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       floatingLabelBehavior: floatingLabelBehavior,
       isDense: true,
       filled: false,
-      contentPadding: contentPadding ??
+      contentPadding:
+          contentPadding ??
           const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
       prefixStyle: prefixStyle,
       labelStyle: TextStyle(color: colorScheme.onSurfaceVariant),
@@ -945,8 +1035,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       colorScheme: colorScheme,
       label: '分类',
       placeholder: '请选择分类',
-      selectedName:
-          selectedCategory == null ? null : _categoryName(selectedCategory),
+      selectedName: selectedCategory == null
+          ? null
+          : _categoryName(selectedCategory),
       selectedIcon: selectedCategory?.icon,
       fieldIcon: Icons.category_outlined,
       onTap: _isSaving || _isBoundRefund ? null : _pickCategory,
@@ -955,21 +1046,17 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     final payment = _buildFinancePickerField(
       key: ValueKey('finance-payment-$_paymentMethodUuid'),
       colorScheme: colorScheme,
-      label: '付款方式（可选）',
-      placeholder: '未指定',
+      label: _type == FinanceTransactionType.income ? '到账账户（可选）' : '付款方式（可选）',
+      placeholder: _type == FinanceTransactionType.income
+          ? '未指定（不更新账户余额）'
+          : '未指定',
       selectedName: selectedPaymentMethod?.name,
       selectedIcon: selectedPaymentMethod?.icon,
       fieldIcon: Icons.account_balance_wallet_outlined,
       onTap: _isSaving ? null : _pickPaymentMethod,
     );
     if (!isWide) {
-      return Column(
-        children: [
-          category,
-          const SizedBox(height: 14),
-          payment,
-        ],
-      );
+      return Column(children: [category, const SizedBox(height: 14), payment]);
     }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1037,8 +1124,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                     Row(
                       children: [
                         if (hasSelection && selectedIcon != null) ...[
-                          Text(selectedIcon,
-                              style: const TextStyle(fontSize: 18)),
+                          Text(
+                            selectedIcon,
+                            style: const TextStyle(fontSize: 18),
+                          ),
                           const SizedBox(width: 7),
                         ],
                         Flexible(
@@ -1089,14 +1178,17 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       optionUuid: (item) => item.uuid,
       optionBuilder: (context, item, isSelected, onTap) =>
           _buildFinanceOptionTile(
-        context,
-        title: item.name,
-        subtitle: '一级分类',
-        iconText: item.icon,
-        accent: _optionAccent(item.colorValue, Theme.of(context).colorScheme),
-        isSelected: isSelected,
-        onTap: onTap,
-      ),
+            context,
+            title: item.name,
+            subtitle: '一级分类',
+            iconText: item.icon,
+            accent: _optionAccent(
+              item.colorValue,
+              Theme.of(context).colorScheme,
+            ),
+            isSelected: isSelected,
+            onTap: onTap,
+          ),
     );
     if (!mounted || parent?.value == null) return;
 
@@ -1109,7 +1201,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     }
 
     final current = _categoryByUuid(_categoryUuid);
-    final currentBelongsToParent = current != null &&
+    final currentBelongsToParent =
+        current != null &&
         (current.uuid == selectedParent.uuid ||
             current.parentUuid?.trim() == selectedParent.uuid);
     final selected = await _showFinanceOptionPicker<FinanceCategory>(
@@ -1173,8 +1266,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   Future<void> _pickPaymentMethod() async {
     _dismissKeyboard();
     final selected = await _showFinanceOptionPicker<FinancePaymentMethod>(
-      title: '选择付款方式',
-      subtitle: '记录这笔账单使用的支付渠道',
+      title: _type == FinanceTransactionType.income ? '选择到账账户' : '选择付款方式',
+      subtitle: _type == FinanceTransactionType.income
+          ? '收入会加到所选账户已录入的余额'
+          : '记录这笔账单使用的支付渠道',
       headerIcon: Icons.account_balance_wallet_outlined,
       options: _visiblePaymentMethods,
       selectedUuid: _paymentMethodUuid,
@@ -1182,13 +1277,16 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       includeUnset: true,
       optionBuilder: (context, item, isSelected, onTap) =>
           _buildFinanceOptionTile(
-        context,
-        title: item.name,
-        iconText: item.icon,
-        accent: _optionAccent(item.colorValue, Theme.of(context).colorScheme),
-        isSelected: isSelected,
-        onTap: onTap,
-      ),
+            context,
+            title: item.name,
+            iconText: item.icon,
+            accent: _optionAccent(
+              item.colorValue,
+              Theme.of(context).colorScheme,
+            ),
+            isSelected: isSelected,
+            onTap: onTap,
+          ),
     );
     if (!mounted || selected == null) return;
     _dismissKeyboard();
@@ -1207,7 +1305,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       T option,
       bool isSelected,
       VoidCallback onTap,
-    ) optionBuilder,
+    )
+    optionBuilder,
     bool includeUnset = false,
     String? addTooltip,
     Future<T?> Function()? onAdd,
@@ -1279,9 +1378,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                       onPressed: () async {
                         final added = await onAdd();
                         if (!sheetContext.mounted || added == null) return;
-                        Navigator.of(sheetContext).pop(
-                          _FinanceOptionSelection<T>(added),
-                        );
+                        Navigator.of(sheetContext)
+                            .pop(_FinanceOptionSelection<T>(added));
                       },
                       icon: const Icon(Icons.add_rounded),
                     ),
@@ -1321,9 +1419,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                       icon: Icons.remove_rounded,
                       accent: colorScheme.outline,
                       isSelected: selectedUuid == null,
-                      onTap: () => Navigator.of(sheetContext).pop(
-                        _FinanceOptionSelection<T>(null),
-                      ),
+                      onTap: () =>
+                          Navigator.of(sheetContext)
+                              .pop(_FinanceOptionSelection<T>(null)),
                     );
                   }
                   final option = options[index - (includeUnset ? 1 : 0)];
@@ -1331,9 +1429,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                     context,
                     option,
                     optionUuid(option) == selectedUuid,
-                    () => Navigator.of(sheetContext).pop(
-                      _FinanceOptionSelection<T>(option),
-                    ),
+                    () =>
+                        Navigator.of(sheetContext)
+                            .pop(_FinanceOptionSelection<T>(option)),
                   );
                 },
               ),
@@ -1357,8 +1455,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     required VoidCallback onTap,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    final iconBackground =
-        isSelected ? colorScheme.primary : accent.withValues(alpha: 0.16);
+    final iconBackground = isSelected
+        ? colorScheme.primary
+        : accent.withValues(alpha: 0.16);
     final iconColor = isSelected ? colorScheme.onPrimary : accent;
 
     return Material(
@@ -1404,8 +1503,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                       style: TextStyle(
                         color: colorScheme.onSurface,
                         fontSize: 15,
-                        fontWeight:
-                            isSelected ? FontWeight.w700 : FontWeight.w600,
+                        fontWeight: isSelected
+                            ? FontWeight.w700
+                            : FontWeight.w600,
                       ),
                     ),
                     if (subtitle != null) ...[
@@ -1500,6 +1600,78 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     );
   }
 
+  Widget _buildOccurrenceTimeField(ColorScheme colorScheme) {
+    final occurredAt = _occurredAt;
+    final timeLabel = occurredAt == null
+        ? '补充时间'
+        : '${occurredAt.hour.toString().padLeft(2, '0')}:'
+              '${occurredAt.minute.toString().padLeft(2, '0')}';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Material(
+          color: colorScheme.surface.withValues(alpha: 0),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.82),
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: _isSaving ? null : _pickOccurrenceTime,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.schedule_outlined,
+                    size: 21,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '发生时刻',
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    timeLabel,
+                    style: TextStyle(
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 20,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (occurredAt == null) ...[
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              '这笔账单没有与日期匹配的发生时刻，余额计算暂按录入时间估算。',
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: colorScheme.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildInstallmentField(ColorScheme colorScheme) {
     if (_type != FinanceTransactionType.expense) {
       return const SizedBox.shrink();
@@ -1508,8 +1680,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     final subtitle = _isEditingInstallment
         ? '修改表单内容时，会同步更新全部分期'
         : hasPlan
-            ? '从 ${dateKey(_date)} 开始，每月记入一期账单'
-            : '将整笔金额一次性计入当前月份';
+        ? '从 ${dateKey(_date)} 开始，每月记入一期账单'
+        : '将整笔金额一次性计入当前月份';
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow.withValues(alpha: 0.52),
@@ -1542,8 +1714,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                         if (value) {
                           _installmentCount =
                               FinanceInstallmentCalculator.minCount;
-                          _installmentCountController.text =
-                              _installmentCount.toString();
+                          _installmentCountController.text = _installmentCount
+                              .toString();
                         }
                       });
                     },
@@ -1606,10 +1778,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     );
   }
 
-  Widget _buildOptionalFields(
-    ColorScheme colorScheme, {
-    required bool isWide,
-  }) {
+  Widget _buildOptionalFields(ColorScheme colorScheme, {required bool isWide}) {
     final merchant = TextFormField(
       key: const ValueKey('finance-merchant-field'),
       controller: _merchantController,
@@ -1636,13 +1805,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       ),
     );
     if (!isWide) {
-      return Column(
-        children: [
-          merchant,
-          const SizedBox(height: 14),
-          note,
-        ],
-      );
+      return Column(children: [merchant, const SizedBox(height: 14), note]);
     }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1687,10 +1850,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           _isBoundRefund
               ? (_isEditing ? '编辑退款' : '原单退款')
               : _isEditingInstallment
-                  ? '编辑分期账单'
-                  : _isEditing
-                      ? '编辑账单'
-                      : '记一笔',
+              ? '编辑分期账单'
+              : _isEditing
+              ? '编辑账单'
+              : '记一笔',
         ),
         actions: [
           TextButton(
@@ -1768,13 +1931,15 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                           ),
                           validator: (value) =>
                               parseFinanceAmount(value ?? '') == null
-                                  ? '请输入金额'
-                                  : null,
+                              ? '请输入金额'
+                              : null,
                         ),
                         const SizedBox(height: 14),
                         _buildSelectionFields(colorScheme, isWide: isWide),
                         const SizedBox(height: 14),
                         _buildDateField(colorScheme),
+                        const SizedBox(height: 8),
+                        _buildOccurrenceTimeField(colorScheme),
                         if (_type == FinanceTransactionType.expense) ...[
                           const SizedBox(height: 14),
                           _buildInstallmentField(colorScheme),
@@ -1789,8 +1954,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                               ? const SizedBox(
                                   width: 18,
                                   height: 18,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 )
                               : const Icon(Icons.check_rounded),
                           label: Text(_isSaving ? '保存中...' : '保存账单'),
@@ -1861,8 +2027,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                         color: type == _type
                             ? colorScheme.onPrimaryContainer
                             : colorScheme.onSurfaceVariant,
-                        fontWeight:
-                            type == _type ? FontWeight.w700 : FontWeight.w500,
+                        fontWeight: type == _type
+                            ? FontWeight.w700
+                            : FontWeight.w500,
                       ),
                     ),
                   ),
@@ -1956,10 +2123,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 const Expanded(
                   child: Text(
                     '自然语言记账',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                   ),
                 ),
                 if (_templates.isNotEmpty)
@@ -1993,9 +2157,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                   ),
                   TextSpan(
                     text: FinanceTextParser.quickEntryExample,
-                    style: TextStyle(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                    style: TextStyle(color: colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -2092,8 +2254,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _selectedTemplateUuid = selected.uuid;
       _type = selected.type;
       _amountExpression = null;
-      _amountController.text =
-          formatFinanceAmount(selected.amountMinor, withSymbol: false);
+      _amountController.text = formatFinanceAmount(
+        selected.amountMinor,
+        withSymbol: false,
+      );
       _merchantController.text = selected.merchant ?? '';
       _noteController.text = selected.note ?? '';
       _categoryUuid = selected.categoryUuid;

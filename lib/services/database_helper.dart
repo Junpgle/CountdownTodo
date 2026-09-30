@@ -652,6 +652,7 @@ class DatabaseHelper {
         amount_minor INTEGER NOT NULL DEFAULT 0,
         currency_code TEXT NOT NULL DEFAULT 'CNY',
         note TEXT,
+        balance_snapshot_at INTEGER,
         is_deleted INTEGER NOT NULL DEFAULT 0,
         version INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL,
@@ -785,6 +786,15 @@ class DatabaseHelper {
     if (!budgetColumns.any((row) => row['name'] == 'payment_method_uuid')) {
       await db.execute(
         'ALTER TABLE finance_budgets ADD COLUMN payment_method_uuid TEXT',
+      );
+    }
+    if (!budgetColumns.any((row) => row['name'] == 'balance_snapshot_at')) {
+      await db.execute(
+        'ALTER TABLE finance_budgets ADD COLUMN balance_snapshot_at INTEGER',
+      );
+      await db.execute(
+        'UPDATE finance_budgets SET balance_snapshot_at = updated_at '
+        'WHERE payment_method_uuid IS NOT NULL',
       );
     }
     for (final table in financeTables) {

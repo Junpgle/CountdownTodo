@@ -22,6 +22,16 @@ abstract final class FinanceRepository {
     );
   }
 
+  static Future<List<FinanceTransaction>> getBalanceTransactions({
+    required int snapshotAt,
+    required DateTime before,
+  }) {
+    return FinanceStorage.getBalanceTransactions(
+      snapshotAt: snapshotAt,
+      before: before,
+    );
+  }
+
   static Future<FinanceTransaction?> getTransaction(String uuid) {
     return FinanceStorage.getTransaction(uuid);
   }
@@ -102,6 +112,23 @@ abstract final class FinanceRepository {
       }
     }
     return spending;
+  }
+
+  /// Returns the signed change to each payment method's recorded balance.
+  /// Income and refunds add to the balance; expenses reduce it.
+  static Map<String, int> summarizePaymentMethodBalanceChanges(
+    Iterable<FinanceTransaction> transactions,
+  ) {
+    final changes = <String, int>{};
+    for (final transaction in transactions) {
+      final methodUuid = transaction.paymentMethodUuid;
+      if (methodUuid == null || methodUuid.isEmpty) continue;
+      final amount = transaction.type == FinanceTransactionType.expense
+          ? -transaction.amountMinor
+          : transaction.amountMinor;
+      changes[methodUuid] = (changes[methodUuid] ?? 0) + amount;
+    }
+    return changes;
   }
 
   static Future<void> saveTransaction(FinanceTransaction transaction) async {
@@ -243,8 +270,16 @@ abstract final class FinanceRepository {
     );
   }
 
-  static Future<void> saveBudget(FinanceBudget budget) {
-    return FinanceStorage.saveBudget(budget);
+  static Future<void> saveBudget(
+    FinanceBudget budget, {
+    bool resetBalanceSnapshot = false,
+    int? balanceSnapshotAt,
+  }) {
+    return FinanceStorage.saveBudget(
+      budget,
+      resetBalanceSnapshot: resetBalanceSnapshot,
+      balanceSnapshotAt: balanceSnapshotAt,
+    );
   }
 
   static Future<void> deleteBudget(String uuid) {
@@ -387,7 +422,7 @@ String sanitizeFinanceCsvText(String value) {
 }
 
 /// 将用户输入的人民币金额转换为分，拒绝负数和超过两位小数的值。
-int? parseFinanceAmount(String raw) {
+int? parseFinanceAmount(String raw, {bool allowZero = false}) {
   final input = raw.trim();
   final validNumber = RegExp(r'^\d+(\.\d{0,2})?$');
   final validThousands = RegExp(r'^\d{1,3}(,\d{3})+(\.\d{0,2})?$');
@@ -402,7 +437,7 @@ int? parseFinanceAmount(String raw) {
   final fraction = parts.length == 1 ? '' : parts[1];
   final cents = int.tryParse(fraction.padRight(2, '0')) ?? 0;
   final result = whole * 100 + cents;
-  return result > 0 ? result : null;
+  return result > 0 || (allowZero && result == 0) ? result : null;
 }
 
 String formatFinanceAmount(int amountMinor, {bool withSymbol = true}) {

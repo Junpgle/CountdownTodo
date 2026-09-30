@@ -54,9 +54,8 @@ class FinanceTransactionDetailScreen extends StatelessWidget {
   String _occurredAtLabel() {
     final occurredAt = transaction.occurredAt;
     if (occurredAt == null || occurredAt <= 0) return '未记录';
-    return DateFormat('yyyy年M月d日 HH:mm').format(
-      DateTime.fromMillisecondsSinceEpoch(occurredAt),
-    );
+    return DateFormat('yyyy年M月d日 HH:mm')
+        .format(DateTime.fromMillisecondsSinceEpoch(occurredAt));
   }
 
   Future<void> _openEditor(BuildContext context) async {
@@ -149,7 +148,8 @@ class FinanceTransactionDetailScreen extends StatelessWidget {
               AppDetailWideCard(
                 icon: Icons.event_repeat_outlined,
                 title: '分期信息',
-                value: '第 ${transaction.installmentLabel!}'
+                value:
+                    '第 ${transaction.installmentLabel!}'
                     '${transaction.installmentTotalMinor == null ? '' : ' · 总额 ${formatFinanceAmount(transaction.installmentTotalMinor!)}'}',
               ),
           ],
@@ -176,7 +176,7 @@ class FinanceTransactionDetailScreen extends StatelessWidget {
             ),
             AppDetailWideCard(
               icon: Icons.schedule_rounded,
-              title: '记录时间',
+              title: '发生时刻',
               value: _occurredAtLabel(),
             ),
             AppDetailWideCard(
