@@ -175,6 +175,7 @@ Future<void> islandMain(List<String> args) async {
 
   int lastPayloadFileSequence = 0;
   int lastPayloadFileTimestamp = 0;
+  bool hasLoadedPayloadFromFile = false;
   Future<void> loadLatestPayloadFromFile() async {
     try {
       final file = await _getPayloadFile();
@@ -194,6 +195,7 @@ Future<void> islandMain(List<String> args) async {
       }
       final payload = _payloadFromRaw(envelope);
       if (payload == null) return;
+      hasLoadedPayloadFromFile = true;
       _applyIncomingPayload(
         payload,
         payloadNotifier,
@@ -428,7 +430,7 @@ Future<void> islandMain(List<String> args) async {
               }
             } catch (_) {}
           }
-          if (payloadMap != null) {
+          if (payloadMap != null && !hasLoadedPayloadFromFile) {
             try {
               final dto = IslandPayload.fromMap(payloadMap);
               payloadNotifier.value = dto.toMap();

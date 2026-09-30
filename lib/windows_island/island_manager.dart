@@ -85,7 +85,8 @@ class IslandManager {
   // ── Public API ─────────────────────────────────────────────────────────
 
   Future<String?> createIsland(String islandId,
-      {Map<String, dynamic>? initialPayload}) async {
+      {Map<String, dynamic>? initialPayload,
+      Map<String, dynamic>? startupPayload}) async {
     if (kIsWeb) return null;
 
     // Return cached id if present
@@ -103,7 +104,10 @@ class IslandManager {
 
     // 立即注册 future 到 _creating, 阻止后续调用进入 (在任何 await 之前!)
     final future =
-        _createIslandInternal(islandId, initialPayload: initialPayload);
+        _createIslandInternal(
+            islandId,
+            initialPayload: initialPayload,
+            startupPayload: startupPayload);
     _creating[islandId] = future;
     try {
       final res = await future;
@@ -118,17 +122,20 @@ class IslandManager {
   }
 
   Future<String?> _createIslandInternal(String islandId,
-      {Map<String, dynamic>? initialPayload}) async {
+      {Map<String, dynamic>? initialPayload,
+      Map<String, dynamic>? startupPayload}) async {
     // 只清缓存, 不销毁旧窗口 (避免 native 崩溃)
     _windowIdCache.remove(islandId);
     try {
       await _clearPersistedWindowId(islandId);
     } catch (_) {}
-    return await _doCreate(islandId, initialPayload: initialPayload);
+    return await _doCreate(islandId,
+        initialPayload: initialPayload, startupPayload: startupPayload);
   }
 
   Future<String?> _doCreate(String islandId,
-      {Map<String, dynamic>? initialPayload}) async {
+      {Map<String, dynamic>? initialPayload,
+      Map<String, dynamic>? startupPayload}) async {
     final initialLegacy = IslandPayload.fromMap(null).toMap();
     final initialStructured = {
       'state': 'idle',
@@ -147,7 +154,10 @@ class IslandManager {
     };
 
     final structuredPayload = initialPayload ?? initialStructured;
-    await _persistLatestPayload(islandId, structuredPayload);
+    // Persist live state before spawning the child engine. The child reads this
+    // file as soon as its IPC watcher starts, avoiding an idle first frame.
+    await _persistLatestPayload(
+        islandId, startupPayload ?? structuredPayload);
 
     final args = {
       'arguments': 'islandMain',
@@ -203,10 +213,14 @@ class IslandManager {
       final windowId = await IslandChannel.createWindow(args);
       debugPrint('[IslandManager] _doCreate result for $islandId -> $windowId');
       if (windowId != null) {
-        try {
-          await _postStructuredPayloadWithRetry(windowId, structuredPayload,
-              attempts: 2);
-        } catch (_) {}
+        // Do not post a stale idle payload over startupPayload. The caller
+        // sends the live payload as soon as this method returns.
+        if (startupPayload == null) {
+          try {
+            await _postStructuredPayloadWithRetry(windowId, structuredPayload,
+                attempts: 2);
+          } catch (_) {}
+        }
         try {
           final ib = args['initialBounds'] as Map<String, dynamic>?;
           if (ib != null) {
@@ -236,49 +250,6 @@ class IslandManager {
                 '[IslandManager] applied initialBounds, showed window and requested transparency for $windowId');
           }
         } catch (_) {}
-        try {
-          await Future.delayed(const Duration(milliseconds: 400));
-        } catch (_) {}
-        try {
-          final ok = await IslandChannel.waitForReady(windowId,
-              timeout: const Duration(milliseconds: 1200));
-          debugPrint('[IslandManager] waitForReady result for $windowId: $ok');
-          if (!ok) {
-            debugPrint(
-                '[IslandManager] waitForReady timed out for $windowId; sending handshake ping');
-            await IslandChannel.postMessage(windowId, {'handshake': 'ping'});
-            final completer = Completer<bool>();
-            final sub = IslandChannel.actionStream.listen((event) {
-              try {
-                if (event['action'] == 'handshake_pong' &&
-                    event['windowId'] == windowId) {
-                  completer.complete(true);
-                }
-              } catch (_) {}
-            });
-            try {
-              final got = await completer.future.timeout(
-                  const Duration(milliseconds: 1000),
-                  onTimeout: () => false);
-              debugPrint(
-                  '[IslandManager] handshake_pong result for $windowId: $got');
-            } catch (_) {}
-            try {
-              await sub.cancel();
-            } catch (_) {}
-          }
-          final resent = await _postStructuredPayloadWithRetry(
-              windowId, structuredPayload);
-          debugPrint(
-              '[IslandManager] post-ready payload resend for $windowId -> $resent');
-        } catch (e) {
-          debugPrint(
-              '[IslandManager] waitForReady exception for $windowId: $e');
-          final resent = await _postStructuredPayloadWithRetry(
-              windowId, structuredPayload);
-          debugPrint(
-              '[IslandManager] fallback payload resend for $windowId -> $resent');
-        }
       }
       return windowId;
     } catch (e) {

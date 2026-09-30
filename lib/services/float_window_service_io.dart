@@ -615,10 +615,13 @@ class FloatWindowService {
           winId = await _creatingIsland;
         } else {
           // debugPrint('[FloatWindow] Creating island: $islandId');
-          // Keep child-window creation payload small and stable. Sending a
-          // focusing payload as a createWindow argument has caused desktop
-          // multi-window crashes on Windows; update the state after creation.
-          final future = IslandManager().createIsland(islandId);
+          // Seed the IPC file before spawning the child. Keep createWindow's
+          // arguments small and stable; focusing payloads there have crashed
+          // desktop_multi_window on Windows.
+          final future = IslandManager().createIsland(
+            islandId,
+            startupPayload: structured,
+          );
           _creatingIsland = future;
           try {
             winId = await future;
