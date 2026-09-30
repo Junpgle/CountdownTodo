@@ -733,5 +733,25 @@ void main() {
       expect(migratedPrompt, contains('create_plan_block'));
       expect(migratedPrompt, isNot(contains('plan_todos')));
     });
+
+    test('image prompt adds compact island content to saved prompts', () {
+      final config = LLMConfig(
+        apiKey: 'test-key',
+        model: 'test-model',
+        visionPrompt: '自定义图片识别：按{now}判断日期。\nCDT_RECOGNITION_PROTOCOL_V2',
+      );
+
+      final prompt = LLMService.buildTodoVisionPrompt(
+        config,
+        now: '2026-09-30 13:01',
+      );
+
+      expect(prompt, startsWith('自定义图片识别：按2026-09-30 13:01判断日期。'));
+      expect(prompt, endsWith(LLMConfig.visionTodoConcisenessPrompt));
+      expect(prompt, contains('remark会作为灵动岛内容展示'));
+      expect(prompt, contains('有码时只写'));
+      expect(prompt, contains('没有明确待办或日程时返回[]'));
+      expect(prompt, isNot(contains('{now}')));
+    });
   });
 }
