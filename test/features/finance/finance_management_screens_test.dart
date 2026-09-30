@@ -482,6 +482,426 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('银行卡余额计入录入后的收入、退款和支出', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final snapshotAt = now
+        .subtract(const Duration(minutes: 5))
+        .millisecondsSinceEpoch;
+    final recordedAt = now.millisecondsSinceEpoch;
+    final transactionDate = dateKey(now);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'balance-card', name: '测试银行卡').toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'balance-card-budget',
+          monthKey: financeMonthKey(now),
+          paymentMethodUuid: 'balance-card',
+          amountMinor: 10000,
+          createdAt: snapshotAt,
+          updatedAt: snapshotAt,
+        ).toMap(),
+      );
+      for (final transaction in [
+        FinanceTransaction(
+          uuid: 'card-income',
+          type: FinanceTransactionType.income,
+          amountMinor: 5000,
+          paymentMethodUuid: 'balance-card',
+          transactionDate: transactionDate,
+          createdAt: recordedAt,
+        ),
+        FinanceTransaction(
+          uuid: 'card-expense',
+          amountMinor: 2000,
+          paymentMethodUuid: 'balance-card',
+          transactionDate: transactionDate,
+          createdAt: recordedAt,
+        ),
+        FinanceTransaction(
+          uuid: 'card-refund',
+          type: FinanceTransactionType.refund,
+          amountMinor: 500,
+          paymentMethodUuid: 'balance-card',
+          transactionDate: transactionDate,
+          createdAt: recordedAt,
+        ),
+        FinanceTransaction(
+          uuid: 'unassigned-income',
+          type: FinanceTransactionType.income,
+          amountMinor: 100000,
+          transactionDate: transactionDate,
+          createdAt: recordedAt,
+        ),
+      ]) {
+        await db.insert('finance_transactions', transaction.toMap());
+      }
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: now),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-balance-card-budget');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: card, matching: find.text('录入后净增加')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥135.00')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: card, matching: find.byType(LinearProgressIndicator)),
+      findsNothing,
+      reason: '付款方式余额允许收入超过快照金额，预算进度条不能表示余额变化',
+    );
+
+    await tester.runAsync(() async {
+      final income =
+          (await FinanceStorage.getTransaction('unassigned-income'))!
+            ..paymentMethodUuid = 'balance-card';
+      income.markAsChanged();
+      await FinanceStorage.saveTransaction(income);
+    });
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('当前余额 ¥1,135.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+    await tester.runAsync(
+      () => FinanceStorage.deleteTransaction('unassigned-income'),
+    );
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('当前余额 ¥135.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+
+    await _tap(tester, card);
+    await _waitFor(
+      tester,
+      () => _key('finance-budget-amount').evaluate().isNotEmpty,
+    );
+    await _tap(tester, find.text('保存余额'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceBudgetEntryScreen).evaluate().isEmpty &&
+          find.byType(CircularProgressIndicator).evaluate().isEmpty,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥135.00')),
+      findsOneWidget,
+      reason: '未修改录入金额时，重新保存不能抹掉之后的账单变化',
+    );
+
+    await tester.runAsync(() async {
+      await FinanceStorage.deleteBudget('balance-card-budget');
+      await FinanceStorage.restoreBudget('balance-card-budget');
+    });
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: now),
+      size: const Size(1100, 1000),
+    );
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥135.00')),
+      findsOneWidget,
+      reason: '从回收站恢复余额记录不能重置快照时间',
+    );
+
+    await tester.runAsync(() => FinanceStorage.saveTransaction(
+          FinanceTransaction(
+            uuid: 'later-card-income',
+            type: FinanceTransactionType.income,
+            amountMinor: 1000,
+            paymentMethodUuid: 'balance-card',
+            transactionDate: transactionDate,
+          ),
+        ));
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('当前余额 ¥145.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+
+    await _tap(tester, card);
+    await _waitFor(
+      tester,
+      () => _key('finance-budget-snapshot-time').evaluate().isNotEmpty,
+    );
+    await _tap(tester, find.text('使用保存时刻'));
+    await _tap(tester, find.text('保存余额'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceBudgetEntryScreen).evaluate().isEmpty &&
+          find
+              .descendant(of: card, matching: find.text('当前余额 ¥100.00'))
+              .evaluate()
+              .isNotEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('付款方式余额跨月结转并按所选月份截止时间计算', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime.now();
+    final now = clockNow;
+    final previousMonth = DateTime(now.year, now.month - 1);
+    final snapshotAt = DateTime(
+      previousMonth.year,
+      previousMonth.month,
+      10,
+      12,
+    );
+    final priorExpenseAt = DateTime(
+      previousMonth.year,
+      previousMonth.month,
+      20,
+      12,
+    );
+    final currentIncomeAt = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      now.hour,
+      now.minute,
+    );
+    final currentExpenseAt = currentIncomeAt;
+    final futureAt = clockNow.add(const Duration(minutes: 1));
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'carry-card', name: '跨月银行卡').toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'carry-card-budget',
+          monthKey: financeMonthKey(previousMonth),
+          paymentMethodUuid: 'carry-card',
+          amountMinor: 10000,
+          balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      for (final transaction in [
+        FinanceTransaction(
+          uuid: 'carry-same-minute-income',
+          type: FinanceTransactionType.income,
+          amountMinor: 800,
+          paymentMethodUuid: 'carry-card',
+          transactionDate: dateKey(snapshotAt),
+          occurredAt: snapshotAt.millisecondsSinceEpoch,
+          createdAt: snapshotAt.millisecondsSinceEpoch + 1000,
+        ),
+        FinanceTransaction(
+          uuid: 'carry-prior-expense',
+          amountMinor: 1000,
+          paymentMethodUuid: 'carry-card',
+          transactionDate: dateKey(priorExpenseAt),
+          occurredAt: priorExpenseAt.millisecondsSinceEpoch,
+          createdAt: priorExpenseAt.millisecondsSinceEpoch,
+        ),
+        FinanceTransaction(
+          uuid: 'carry-current-income',
+          type: FinanceTransactionType.income,
+          amountMinor: 2500,
+          paymentMethodUuid: 'carry-card',
+          transactionDate: dateKey(currentIncomeAt),
+          occurredAt: currentIncomeAt.millisecondsSinceEpoch,
+          createdAt: currentIncomeAt.millisecondsSinceEpoch,
+        ),
+        FinanceTransaction(
+          uuid: 'carry-current-expense',
+          amountMinor: 500,
+          paymentMethodUuid: 'carry-card',
+          transactionDate: dateKey(currentExpenseAt),
+          occurredAt: currentExpenseAt.millisecondsSinceEpoch,
+          createdAt: currentExpenseAt.millisecondsSinceEpoch,
+        ),
+        FinanceTransaction(
+          uuid: 'carry-future-income',
+          type: FinanceTransactionType.income,
+          amountMinor: 10000,
+          paymentMethodUuid: 'carry-card',
+          transactionDate: dateKey(futureAt),
+          occurredAt: futureAt.millisecondsSinceEpoch,
+          createdAt: now.millisecondsSinceEpoch,
+        ),
+      ]) {
+        await db.insert('finance_transactions', transaction.toMap());
+      }
+      final legacyBackdatedIncome = FinanceTransaction(
+        uuid: 'carry-legacy-backdated-income',
+        type: FinanceTransactionType.income,
+        amountMinor: 700,
+        paymentMethodUuid: 'carry-card',
+        transactionDate: dateKey(snapshotAt.subtract(const Duration(days: 1))),
+        createdAt: currentIncomeAt.millisecondsSinceEpoch,
+      ).toMap()..remove('occurred_at');
+      await db.insert('finance_transactions', legacyBackdatedIncome);
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: now, clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-carry-card-budget');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥125.00')),
+      findsOneWidget,
+      reason: '余额应累计跨月收支、快照同分钟后录入的流水和补录旧账，且不应计入尚未发生的账单',
+    );
+
+    if (financeMonthKey(futureAt) == financeMonthKey(now)) {
+      clockNow = clockNow.add(const Duration(minutes: 2));
+      await tester.pump(const Duration(minutes: 2));
+      await _waitFor(
+        tester,
+        () => find
+            .descendant(of: card, matching: find.text('当前余额 ¥225.00'))
+            .evaluate()
+            .isNotEmpty,
+      );
+    }
+
+    await _tap(tester, find.byTooltip('上个月'));
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('该月余额 ¥98.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('历史月份余额必须选择实际对应时间并保存到快照', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(() => db.insert(
+          'finance_payment_methods',
+          FinancePaymentMethod(uuid: 'past-card', name: '历史银行卡').toMap(),
+        ));
+    final now = DateTime.now();
+    final pastMonth = DateTime(now.year, now.month - 1);
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: pastMonth),
+    );
+    await _tap(tester, find.text('选择付款方式并录入余额'));
+    await _tap(tester, find.text('历史银行卡'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceBudgetEntryScreen).evaluate().isNotEmpty &&
+          _key('finance-budget-amount').evaluate().isNotEmpty,
+    );
+    await tester.enterText(_field('finance-budget-amount'), '100');
+    await _tap(tester, find.text('保存余额'));
+    expect(find.text('请先选择该月份内的余额对应时间'), findsOneWidget);
+    var rows = (await tester.runAsync(() => db.query(
+          'finance_budgets',
+          where: 'payment_method_uuid = ?',
+          whereArgs: ['past-card'],
+        )))!;
+    expect(rows, isEmpty);
+
+    await _tap(tester, find.text('点击选择日期和时刻'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    await tester.tap(find.text('OK').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(TimePickerDialog), findsOneWidget);
+    await tester.tap(find.text('OK').last);
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
+    await _tap(tester, find.text('保存余额'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceBudgetEntryScreen).evaluate().isEmpty,
+    );
+    rows = (await tester.runAsync(() => db.query(
+          'finance_budgets',
+          where: 'payment_method_uuid = ?',
+          whereArgs: ['past-card'],
+        )))!;
+    expect(rows, hasLength(1));
+    final snapshotAt = DateTime.fromMillisecondsSinceEpoch(
+      rows.single['balance_snapshot_at'] as int,
+    );
+    expect(financeMonthKey(snapshotAt), financeMonthKey(pastMonth));
+    expect(rows.single['amount_minor'], 10000);
+    expect(tester.takeException(), isNull);
+
+    final card = _key(
+      'finance-budget-card-${FinanceBudget.stableUuid(
+        financeMonthKey(pastMonth),
+        null,
+        paymentMethodUuid: 'past-card',
+      )}',
+    );
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('该月余额 ¥100.00')),
+      findsOneWidget,
+    );
+    await tester.runAsync(() async {
+      await FinanceStorage.saveTransaction(FinanceTransaction(
+        uuid: 'before-historical-snapshot',
+        amountMinor: 500,
+        paymentMethodUuid: 'past-card',
+        transactionDate: dateKey(snapshotAt),
+        createdAt: snapshotAt.millisecondsSinceEpoch - 60000,
+      ));
+      await FinanceStorage.saveTransaction(FinanceTransaction(
+        uuid: 'after-historical-snapshot',
+        type: FinanceTransactionType.income,
+        amountMinor: 2000,
+        paymentMethodUuid: 'past-card',
+        transactionDate: dateKey(snapshotAt),
+        createdAt: snapshotAt.millisecondsSinceEpoch + 60000,
+      ));
+    });
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('该月余额 ¥120.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+  });
+
   testWidgets('贷款分组表单保存后仍生成精确还款计划', (tester) async {
     final db = await _seed(tester);
     await _pump(
