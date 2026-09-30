@@ -58,7 +58,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   bool _isCountdown = true;
 
   // ── 动画状态
-  bool _transitioning = false;
   int _transitionVersion = 0;
 
   // ── 强提醒动画
@@ -281,7 +280,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final growsWindow = toSize.width > _currentWindowSize.width ||
         toSize.height > _currentWindowSize.height;
 
-    _transitioning = true;
     _resizeDebounce?.cancel();
     _sizeController.stop();
     _sizeController.reset();
@@ -309,7 +307,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     }
     _sizeController.forward().whenComplete(() {
       if (!mounted || version != _transitionVersion) return;
-      _transitioning = false;
       if (!growsWindow) {
         _resizeWindowOnce(toSize);
       }
@@ -743,7 +740,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   String _contentKeyForCurrentState() {
     final selectedCard = _currentPayload?['selectedCard'];
     final selectedType = selectedCard is Map ? selectedCard['type'] : null;
-    return '${_stack.current.name}:$_transitionVersion:${selectedType ?? ''}';
+    return '${_stack.current.name}:${selectedType ?? ''}';
   }
 
   // ── Build ────────────────────────────────────────────────────────────────
@@ -760,7 +757,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           animation: _sizeController,
           builder: (_, _) {
             final double borderRadius = _radiusAnimation.value;
-            final shadowProgress = _transitioning ? _sizeController.value : 1.0;
             return Container(
               width: _sizeAnimation.value.width,
               height: _sizeAnimation.value.height,
@@ -769,9 +765,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.55),
-                    blurRadius: lerpDouble(10, 18, shadowProgress)!,
-                    spreadRadius: lerpDouble(0, 1, shadowProgress)!,
-                    offset: Offset(0, lerpDouble(3, 6, shadowProgress)!),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
                   ),
                 ],
               ),
@@ -779,7 +774,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 borderRadius: BorderRadius.circular(borderRadius),
                 child: RepaintBoundary(
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                    filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
                     child: Container(
                       decoration: BoxDecoration(
                         color: isTransparent

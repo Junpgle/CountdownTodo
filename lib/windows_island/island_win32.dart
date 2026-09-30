@@ -98,6 +98,8 @@ HWND? getSmallestFlutterWindow() {
           }
         });
       }
+      // Cache the selected island HWND so each resize avoids another full window scan.
+      if (bestHwnd != null) _islandHwndCache = bestHwnd;
       return bestHwnd;
     }
   } catch (e) {
@@ -211,7 +213,7 @@ void resizeCurrentWindow(int targetW, int targetH) {
           newX = curX - ((physicalW - curW) ~/ 2);
         }
         SetWindowPos(hwnd, HWND_TOPMOST, newX, newY, physicalW, physicalH,
-            SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_ASYNCWINDOWPOS);
       }
     });
   } catch (e) {

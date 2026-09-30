@@ -153,7 +153,7 @@ class IslandConfig {
   static const Duration transitionDuration = Duration(milliseconds: 200);
 
   /// Content switch duration
-  static const Duration switchDuration = Duration(milliseconds: 300);
+  static const Duration switchDuration = Duration(milliseconds: 200);
 
   /// Initial scale for switch animation
   static const double switchScaleBegin = 0.92;
