@@ -313,6 +313,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
     try {
       await FinanceRepository.saveBudget(
         budget,
+        original: old,
         resetBalanceSnapshot:
             _isPaymentScope && changesBalance && _useSaveTime,
         balanceSnapshotAt: selectedBalanceTime,

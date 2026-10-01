@@ -289,11 +289,13 @@ abstract final class FinanceRepository {
 
   static Future<void> saveBudget(
     FinanceBudget budget, {
+    FinanceBudget? original,
     bool resetBalanceSnapshot = false,
     int? balanceSnapshotAt,
   }) {
     return FinanceStorage.saveBudget(
       budget,
+      original: original,
       resetBalanceSnapshot: resetBalanceSnapshot,
       balanceSnapshotAt: balanceSnapshotAt,
     );

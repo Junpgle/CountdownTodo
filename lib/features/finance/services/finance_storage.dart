@@ -1483,6 +1483,7 @@ abstract final class FinanceStorage {
 
   static Future<void> saveBudget(
     FinanceBudget budget, {
+    FinanceBudget? original,
     bool resetBalanceSnapshot = false,
     int? balanceSnapshotAt,
   }) async {
@@ -1499,6 +1500,9 @@ abstract final class FinanceStorage {
     }
     if (budget.categoryUuid != null && budget.paymentMethodUuid != null) {
       throw ArgumentError('预算只能对应一个分类或付款方式');
+    }
+    if (original != null && original.uuid != budget.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '预算标识不匹配');
     }
     if (balanceSnapshotAt != null) {
       final snapshotTime = DateTime.fromMillisecondsSinceEpoch(
@@ -1526,6 +1530,34 @@ abstract final class FinanceStorage {
       var current = existingByUuid == null
           ? null
           : FinanceBudget.fromMap(existingByUuid);
+      if (current != null) {
+        final changesDeletedState =
+            original != null && budget.isDeleted != original.isDeleted;
+        final baselineChanged = original != null &&
+            (current.version != original.version ||
+                current.updatedAt != original.updatedAt);
+        if (baselineChanged) {
+          _mergeBudgetEdits(current, original, budget);
+          budget
+            ..version = current.version
+            ..updatedAt = current.updatedAt
+            ..createdAt = current.createdAt
+            ..deviceId = current.deviceId
+            ..markAsChanged();
+        } else if (original == null &&
+            (current.version > budget.version ||
+                current.updatedAt > budget.updatedAt)) {
+          throw StateError('预算已更新，请重新加载后再保存');
+        }
+        if (current.isDeleted && !changesDeletedState) {
+          throw StateError('预算已删除，请重新加载后再编辑');
+        }
+        budget
+          ..createdAt = current.createdAt
+          ..deviceId = current.deviceId;
+      } else if (original != null) {
+        throw StateError('预算已不存在，请重新加载后再保存');
+      }
       if (budget.isPaymentMethod) {
         final sameBalance =
             current != null &&
@@ -1627,20 +1659,48 @@ abstract final class FinanceStorage {
     _notifyChanged();
   }
 
+  static void _mergeBudgetEdits(
+    FinanceBudget current,
+    FinanceBudget original,
+    FinanceBudget incoming,
+  ) {
+    if (incoming.monthKey == original.monthKey) {
+      incoming.monthKey = current.monthKey;
+    }
+    if (incoming.categoryUuid == original.categoryUuid) {
+      incoming.categoryUuid = current.categoryUuid;
+    }
+    if (incoming.paymentMethodUuid == original.paymentMethodUuid) {
+      incoming.paymentMethodUuid = current.paymentMethodUuid;
+    }
+    if (incoming.amountMinor == original.amountMinor) {
+      incoming.amountMinor = current.amountMinor;
+    }
+    if (incoming.currencyCode == original.currencyCode) {
+      incoming.currencyCode = current.currencyCode;
+    }
+    if (incoming.note == original.note) incoming.note = current.note;
+    if (incoming.isDeleted == original.isDeleted) {
+      incoming.isDeleted = current.isDeleted;
+    }
+  }
+
   static Future<void> deleteBudget(String uuid) async {
     final budget = await getBudget(uuid);
     if (budget == null || budget.isDeleted) return;
+    final original = FinanceBudget.fromMap(budget.toMap());
     budget.isDeleted = true;
     budget.markAsChanged();
-    await saveBudget(budget);
+    await saveBudget(budget, original: original);
   }
 
   static Future<void> restoreBudget(String uuid) async {
     final budget = await getBudget(uuid);
     if (budget == null || !budget.isDeleted) return;
+    final original = FinanceBudget.fromMap(budget.toMap());
     budget.isDeleted = false;
     budget.markAsChanged();
-    await saveBudget(budget);
+    await saveBudget(budget, original: original);
   }
 
   static Future<List<FinanceRecurringRule>> getRecurringRules({
