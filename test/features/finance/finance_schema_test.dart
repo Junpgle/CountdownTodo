@@ -408,6 +408,97 @@ void main() {
       expect(result, {'imported': 0, 'skipped': 3, 'updated': 0});
     });
 
+    for (final source in ['backup', 'remote']) {
+      test('$source 拒绝无法安全表示的交易时间字段', () async {
+        final transactions = [
+          FinanceTransaction(
+            uuid: 'out-of-range-occurrence-time-$source',
+            amountMinor: 500,
+            transactionDate: '2026-09-20',
+            occurredAt: 9000000000000000,
+          ).toMap(),
+          FinanceTransaction(
+            uuid: 'out-of-range-created-time-$source',
+            amountMinor: 500,
+            transactionDate: '2026-09-20',
+            createdAt: 9000000000000000,
+          ).toMap(),
+          FinanceTransaction(
+            uuid: 'out-of-range-updated-time-$source',
+            amountMinor: 500,
+            transactionDate: '2026-09-20',
+            updatedAt: 9000000000000000,
+          ).toMap(),
+          FinanceTransaction(
+            uuid: 'out-of-range-timezone-offset-$source',
+            amountMinor: 500,
+            transactionDate: '2026-09-20',
+            timezoneOffsetMinutes: 100000,
+          ).toMap(),
+        ];
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'transactions': transactions,
+          });
+          expect(result['skipped'], 4);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({
+              'transactions': transactions,
+            }),
+            0,
+          );
+        }
+        for (final map in transactions) {
+          expect(
+            await FinanceStorage.getTransaction(map['uuid'] as String),
+            isNull,
+          );
+        }
+      });
+
+      test('$source 拒绝会被归一化的无效交易类型', () async {
+        final unknownType = FinanceTransaction(
+          uuid: 'unknown-$source-transaction-type',
+          amountMinor: 500,
+          transactionDate: '2026-09-20',
+        ).toMap()
+          ..['type'] = 'unknown';
+        final outOfRangeType = FinanceTransaction(
+          uuid: 'out-of-range-$source-transaction-type',
+          amountMinor: 500,
+          transactionDate: '2026-09-20',
+        ).toMap()
+          ..['type'] = 99;
+        final transactions = [unknownType, outOfRangeType];
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'transactions': transactions,
+          });
+          expect(result['skipped'], 2);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({
+              'transactions': transactions,
+            }),
+            0,
+          );
+        }
+        expect(
+          await FinanceStorage.getTransaction(unknownType['uuid'] as String),
+          isNull,
+        );
+        expect(
+          await FinanceStorage.getTransaction(
+            outOfRangeType['uuid'] as String,
+          ),
+          isNull,
+        );
+      });
+    }
+
     test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {
       final unsafeTransaction = FinanceTransaction(
         uuid: 'unsafe-large-transaction',

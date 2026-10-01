@@ -14,6 +14,9 @@ import '../models/finance_models.dart';
 /// 该类不依赖用户名参数：DatabaseHelper 会根据当前登录用户打开隔离的
 /// `uni_sync_<username>.db`，因此记账数据天然按账号隔离。
 abstract final class FinanceStorage {
+  static const int _maxDateTimeMillis = 8640000000000000;
+  static const int _maxFinanceTimezoneOffsetMinutes = 14 * 60;
+
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
   @visibleForTesting
   static Database? databaseOverride;
@@ -3052,6 +3055,8 @@ abstract final class FinanceStorage {
         .where(
           (map) =>
               _hasRawFinanceUuid(map) &&
+              _isValidRawTransactionType(map) &&
+              _hasSafeRawTransactionTimestamps(map) &&
               _isSafeRawFinanceAmount(
                 map['amount_minor'] ?? map['amountMinor'],
               ),
@@ -3976,17 +3981,107 @@ abstract final class FinanceStorage {
     final rawUuid = raw['uuid'] ?? raw['id'];
     final rawDate = raw['transaction_date'] ?? raw['transactionDate'];
     final rawAmount = raw['amount_minor'] ?? raw['amountMinor'];
-    final rawType = raw['type'];
-    final validType =
-        const {'expense', 'income', 'refund'}.contains(rawType) ||
-        const {0, 1, 2, '0', '1', '2'}.contains(rawType);
     return rawUuid?.toString().trim().isNotEmpty == true &&
         rawDate is String &&
         _isDateKey(rawDate) &&
         _isSafeRawFinanceAmount(rawAmount) &&
         _asInt(rawAmount) > 0 &&
-        validType &&
+        _isValidRawTransactionType(raw) &&
+        _hasSafeRawTransactionTimestamps(raw) &&
         _isValidTransaction(item);
+  }
+
+  static bool _isValidRawTransactionType(Map<String, dynamic> raw) {
+    final value = raw['type'];
+    return const {'expense', 'income', 'refund'}.contains(value) ||
+        const {0, 1, 2, '0', '1', '2'}.contains(value);
+  }
+
+  static bool _hasSafeRawTransactionTimestamps(Map<String, dynamic> raw) {
+    final createdAtRaw = raw['created_at'] ?? raw['createdAt'];
+    final updatedAtRaw = raw['updated_at'] ?? raw['updatedAt'];
+    final occurredAtRaw = raw['occurred_at'] ?? raw['occurredAt'];
+    final timezoneOffsetRaw =
+        raw['timezone_offset_minutes'] ?? raw['timezoneOffsetMinutes'];
+
+    final createdAt = _rawFinanceTimestampMillis(
+      createdAtRaw,
+      allowDateString: true,
+    );
+    final updatedAt = _rawFinanceTimestampMillis(
+      updatedAtRaw,
+      allowDateString: true,
+    );
+    final occurredAt = _rawFinanceTimestampMillis(occurredAtRaw);
+    if ((createdAtRaw != null && createdAt == null) ||
+        (updatedAtRaw != null && updatedAt == null) ||
+        (occurredAtRaw != null && occurredAt == null)) {
+      return false;
+    }
+
+    final timezoneOffset = timezoneOffsetRaw == null
+        ? 0
+        : _rawFinanceInteger(timezoneOffsetRaw);
+    if (timezoneOffset == null ||
+        timezoneOffset < -_maxFinanceTimezoneOffsetMinutes ||
+        timezoneOffset > _maxFinanceTimezoneOffsetMinutes) {
+      return false;
+    }
+
+    try {
+      for (final timestamp in [createdAt, occurredAt]) {
+        if (timestamp == null || timestamp <= 0) continue;
+        DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true).add(
+          Duration(minutes: timezoneOffset),
+        );
+      }
+    } catch (_) {
+      return false;
+    }
+    return true;
+  }
+
+  static int? _rawFinanceTimestampMillis(
+    dynamic value, {
+    bool allowDateString = false,
+  }) {
+    final timestamp = _rawFinanceInteger(value);
+    if (timestamp != null) {
+      return timestamp >= -_maxDateTimeMillis &&
+              timestamp <= _maxDateTimeMillis
+          ? timestamp
+          : null;
+    }
+    if (allowDateString && value is String) {
+      final parsed = DateTime.tryParse(value.trim());
+      if (parsed != null) {
+        final millis = parsed.toUtc().millisecondsSinceEpoch;
+        if (millis >= -_maxDateTimeMillis && millis <= _maxDateTimeMillis) {
+          return millis;
+        }
+      }
+    }
+    return null;
+  }
+
+  static int? _rawFinanceInteger(dynamic value) {
+    if (value is int) return value;
+    if (value is num &&
+        value.isFinite &&
+        value >= -_maxDateTimeMillis &&
+        value <= _maxDateTimeMillis &&
+        value == value.roundToDouble()) {
+      return value.toInt();
+    }
+    if (value is String) {
+      final parsed = BigInt.tryParse(value.trim());
+      if (parsed != null &&
+          parsed >= BigInt.from(-_maxDateTimeMillis) &&
+          parsed <= BigInt.from(_maxDateTimeMillis)) {
+        return parsed.toInt();
+      }
+    }
+    return null;
   }
 
   static bool _isSafeRawFinanceAmount(dynamic value) {
