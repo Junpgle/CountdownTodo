@@ -1827,6 +1827,16 @@ void main() {
     expect(mimoPricing.inputMicrosPerMillion, 1000000);
     expect(mimoPricing.outputMicrosPerMillion, 2000000);
 
+    final ultraSpeedPricing = (await AiUsageCostService.getPricing()).firstWhere(
+      (item) =>
+          item.provider == 'mimo' &&
+          item.model == 'mimo-v2.6-pro-ultraspeed',
+    );
+    expect(ultraSpeedPricing.cachedInputMicrosPerMillion, 250000);
+    expect(ultraSpeedPricing.inputMicrosPerMillion, 30000000);
+    expect(ultraSpeedPricing.outputMicrosPerMillion, 60000000);
+    expect(ultraSpeedPricing.imageTokensIncluded, isTrue);
+
     await AiUsageCostService.recordUsage(
       provider: 'mimo',
       model: 'mimo-v2.5',

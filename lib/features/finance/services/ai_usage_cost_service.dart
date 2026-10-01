@@ -358,6 +358,14 @@ abstract final class AiUsageCostService {
     ),
     AiUsagePricing(
       provider: 'mimo',
+      model: 'mimo-v2.6-pro-ultraspeed',
+      cachedInputMicrosPerMillion: 250000,
+      inputMicrosPerMillion: 30000000,
+      outputMicrosPerMillion: 60000000,
+      imageTokensIncluded: true,
+    ),
+    AiUsagePricing(
+      provider: 'mimo',
       model: 'mimo-v2.5-asr',
       audioMicrosPerHour: 500000,
     ),
