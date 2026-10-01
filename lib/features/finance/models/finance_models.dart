@@ -2380,6 +2380,13 @@ FinanceTransactionType _transactionType(dynamic raw) {
     return FinanceTransactionType.values[index];
   }
   final value = raw?.toString();
+  final numericIndex = int.tryParse(value?.trim() ?? '');
+  if (numericIndex != null) {
+    return FinanceTransactionType.values[numericIndex.clamp(
+      0,
+      FinanceTransactionType.values.length - 1,
+    )];
+  }
   return FinanceTransactionType.values.firstWhere(
     (item) => item.name == value,
     orElse: () => FinanceTransactionType.expense,

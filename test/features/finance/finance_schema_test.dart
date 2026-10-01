@@ -535,6 +535,96 @@ void main() {
           isNull,
         );
       });
+
+      test('$source 拒绝会被归一化的周期、模板和贷款枚举', () async {
+        final recurringRules = [
+          FinanceRecurringRule(
+            uuid: 'invalid-$source-frequency-name',
+            name: '错误频率名称',
+            amountMinor: 100,
+            startDate: '2026-09-01',
+          ).toMap()
+            ..['frequency'] = 'unknown',
+          FinanceRecurringRule(
+            uuid: 'invalid-$source-frequency-number',
+            name: '错误频率数字',
+            amountMinor: 100,
+            startDate: '2026-09-01',
+          ).toMap()
+            ..['frequency'] = 99,
+          FinanceRecurringRule(
+            uuid: 'invalid-$source-recurring-type',
+            name: '错误周期类型',
+            amountMinor: 100,
+            startDate: '2026-09-01',
+          ).toMap()
+            ..['type'] = 'unknown',
+        ];
+        final templates = [
+          FinanceEntryTemplate(
+            uuid: 'invalid-$source-template-type-name',
+            name: '错误模板类型',
+            amountMinor: 100,
+          ).toMap()
+            ..['type'] = 'unknown',
+          FinanceEntryTemplate(
+            uuid: 'invalid-$source-template-type-number',
+            name: '错误模板类型数字',
+            amountMinor: 100,
+          ).toMap()
+            ..['type'] = 99,
+        ];
+        final loans = [
+          FinanceLoan(
+            uuid: 'invalid-$source-loan-method-name',
+            name: '错误还款方式名称',
+            principalMinor: 1000,
+            termMonths: 1,
+            startDate: '2026-09-01',
+            repaymentDay: 1,
+          ).toMap()
+            ..['repayment_method'] = 'unknown',
+          FinanceLoan(
+            uuid: 'invalid-$source-loan-method-number',
+            name: '错误还款方式数字',
+            principalMinor: 1000,
+            termMonths: 1,
+            startDate: '2026-09-01',
+            repaymentDay: 1,
+          ).toMap()
+            ..['repayment_method'] = 99,
+          FinanceLoan(
+            uuid: 'invalid-$source-loan-method-string-number',
+            name: '错误还款方式数字字符串',
+            principalMinor: 1000,
+            termMonths: 1,
+            startDate: '2026-09-01',
+            repaymentDay: 1,
+          ).toMap()
+            ..['repayment_method'] = '1',
+        ];
+
+        final bundle = {
+          'recurring_rules': recurringRules,
+          'templates': templates,
+          'loans': loans,
+        };
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['skipped'], 8);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 0);
+        }
+        expect(
+          await FinanceStorage.getRecurringRules(includeDeleted: true),
+          isEmpty,
+        );
+        expect(
+          await FinanceStorage.getTemplates(includeDeleted: true),
+          isEmpty,
+        );
+        expect(await FinanceStorage.getLoans(includeDeleted: true), isEmpty);
+      });
     }
 
     test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {
@@ -2939,12 +3029,25 @@ void main() {
           'created_at': 10,
           'updated_at': 10,
         },
+        {
+          'uuid': 'legacy-numeric-string-income',
+          'type': '1',
+          'amount_minor': 881,
+          'transaction_date': '2026-08-31',
+          'created_at': 10,
+          'updated_at': 10,
+        },
       ],
     });
-    expect(result['imported'], 1);
+    expect(result['imported'], 2);
     expect(
       (await FinanceStorage.getTransaction('legacy-numeric-refund'))!.type,
       FinanceTransactionType.refund,
+    );
+    expect(
+      (await FinanceStorage.getTransaction('legacy-numeric-string-income'))!
+          .type,
+      FinanceTransactionType.income,
     );
   });
 

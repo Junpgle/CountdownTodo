@@ -2675,7 +2675,9 @@ abstract final class FinanceStorage {
     final recurringRuleMaps = recurringRuleInput.maps;
     for (final map in recurringRuleMaps) {
       if (!_hasRawFinanceUuid(map) ||
-          !_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor')) {
+          !_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') ||
+          !_hasValidRawOptionalTransactionType(map) ||
+          !_hasValidRawRecurringFrequency(map)) {
         skipped++;
         continue;
       }
@@ -2725,7 +2727,8 @@ abstract final class FinanceStorage {
     final templateMaps = templateInput.maps;
     for (final map in templateMaps) {
       if (!_hasRawFinanceUuid(map) ||
-          !_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor')) {
+          !_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') ||
+          !_hasValidRawOptionalTransactionType(map)) {
         skipped++;
         continue;
       }
@@ -2925,7 +2928,8 @@ abstract final class FinanceStorage {
             'principal_minor',
             'principalMinor',
           ) ||
-          !_hasSafeRawLoanInterestRate(map)) {
+          !_hasSafeRawLoanInterestRate(map) ||
+          !_hasValidRawLoanRepaymentMethod(map)) {
         skipped++;
         continue;
       }
@@ -3082,7 +3086,9 @@ abstract final class FinanceStorage {
     final recurringRules = _listOfMaps(bundle['recurring_rules'])
         .where(
           (map) => _hasRawFinanceUuid(map) &&
-              _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor'),
+              _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') &&
+              _hasValidRawOptionalTransactionType(map) &&
+              _hasValidRawRecurringFrequency(map),
         )
         .map(FinanceRecurringRule.fromMap)
         .where(_isValidRecurringRule)
@@ -3090,7 +3096,8 @@ abstract final class FinanceStorage {
     final templates = _listOfMaps(bundle['templates'])
         .where(
           (map) => _hasRawFinanceUuid(map) &&
-              _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor'),
+              _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') &&
+              _hasValidRawOptionalTransactionType(map),
         )
         .map(FinanceEntryTemplate.fromMap)
         .where(_isValidTemplate)
@@ -3104,7 +3111,8 @@ abstract final class FinanceStorage {
                 'principal_minor',
                 'principalMinor',
               ) &&
-              _hasSafeRawLoanInterestRate(map),
+              _hasSafeRawLoanInterestRate(map) &&
+              _hasValidRawLoanRepaymentMethod(map),
         )
         .map(FinanceLoan.fromMap)
         .where(_isValidLoan)
@@ -3997,6 +4005,47 @@ abstract final class FinanceStorage {
     final value = raw['type'];
     return const {'expense', 'income', 'refund'}.contains(value) ||
         const {0, 1, 2, '0', '1', '2'}.contains(value);
+  }
+
+  static bool _hasValidRawOptionalTransactionType(
+    Map<String, dynamic> raw,
+  ) {
+    final value = raw['type'];
+    return value == null || _isValidRawTransactionType(raw);
+  }
+
+  static bool _hasValidRawRecurringFrequency(Map<String, dynamic> raw) {
+    final value = raw['frequency'];
+    return value == null ||
+        _isValidRawEnumValue(
+          value,
+          FinanceRecurringFrequency.values.map((item) => item.name),
+          FinanceRecurringFrequency.values.length,
+        );
+  }
+
+  static bool _hasValidRawLoanRepaymentMethod(Map<String, dynamic> raw) {
+    final value = raw['repayment_method'] ?? raw['repaymentMethod'];
+    return value == null ||
+        _isValidRawEnumValue(
+          value,
+          FinanceLoanRepaymentMethod.values.map((item) => item.name),
+          FinanceLoanRepaymentMethod.values.length,
+        );
+  }
+
+  static bool _isValidRawEnumValue(
+    dynamic value,
+    Iterable<String> names,
+    int valueCount,
+  ) {
+    if (value is num) {
+      return value.isFinite &&
+          value >= 0 &&
+          value < valueCount &&
+          value == value.roundToDouble();
+    }
+    return value is String && names.contains(value);
   }
 
   static bool _hasSafeRawTransactionTimestamps(Map<String, dynamic> raw) {
