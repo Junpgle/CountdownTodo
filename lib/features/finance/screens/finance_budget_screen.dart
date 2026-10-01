@@ -178,6 +178,9 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
           : await FinanceRepository.getBalanceTransactions(
               snapshotAt: earliestSnapshotAt,
               before: to,
+              paymentMethodUuids: applicableSnapshots
+                  .map((budget) => budget.paymentMethodUuid!)
+                  .toSet(),
             );
       if (!mounted || generation != _loadGeneration) return;
       setState(() {

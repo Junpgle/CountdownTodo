@@ -863,6 +863,10 @@ class DatabaseHelper {
       'ON finance_transactions(category_uuid, is_deleted, transaction_date)',
     );
     await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_finance_transactions_balance '
+      'ON finance_transactions(is_deleted, payment_method_uuid, transaction_date)',
+    );
+    await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_finance_transactions_installment '
       'ON finance_transactions(installment_group_uuid, is_deleted, installment_index)',
     );

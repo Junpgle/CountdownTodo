@@ -49,6 +49,77 @@ void main() {
       await db.close();
     });
 
+    test('余额流水查询只读取有快照账户，支持大量账户并跳过已删除流水', () async {
+      final snapshotAt = DateTime(2026, 9, 1).millisecondsSinceEpoch;
+      for (final transaction in [
+        FinanceTransaction(
+          uuid: 'balance-query-card-a',
+          amountMinor: 100,
+          paymentMethodUuid: 'card-a',
+          transactionDate: '2026-09-05',
+        ),
+        FinanceTransaction(
+          uuid: 'balance-query-card-b',
+          amountMinor: 200,
+          paymentMethodUuid: 'card-b',
+          transactionDate: '2026-09-06',
+        ),
+        FinanceTransaction(
+          uuid: 'balance-query-untracked-card',
+          amountMinor: 300,
+          paymentMethodUuid: 'card-without-snapshot',
+          transactionDate: '2026-09-07',
+        ),
+        FinanceTransaction(
+          uuid: 'balance-query-no-card',
+          amountMinor: 400,
+          transactionDate: '2026-09-08',
+        ),
+        FinanceTransaction(
+          uuid: 'balance-query-deleted',
+          amountMinor: 500,
+          paymentMethodUuid: 'card-a',
+          transactionDate: '2026-09-09',
+          isDeleted: true,
+        ),
+      ]) {
+        await db.insert('finance_transactions', transaction.toMap());
+      }
+
+      final trackedMethods = {
+        'card-a',
+        'card-b',
+        for (var index = 0; index < 400; index++) 'unused-card-$index',
+      };
+      final transactions = await FinanceStorage.getBalanceTransactions(
+        snapshotAt: snapshotAt,
+        before: DateTime(2026, 10, 1),
+        paymentMethodUuids: trackedMethods,
+      );
+
+      expect(
+        transactions.map((transaction) => transaction.uuid).toSet(),
+        {'balance-query-card-a', 'balance-query-card-b'},
+      );
+      final indexes = await db.rawQuery(
+        'PRAGMA index_list(finance_transactions)',
+      );
+      expect(
+        indexes.any(
+          (index) => index['name'] == 'idx_finance_transactions_balance',
+        ),
+        isTrue,
+      );
+      expect(
+        await FinanceStorage.getBalanceTransactions(
+          snapshotAt: snapshotAt,
+          before: DateTime(2026, 10, 1),
+          paymentMethodUuids: const {},
+        ),
+        isEmpty,
+      );
+    });
+
     test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {
       final unsafeTransaction = FinanceTransaction(
         uuid: 'unsafe-large-transaction',

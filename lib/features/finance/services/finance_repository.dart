@@ -25,10 +25,12 @@ abstract final class FinanceRepository {
   static Future<List<FinanceTransaction>> getBalanceTransactions({
     required int snapshotAt,
     required DateTime before,
+    required Iterable<String> paymentMethodUuids,
   }) {
     return FinanceStorage.getBalanceTransactions(
       snapshotAt: snapshotAt,
       before: before,
+      paymentMethodUuids: paymentMethodUuids,
     );
   }
 

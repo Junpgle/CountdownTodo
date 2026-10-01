@@ -196,26 +196,50 @@ abstract final class FinanceStorage {
   static Future<List<FinanceTransaction>> getBalanceTransactions({
     required int snapshotAt,
     required DateTime before,
+    required Iterable<String> paymentMethodUuids,
   }) async {
+    final methodUuids = paymentMethodUuids
+        .map((uuid) => uuid.trim())
+        .where((uuid) => uuid.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (methodUuids.isEmpty) return const [];
+
     await ensureReady();
     final db = await _database;
-    final rows = await db.query(
-      'finance_transactions',
-      where: 'is_deleted = 0 AND transaction_date < ? AND '
-          '(transaction_date >= ? OR created_at > ?)',
-      // Stored ledger dates belong to their recorded timezone. The largest
-      // difference between two supported offsets is 28 hours; widen the date
-      // bounds and let balanceEventAt apply the exact instant cutoff.
-      whereArgs: [
-        dateKey(before.add(const Duration(days: 2))),
-        dateKey(
-          DateTime.fromMillisecondsSinceEpoch(snapshotAt)
-              .subtract(const Duration(days: 2)),
+    // Stay below SQLite's bind-variable limit even if a user has created an
+    // unusually large number of payment methods. Balance aggregation does not
+    // depend on row order, so avoid sorting the historical result set.
+    const batchSize = 400;
+    final rows = <Map<String, Object?>>[];
+    for (var offset = 0; offset < methodUuids.length; offset += batchSize) {
+      final nextOffset = offset + batchSize;
+      final end = nextOffset < methodUuids.length
+          ? nextOffset
+          : methodUuids.length;
+      final batch = methodUuids.sublist(offset, end);
+      rows.addAll(
+        await db.query(
+          'finance_transactions',
+          where: 'is_deleted = 0 AND payment_method_uuid IN '
+              '(${List.filled(batch.length, '?').join(',')}) AND '
+              'transaction_date < ? AND '
+              '(transaction_date >= ? OR created_at > ?)',
+          // Stored ledger dates belong to their recorded timezone. The largest
+          // difference between two supported offsets is 28 hours; widen the
+          // date bounds and let balanceEventAt apply the exact instant cutoff.
+          whereArgs: [
+            ...batch,
+            dateKey(before.add(const Duration(days: 2))),
+            dateKey(
+              DateTime.fromMillisecondsSinceEpoch(snapshotAt)
+                  .subtract(const Duration(days: 2)),
+            ),
+            snapshotAt,
+          ],
         ),
-        snapshotAt,
-      ],
-      orderBy: 'transaction_date DESC, occurred_at DESC, updated_at DESC',
-    );
+      );
+    }
     return rows.map(FinanceTransaction.fromMap).toList();
   }
 
