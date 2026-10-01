@@ -895,6 +895,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       updatedAt: old?.updatedAt ?? now,
       deviceId: old?.deviceId,
     );
+    if (old != null && _occurredAt == null) {
+      transaction.occurredAt = old.occurredAt;
+    }
     if (old != null) transaction.markAsChanged();
 
     try {

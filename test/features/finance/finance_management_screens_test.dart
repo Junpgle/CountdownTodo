@@ -493,6 +493,46 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('编辑旧账单时保留未记录的发生时刻', (tester) async {
+    final db = await _seed(tester);
+    final legacyDate = DateTime(2026, 9, 10);
+    final transaction = FinanceTransaction.fromMap({
+      'uuid': 'legacy-unknown-occurrence',
+      'type': 'expense',
+      'amount_minor': 1250,
+      'currency_code': 'CNY',
+      'category_uuid': 'test-food',
+      'transaction_date': dateKey(legacyDate),
+      'created_at': legacyDate.millisecondsSinceEpoch,
+      'updated_at': legacyDate.millisecondsSinceEpoch,
+    });
+    await tester.runAsync(() => FinanceStorage.saveTransaction(transaction));
+
+    await _pump(tester, FinanceEntryScreen(transaction: transaction));
+    expect(find.text('补充时间'), findsOneWidget);
+    await tester.ensureVisible(find.text('保存账单'));
+    await tester.tap(find.text('保存账单'));
+    var rows = <Map<String, Object?>>[];
+    for (var attempt = 0; attempt < 100; attempt++) {
+      rows = (await tester.runAsync(
+        () => db.query(
+          'finance_transactions',
+          where: 'uuid = ?',
+          whereArgs: [transaction.uuid],
+        ),
+      ))!;
+      if (rows.single['version'] == 2) break;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(rows.single['version'], 2);
+    expect(rows.single['occurred_at'], isNull);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('当前月预算不提前统计尚未发生的未来账单', (tester) async {
     final db = await _seed(tester);
     var clockNow = DateTime(2026, 9, 15, 12);
