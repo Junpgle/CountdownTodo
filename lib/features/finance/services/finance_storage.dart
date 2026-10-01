@@ -517,10 +517,18 @@ abstract final class FinanceStorage {
   }
 
   static Future<void> deleteInstallmentGroup(String groupUuid) async {
-    final group = await getInstallmentGroup(groupUuid);
-    if (group.isEmpty) return;
+    await ensureReady();
     final db = await _database;
-    await db.transaction((txn) async {
+    final changed = await db.transaction<bool>((txn) async {
+      final rows = await txn.query(
+        'finance_transactions',
+        where: 'installment_group_uuid = ? AND is_deleted = 0',
+        whereArgs: [groupUuid],
+        orderBy: 'installment_index ASC, transaction_date ASC, occurred_at ASC',
+      );
+      if (rows.isEmpty) return false;
+
+      final group = rows.map(FinanceTransaction.fromMap);
       for (final transaction in group) {
         transaction.isDeleted = true;
         transaction.markAsChanged();
@@ -533,31 +541,41 @@ abstract final class FinanceStorage {
           whereArgs: [transaction.uuid],
         );
       }
+      return true;
     });
-    _notifyChanged();
+    if (changed) _notifyChanged();
   }
 
   static Future<void> restoreInstallmentGroup(String groupUuid) async {
-    final group = await getInstallmentGroup(groupUuid, includeDeleted: true);
-    final deleted = group.where((item) => item.isDeleted).toList();
-    if (deleted.isEmpty) return;
-    final counts = group
-        .map((item) => item.installmentCount)
-        .whereType<int>()
-        .where((count) => count > 1)
-        .toList();
-    final currentCount = counts.isEmpty
-        ? null
-        : counts.reduce((left, right) => left < right ? left : right);
-    final restorable = currentCount == null
-        ? deleted
-        : deleted.where((item) {
-            final index = item.installmentIndex;
-            return index == null || index <= currentCount;
-          }).toList();
-    if (restorable.isEmpty) return;
+    await ensureReady();
     final db = await _database;
-    await db.transaction((txn) async {
+    final changed = await db.transaction<bool>((txn) async {
+      final rows = await txn.query(
+        'finance_transactions',
+        where: 'installment_group_uuid = ?',
+        whereArgs: [groupUuid],
+        orderBy: 'installment_index ASC, transaction_date ASC, occurred_at ASC',
+      );
+      final group = rows.map(FinanceTransaction.fromMap).toList();
+      final deleted = group.where((item) => item.isDeleted).toList();
+      if (deleted.isEmpty) return false;
+
+      final counts = group
+          .map((item) => item.installmentCount)
+          .whereType<int>()
+          .where((count) => count > 1)
+          .toList();
+      final currentCount = counts.isEmpty
+          ? null
+          : counts.reduce((left, right) => left < right ? left : right);
+      final restorable = currentCount == null
+          ? deleted
+          : deleted.where((item) {
+              final index = item.installmentIndex;
+              return index == null || index <= currentCount;
+            }).toList();
+      if (restorable.isEmpty) return false;
+
       for (final transaction in restorable) {
         transaction.isDeleted = false;
         transaction.markAsChanged();
@@ -570,8 +588,9 @@ abstract final class FinanceStorage {
           whereArgs: [transaction.uuid],
         );
       }
+      return true;
     });
-    _notifyChanged();
+    if (changed) _notifyChanged();
   }
 
   static Future<List<FinanceLoan>> getLoans({
