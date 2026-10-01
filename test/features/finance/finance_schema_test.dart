@@ -410,7 +410,10 @@ void main() {
         forceFullSync: false,
       );
       await prefs.setBool(
-        initial.bootstrapKey.replaceFirst('finance_sync_v2_', 'finance_sync_v1_'),
+        initial.bootstrapKey.replaceFirst(
+          RegExp(r'finance_sync_v\d+_'),
+          'finance_sync_v1_',
+        ),
         true,
       );
       await prefs.setBool(initial.balanceCapabilityKey, true);

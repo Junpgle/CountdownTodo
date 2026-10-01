@@ -7,6 +7,7 @@ import 'package:countdown_todo/features/finance/screens/finance_entry_screen.dar
 import 'package:countdown_todo/features/finance/screens/finance_loan_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_trash_screen.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
+import 'package:countdown_todo/features/finance/services/finance_sync_service.dart';
 import 'package:countdown_todo/services/database_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -87,6 +88,178 @@ void main() {
     tearDown(() async {
       FinanceStorage.databaseOverride = null;
       await db.close();
+    });
+
+    for (final reverse in [false, true]) {
+      test('同时间的余额替换保留有效新记录，顺序反转=$reverse', () async {
+        final old = FinanceBudget(
+          uuid: 'old-balance',
+          monthKey: '2026-09',
+          paymentMethodUuid: _cash,
+          amountMinor: 10000,
+          isDeleted: true,
+          version: 8,
+          updatedAt: 200,
+        );
+        final replacement = FinanceBudget(
+          uuid: 'new-balance',
+          monthKey: old.monthKey,
+          paymentMethodUuid: _cash,
+          amountMinor: 20000,
+          version: 1,
+          updatedAt: 200,
+        );
+        // Also cover a client which previously downloaded only the tombstone.
+        await db.insert('finance_budgets', old.toMap());
+        final rows = [old.toMap(), replacement.toMap()];
+        await FinanceStorage.mergeRemoteBundle({
+          'budgets': reverse ? rows.reversed.toList() : rows,
+        });
+        final active = await FinanceStorage.getBudgets();
+        expect(active, hasLength(1));
+        expect(active.single.uuid, replacement.uuid);
+        expect(active.single.amountMinor, 20000);
+        expect(await db.query('finance_budgets'), hasLength(1));
+      });
+    }
+
+    test('升级后全量补回曾被旧版本丢弃的余额，成功后恢复增量同步', () async {
+      const username = 'budget-upgrade';
+      final prefs = await SharedPreferences.getInstance();
+      final initial = await FinanceSyncService.prepare(
+        username: username,
+        forceFullSync: false,
+      );
+      await prefs.setBool(
+        initial.bootstrapKey.replaceFirst(
+          'finance_sync_v3_',
+          'finance_sync_v2_',
+        ),
+        true,
+      );
+      await prefs.setBool(initial.balanceCapabilityKey, true);
+      await prefs.setBool(initial.balanceBootstrapKey, true);
+      await prefs.setInt(initial.cursorKey, 500);
+      final old = FinanceBudget(
+        uuid: 'discarded-old-balance',
+        monthKey: '2026-09',
+        paymentMethodUuid: _cash,
+        amountMinor: 10000,
+        isDeleted: true,
+        version: 8,
+        updatedAt: 200,
+      );
+      await db.insert('finance_budgets', old.toMap());
+      final request = await FinanceSyncService.prepare(
+        username: username,
+        forceFullSync: false,
+      );
+      expect(request.fullSync, true);
+      final response = <String, dynamic>{
+        'sync_capabilities': {
+          'finance_v1': 1,
+          'finance_account_balances_v1': 1,
+        },
+        for (final section in [
+          'categories',
+          'payment_methods',
+          'transactions',
+          'loans',
+          'loan_installments',
+          'budgets',
+          'recurring_rules',
+          'entry_templates',
+        ])
+          'server_finance_$section': <Map<String, dynamic>>[],
+        'finance_acknowledged_changes': <Map<String, dynamic>>[],
+        'new_finance_sync_time': 600,
+      };
+      response['server_finance_budgets'] = [
+        old.toMap(),
+        {
+          ...old.toMap(),
+          'uuid': 'recovered-balance',
+          'is_deleted': 0,
+          'version': 1,
+          'amount_minor': 20000,
+        },
+      ];
+      final result = await FinanceSyncService.finish(
+        request: request,
+        response: response,
+        supported: true,
+      );
+      expect(result.cursorAdvanced, true);
+      expect((await FinanceStorage.getBudgets()).single.amountMinor, 20000);
+      expect(
+        (await FinanceSyncService.prepare(
+          username: username,
+          forceFullSync: false,
+        )).fullSync,
+        false,
+      );
+    });
+
+    test('同一余额UUID仍按版本接受删除和恢复', () async {
+      final balance = FinanceBudget(
+        uuid: 'same-balance',
+        monthKey: '2026-09',
+        paymentMethodUuid: _cash,
+        amountMinor: 0,
+        updatedAt: 200,
+      );
+      await FinanceStorage.mergeRemoteBundle({
+        'budgets': [balance.toMap()],
+      });
+      balance
+        ..isDeleted = true
+        ..version = 2;
+      await FinanceStorage.mergeRemoteBundle({
+        'budgets': [balance.toMap()],
+      });
+      expect(await FinanceStorage.getBudgets(), isEmpty);
+      balance
+        ..isDeleted = false
+        ..version = 3;
+      await FinanceStorage.mergeRemoteBundle({
+        'budgets': [balance.toMap()],
+      });
+      expect((await FinanceStorage.getBudgets()).single.version, 3);
+    });
+
+    test('余额替换不覆盖本地较新余额或服务端较新删除', () async {
+      final local = FinanceBudget(
+        uuid: 'local-balance',
+        monthKey: '2026-09',
+        paymentMethodUuid: _cash,
+        amountMinor: 30000,
+        updatedAt: 300,
+      );
+      await db.insert('finance_budgets', local.toMap());
+      await FinanceStorage.mergeRemoteBundle({
+        'budgets': [
+          {
+            ...local.toMap(),
+            'uuid': 'old-balance',
+            'is_deleted': 1,
+            'updated_at': 200,
+            'version': 8,
+          },
+          {...local.toMap(), 'uuid': 'replacement', 'updated_at': 200},
+        ],
+      });
+      expect((await FinanceStorage.getBudgets()).single.uuid, local.uuid);
+      await FinanceStorage.mergeRemoteBundle({
+        'budgets': [
+          {
+            ...local.toMap(),
+            'uuid': 'latest-delete',
+            'is_deleted': 1,
+            'updated_at': 400,
+          },
+        ],
+      });
+      expect(await FinanceStorage.getBudgets(), isEmpty);
     });
 
     test('贷款利息拒绝直接修改现金流、删除和拆分，备注仍可修改', () async {

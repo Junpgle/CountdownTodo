@@ -2745,12 +2745,7 @@ abstract final class FinanceStorage {
       var current = FinanceBudget.fromMap(scopeRows.first);
       for (final row in scopeRows.skip(1)) {
         final candidate = FinanceBudget.fromMap(row);
-        if (_isIncomingWinner(
-          candidate.updatedAt,
-          candidate.version,
-          current.updatedAt,
-          current.version,
-        )) {
+        if (_isIncomingBudgetWinner(candidate, current)) {
           current = candidate;
         }
       }
@@ -2762,12 +2757,7 @@ abstract final class FinanceStorage {
       final incomingWins =
           forceIncoming ||
           sameWinner ||
-          _isIncomingWinner(
-            item.updatedAt,
-            item.version,
-            current.updatedAt,
-            current.version,
-          );
+          _isIncomingBudgetWinner(item, current);
       if (!incomingWins) {
         if (scopeRows.length > 1) {
           await _deleteOtherBudgetsInScope(db, current);
@@ -2787,17 +2777,27 @@ abstract final class FinanceStorage {
     for (final item in items) {
       final key = _budgetScopeKey(item);
       final current = latest[key];
-      if (current == null ||
-          _isIncomingWinner(
-            item.updatedAt,
-            item.version,
-            current.updatedAt,
-            current.version,
-          )) {
+      if (current == null || _isIncomingBudgetWinner(item, current)) {
         latest[key] = item;
       }
     }
     return latest.values.toList(growable: false);
+  }
+
+  static bool _isIncomingBudgetWinner(
+    FinanceBudget incoming,
+    FinanceBudget current,
+  ) {
+    if (incoming.updatedAt != current.updatedAt) {
+      return incoming.updatedAt > current.updatedAt;
+    }
+    if (incoming.uuid != current.uuid &&
+        incoming.isDeleted != current.isDeleted) {
+      // Replacing a scope retires its old UUID at the replacement timestamp.
+      // The old row's bumped version must not beat the active replacement.
+      return !incoming.isDeleted;
+    }
+    return incoming.version > current.version;
   }
 
   static Future<int> _mergeRecurringRules(

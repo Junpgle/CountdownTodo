@@ -145,9 +145,9 @@ class FinanceSyncResult {
 /// transaction, which keeps rate limiting and old-server compatibility in one
 /// place.
 abstract final class FinanceSyncService {
-  // Pull once in full after adopting dependency-safe refund merges, including
-  // deletions that an older client skipped before advancing its cursor.
-  static const String _scopePrefix = 'finance_sync_v2_';
+  // Pull once in full to recover deletions and active budget replacements
+  // that an older merge discarded before advancing its cursor.
+  static const String _scopePrefix = 'finance_sync_v3_';
 
   static String _balanceCapabilityKey(String username) =>
       'finance_account_balances_v1_${_serverScope(ApiService.effectiveBaseUrl)}_$username';
