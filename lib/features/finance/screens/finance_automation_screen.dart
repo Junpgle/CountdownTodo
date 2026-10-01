@@ -68,7 +68,10 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
         rule: rule,
         categories: _categories,
         paymentMethods: _paymentMethods,
-        onSave: FinanceRepository.saveRecurringRule,
+        onSave: (updatedRule) => FinanceRepository.saveRecurringRule(
+          updatedRule,
+          original: rule,
+        ),
       ),
     );
     if (saved != true || !mounted) return false;

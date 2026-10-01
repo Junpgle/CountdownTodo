@@ -315,8 +315,11 @@ abstract final class FinanceRepository {
     return FinanceStorage.getRecurringRule(uuid);
   }
 
-  static Future<void> saveRecurringRule(FinanceRecurringRule rule) {
-    return FinanceStorage.saveRecurringRule(rule);
+  static Future<void> saveRecurringRule(
+    FinanceRecurringRule rule, {
+    FinanceRecurringRule? original,
+  }) {
+    return FinanceStorage.saveRecurringRule(rule, original: original);
   }
 
   static Future<void> deleteRecurringRule(String uuid) {

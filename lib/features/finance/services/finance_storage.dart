@@ -1583,8 +1583,14 @@ abstract final class FinanceStorage {
     return rows.isEmpty ? null : FinanceRecurringRule.fromMap(rows.first);
   }
 
-  static Future<void> saveRecurringRule(FinanceRecurringRule rule) async {
+  static Future<void> saveRecurringRule(
+    FinanceRecurringRule rule, {
+    FinanceRecurringRule? original,
+  }) async {
     _validateRecurringRule(rule);
+    if (original != null && original.uuid != rule.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '周期账单标识不匹配');
+    }
     rule.pendingSync = true;
     await ensureReady();
     final db = await _database;
@@ -1595,17 +1601,39 @@ abstract final class FinanceStorage {
         whereArgs: [rule.uuid],
         limit: 1,
       );
+      var itemToSave = rule;
       if (existingRows.isNotEmpty) {
         final existing = FinanceRecurringRule.fromMap(existingRows.first);
-        rule.lastGeneratedPeriod = existing.frequency != rule.frequency
-            ? rule.generationPeriodBefore(DateTime.now())
-            : _mergeRecurringGenerationPeriod(existing, rule);
+        final baselineChanged = original != null &&
+            (existing.version != original.version ||
+                existing.updatedAt != original.updatedAt);
+        if (baselineChanged) {
+          itemToSave = _mergeRecurringRuleEdits(existing, original, rule);
+          itemToSave.lastGeneratedPeriod =
+              existing.frequency != itemToSave.frequency
+                  ? itemToSave.generationPeriodBefore(DateTime.now())
+                  : _mergeRecurringGenerationPeriod(existing, itemToSave);
+          itemToSave.markAsChanged();
+          _validateRecurringRule(itemToSave);
+        } else {
+          if (rule.version <= existing.version ||
+              rule.updatedAt <= existing.updatedAt) {
+            throw StateError('周期账单已更新，请重新加载后再保存');
+          }
+          itemToSave.lastGeneratedPeriod = _mergeRecurringGenerationPeriod(
+            existing,
+            rule,
+          );
+        }
       } else {
-        rule.lastGeneratedPeriod = rule.effectiveLastGeneratedPeriod;
+        if (original != null) {
+          throw StateError('周期账单已不存在，请重新加载后再保存');
+        }
+        itemToSave.lastGeneratedPeriod = rule.effectiveLastGeneratedPeriod;
       }
       await txn.insert(
         'finance_recurring_rules',
-        _localValues(rule.toMap()),
+        _localValues(itemToSave.toMap()),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     });
@@ -1615,27 +1643,30 @@ abstract final class FinanceStorage {
   static Future<void> deleteRecurringRule(String uuid) async {
     final rule = await getRecurringRule(uuid);
     if (rule == null || rule.isDeleted) return;
+    final original = FinanceRecurringRule.fromMap(rule.toMap());
     rule.isDeleted = true;
     rule.isEnabled = false;
     rule.markAsChanged();
-    await saveRecurringRule(rule);
+    await saveRecurringRule(rule, original: original);
   }
 
   static Future<void> restoreRecurringRule(String uuid) async {
     final rule = await getRecurringRule(uuid);
     if (rule == null || !rule.isDeleted) return;
+    final original = FinanceRecurringRule.fromMap(rule.toMap());
     rule.isDeleted = false;
     rule.isEnabled = true;
     rule.markAsChanged();
-    await saveRecurringRule(rule);
+    await saveRecurringRule(rule, original: original);
   }
 
   static Future<void> setRecurringRuleEnabled(String uuid, bool enabled) async {
     final rule = await getRecurringRule(uuid);
     if (rule == null || rule.isDeleted || rule.isEnabled == enabled) return;
+    final original = FinanceRecurringRule.fromMap(rule.toMap());
     rule.isEnabled = enabled;
     rule.markAsChanged();
-    await saveRecurringRule(rule);
+    await saveRecurringRule(rule, original: original);
   }
 
   static Future<bool> materializeRecurringRule(
@@ -1773,6 +1804,61 @@ abstract final class FinanceStorage {
       current.effectiveLastGeneratedPeriod,
       incoming.effectiveLastGeneratedPeriod,
     );
+  }
+
+  static FinanceRecurringRule _mergeRecurringRuleEdits(
+    FinanceRecurringRule current,
+    FinanceRecurringRule original,
+    FinanceRecurringRule incoming,
+  ) {
+    final merged = FinanceRecurringRule.fromMap(current.toMap());
+    if (incoming.name != original.name) merged.name = incoming.name;
+    if (incoming.type != original.type) merged.type = incoming.type;
+    if (incoming.amountMinor != original.amountMinor) {
+      merged.amountMinor = incoming.amountMinor;
+    }
+    if (incoming.currencyCode != original.currencyCode) {
+      merged.currencyCode = incoming.currencyCode;
+    }
+    if (incoming.categoryUuid != original.categoryUuid) {
+      merged.categoryUuid = incoming.categoryUuid;
+    }
+    if (incoming.paymentMethodUuid != original.paymentMethodUuid) {
+      merged.paymentMethodUuid = incoming.paymentMethodUuid;
+    }
+    if (incoming.merchant != original.merchant) {
+      merged.merchant = incoming.merchant;
+    }
+    if (incoming.note != original.note) merged.note = incoming.note;
+    if (incoming.frequency != original.frequency) {
+      merged.frequency = incoming.frequency;
+    }
+    if (incoming.dayOfMonth != original.dayOfMonth) {
+      merged.dayOfMonth = incoming.dayOfMonth;
+    }
+    if (incoming.monthOfYear != original.monthOfYear) {
+      merged.monthOfYear = incoming.monthOfYear;
+    }
+    if (incoming.startDate != original.startDate) {
+      merged.startDate = incoming.startDate;
+    }
+    if (incoming.endDate != original.endDate) {
+      merged.endDate = incoming.endDate;
+    }
+    if (incoming.reminderMinutes != original.reminderMinutes) {
+      merged.reminderMinutes = incoming.reminderMinutes;
+    }
+    if (incoming.autoGenerate != original.autoGenerate) {
+      merged.autoGenerate = incoming.autoGenerate;
+    }
+    if (incoming.isEnabled != original.isEnabled) {
+      merged.isEnabled = incoming.isEnabled;
+    }
+    if (incoming.isDeleted != original.isDeleted) {
+      merged.isDeleted = incoming.isDeleted;
+    }
+    if (merged.isDeleted) merged.isEnabled = false;
+    return merged;
   }
 
   static int _generatedPeriodOrder(String value) {

@@ -155,6 +155,46 @@ void main() {
       });
     }
 
+    test('编辑期间到达的远端字段更新不会被旧草稿一并覆盖', () async {
+      final original = FinanceRecurringRule(
+        uuid: 'recurring-three-way-edit',
+        name: '每月订阅',
+        amountMinor: 10000,
+        startDate: '2026-01-01',
+        updatedAt: 100,
+      );
+      await FinanceStorage.saveRecurringRule(original);
+      final baseline = (await FinanceStorage.getRecurringRule(original.uuid))!;
+      final localEdit = FinanceRecurringRule.fromMap(baseline.toMap())
+        ..note = '本地新增备注';
+      localEdit.markAsChanged();
+      final remoteUpdate = FinanceRecurringRule.fromMap(baseline.toMap())
+        ..name = '远端新名称'
+        ..amountMinor = 20000
+        ..lastGeneratedPeriod = '2026-09'
+        ..version = baseline.version + 1
+        ..updatedAt = localEdit.updatedAt + 1000;
+      await FinanceStorage.mergeRemoteBundle({
+        'recurring_rules': [remoteUpdate.toMap()],
+      });
+
+      await expectLater(
+        FinanceStorage.saveRecurringRule(localEdit),
+        throwsStateError,
+      );
+      expect(
+        (await FinanceStorage.getRecurringRule(original.uuid))!.name,
+        '远端新名称',
+      );
+      await FinanceStorage.saveRecurringRule(localEdit, original: baseline);
+
+      final saved = (await FinanceStorage.getRecurringRule(original.uuid))!;
+      expect(saved.name, '远端新名称');
+      expect(saved.amountMinor, 20000);
+      expect(saved.note, '本地新增备注');
+      expect(saved.lastGeneratedPeriod, '2026-09');
+    });
+
     final scheduleChanges = <String, void Function(FinanceRecurringRule)>{
       '关闭自动生成': (rule) => rule.autoGenerate = false,
       '调整到期日': (rule) => rule.dayOfMonth = 20,
