@@ -917,6 +917,53 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('编辑缺少发生时刻的旧账单不会改变当天排序', (tester) async {
+    final legacy = FinanceTransaction.fromMap({
+      'uuid': 'ledger-edited-legacy-time',
+      'amount_minor': 1000,
+      'transaction_date': '2026-09-02',
+      'created_at': DateTime(2026, 9, 2, 8).millisecondsSinceEpoch,
+      'updated_at': DateTime(2026, 9, 2, 18).millisecondsSinceEpoch,
+      'merchant': '旧账单',
+    });
+    final knownTime = DateTime(2026, 9, 2, 11);
+    final known = FinanceTransaction(
+      uuid: 'ledger-known-time',
+      amountMinor: 2000,
+      transactionDate: '2026-09-02',
+      occurredAt: knownTime.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: knownTime.timeZoneOffset.inMinutes,
+      createdAt: DateTime(2026, 9, 2, 9).millisecondsSinceEpoch,
+      updatedAt: DateTime(2026, 9, 2, 10).millisecondsSinceEpoch,
+      merchant: '有时间账单',
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          transactions: [legacy, known],
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(
+      tester.getTopLeft(find.text('有时间账单')).dy,
+      lessThan(tester.getTopLeft(find.text('旧账单')).dy),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('预算卡片直接编辑并保存，范围和备注保持不变', (tester) async {
     final db = await _seed(tester);
     await _pump(tester, FinanceBudgetScreen(initialMonth: _month),

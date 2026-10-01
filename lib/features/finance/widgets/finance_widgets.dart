@@ -1330,9 +1330,8 @@ List<_FinanceDayGroup> _groupFinanceTransactionsByDay(
   for (final date in dates) {
     final items = List<FinanceTransaction>.of(grouped[date]!)
       ..sort((a, b) {
-        final occurredComparison = (b.occurredAt ?? b.updatedAt).compareTo(
-          a.occurredAt ?? a.updatedAt,
-        );
+        final occurredComparison =
+            b.balanceEventAt().compareTo(a.balanceEventAt());
         if (occurredComparison != 0) return occurredComparison;
         final updatedComparison = b.updatedAt.compareTo(a.updatedAt);
         if (updatedComparison != 0) return updatedComparison;
