@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../services/chat_storage_service.dart';
 import '../../../services/llm_service.dart';
-import '../../../utils/page_transitions.dart';
+import '../../../utils/settings_navigation.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../llm_config_page.dart';
@@ -23,6 +23,7 @@ class AiAssistantSettingsPage extends StatefulWidget {
 }
 
 class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
+  final GlobalKey _modelConfigKey = GlobalKey();
   final TextEditingController _promptController = TextEditingController();
 
   bool _isLoading = true;
@@ -116,9 +117,11 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
   Future<void> _openModelConfig() async {
     await _savePrompt();
     if (!mounted) return;
-    await Navigator.push<bool>(
-      context,
-      PageTransitions.slideHorizontal(const LLMConfigPage()),
+    await SettingsNavigation.push<bool>(
+      context: context,
+      page: const LLMConfigPage(),
+      sourceKey: _modelConfigKey,
+      isEmbedded: widget.isEmbedded,
     );
     if (!mounted) return;
     setState(() => _llmConfigFuture = LLMService.getConfig());
@@ -253,6 +256,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
       title: '模型与 API',
       children: [
         ListTile(
+          key: _modelConfigKey,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           leading: Icon(Icons.hub_outlined, color: colorScheme.primary),
           title: const Text('模型与 API 配置'),

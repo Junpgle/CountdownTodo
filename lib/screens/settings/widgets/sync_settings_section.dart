@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../services/api_service.dart';
 import '../../../storage_service.dart';
 import '../../../utils/app_platform.dart';
-import '../../../utils/page_transitions.dart';
+import '../../../utils/settings_navigation.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/app_state_views.dart';
 import '../../../widgets/settings_toggle_card.dart';
@@ -11,10 +11,12 @@ import '../server_choice_page.dart';
 class SyncSettingsSection extends StatefulWidget {
   final String username;
   final String? initialTarget;
+  final bool isEmbedded;
   const SyncSettingsSection({
     super.key,
     required this.username,
     this.initialTarget,
+    this.isEmbedded = false,
   });
 
   @override
@@ -168,17 +170,17 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      PageTransitions.slideHorizontal(
-                        ServerChoicePage(
-                          initialServerChoice: _serverChoice,
-                          isEmbedded: false,
-                        ),
-                        settings: const RouteSettings(name: '云端数据接口线路'),
+                    SettingsNavigation.push(
+                      context: context,
+                      page: ServerChoicePage(
+                        initialServerChoice: _serverChoice,
+                        isEmbedded: false,
                       ),
+                      sourceKey: _itemKeys['server_choice']!,
+                      isEmbedded: widget.isEmbedded,
+                      settings: const RouteSettings(name: '云端数据接口线路'),
                     ).then((_) {
-                      _loadSettings();
+                      if (mounted) _loadSettings();
                     });
                   },
                 ),

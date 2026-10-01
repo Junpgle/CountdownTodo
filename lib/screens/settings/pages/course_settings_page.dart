@@ -16,7 +16,7 @@ import '../../../course_import/widgets/course_time_repair_dialog.dart';
 import '../../course_calendar_adjustment_screen.dart';
 import '../../../models.dart';
 import '../../../utils/app_platform.dart';
-import '../../../utils/page_transitions.dart';
+import '../../../utils/settings_navigation.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../../../utils/app_dialogs.dart';
 
@@ -68,6 +68,26 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
   Future<void>? _loadingDialogFuture;
   Future<void>? _loadingDialogReady;
   NavigatorState? _loadingDialogNavigator;
+
+  GlobalKey _navigationKey(String id) => _itemKeys.putIfAbsent(
+        id,
+        () => GlobalKey(debugLabel: 'settings-$id'),
+      );
+
+  Future<T?> _openSettingsPage<T>(
+    String id,
+    Widget page, {
+    RouteSettings? settings,
+    bool rootNavigator = false,
+  }) =>
+      SettingsNavigation.push<T>(
+        context: context,
+        page: page,
+        sourceKey: _navigationKey(id),
+        isEmbedded: widget.isEmbedded,
+        rootNavigator: rootNavigator,
+        settings: settings,
+      );
 
   @override
   void initState() {
@@ -914,13 +934,12 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                 subtitle: const Text('设置停课日期，以及补哪一天的课'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
-                  await Navigator.push(
-                    context,
-                    PageTransitions.slideHorizontal(
-                      CourseCalendarAdjustmentScreen(
-                          isEmbedded: widget.isEmbedded),
-                      settings: const RouteSettings(name: '校历偏移动态调整'),
+                  await _openSettingsPage(
+                    'course_calendar_adjustment',
+                    CourseCalendarAdjustmentScreen(
+                      isEmbedded: widget.isEmbedded,
                     ),
+                    settings: const RouteSettings(name: '校历偏移动态调整'),
                   );
                   _rescheduleReminders();
                 },
@@ -955,7 +974,10 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                     title: isWeb ? '打开教务网页' : '在线教务导入',
                     subtitle: isWeb ? '导出文件后导入' : '推荐方式',
                     color: Colors.teal,
-                    onTap: _courseImportHandler.importFromWebView,
+                    onTap: () => _courseImportHandler.importFromWebView(
+                      sourceKey: _navigationKey('webview_import'),
+                      isEmbedded: widget.isEmbedded,
+                    ),
                   ),
                   _buildActionCard(
                     id: 'smart_import',
@@ -1047,12 +1069,10 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                           fontWeight: FontWeight.bold)),
                 ),
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    PageTransitions.slideHorizontal(
-                      CourseAdaptationScreen(isEmbedded: widget.isEmbedded),
-                      settings: const RouteSettings(name: '课程表适配机制'),
-                    ),
+                  _openSettingsPage(
+                    'course_adapt',
+                    CourseAdaptationScreen(isEmbedded: widget.isEmbedded),
+                    settings: const RouteSettings(name: '课程表适配机制'),
                   );
                 },
               ),

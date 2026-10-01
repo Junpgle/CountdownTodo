@@ -15,6 +15,7 @@ import '../widgets/zf_time_config_dialog.dart';
 import '../widgets/course_time_repair_dialog.dart';
 import '../widgets/course_webview_screen.dart';
 import '../../utils/page_transitions.dart';
+import '../../utils/settings_navigation.dart';
 import '../../utils/text_file_reader.dart';
 import '../../storage_service.dart';
 import '../course_schedule_semantics.dart';
@@ -558,7 +559,10 @@ class CourseImportHandler {
     );
   }
 
-  Future<void> importFromWebView() async {
+  Future<void> importFromWebView({
+    GlobalKey? sourceKey,
+    bool isEmbedded = false,
+  }) async {
     // 先校验并确定目标学期，避免打开网页、登录和抓取完成后才发现无法计算课程日期。
     final targetSemester = await _askTargetSemester();
     if (targetSemester == null || !context.mounted) return;
@@ -575,11 +579,13 @@ class CourseImportHandler {
     };
 
     const manualInputSelection = '__manual_course_import_url__';
+    ModalRoute<dynamic>? schoolPickerRoute;
     var selectedUrl = await showAppModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
       useGlassSheet: false,
       builder: (context) {
+        schoolPickerRoute = ModalRoute.of(context);
         return Container(
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,
@@ -666,6 +672,10 @@ class CourseImportHandler {
       },
     );
 
+    // Reveal the settings card before starting its page transition.
+    await schoolPickerRoute?.completed;
+    if (!context.mounted) return;
+
     if (selectedUrl == manualInputSelection) {
       selectedUrl = await _askManualImportUrl(lastUrl);
     }
@@ -691,7 +701,14 @@ class CourseImportHandler {
             CourseWebViewScreen(initialUrl: resolvedUrl),
           );
 
-    final String? htmlContent = await Navigator.push<String>(context, route);
+    final String? htmlContent = !isDesktop && sourceKey != null
+        ? await SettingsNavigation.push<String>(
+            context: context,
+            page: CourseWebViewScreen(initialUrl: resolvedUrl),
+            sourceKey: sourceKey,
+            isEmbedded: isEmbedded,
+          )
+        : await Navigator.push<String>(context, route);
 
     if (htmlContent == null || htmlContent.isEmpty || !context.mounted) return;
 
@@ -885,11 +902,13 @@ class CourseImportHandler {
     if (!context.mounted) return null;
     final controller = TextEditingController(text: initialUrl ?? '');
     String? errorText;
+    ModalRoute<dynamic>? inputRoute;
 
     try {
-      return await showAppDialog<String>(
+      final result = await showAppDialog<String>(
         context: context,
         builder: (dialogContext) {
+          inputRoute = ModalRoute.of(dialogContext);
           return StatefulBuilder(
             builder: (context, setDialogState) {
               void submit() {
@@ -931,6 +950,8 @@ class CourseImportHandler {
           );
         },
       );
+      await inputRoute?.completed;
+      return result;
     } finally {
       controller.dispose();
     }

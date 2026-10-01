@@ -6,6 +6,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import '../../utils/page_transitions.dart';
 import '../utils/app_performance_monitor.dart';
 import '../utils/app_platform.dart';
+import '../utils/settings_navigation.dart';
 import '../utils/app_dialogs.dart';
 import 'settings/device_version_detail_page.dart';
 import 'login_screen.dart';
@@ -31,6 +32,7 @@ class AboutScreen extends StatefulWidget {
 class _AboutScreenState extends State<AboutScreen> {
   static const _appIconAsset = 'assets/icon/app_icon.png';
   static final GitHubResourceService _resourceService = GitHubResourceService();
+  final Map<String, GlobalKey> _navigationKeys = {};
   String _version = '加载中...';
   List<ChangelogEntry> _changelogEntries = [];
   bool _isLoadingChangelog = true;
@@ -61,6 +63,26 @@ class _AboutScreenState extends State<AboutScreen> {
 
   static const String privacyRawUrl =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/PRIVACY_POLICY.md';
+
+  GlobalKey _navigationKey(String id) => _navigationKeys.putIfAbsent(
+        id,
+        () => GlobalKey(debugLabel: 'settings-$id'),
+      );
+
+  Future<T?> _openSettingsPage<T>(
+    String id,
+    Widget page, {
+    RouteSettings? settings,
+    bool rootNavigator = false,
+  }) =>
+      SettingsNavigation.push<T>(
+        context: context,
+        page: page,
+        sourceKey: _navigationKey(id),
+        isEmbedded: widget.isEmbedded,
+        rootNavigator: rootNavigator,
+        settings: settings,
+      );
 
   @override
   void initState() {
@@ -291,17 +313,15 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Future<void> _showPrivacyPolicyPage() async {
-    await Navigator.push(
-      context,
-      PageTransitions.slideHorizontal(
-        PrivacyPolicyPage(
-          content: _privacyPolicyContent,
-          date: _privacyPolicyDate,
-          isLoading: _isLoadingPrivacy,
-          isEmbedded: widget.isEmbedded,
-        ),
-        settings: const RouteSettings(name: '隐私政策'),
+    await _openSettingsPage(
+      'privacy',
+      PrivacyPolicyPage(
+        content: _privacyPolicyContent,
+        date: _privacyPolicyDate,
+        isLoading: _isLoadingPrivacy,
+        isEmbedded: widget.isEmbedded,
       ),
+      settings: const RouteSettings(name: '隐私政策'),
     );
   }
 
@@ -520,17 +540,17 @@ class _AboutScreenState extends State<AboutScreen> {
                                 'https://github.com/Junpgle/math_quiz_app/issues'),
                           ),
                           _LinkItem(
+                            sourceKey: _navigationKey('device_versions'),
                             icon: Icons.devices_other_outlined,
                             title: '设备版本明细',
                             subtitle: '查看在线设备与历史版本分布',
                             onTap: () {
-                              Navigator.push(
-                                context,
-                                PageTransitions.slideHorizontal(
-                                  DeviceVersionDetailPage(
-                                      isEmbedded: widget.isEmbedded),
-                                  settings: const RouteSettings(name: '设备版本明细'),
+                              _openSettingsPage(
+                                'device_versions',
+                                DeviceVersionDetailPage(
+                                  isEmbedded: widget.isEmbedded,
                                 ),
+                                settings: const RouteSettings(name: '设备版本明细'),
                               );
                             },
                           ),
@@ -657,16 +677,15 @@ class _AboutScreenState extends State<AboutScreen> {
                     'https://github.com/Junpgle/math_quiz_app/issues'),
               ),
               _LinkItem(
+                sourceKey: _navigationKey('device_versions'),
                 icon: Icons.devices_other_outlined,
                 title: '设备版本明细',
                 subtitle: '查看在线设备与历史版本分布',
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    PageTransitions.slideHorizontal(
-                      DeviceVersionDetailPage(isEmbedded: widget.isEmbedded),
-                      settings: const RouteSettings(name: '设备版本明细'),
-                    ),
+                  _openSettingsPage(
+                    'device_versions',
+                    DeviceVersionDetailPage(isEmbedded: widget.isEmbedded),
+                    settings: const RouteSettings(name: '设备版本明细'),
                   );
                 },
               ),
@@ -1002,6 +1021,7 @@ class _AboutScreenState extends State<AboutScreen> {
         child: Column(
           children: [
             ListTile(
+              key: _navigationKey('privacy'),
               leading: Icon(Icons.privacy_tip_outlined,
                   color: Theme.of(context).colorScheme.primary),
               title: const Text('隐私政策'),
@@ -1197,6 +1217,7 @@ class _AboutScreenState extends State<AboutScreen> {
             return Column(
               children: [
                 ListTile(
+                  key: item.sourceKey,
                   leading: Icon(item.icon,
                       color: Theme.of(context).colorScheme.primary),
                   title: Text(item.title),
@@ -1525,12 +1546,14 @@ class _AboutScreenState extends State<AboutScreen> {
 }
 
 class _LinkItem {
+  final GlobalKey? sourceKey;
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
 
   _LinkItem({
+    this.sourceKey,
     required this.icon,
     required this.title,
     required this.subtitle,
