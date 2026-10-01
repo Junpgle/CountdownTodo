@@ -344,8 +344,11 @@ abstract final class FinanceRepository {
     return FinanceStorage.getTemplate(uuid);
   }
 
-  static Future<void> saveTemplate(FinanceEntryTemplate template) {
-    return FinanceStorage.saveTemplate(template);
+  static Future<void> saveTemplate(
+    FinanceEntryTemplate template, {
+    FinanceEntryTemplate? original,
+  }) {
+    return FinanceStorage.saveTemplate(template, original: original);
   }
 
   static Future<void> deleteTemplate(String uuid) {

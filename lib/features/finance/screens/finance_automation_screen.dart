@@ -110,7 +110,8 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
         template: template,
         categories: _categories,
         paymentMethods: _paymentMethods,
-        onSave: FinanceRepository.saveTemplate,
+        onSave: (updated) =>
+            FinanceRepository.saveTemplate(updated, original: template),
       ),
     );
     if (saved != true || !mounted) return false;

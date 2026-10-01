@@ -1861,6 +1861,47 @@ abstract final class FinanceStorage {
     return merged;
   }
 
+  static FinanceEntryTemplate _mergeTemplateEdits(
+    FinanceEntryTemplate current,
+    FinanceEntryTemplate original,
+    FinanceEntryTemplate incoming,
+  ) {
+    final merged = FinanceEntryTemplate.fromMap(current.toMap());
+    if (incoming.name != original.name) merged.name = incoming.name;
+    if (incoming.type != original.type) merged.type = incoming.type;
+    if (incoming.amountMinor != original.amountMinor) {
+      merged.amountMinor = incoming.amountMinor;
+    }
+    if (incoming.currencyCode != original.currencyCode) {
+      merged.currencyCode = incoming.currencyCode;
+    }
+    if (incoming.categoryUuid != original.categoryUuid) {
+      merged.categoryUuid = incoming.categoryUuid;
+    }
+    if (incoming.paymentMethodUuid != original.paymentMethodUuid) {
+      merged.paymentMethodUuid = incoming.paymentMethodUuid;
+    }
+    if (incoming.merchant != original.merchant) {
+      merged.merchant = incoming.merchant;
+    }
+    if (incoming.note != original.note) merged.note = incoming.note;
+    if (incoming.isDeleted != original.isDeleted) {
+      merged.isDeleted = incoming.isDeleted;
+    }
+    if (incoming.useCount != original.useCount) {
+      merged.useCount =
+          (current.useCount + incoming.useCount - original.useCount)
+              .clamp(0, 0x7fffffff)
+              .toInt();
+    }
+    if (incoming.lastUsedAt != null &&
+        (current.lastUsedAt == null ||
+            incoming.lastUsedAt! > current.lastUsedAt!)) {
+      merged.lastUsedAt = incoming.lastUsedAt;
+    }
+    return merged;
+  }
+
   static int _generatedPeriodOrder(String value) {
     final parts = value.split('-');
     final year = int.tryParse(parts.first) ?? -1;
@@ -1895,42 +1936,77 @@ abstract final class FinanceStorage {
     return rows.isEmpty ? null : FinanceEntryTemplate.fromMap(rows.first);
   }
 
-  static Future<void> saveTemplate(FinanceEntryTemplate template) async {
+  static Future<void> saveTemplate(
+    FinanceEntryTemplate template, {
+    FinanceEntryTemplate? original,
+  }) async {
     _validateTemplate(template);
-    template.pendingSync = true;
+    if (original != null && original.uuid != template.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '模板标识不匹配');
+    }
     await ensureReady();
     final db = await _database;
-    await db.insert(
-      'finance_entry_templates',
-      _localValues(template.toMap()),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.transaction((txn) async {
+      final existingRows = await txn.query(
+        'finance_entry_templates',
+        where: 'uuid = ?',
+        whereArgs: [template.uuid],
+        limit: 1,
+      );
+      var itemToSave = FinanceEntryTemplate.fromMap(template.toMap());
+      if (existingRows.isNotEmpty) {
+        final existing = FinanceEntryTemplate.fromMap(existingRows.first);
+        final baselineChanged =
+            original != null &&
+            (existing.version != original.version ||
+                existing.updatedAt != original.updatedAt);
+        if (baselineChanged) {
+          itemToSave = _mergeTemplateEdits(existing, original, itemToSave);
+          itemToSave.markAsChanged();
+          _validateTemplate(itemToSave);
+        } else if (itemToSave.version <= existing.version ||
+            itemToSave.updatedAt <= existing.updatedAt) {
+          throw StateError('快捷模板已更新，请重新加载后再保存');
+        }
+      } else if (original != null) {
+        throw StateError('快捷模板已不存在，请重新加载后再保存');
+      }
+      itemToSave.pendingSync = true;
+      await txn.insert(
+        'finance_entry_templates',
+        _localValues(itemToSave.toMap()),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
     _notifyChanged();
   }
 
   static Future<void> deleteTemplate(String uuid) async {
     final template = await getTemplate(uuid);
     if (template == null || template.isDeleted) return;
+    final original = FinanceEntryTemplate.fromMap(template.toMap());
     template.isDeleted = true;
     template.markAsChanged();
-    await saveTemplate(template);
+    await saveTemplate(template, original: original);
   }
 
   static Future<void> restoreTemplate(String uuid) async {
     final template = await getTemplate(uuid);
     if (template == null || !template.isDeleted) return;
+    final original = FinanceEntryTemplate.fromMap(template.toMap());
     template.isDeleted = false;
     template.markAsChanged();
-    await saveTemplate(template);
+    await saveTemplate(template, original: original);
   }
 
   static Future<void> markTemplateUsed(String uuid) async {
     final template = await getTemplate(uuid);
     if (template == null || template.isDeleted) return;
+    final original = FinanceEntryTemplate.fromMap(template.toMap());
     template.useCount++;
     template.lastUsedAt = DateTime.now().millisecondsSinceEpoch;
     template.markAsChanged();
-    await saveTemplate(template);
+    await saveTemplate(template, original: original);
   }
 
   static void _validateRecurringRule(FinanceRecurringRule rule) {
