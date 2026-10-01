@@ -787,14 +787,18 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     _FinanceOverviewPeriod period,
   ) {
     if (period.summary.transactionCount == 0) return const SizedBox.shrink();
-    final average =
-        period.summary.netExpenseMinor ~/ period.summary.transactionCount;
+    final outflowTransactionCount = period.transactions
+        .where((transaction) => transaction.isExpenseLike)
+        .length;
+    final average = outflowTransactionCount == 0
+        ? 0
+        : period.summary.netExpenseMinor ~/ outflowTransactionCount;
     return Card(
       child: ListTile(
         leading: Icon(Icons.lightbulb_outline, color: colorScheme.primary),
         title: Text('${period.shortTitle}小结'),
         subtitle: Text(
-          '共 ${period.summary.transactionCount} 笔记录，平均每笔 ${formatFinanceAmount(average)}。',
+          '共 ${period.summary.transactionCount} 笔记录，支出/退款 $outflowTransactionCount 笔，平均净支出 ${formatFinanceAmount(average)}。',
         ),
       ),
     );

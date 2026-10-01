@@ -3136,9 +3136,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         summary.expenseByDate.values.where((value) => value > 0).length;
     final averagePerDay =
         spendingDays == 0 ? 0 : summary.netExpenseMinor ~/ spendingDays;
-    final averagePerTransaction = summary.transactionCount == 0
-        ? 0
-        : summary.netExpenseMinor ~/ summary.transactionCount;
     final peakDay = summary.expenseByDate.entries
         .where((entry) => entry.value > 0)
         .fold<MapEntry<String, int>?>(
@@ -3158,6 +3155,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         .where(
             (transaction) => transaction.type == FinanceTransactionType.refund)
         .length;
+    final outflowTransactionCount = expenseCount + refundCount;
+    final averagePerTransaction = outflowTransactionCount == 0
+        ? 0
+        : summary.netExpenseMinor ~/ outflowTransactionCount;
     final hasTransactions = summary.transactionCount > 0;
     final financeAccent = summary.netExpenseMinor > 0 ? cs.error : cs.primary;
 

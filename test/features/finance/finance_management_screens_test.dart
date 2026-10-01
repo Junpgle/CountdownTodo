@@ -758,6 +758,57 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('概览平均净支出不把收入笔数计入分母', (tester) async {
+    final occurredAt = DateTime(2026, 9, 2, 10).millisecondsSinceEpoch;
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'overview-average-expense',
+        amountMinor: 10000,
+        transactionDate: '2026-09-02',
+        occurredAt: occurredAt,
+        createdAt: occurredAt,
+      ),
+      FinanceTransaction(
+        uuid: 'overview-average-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 2000,
+        transactionDate: '2026-09-02',
+        occurredAt: occurredAt,
+        createdAt: occurredAt,
+      ),
+      for (var index = 0; index < 3; index++)
+        FinanceTransaction(
+          uuid: 'overview-average-income-$index',
+          type: FinanceTransactionType.income,
+          amountMinor: 5000,
+          transactionDate: '2026-09-02',
+          occurredAt: occurredAt,
+          createdAt: occurredAt,
+        ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: _month,
+          summary: FinanceSummary.fromTransactions(transactions),
+          transactions: transactions,
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    expect(
+      find.text('共 5 笔记录，支出/退款 2 笔，平均净支出 ¥40.00。'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('预算卡片直接编辑并保存，范围和备注保持不变', (tester) async {
     final db = await _seed(tester);
     await _pump(tester, FinanceBudgetScreen(initialMonth: _month),
