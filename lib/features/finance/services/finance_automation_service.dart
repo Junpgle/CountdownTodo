@@ -220,11 +220,37 @@ abstract final class FinanceAutomationService {
         if (reminder['withinWindow'] == true) reminders.add(reminder);
       }
     }
+    _resolveRecurringNotificationIdCollisions(reminders);
     reminders.sort(
       (left, right) =>
           (left['triggerAtMs'] as int).compareTo(right['triggerAtMs'] as int),
     );
     return reminders;
+  }
+
+  static void _resolveRecurringNotificationIdCollisions(
+    List<Map<String, dynamic>> reminders,
+  ) {
+    final assignmentOrder = [...reminders]
+      ..sort((left, right) {
+        final leftKey =
+            '${left['financeRuleUuid']}|${left['financePeriodKey']}';
+        final rightKey =
+            '${right['financeRuleUuid']}|${right['financePeriodKey']}';
+        return leftKey.compareTo(rightKey);
+      });
+    final assigned = <int>{};
+    for (final reminder in assignmentOrder) {
+      final hashedId = (reminder['notifId'] as num).toInt();
+      final startOffset = hashedId - recurringNotificationBaseId;
+      for (var probe = 0; probe < recurringNotificationRange; probe++) {
+        final candidate = recurringNotificationBaseId +
+            (startOffset + probe) % recurringNotificationRange;
+        if (!assigned.add(candidate)) continue;
+        reminder['notifId'] = candidate;
+        break;
+      }
+    }
   }
 
   static Map<String, dynamic> _buildReminder(

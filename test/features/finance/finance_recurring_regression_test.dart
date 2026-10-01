@@ -87,6 +87,33 @@ void main() {
       );
     });
 
+    test('哈希冲突的周期账单仍各自保留系统提醒', () async {
+      for (final uuid in ['rule-0', 'rule-242']) {
+        await FinanceStorage.saveRecurringRule(
+          FinanceRecurringRule(
+            uuid: uuid,
+            name: uuid,
+            amountMinor: 1000,
+            dayOfMonth: 2,
+            startDate: '2026-01-01',
+            reminderMinutes: 60,
+            autoGenerate: false,
+          ),
+        );
+      }
+
+      final reminders = await FinanceAutomationService.buildRecurringReminders(
+        now: DateTime(2026, 10, 1, 7),
+        limit: DateTime(2026, 10, 3),
+      );
+
+      expect(reminders, hasLength(2));
+      expect(
+        reminders.map((reminder) => reminder['notifId']).toSet(),
+        hasLength(2),
+      );
+    });
+
     test('发现已有周期账单后回填进度仍触发刷新和同步', () async {
       final rule = FinanceRecurringRule(
         uuid: 'repair-recurring-generation-marker',
