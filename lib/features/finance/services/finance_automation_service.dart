@@ -34,18 +34,7 @@ abstract final class FinanceAutomationService {
     FinanceRecurringRule rule,
     int year,
     int month,
-  ) {
-    if (month < 1 || month > 12) return null;
-    if (rule.frequency == FinanceRecurringFrequency.yearly &&
-        month != rule.monthOfYear) {
-      return null;
-    }
-    final lastDay = DateTime(year, month + 1, 0).day;
-    final day = rule.dayOfMonth.clamp(1, lastDay);
-    final due = DateTime(year, month, day, 9);
-    if (!_isWithinRule(rule, due)) return null;
-    return due;
-  }
+  ) => rule.dueDateFor(year, month);
 
   static String periodKeyFor(FinanceRecurringRule rule, DateTime dueAt) {
     return rule.frequency == FinanceRecurringFrequency.yearly
@@ -86,14 +75,15 @@ abstract final class FinanceAutomationService {
     final current = now ?? DateTime.now();
     final start = dateFromKey(rule.startDate);
     final result = <FinanceRecurringDue>[];
+    final lastPeriod = rule.effectiveLastGeneratedPeriod;
 
-    if (rule.lastGeneratedPeriod == null) {
+    if (lastPeriod == null) {
       final due = currentDueFor(rule, now: current);
       return due == null ? const [] : [due];
     }
 
     if (rule.frequency == FinanceRecurringFrequency.yearly) {
-      final lastYear = int.tryParse(rule.lastGeneratedPeriod!);
+      final lastYear = int.tryParse(lastPeriod);
       final firstYear = lastYear == null ? start.year : lastYear + 1;
       for (var year = firstYear; year <= current.year; year++) {
         final due = dueDateFor(rule, year, rule.monthOfYear);
@@ -109,9 +99,7 @@ abstract final class FinanceAutomationService {
     }
 
     var cursor = DateTime(start.year, start.month);
-    final lastPeriod = rule.lastGeneratedPeriod;
-    if (lastPeriod != null &&
-        RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(lastPeriod)) {
+    if (RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(lastPeriod)) {
       final parts = lastPeriod.split('-');
       cursor = DateTime(int.parse(parts[0]), int.parse(parts[1]) + 1);
     }
@@ -215,13 +203,28 @@ abstract final class FinanceAutomationService {
   }) async {
     final current = now ?? DateTime.now();
     final end = limit ?? current.add(const Duration(days: 7));
+    if (!end.isAfter(current)) return const [];
     final rules = await FinanceStorage.getRecurringRules(enabledOnly: true);
-    final dues = upcoming(rules: rules, now: current, limit: end);
-    return [
-      for (final due in dues)
-        if (due.rule.reminderMinutes > 0)
-          _buildReminder(due, current: current, limit: end),
-    ];
+    final reminders = <Map<String, dynamic>>[];
+    for (final rule in rules) {
+      if (rule.reminderMinutes <= 0) continue;
+      final lead = Duration(minutes: rule.reminderMinutes);
+      // A reminder can fire inside the window even if its bill falls later.
+      final dues = upcoming(
+        rules: [rule],
+        now: current.add(lead),
+        limit: end.add(lead),
+      );
+      for (final due in dues) {
+        final reminder = _buildReminder(due, current: current, limit: end);
+        if (reminder['withinWindow'] == true) reminders.add(reminder);
+      }
+    }
+    reminders.sort(
+      (left, right) =>
+          (left['triggerAtMs'] as int).compareTo(right['triggerAtMs'] as int),
+    );
+    return reminders;
   }
 
   static Map<String, dynamic> _buildReminder(
@@ -244,8 +247,7 @@ abstract final class FinanceAutomationService {
       'financePeriodKey': due.periodKey,
       'financeAutoGenerate': due.rule.autoGenerate,
       'financeDueAtMs': due.dueAt.toUtc().millisecondsSinceEpoch,
-      // 保留参数语义，调用方若扩展调度窗口可直接复用该构造器。
-      'withinWindow': due.dueAt.isAfter(current) && due.dueAt.isBefore(limit),
+      'withinWindow': triggerAt.isAfter(current) && triggerAt.isBefore(limit),
     };
   }
 
@@ -308,20 +310,6 @@ abstract final class FinanceAutomationService {
         // 系统通知不可用时保留下一次重试机会，但不影响记账流程。
       }
     }
-  }
-
-  static bool _isWithinRule(FinanceRecurringRule rule, DateTime date) {
-    final start = dateFromKey(rule.startDate);
-    if (date.isBefore(DateTime(start.year, start.month, start.day))) {
-      return false;
-    }
-    if (rule.endDate != null) {
-      final end = dateFromKey(rule.endDate!);
-      if (date.isAfter(DateTime(end.year, end.month, end.day, 23, 59, 59))) {
-        return false;
-      }
-    }
-    return true;
   }
 
   static String _formatAmount(int amountMinor) {

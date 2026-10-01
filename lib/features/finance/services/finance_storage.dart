@@ -1530,15 +1530,11 @@ abstract final class FinanceStorage {
       );
       if (existingRows.isNotEmpty) {
         final existing = FinanceRecurringRule.fromMap(existingRows.first);
-        // 生成标记是幂等状态，不属于编辑表单的可回退字段。编辑页或
-        // 并发请求拿到旧快照时，不能把已生成的较新周期覆盖掉。
-        final latestPeriod = _latestGeneratedPeriod(
-          existing.lastGeneratedPeriod,
-          rule.lastGeneratedPeriod,
-        );
-        if (latestPeriod != rule.lastGeneratedPeriod) {
-          rule.lastGeneratedPeriod = latestPeriod;
-        }
+        rule.lastGeneratedPeriod = existing.frequency != rule.frequency
+            ? rule.generationPeriodBefore(DateTime.now())
+            : _mergeRecurringGenerationPeriod(existing, rule);
+      } else {
+        rule.lastGeneratedPeriod = rule.effectiveLastGeneratedPeriod;
       }
       await txn.insert(
         'finance_recurring_rules',
@@ -1592,9 +1588,21 @@ abstract final class FinanceStorage {
       );
       if (rows.isEmpty) return false;
       final current = FinanceRecurringRule.fromMap(rows.first);
+      current.lastGeneratedPeriod = current.effectiveLastGeneratedPeriod;
+      final expectedDueAt = current.dueDateFor(dueAt.year, dueAt.month);
+      final expectedPeriod = current.frequency == FinanceRecurringFrequency.yearly
+          ? '${dueAt.year}'
+          : financeMonthKey(dueAt);
       if (current.isDeleted ||
           !current.isEnabled ||
-          current.lastGeneratedPeriod == periodKey) {
+          !current.autoGenerate ||
+          current.frequency != rule.frequency ||
+          expectedDueAt == null ||
+          !expectedDueAt.isAtSameMomentAs(dueAt) ||
+          periodKey != expectedPeriod ||
+          (current.lastGeneratedPeriod != null &&
+              _generatedPeriodOrder(current.lastGeneratedPeriod!) >=
+                  _generatedPeriodOrder(periodKey))) {
         return false;
       }
 
@@ -1681,6 +1689,23 @@ abstract final class FinanceStorage {
     return _generatedPeriodOrder(incoming) >= _generatedPeriodOrder(current)
         ? incoming
         : current;
+  }
+
+  static String? _mergeRecurringGenerationPeriod(
+    FinanceRecurringRule current,
+    FinanceRecurringRule incoming,
+  ) {
+    if (current.frequency != incoming.frequency) {
+      return incoming.effectiveLastGeneratedPeriod ??
+          incoming.generationPeriodBefore(
+            DateTime.fromMillisecondsSinceEpoch(incoming.updatedAt),
+          );
+    }
+    // Generation progress cannot be rolled back by a stale edit or backup.
+    return _latestGeneratedPeriod(
+      current.effectiveLastGeneratedPeriod,
+      incoming.effectiveLastGeneratedPeriod,
+    );
   }
 
   static int _generatedPeriodOrder(String value) {
@@ -2047,10 +2072,15 @@ abstract final class FinanceStorage {
         item.uuid,
       );
       if (existing == null) {
+        item.lastGeneratedPeriod = item.effectiveLastGeneratedPeriod;
         await db.insert('finance_recurring_rules', _localValues(item.toMap()));
         imported++;
       } else if (item.updatedAt >
           FinanceRecurringRule.fromMap(existing).updatedAt) {
+        item.lastGeneratedPeriod = _mergeRecurringGenerationPeriod(
+          FinanceRecurringRule.fromMap(existing),
+          item,
+        );
         await db.update(
           'finance_recurring_rules',
           _localValues(item.toMap()),
@@ -2819,6 +2849,7 @@ abstract final class FinanceStorage {
         item.uuid,
       );
       if (existing == null) {
+        item.lastGeneratedPeriod = item.effectiveLastGeneratedPeriod;
         await db.insert('finance_recurring_rules', _remoteValues(item.toMap()));
         changed++;
         continue;
@@ -2833,15 +2864,7 @@ abstract final class FinanceStorage {
           )) {
         continue;
       }
-      final latestPeriod = _latestGeneratedPeriod(
-        current.lastGeneratedPeriod,
-        item.lastGeneratedPeriod,
-      );
-      if (latestPeriod != item.lastGeneratedPeriod) {
-        // 服务端/旧设备返回的编辑快照可能带着较旧的运行时生成标记；
-        // 该标记只能向前保留，否则下一次调度会把同一周期再次记账。
-        item.lastGeneratedPeriod = latestPeriod;
-      }
+      item.lastGeneratedPeriod = _mergeRecurringGenerationPeriod(current, item);
       await db.update(
         'finance_recurring_rules',
         _remoteValues(item.toMap()),

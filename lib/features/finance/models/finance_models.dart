@@ -1919,7 +1919,60 @@ class FinanceRecurringRule {
        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
+  /// The local due time in a month, constrained by this rule's date range.
+  DateTime? dueDateFor(int year, int month) {
+    if (month < 1 || month > 12) return null;
+    if (frequency == FinanceRecurringFrequency.yearly && month != monthOfYear) {
+      return null;
+    }
+    final lastDay = DateTime(year, month + 1, 0).day;
+    final due = DateTime(year, month, dayOfMonth.clamp(1, lastDay), 9);
+    final start = dateFromKey(startDate);
+    if (due.isBefore(DateTime(start.year, start.month, start.day))) return null;
+    if (endDate != null) {
+      final end = dateFromKey(endDate!);
+      if (due.isAfter(DateTime(end.year, end.month, end.day, 23, 59, 59))) {
+        return null;
+      }
+    }
+    return due;
+  }
+
+  /// The last elapsed period in this schedule, used when changing frequency.
+  /// A due time which has already passed must not become a new backdated bill.
+  String generationPeriodBefore(DateTime at) {
+    final month = frequency == FinanceRecurringFrequency.yearly
+        ? monthOfYear
+        : at.month;
+    final lastDay = DateTime(at.year, month + 1, 0).day;
+    final due = DateTime(at.year, month, dayOfMonth.clamp(1, lastDay), 9);
+    if (frequency == FinanceRecurringFrequency.yearly) {
+      return '${at.isBefore(due) ? at.year - 1 : at.year}';
+    }
+    return financeMonthKey(
+      at.isBefore(due)
+          ? DateTime(at.year, at.month - 1)
+          : DateTime(at.year, at.month),
+    );
+  }
+
+  /// Older clients retained a monthly marker after switching to yearly (or
+  /// vice versa). Anchor those rows to their edit time instead of startDate.
+  String? get effectiveLastGeneratedPeriod {
+    final period = lastGeneratedPeriod;
+    if (period == null) return null;
+    final pattern = frequency == FinanceRecurringFrequency.yearly
+        ? r'^\d{4}$'
+        : r'^\d{4}-(0[1-9]|1[0-2])$';
+    return RegExp(pattern).hasMatch(period)
+        ? period
+        : generationPeriodBefore(
+            DateTime.fromMillisecondsSinceEpoch(updatedAt),
+          );
+  }
+
   void markAsChanged() {
+    lastGeneratedPeriod = effectiveLastGeneratedPeriod;
     version++;
     final now = DateTime.now().millisecondsSinceEpoch;
     updatedAt = now > updatedAt ? now : updatedAt + 1;

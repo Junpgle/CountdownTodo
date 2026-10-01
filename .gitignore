@@ -195,6 +195,7 @@ todo.md
 !/test/features/finance/finance_models_test.dart
 !/test/features/finance/finance_schema_test.dart
 !/test/features/finance/finance_consistency_test.dart
+!/test/features/finance/finance_recurring_regression_test.dart
 !/test/features/finance/finance_automation_test.dart
 !/test/features/finance/finance_catalog_ui_test.dart
 !/test/features/finance/finance_management_ui_test.dart
