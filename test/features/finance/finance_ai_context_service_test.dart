@@ -91,6 +91,54 @@ void main() {
     expect(year.to, DateTime(2027));
   });
 
+  test('AI记账上下文将未来账单从实际汇总中排除并标为待发生', () {
+    final pastAt = now.subtract(const Duration(hours: 1));
+    final futureAt = now.add(const Duration(hours: 1));
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'context-past-expense',
+        amountMinor: 4000,
+        transactionDate: dateKey(now),
+        occurredAt: pastAt.millisecondsSinceEpoch,
+        createdAt: pastAt.millisecondsSinceEpoch,
+        merchant: '已发生午餐',
+      ),
+      FinanceTransaction(
+        uuid: 'context-future-expense',
+        amountMinor: 9000,
+        transactionDate: dateKey(now),
+        occurredAt: futureAt.millisecondsSinceEpoch,
+        createdAt: now.millisecondsSinceEpoch,
+        merchant: '计划晚餐',
+      ),
+    ];
+    final asOfAt = now.millisecondsSinceEpoch;
+    final context = FinanceAiContextService.formatContext(
+      range: FinanceDateRange(
+        DateTime(now.year, now.month),
+        DateTime(now.year, now.month + 1),
+      ),
+      summary: FinanceSummary.fromTransactions(
+        transactions,
+        asOfAt: asOfAt,
+      ),
+      transactions: transactions,
+      categories: const [],
+      paymentMethods: const [],
+      budgets: const [],
+      budgetSummaries: const {},
+      asOfAt: asOfAt,
+    );
+
+    expect(context, contains('支出 ¥40.00'));
+    expect(context, isNot(contains('支出 ¥130.00')));
+    expect(
+      context,
+      contains('待发生 | [transactionId: context-future-expense]'),
+    );
+    expect(context, contains('已发生午餐'));
+  });
+
   test('动作协议覆盖查询、修改、删除和真实ID安全规则', () {
     final prompt =
         AiTodoContextBuilder.buildActionProtocolPrompt('查询本月账单并统计餐饮支出');

@@ -57,6 +57,11 @@ abstract final class FinanceAiContextService {
     '明细',
     '查询',
     '查看',
+    '看看',
+    '看一下',
+    '看下',
+    '帮我看',
+    '读取',
     '列出',
     '哪些',
     '排行',
@@ -119,6 +124,17 @@ abstract final class FinanceAiContextService {
     '前天',
     '上月',
     '上个月',
+    '这一个月',
+    '最近一个月',
+    '过去一个月',
+    '近一个月',
+    '一个月内',
+    '最近30天',
+    '最近三十天',
+    '过去30天',
+    '过去三十天',
+    '近30天',
+    '近三十天',
     '最近',
     '今年',
     '本年',
@@ -164,10 +180,11 @@ abstract final class FinanceAiContextService {
     final hasPeriod = _containsAny(text, _periodWords) || hasExplicitMonth;
     final followsFinanceConversation =
         !hasFinanceNoun &&
-        hasPeriod &&
-        _containsAny(text, _financeFollowUpWords) &&
         !_containsAny(text, _otherContextDomains) &&
-        _containsAny(conversationContext, _financeNouns);
+        _containsAny(conversationContext, _financeNouns) &&
+        (_containsAny(text, _financeFollowUpWords) ||
+            _containsAny(text, _queryWords) ||
+            _containsAny(text, _mutationWords));
     final asksAboutBareMonth =
         !hasFinanceNoun &&
         hasExplicitMonth &&
@@ -180,6 +197,7 @@ abstract final class FinanceAiContextService {
 
     final asksForData =
         _containsAny(text, _queryWords) ||
+        _containsAny(text, _financeFollowUpWords) ||
         (hasPeriod &&
             (_containsAny(text, _summaryNouns) ||
                 _containsAny(text, _financeFollowUpWords)));
@@ -217,6 +235,8 @@ abstract final class FinanceAiContextService {
   static Future<String> buildContext({
     required String userMessage,
     String conversationContext = '',
+    String previousUserMessage = '',
+    FinanceDateRange? dateRangeOverride,
     DateTime? now,
   }) async {
     final needsLedger = shouldInjectFor(
@@ -238,7 +258,13 @@ abstract final class FinanceAiContextService {
     if (!needsLedger) return catalog;
 
     final nowValue = now ?? DateTime.now();
-    final range = resolveDateRange(userMessage, now: nowValue);
+    final range =
+        dateRangeOverride ??
+        resolveDateRange(
+          _rangeQueryText(userMessage, previousUserMessage),
+          now: nowValue,
+        );
+    final asOfAt = nowValue.millisecondsSinceEpoch;
     final monthFrom = DateTime(range.from.year, range.from.month);
     final lastDay = range.to.subtract(const Duration(microseconds: 1));
     final monthTo = DateTime(lastDay.year, lastDay.month + 1);
@@ -269,20 +295,25 @@ abstract final class FinanceAiContextService {
       // question covers only one day/week or spans several different months.
       final budgetSummaries = {
         for (final month in budgets.map((item) => item.monthKey).toSet())
-          month: FinanceRepository.summarizeTransactions(
+          month: FinanceSummary.fromTransactions(
             monthTransactions.where(
               (item) => item.transactionDate.startsWith('$month-'),
             ),
+            asOfAt: asOfAt,
           ),
       };
-      final ledger = _formatContext(
+      final ledger = formatContext(
         range: range,
-        summary: FinanceRepository.summarizeTransactions(transactions),
+        summary: FinanceSummary.fromTransactions(
+          transactions,
+          asOfAt: asOfAt,
+        ),
         transactions: transactions,
         categories: catalogData.categories,
         paymentMethods: catalogData.paymentMethods,
         budgets: budgets,
         budgetSummaries: budgetSummaries,
+        asOfAt: asOfAt,
       );
       return [
         if (needsCatalog) catalog,
@@ -300,6 +331,8 @@ abstract final class FinanceAiContextService {
   static String? buildContextInjectionSummary({
     required String userMessage,
     String conversationContext = '',
+    String previousUserMessage = '',
+    FinanceDateRange? dateRangeOverride,
     DateTime? now,
   }) {
     final parts = <String>[];
@@ -307,7 +340,9 @@ abstract final class FinanceAiContextService {
       userMessage,
       conversationContext: conversationContext,
     )) {
-      parts.add('记账明细 ${resolveDateRange(userMessage, now: now).label}');
+      parts.add(
+        '记账明细 ${(dateRangeOverride ?? resolveDateRange(_rangeQueryText(userMessage, previousUserMessage), now: now)).label}',
+      );
     }
     if (shouldInjectCatalogFor(
       userMessage,
@@ -316,6 +351,22 @@ abstract final class FinanceAiContextService {
       parts.add('记账分类与付款方式');
     }
     return parts.isEmpty ? null : parts.join('、');
+  }
+
+  static String _rangeQueryText(
+    String userMessage,
+    String previousUserMessage,
+  ) {
+    bool hasDateScope(String text) =>
+        _containsAny(text, _periodWords) ||
+        _hasExplicitMonth(text) ||
+        _calendarDatePattern.hasMatch(text) ||
+        _numericYearMonthPattern.hasMatch(text);
+
+    if (hasDateScope(userMessage) || !hasDateScope(previousUserMessage)) {
+      return userMessage;
+    }
+    return previousUserMessage;
   }
 
   static Future<
@@ -372,6 +423,22 @@ abstract final class FinanceAiContextService {
       final from = _mondayOf(current);
       return FinanceDateRange(from, from.add(const Duration(days: 7)));
     }
+    if (_containsAny(text, [
+      '这一个月',
+      '最近一个月',
+      '过去一个月',
+      '近一个月',
+      '一个月内',
+      '最近30天',
+      '最近三十天',
+      '过去30天',
+      '过去三十天',
+      '近30天',
+      '近三十天',
+    ])) {
+      final from = current.subtract(const Duration(days: 29));
+      return FinanceDateRange(from, current.add(const Duration(days: 1)));
+    }
     final explicitMonth = _resolveExplicitMonthRange(text, current);
     if (explicitMonth != null) return explicitMonth;
     if (text.contains('上月') || text.contains('上个月')) {
@@ -396,7 +463,7 @@ abstract final class FinanceAiContextService {
     return FinanceDateRange(from, DateTime(current.year, current.month + 1));
   }
 
-  static String _formatContext({
+  static String formatContext({
     required FinanceDateRange range,
     required FinanceSummary summary,
     required List<FinanceTransaction> transactions,
@@ -404,6 +471,7 @@ abstract final class FinanceAiContextService {
     required List<FinancePaymentMethod> paymentMethods,
     required List<FinanceBudget> budgets,
     required Map<String, FinanceSummary> budgetSummaries,
+    required int asOfAt,
   }) {
     final categoryMap = {for (final item in categories) item.uuid: item};
     final paymentMap = {for (final item in paymentMethods) item.uuid: item};
@@ -424,12 +492,14 @@ abstract final class FinanceAiContextService {
     final lines = <String>[
       '【相关记账上下文｜只读快照】',
       '查询范围: ${range.label}（含首尾日期）',
+      '回答要求: 直接根据以下数据回答并给出收支结论；没有记录时明确说明，不要只回复“我先读取/查看数据”。',
       '汇总: 收入 ${formatFinanceAmount(summary.incomeMinor)} | '
           '支出 ${formatFinanceAmount(summary.expenseMinor)} | '
           '退款 ${formatFinanceAmount(summary.refundMinor)} | '
           '净支出 ${formatFinanceAmount(summary.netExpenseMinor)} | '
           '结余 ${formatFinanceAmount(summary.balanceMinor)} | '
           '共${summary.transactionCount}笔',
+      '以上汇总只统计截至 ${DateTime.fromMillisecondsSinceEpoch(asOfAt).toString()} 已发生的账单；未来账单在明细中标记为待发生。',
     ];
 
     final categoryTotals = <MapEntry<String, int>>[
@@ -488,8 +558,9 @@ abstract final class FinanceAiContextService {
         final note = transaction.note?.trim().isNotEmpty == true
             ? ' | 备注: ${_shorten(transaction.note!.trim(), 100)}'
             : '';
+        final status = transaction.balanceEventAt() > asOfAt ? '待发生 | ' : '';
         lines.add(
-          '- [transactionId: ${transaction.uuid}] ${transaction.transactionDate} | '
+          '- $status[transactionId: ${transaction.uuid}] ${transaction.transactionDate} | '
           '${transaction.type.label} $signed$category$merchant$payment$note',
         );
       }
