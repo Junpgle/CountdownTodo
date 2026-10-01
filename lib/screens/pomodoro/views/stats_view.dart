@@ -11,6 +11,21 @@ import '../../../utils/page_transitions.dart';
 import '../../../utils/todo_recurrence_picker.dart';
 import '../../../widgets/optional_liquid_glass_surface.dart';
 
+class _MonthlyPomodoroSummary {
+  final int month;
+  int focusSeconds = 0;
+  int sessionCount = 0;
+  int completedCount = 0;
+
+  _MonthlyPomodoroSummary(this.month);
+
+  void add(PomodoroSessionSummary session) {
+    focusSeconds += session.effectiveDuration;
+    sessionCount++;
+    if (session.isCompleted) completedCount++;
+  }
+}
+
 class PomodoroStats extends StatefulWidget {
   final String username;
   final bool isCompact;
@@ -33,10 +48,16 @@ class PomodoroStatsState extends State<PomodoroStats> {
   List<PomodoroTag> _tags = [];
   List<TodoItem> _todos = [];
   List<TodoGroup> _todoGroups = [];
+  List<_MonthlyPomodoroSummary> _yearlyMonthlySummaries = [];
+  Map<int, int> _yearlyFocusSeconds = {};
+  Map<String, int> _yearlyTagSeconds = {};
+  int _yearlyTotalSeconds = 0;
+  int _yearlyCompletedCount = 0;
   bool _loading = true;
   bool _syncing = false;
   bool _showDimensionPicker = false;
   List<PomodoroSession> _chartSessions = [];
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -104,40 +125,104 @@ class PomodoroStatsState extends State<PomodoroStats> {
 
   Future<void> _loadLocal() async {
     if (!mounted) return;
+    final loadGeneration = ++_loadGeneration;
+    final dimension = _dimension;
+    final selected = _selected;
+    final detailRange = _getRange();
+    final chartRange = _getChartRange();
+    final isYearly = dimension == 3;
     setState(() => _loading = true);
 
     final results = await Future.wait([
       PomodoroService.getTags(),
       StorageService.getTodos(widget.username),
       StorageService.getTodoGroups(widget.username),
-      PomodoroService.getSessionsInRange(
-          _getChartRange().start, _getChartRange().end),
+      isYearly
+          ? PomodoroService.getSessionSummariesInRange(
+              chartRange.start,
+              chartRange.end,
+              tagsFrom: detailRange.start,
+              tagsTo: detailRange.end,
+            )
+          : PomodoroService.getSessionsInRange(
+              chartRange.start, chartRange.end),
     ]);
 
     // 🚀 核心优化：等待 300ms 让进入页面的过渡动画彻底完成
     // 避免在此期间进行大量 CPU 计算导致掉帧
     await Future.delayed(const Duration(milliseconds: 300));
 
-    if (!mounted) return;
+    if (!mounted || loadGeneration != _loadGeneration) return;
 
     final tags = results[0] as List<PomodoroTag>;
     final allTodos = results[1] as List<TodoItem>;
     final groups = results[2] as List<TodoGroup>;
-    final allSessions = results[3] as List<PomodoroSession>;
+    List<PomodoroSession> chartSessions = [];
+    List<PomodoroSession> sessions = [];
+    List<_MonthlyPomodoroSummary> monthlySummaries = [];
+    Map<int, int> yearlyFocusSeconds = {};
+    Map<String, int> yearlyTagSeconds = {};
+    var yearlyTotalSeconds = 0;
+    var yearlyCompletedCount = 0;
 
-    // Filter for current detail view
-    final detailRange = _getRange();
-    final sessions = allSessions.where((s) {
-      return s.startTime >= detailRange.start.millisecondsSinceEpoch &&
-          s.startTime < detailRange.end.millisecondsSinceEpoch;
-    }).toList();
+    if (isYearly) {
+      monthlySummaries =
+          List.generate(12, (index) => _MonthlyPomodoroSummary(index + 1));
+      final summaries = results[3] as List<PomodoroSessionSummary>;
+      final detailStartMs = detailRange.start.millisecondsSinceEpoch;
+      final detailEndMs = detailRange.end.millisecondsSinceEpoch;
+
+      for (final summary in summaries) {
+        final localStart =
+            DateTime.fromMillisecondsSinceEpoch(summary.startTime, isUtc: true)
+                .toLocal();
+        yearlyFocusSeconds.update(
+          localStart.year,
+          (seconds) => seconds + summary.effectiveDuration,
+          ifAbsent: () => summary.effectiveDuration,
+        );
+
+        if (summary.startTime < detailStartMs ||
+            summary.startTime >= detailEndMs ||
+            localStart.year != selected.year) {
+          continue;
+        }
+
+        yearlyTotalSeconds += summary.effectiveDuration;
+        if (summary.isCompleted) yearlyCompletedCount++;
+        monthlySummaries[localStart.month - 1].add(summary);
+
+        final tagUuids = summary.tagUuids.isEmpty
+            ? const ['__none__']
+            : summary.tagUuids;
+        for (final uuid in tagUuids) {
+          yearlyTagSeconds.update(
+            uuid,
+            (seconds) => seconds + summary.effectiveDuration,
+            ifAbsent: () => summary.effectiveDuration,
+          );
+        }
+      }
+    } else {
+      final allSessions = results[3] as List<PomodoroSession>;
+      chartSessions = allSessions;
+      sessions = allSessions.where((session) {
+        return session.startTime >= detailRange.start.millisecondsSinceEpoch &&
+            session.startTime < detailRange.end.millisecondsSinceEpoch;
+      }).toList();
+    }
 
     setState(() {
       _tags = tags;
       _todos = allTodos.where((t) => !t.isDeleted).toList();
       _todoGroups = groups.where((g) => !g.isDeleted).toList();
-      _chartSessions = allSessions;
+      _chartSessions = chartSessions;
       _sessions = sessions;
+      _yearlyMonthlySummaries = monthlySummaries;
+      _yearlyFocusSeconds = yearlyFocusSeconds;
+      _yearlyTagSeconds = yearlyTagSeconds;
+      _yearlyTotalSeconds = yearlyTotalSeconds;
+      _yearlyCompletedCount = yearlyCompletedCount;
       _loading = false;
     });
   }
@@ -238,9 +323,15 @@ class PomodoroStatsState extends State<PomodoroStats> {
             defaultTargetPlatform == TargetPlatform.macOS);
     final bool showDesktopActions = isDesktop || !widget.isCompact;
 
-    final totalSecs = PomodoroService.totalFocusSeconds(_sessions);
-    final byTag = PomodoroService.focusByTag(_sessions);
-    final completedCount = _sessions.where((s) => s.isCompleted).length;
+    final totalSecs = _dimension == 3
+        ? _yearlyTotalSeconds
+        : PomodoroService.totalFocusSeconds(_sessions);
+    final byTag = _dimension == 3
+        ? _yearlyTagSeconds
+        : PomodoroService.focusByTag(_sessions);
+    final completedCount = _dimension == 3
+        ? _yearlyCompletedCount
+        : _sessions.where((s) => s.isCompleted).length;
 
     return MediaQuery.removePadding(
       context: context,
@@ -379,9 +470,9 @@ class PomodoroStatsState extends State<PomodoroStats> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('详细记录',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text(_dimension == 3 ? '逐月概览' : '详细记录',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold)),
                 if (_syncing)
                   const SizedBox(
                       width: 16,
@@ -396,7 +487,10 @@ class PomodoroStatsState extends State<PomodoroStats> {
               ],
             ),
             const SizedBox(height: 12),
-            ..._buildSessionList(),
+            if (_dimension == 3)
+              ..._buildYearlyOverview()
+            else
+              ..._buildSessionList(),
 
             if (showDesktopActions) ...[
               const SizedBox(height: 40),
@@ -453,11 +547,13 @@ class PomodoroStatsState extends State<PomodoroStats> {
         isSelected = start.year == _selected.year;
       }
 
-      final periodSessions = _chartSessions.where((s) =>
-          s.startTime >= start.millisecondsSinceEpoch &&
-          s.startTime < end.millisecondsSinceEpoch);
-      final focusSecs =
-          periodSessions.fold(0, (sum, s) => sum + s.effectiveDuration);
+      final focusSecs = _dimension == 3
+          ? (_yearlyFocusSeconds[start.year] ?? 0)
+          : _chartSessions
+              .where((s) =>
+                  s.startTime >= start.millisecondsSinceEpoch &&
+                  s.startTime < end.millisecondsSinceEpoch)
+              .fold(0, (sum, s) => sum + s.effectiveDuration);
       dataPoints.add(ChartData(label, focusSecs, isSelected, start));
     }
 
@@ -639,6 +735,109 @@ class PomodoroStatsState extends State<PomodoroStats> {
       }
     }
     return widgets;
+  }
+
+  List<Widget> _buildYearlyOverview() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final maxFocusSeconds = _yearlyMonthlySummaries.fold<int>(
+      0,
+      (maximum, summary) =>
+          summary.focusSeconds > maximum ? summary.focusSeconds : maximum,
+    );
+
+    return [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text(
+          '按月份查看专注时长和次数，点击有记录的月份可展开明细。',
+          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+        ),
+      ),
+      ..._yearlyMonthlySummaries.map((summary) {
+        final ratio = maxFocusSeconds > 0
+            ? summary.focusSeconds / maxFocusSeconds
+            : 0.0;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Material(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.32),
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: summary.sessionCount == 0
+                  ? null
+                  : () => _openMonth(summary.month),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(11),
+                          ),
+                          child: Text(
+                            '${summary.month}月',
+                            style: TextStyle(
+                              color: colorScheme.primary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            '${summary.sessionCount} 次专注 · 完成 ${summary.completedCount} 次',
+                            style: TextStyle(
+                              color: colorScheme.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          PomodoroService.formatDuration(summary.focusSeconds),
+                          style: TextStyle(
+                            color: colorScheme.onSurface,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: ratio,
+                        minHeight: 4,
+                        backgroundColor:
+                            colorScheme.primary.withValues(alpha: 0.1),
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }),
+    ];
+  }
+
+  void _openMonth(int month) {
+    setState(() {
+      _dimension = 2;
+      _selected = DateTime(_selected.year, month, 1);
+    });
+    _loadLocal();
   }
 
   Widget _buildSessionCard(PomodoroSession s, {required bool showDate}) {

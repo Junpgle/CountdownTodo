@@ -382,6 +382,64 @@ class PomodoroRecord {
   }
 }
 
+/// Lightweight fields used to build long-range statistics without decoding
+/// every historical record into a full [PomodoroRecord].
+class PomodoroSessionSummary {
+  final int startTime;
+  final int effectiveDuration;
+  final bool isCompleted;
+  final List<String> tagUuids;
+
+  const PomodoroSessionSummary({
+    required this.startTime,
+    required this.effectiveDuration,
+    required this.isCompleted,
+    required this.tagUuids,
+  });
+
+  factory PomodoroSessionSummary.fromDatabaseMap(
+    Map<String, dynamic> values, {
+    bool includeTagUuids = true,
+  }) {
+    final rawTags = values['tag_uuids'];
+    List<String> tagUuids = const [];
+    if (!includeTagUuids) {
+      tagUuids = const [];
+    } else if (rawTags is List) {
+      tagUuids = rawTags.map((value) => value.toString()).toList();
+    } else if (rawTags is String && rawTags.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawTags);
+        if (decoded is List) {
+          tagUuids = decoded.map((value) => value.toString()).toList();
+        }
+      } catch (_) {}
+    }
+
+    final status = values['status']?.toString();
+    final actualDuration =
+        JsonValueParser.toNullableInt(values['actual_duration']);
+    return PomodoroSessionSummary(
+      startTime: JsonValueParser.toInt(values['start_time'], fallback: 0),
+      effectiveDuration: actualDuration ??
+          JsonValueParser.toInt(values['planned_duration'], fallback: 25 * 60),
+      isCompleted: status != 'interrupted' && status != 'switched',
+      tagUuids: tagUuids,
+    );
+  }
+
+  factory PomodoroSessionSummary.fromRecord(
+    PomodoroRecord record, {
+    bool includeTagUuids = true,
+  }) =>
+      PomodoroSessionSummary(
+        startTime: record.startTime,
+        effectiveDuration: record.effectiveDuration,
+        isCompleted: record.isCompleted,
+        tagUuids: includeTagUuids ? record.tagUuids : const [],
+      );
+}
+
 // ── 向后兼容别名 ──────────────────────────────────────────
 typedef PomodoroSession = PomodoroRecord;
 
@@ -1154,6 +1212,67 @@ class PomodoroService {
     return all
         .where((r) => r.startTime >= fromMs && r.startTime < toMs)
         .toList();
+  }
+
+  /// 按半开时间范围读取专注统计所需的轻量字段。
+  /// 年视图只显示汇总，不需要解码备注、暂停区间等完整记录内容。
+  static Future<List<PomodoroSessionSummary>> getSessionSummariesInRange(
+    DateTime from,
+    DateTime to, {
+    DateTime? tagsFrom,
+    DateTime? tagsTo,
+  }) async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final maps = await db.query(
+        'pomodoro_records',
+        columns: const [
+          'start_time',
+          'actual_duration',
+          'planned_duration',
+          'status',
+          'tag_uuids',
+        ],
+        where: 'is_deleted = 0 AND start_time >= ? AND start_time < ?',
+        whereArgs: [from.millisecondsSinceEpoch, to.millisecondsSinceEpoch],
+      );
+      if (maps.isNotEmpty) {
+        final tagsFromMs = tagsFrom?.millisecondsSinceEpoch;
+        final tagsToMs = tagsTo?.millisecondsSinceEpoch;
+        return maps.map((values) {
+          final startTime =
+              JsonValueParser.toInt(values['start_time'], fallback: 0);
+          final includeTagUuids = tagsFromMs == null ||
+              tagsToMs == null ||
+              (startTime >= tagsFromMs && startTime < tagsToMs);
+          return PomodoroSessionSummary.fromDatabaseMap(
+            values,
+            includeTagUuids: includeTagUuids,
+          );
+        }).toList();
+      }
+
+      final activeCount = Sqflite.firstIntValue(await db.rawQuery(
+            'SELECT COUNT(*) FROM pomodoro_records WHERE is_deleted = 0',
+          )) ??
+          0;
+      if (activeCount > 0) return const [];
+    } catch (_) {
+      // 保留旧版偏好设置数据和不支持 SQL 的平台的兼容路径。
+    }
+
+    final records = await getRecordsInRange(from, to);
+    final tagsFromMs = tagsFrom?.millisecondsSinceEpoch;
+    final tagsToMs = tagsTo?.millisecondsSinceEpoch;
+    return records.map((record) {
+      final includeTagUuids = tagsFromMs == null ||
+          tagsToMs == null ||
+          (record.startTime >= tagsFromMs && record.startTime < tagsToMs);
+      return PomodoroSessionSummary.fromRecord(
+        record,
+        includeTagUuids: includeTagUuids,
+      );
+    }).toList();
   }
 
   // ── 统计工具 ─────────────────────────────────────────────
