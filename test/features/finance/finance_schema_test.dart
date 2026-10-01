@@ -157,7 +157,7 @@ void main() {
         );
       });
 
-      test('$source 拒绝负数周期、模板和贷款金额', () async {
+      test('$source 拒绝负数周期模板贷款金额和超范围利率', () async {
         final recurringRule = FinanceRecurringRule(
           uuid: 'negative-$source-recurring-rule',
           name: '负数周期账单',
@@ -177,6 +177,16 @@ void main() {
           startDate: '2026-09-01',
           repaymentDay: 1,
         );
+        final outOfRangeRateLoan = FinanceLoan(
+          uuid: 'out-of-range-$source-loan-rate',
+          name: '超范围利率贷款',
+          principalMinor: 10000,
+          annualInterestRateBps:
+              FinanceLoanCalculator.maxAnnualInterestRateBps + 1,
+          termMonths: 1,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
         final installment = FinanceLoanInstallment(
           uuid: 'negative-$source-installment',
           loanUuid: loan.uuid,
@@ -190,13 +200,13 @@ void main() {
         final bundle = {
           'recurring_rules': [recurringRule.toMap()],
           'templates': [template.toMap()],
-          'loans': [loan.toMap()],
+          'loans': [loan.toMap(), outOfRangeRateLoan.toMap()],
           'loan_installments': [installment.toMap()],
         };
 
         if (source == 'backup') {
           final result = await FinanceStorage.importBundle(bundle);
-          expect(result['skipped'], 4);
+          expect(result['skipped'], 5);
         } else {
           expect(await FinanceStorage.mergeRemoteBundle(bundle), 0);
         }

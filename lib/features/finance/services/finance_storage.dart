@@ -2889,7 +2889,8 @@ abstract final class FinanceStorage {
         map,
         'principal_minor',
         'principalMinor',
-      )) {
+      ) ||
+          !_hasSafeRawLoanInterestRate(map)) {
         skipped++;
         continue;
       }
@@ -3049,7 +3050,8 @@ abstract final class FinanceStorage {
             map,
             'principal_minor',
             'principalMinor',
-          ),
+          ) &&
+              _hasSafeRawLoanInterestRate(map),
         )
         .map(FinanceLoan.fromMap)
         .where(_isValidLoan)
@@ -3962,6 +3964,29 @@ abstract final class FinanceStorage {
     String camelCaseKey,
   ) =>
       _isSafeRawFinanceAmount(map[snakeCaseKey] ?? map[camelCaseKey]);
+
+  static bool _hasSafeRawLoanInterestRate(Map<String, dynamic> map) {
+    final value =
+        map['annual_interest_rate_bps'] ?? map['annualInterestRateBps'];
+    if (value == null) return true;
+    if (value is int) {
+      return value >= 0 &&
+          value <= FinanceLoanCalculator.maxAnnualInterestRateBps;
+    }
+    if (value is num) {
+      return value.isFinite &&
+          value >= 0 &&
+          value <= FinanceLoanCalculator.maxAnnualInterestRateBps &&
+          value == value.roundToDouble();
+    }
+    if (value is String) {
+      final parsed = BigInt.tryParse(value.trim());
+      return parsed != null &&
+          parsed >= BigInt.zero &&
+          parsed <= BigInt.from(FinanceLoanCalculator.maxAnnualInterestRateBps);
+    }
+    return false;
+  }
 
   static bool _hasSafeRawLoanInstallmentAmounts(Map<String, dynamic> map) =>
       _hasSafeRawFinanceAmount(map, 'payment_minor', 'paymentMinor') &&
