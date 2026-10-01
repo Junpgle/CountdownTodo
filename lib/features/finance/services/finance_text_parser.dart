@@ -818,6 +818,16 @@ abstract final class FinanceTextParser {
     if (RegExp(r'^\s*(?:年|月|日|号|点|时|分)').hasMatch(after)) {
       return false;
     }
+    // Unlabelled number guessing must not promote product counts or
+    // measurements (for example "买了2个苹果") into standalone bills.
+    if (RegExp(
+      r'^\s*(?:个|件|只|张|份|杯|瓶|盒|袋|斤|公斤|千克|克|毫升|升|米|公里|'
+      r'站|层|次|名|人|位|套|本|包|台|部|辆|双|片|颗|粒|枚|条|秒|分钟|小时|天|岁|'
+      r'kg|g|ml|l)(?![A-Za-z])',
+      caseSensitive: false,
+    ).hasMatch(after)) {
+      return false;
+    }
     if (RegExp(r'(?:年|月|日|号)\s*$').hasMatch(before)) return false;
     if (RegExp(r'[-/.]\s*$').hasMatch(before) ||
         RegExp(r'^\s*[-/.]').hasMatch(after)) {

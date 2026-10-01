@@ -1,5 +1,6 @@
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/services/finance_repository.dart';
+import 'package:countdown_todo/features/finance/services/finance_text_parser.dart';
 import 'package:countdown_todo/services/storage/app_settings_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -132,6 +133,15 @@ void main() {
         0,
       );
     });
+  });
+
+  test('自然语言快速记账不会把商品数量拆成金额', () {
+    final drafts = FinanceTextParser.parseQuickEntries(
+      '买了2个苹果，共20元；买了3个橙子，共30元',
+      now: DateTime(2026, 10, 2),
+    );
+
+    expect(drafts.map((draft) => draft.amountMinor).toList(), [2000, 3000]);
   });
 
   test('分期和贷款本金拒绝超出跨平台安全范围的金额', () {
