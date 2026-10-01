@@ -310,10 +310,11 @@ abstract final class AiUsageCostService {
   static const _microsPerFen = 10000;
   static const _tokensPerMillion = 1000000;
 
-  // Prices are stored as micro-yuan per million tokens. The Zhipu and
-  // DeepSeek entries below were checked against their official domestic
-  // pricing pages on 2026-08-31. NIM is deliberately not included: NVIDIA's
-  // hosted models do not have one universal public per-token price.
+  // Prices are stored as micro-yuan per million tokens. The Zhipu entries
+  // below were checked against their official domestic pricing pages on
+  // 2026-08-31; DeepSeek V4.1 Flash prices use the official rates effective
+  // 2026-09-10. NIM is deliberately not included: NVIDIA's hosted models do
+  // not have one universal public per-token price.
   // MiMo V2.6 rates are sourced from the official model pages:
   // https://mimo.mi.com/models/zh-CN/mimo-v2.6-flash and
   // https://mimo.mi.com/models/zh-CN/mimo-v2.6-pro.
@@ -543,12 +544,24 @@ abstract final class AiUsageCostService {
     AiUsagePricing(
       provider: 'deepseek',
       model: 'deepseek-v4-flash',
-      cachedInputMicrosPerMillion: 50000,
-      inputMicrosPerMillion: 1500000,
-      outputMicrosPerMillion: 4500000,
-      peakCachedInputMicrosPerMillion: 100000,
-      peakInputMicrosPerMillion: 3000000,
-      peakOutputMicrosPerMillion: 9000000,
+      cachedInputMicrosPerMillion: 20000,
+      inputMicrosPerMillion: 1000000,
+      outputMicrosPerMillion: 4000000,
+      peakCachedInputMicrosPerMillion: 40000,
+      peakInputMicrosPerMillion: 2000000,
+      peakOutputMicrosPerMillion: 8000000,
+      imageTokensIncluded: true,
+    ),
+    AiUsagePricing(
+      provider: 'deepseek',
+      model: 'deepseek-flash',
+      cachedInputMicrosPerMillion: 20000,
+      inputMicrosPerMillion: 1000000,
+      outputMicrosPerMillion: 4000000,
+      peakCachedInputMicrosPerMillion: 40000,
+      peakInputMicrosPerMillion: 2000000,
+      peakOutputMicrosPerMillion: 8000000,
+      imageTokensIncluded: true,
     ),
     AiUsagePricing(
       provider: 'deepseek',
@@ -563,12 +576,12 @@ abstract final class AiUsageCostService {
     AiUsagePricing(
       provider: 'deepseek',
       model: 'deepseek-v4-flash-vision-exp',
-      cachedInputMicrosPerMillion: 50000,
-      inputMicrosPerMillion: 1500000,
-      outputMicrosPerMillion: 4500000,
-      peakCachedInputMicrosPerMillion: 100000,
-      peakInputMicrosPerMillion: 3000000,
-      peakOutputMicrosPerMillion: 9000000,
+      cachedInputMicrosPerMillion: 20000,
+      inputMicrosPerMillion: 1000000,
+      outputMicrosPerMillion: 4000000,
+      peakCachedInputMicrosPerMillion: 40000,
+      peakInputMicrosPerMillion: 2000000,
+      peakOutputMicrosPerMillion: 8000000,
       imageTokensIncluded: true,
     ),
   ];
@@ -603,7 +616,7 @@ abstract final class AiUsageCostService {
           .toList();
       return (
         autoLedger: json['auto_ledger'] != false,
-        prices: _withBuiltInPricing(values),
+        prices: _withBuiltInPricing(_settingsOverrides(values)),
       );
     } catch (_) {
       return (autoLedger: true, prices: _withBuiltInPricing(const []));
@@ -622,6 +635,40 @@ abstract final class AiUsageCostService {
     values.sort((a, b) => a.id.compareTo(b.id));
     return values;
   }
+  static List<AiUsagePricing> _settingsOverrides(
+    List<AiUsagePricing> prices,
+  ) {
+    return prices.where((pricing) {
+      final builtIn = _builtInPricing
+          .where((item) => item.id == pricing.id)
+          .firstOrNull;
+      if (builtIn == null) return true;
+      if (jsonEncode(pricing.toJson()) == jsonEncode(builtIn.toJson())) {
+        return false;
+      }
+      return !_isLegacyDeepSeekFlashDefault(pricing);
+    }).toList();
+  }
+
+  static bool _isLegacyDeepSeekFlashDefault(AiUsagePricing pricing) {
+    final isVisionAlias = pricing.model == 'deepseek-v4-flash-vision-exp';
+    if (pricing.provider != 'deepseek' ||
+        (!isVisionAlias && pricing.model != 'deepseek-v4-flash')) {
+      return false;
+    }
+    return pricing.cachedInputMicrosPerMillion == 50000 &&
+        pricing.inputMicrosPerMillion == 1500000 &&
+        pricing.outputMicrosPerMillion == 4500000 &&
+        pricing.peakCachedInputMicrosPerMillion == 100000 &&
+        pricing.peakInputMicrosPerMillion == 3000000 &&
+        pricing.peakOutputMicrosPerMillion == 9000000 &&
+        pricing.imageMicrosPerImage == 0 &&
+        pricing.audioMicrosPerHour == 0 &&
+        pricing.imageTokensIncluded == isVisionAlias &&
+        !pricing.isFree &&
+        pricing.tiers.isEmpty;
+  }
+
 
   static bool isBuiltInPricing(AiUsagePricing pricing) =>
       _builtInPricing.any((item) => item.id == pricing.id);
@@ -630,12 +677,13 @@ abstract final class AiUsageCostService {
     required bool autoLedger,
     required List<AiUsagePricing> prices,
   }) async {
+    final overrides = _settingsOverrides(prices);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       await _settingsKey(),
       jsonEncode({
         'auto_ledger': autoLedger,
-        'prices': prices.map((item) => item.toJson()).toList(),
+        'prices': overrides.map((item) => item.toJson()).toList(),
       }),
     );
   }

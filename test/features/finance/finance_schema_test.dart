@@ -1,6 +1,8 @@
 @TestOn('vm')
 library;
 
+import 'dart:convert';
+
 import 'package:countdown_todo/features/finance/services/ai_usage_cost_service.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/features/finance/services/finance_sync_service.dart';
@@ -1725,6 +1727,79 @@ void main() {
     expect(await FinanceStorage.getInstallmentGroup(groupUuid), hasLength(2));
   });
 
+  test('旧内置Flash价格缓存迁移到新价且设置只保留用户覆盖', () async {
+    const oldFlashPrice = AiUsagePricing(
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash',
+      cachedInputMicrosPerMillion: 50000,
+      inputMicrosPerMillion: 1500000,
+      outputMicrosPerMillion: 4500000,
+      peakCachedInputMicrosPerMillion: 100000,
+      peakInputMicrosPerMillion: 3000000,
+      peakOutputMicrosPerMillion: 9000000,
+    );
+    const oldVisionPrice = AiUsagePricing(
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash-vision-exp',
+      cachedInputMicrosPerMillion: 50000,
+      inputMicrosPerMillion: 1500000,
+      outputMicrosPerMillion: 4500000,
+      peakCachedInputMicrosPerMillion: 100000,
+      peakInputMicrosPerMillion: 3000000,
+      peakOutputMicrosPerMillion: 9000000,
+      imageTokensIncluded: true,
+    );
+    const settingsKey = 'ai_usage_cost_settings_deepseek-pricing-migration';
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'deepseek-pricing-migration',
+      settingsKey: jsonEncode({
+        'auto_ledger': true,
+        'prices': [oldFlashPrice.toJson(), oldVisionPrice.toJson()],
+      }),
+    });
+
+    var pricing = await AiUsageCostService.getPricing();
+    for (final model in <String>[
+      'deepseek-v4-flash',
+      'deepseek-v4-flash-vision-exp',
+    ]) {
+      final item = pricing.firstWhere(
+        (value) => value.provider == 'deepseek' && value.model == model,
+      );
+      expect(item.cachedInputMicrosPerMillion, 20000);
+      expect(item.inputMicrosPerMillion, 1000000);
+      expect(item.outputMicrosPerMillion, 4000000);
+      expect(item.peakCachedInputMicrosPerMillion, 40000);
+      expect(item.peakInputMicrosPerMillion, 2000000);
+      expect(item.peakOutputMicrosPerMillion, 8000000);
+      expect(item.imageTokensIncluded, isTrue);
+    }
+
+    await AiUsageCostService.setAutoLedgerEnabled(false);
+    final preferences = await SharedPreferences.getInstance();
+    var storedSettings =
+        jsonDecode(preferences.getString(settingsKey)!) as Map<String, dynamic>;
+    expect(storedSettings['prices'], isEmpty);
+
+    await AiUsageCostService.savePricing(
+      const AiUsagePricing(
+        provider: 'deepseek',
+        model: 'deepseek-v4-flash',
+        inputMicrosPerMillion: 123456,
+      ),
+    );
+    pricing = await AiUsageCostService.getPricing();
+    expect(
+      pricing
+          .firstWhere((item) => item.id == 'deepseek::deepseek-v4-flash')
+          .inputMicrosPerMillion,
+      123456,
+    );
+    storedSettings =
+        jsonDecode(preferences.getString(settingsKey)!) as Map<String, dynamic>;
+    expect(storedSettings['prices'], hasLength(1));
+  });
+
   test('priced AI usage is aggregated into one personal finance transaction',
       () async {
     SharedPreferences.setMockInitialValues({
@@ -2035,9 +2110,62 @@ void main() {
     expect(
         records.map((item) => item.costMicros),
         containsAll(<int?>[
-          1370000,
-          2740000,
+          1008000,
+          2016000,
         ]));
+  });
+
+  test('DeepSeek V4.1 Flash IDs use current rates and include image tokens',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'deepseek-v41-flash-cost-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+
+    final pricing = await AiUsageCostService.getPricing();
+    for (final model in <String>[
+      'deepseek-flash',
+      'deepseek-v4-flash',
+      'deepseek-v4-flash-vision-exp',
+    ]) {
+      final modelPricing = pricing.firstWhere(
+        (item) => item.provider == 'deepseek' && item.model == model,
+      );
+      expect(modelPricing.cachedInputMicrosPerMillion, 20000);
+      expect(modelPricing.inputMicrosPerMillion, 1000000);
+      expect(modelPricing.outputMicrosPerMillion, 4000000);
+      expect(modelPricing.peakCachedInputMicrosPerMillion, 40000);
+      expect(modelPricing.peakInputMicrosPerMillion, 2000000);
+      expect(modelPricing.peakOutputMicrosPerMillion, 8000000);
+      expect(modelPricing.imageTokensIncluded, isTrue);
+
+      await AiUsageCostService.recordUsage(
+        provider: 'deepseek',
+        model: model,
+        operation: 'vision_todo',
+        promptTokens: 1000000,
+        completionTokens: 100000,
+        totalTokens: 1100000,
+        cachedPromptTokens: 400000,
+        imageTokens: 50000,
+        imageCount: 1,
+        now: DateTime.utc(2026, 8, 31, 0),
+      );
+    }
+
+    final records = await AiUsageCostService.getRecords();
+    expect(records, hasLength(3));
+    expect(records.every((item) => item.isPriced), isTrue);
+    expect(records.map((item) => item.costMicros), everyElement(1008000));
   });
 
   test('free provider models are priced at zero when usage is available',
