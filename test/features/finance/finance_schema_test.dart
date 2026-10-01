@@ -1978,6 +1978,40 @@ void main() {
     expect(records.single.isPriced, isTrue);
   });
 
+  test('MiMo token-priced audio usage keeps token pricing when seconds exist',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'mimo-audio-token-cost-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+
+    await AiUsageCostService.recordUsage(
+      provider: 'mimo',
+      model: 'mimo-v2.5',
+      operation: 'audio_chat',
+      promptTokens: 10000,
+      completionTokens: 2000,
+      totalTokens: 12000,
+      cachedPromptTokens: 8000,
+      audioTokens: 100,
+      audioSeconds: 4,
+      now: DateTime(2026, 8, 30, 10),
+    );
+
+    final record = (await AiUsageCostService.getRecords()).single;
+    expect(record.isPriced, isTrue);
+    expect(record.costMicros, 6160);
+  });
+
   test('Zhipu pricing applies prompt and completion token tiers', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'zhipu-tier-cost-test',
