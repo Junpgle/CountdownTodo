@@ -1799,6 +1799,47 @@ class FinanceBudget {
 
   bool get isOverall => categoryUuid == null && paymentMethodUuid == null;
 
+  /// Parent budgets already contain their child scopes in a combined total.
+  static List<FinanceBudget> nonOverlappingCategories(
+    Iterable<FinanceBudget> budgets,
+    Iterable<FinanceCategory> categories,
+  ) {
+    final categoryMap = {
+      for (final category in categories) category.uuid: category,
+    };
+    final scopes = <String, FinanceBudget>{};
+    for (final budget in budgets) {
+      final uuid = budget.categoryUuid;
+      if (uuid == null || budget.isPaymentMethod || budget.isDeleted) continue;
+      final current = scopes[uuid];
+      if (current == null || budget.updatedAt > current.updatedAt) {
+        scopes[uuid] = budget;
+      }
+    }
+    final ancestors = <String, Set<String>>{};
+    for (final uuid in scopes.keys) {
+      final parents = <String>{};
+      final visited = <String>{uuid};
+      var category = categoryMap[uuid];
+      while (category?.type == FinanceCategoryType.expense) {
+        final parent = category!.parentUuid;
+        if (parent == null || !visited.add(parent)) break;
+        parents.add(parent);
+        category = categoryMap[parent];
+      }
+      ancestors[uuid] = parents;
+    }
+    return [
+      for (final entry in scopes.entries)
+        if (!ancestors[entry.key]!.any(
+          (parent) => scopes.containsKey(parent) &&
+              (!ancestors[parent]!.contains(entry.key) ||
+                  parent.compareTo(entry.key) < 0),
+        ))
+          entry.value,
+    ];
+  }
+
   // Older rows used updated_at as the balance snapshot time. Keep that exact
   // instant even when a snapshot was edited from a different calendar month.
   int get effectiveBalanceSnapshotAt => balanceSnapshotAt ?? updatedAt;
@@ -2226,6 +2267,38 @@ class FinanceSummary {
   int get netExpenseMinor => expenseMinor - refundMinor;
 
   int get balanceMinor => incomeMinor - netExpenseMinor;
+
+  /// Category budgets cover the category itself and all of its descendants.
+  /// Sum refunds before clamping so the page, alerts and AI use one total.
+  int spendingForBudget(
+    FinanceBudget budget,
+    Iterable<FinanceCategory> categories,
+  ) {
+    if (budget.isPaymentMethod) {
+      throw ArgumentError('账户余额应按余额快照计算');
+    }
+    if (budget.isOverall) return math.max(0, netExpenseMinor);
+    final categoryMap = {
+      for (final category in categories) category.uuid: category,
+    };
+    var total = 0;
+    for (final entry in expenseByCategory.entries) {
+      String? uuid = entry.key;
+      final visited = <String>{};
+      while (uuid != null && visited.add(uuid)) {
+        if (uuid == budget.categoryUuid) {
+          total += entry.value;
+          break;
+        }
+        final category = categoryMap[uuid];
+        if (category == null || category.type != FinanceCategoryType.expense) {
+          break;
+        }
+        uuid = category.parentUuid;
+      }
+    }
+    return math.max(0, total);
+  }
 }
 
 String dateKey(DateTime date) =>

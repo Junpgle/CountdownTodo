@@ -277,9 +277,8 @@ abstract final class FinanceAutomationService {
 
     for (final budget in budgets) {
       if (budget.isPaymentMethod) continue;
-      final used = (budget.categoryUuid == null
-              ? summary.netExpenseMinor
-              : summary.expenseByCategory[budget.categoryUuid] ?? 0)
+      final used = summary
+          .spendingForBudget(budget, categories)
           .clamp(0, 0x7fffffff);
       if (used <= 0 || budget.amountMinor <= 0) continue;
       final ratio = used / budget.amountMinor;

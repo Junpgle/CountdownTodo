@@ -429,10 +429,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
           .fold<int>(0, (sum, item) => sum + item.paymentMinor);
       return -(balanceChange ?? 0) + repayments;
     }
-    if (budget.isOverall) {
-      return math.max(0, _summary.netExpenseMinor);
-    }
-    return math.max(0, _summary.expenseByCategory[budget.categoryUuid] ?? 0);
+    return _summary.spendingForBudget(budget, _categories);
   }
 
   int _balanceEventTime(
@@ -633,11 +630,15 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   Widget _buildSummaryCard(ColorScheme colorScheme) {
     final overall = _overallBudget;
     final categoryBudgets = _categoryBudgets;
+    final summaryBudgets = FinanceBudget.nonOverlappingCategories(
+      categoryBudgets,
+      _categories,
+    );
     final budgetTotal =
         overall?.amountMinor ??
-        categoryBudgets.fold<int>(0, (sum, item) => sum + item.amountMinor);
+        summaryBudgets.fold<int>(0, (sum, item) => sum + item.amountMinor);
     final used = overall == null
-        ? categoryBudgets.fold<int>(0, (sum, item) => sum + _usedFor(item))
+        ? summaryBudgets.fold<int>(0, (sum, item) => sum + _usedFor(item))
         : _usedFor(overall);
     final remaining = budgetTotal - used;
     final progress = budgetTotal == 0
@@ -645,7 +646,11 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         : (used / budgetTotal).clamp(0.0, 1.0).toDouble();
     final isOver = remaining < 0;
     final title = overall == null ? '分类预算合计' : '本月总预算';
-    final subtitle = overall == null ? '只汇总已设置分类的预算' : '所有支出按本月账单计算';
+    final subtitle = overall != null
+        ? '所有支出按本月账单计算'
+        : summaryBudgets.length < categoryBudgets.length
+            ? '父子分类按大类汇总，细分类预算单独显示'
+            : '只汇总已设置分类的预算';
     final foreground = isOver
         ? colorScheme.onErrorContainer
         : colorScheme.onPrimaryContainer;

@@ -308,9 +308,7 @@ abstract final class FinanceAiContextService {
     if (budgets.isNotEmpty) {
       lines.add('预算（${financeMonthKey(range.from)}）:');
       for (final budget in budgets.take(20)) {
-        final used = budget.categoryUuid == null
-            ? summary.netExpenseMinor
-            : summary.expenseByCategory[budget.categoryUuid] ?? 0;
+        final used = summary.spendingForBudget(budget, categories);
         final remaining = budget.amountMinor - used;
         final scope = budget.categoryUuid == null
             ? '整体'
