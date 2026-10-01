@@ -1013,7 +1013,12 @@ abstract final class FinanceStorage {
       where.add('is_deleted = 0');
     }
     if (!includeArchived) {
-      where.add('is_archived = 0');
+      where.add(
+        'is_archived = 0 AND NOT EXISTS ('
+        'SELECT 1 FROM finance_categories AS parent '
+        'WHERE parent.uuid = finance_categories.parent_uuid '
+        'AND parent.is_archived = 1 AND parent.is_deleted = 0)',
+      );
     }
     if (type != null) {
       where.add('type = ?');
@@ -1107,6 +1112,13 @@ abstract final class FinanceStorage {
             '上级分类必须是同一收支类型的一级分类',
           );
         }
+        if (parent.isArchived && !category.isArchived) {
+          throw ArgumentError.value(
+            category.parentUuid,
+            'parentUuid',
+            '上级分类已归档，请先恢复后再添加二级分类',
+          );
+        }
       }
       if (category.parentUuid != null) {
         final children = await txn.query(
@@ -1138,81 +1150,118 @@ abstract final class FinanceStorage {
   static Future<void> archiveCategory(String uuid) async {
     await ensureReady();
     final db = await _database;
-    final existing = await db.query(
-      'finance_categories',
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-      limit: 1,
-    );
-    if (existing.isEmpty) return;
-    final category = FinanceCategory.fromMap(existing.first);
-    if (category.isSystem || category.isArchived) return;
-    category.isArchived = true;
-    category.markAsChanged();
-    await db.update(
-      'finance_categories',
-      _localValues(category.toMap()),
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-    );
-    final children = await db.query(
-      'finance_categories',
-      where: 'parent_uuid = ? AND is_deleted = 0 AND is_archived = 0',
-      whereArgs: [uuid],
-    );
-    for (final raw in children) {
-      final child = FinanceCategory.fromMap(raw);
-      if (child.isSystem) continue;
-      child.isArchived = true;
-      child.markAsChanged();
-      await db.update(
+    final changed = await db.transaction<bool>((txn) async {
+      final existing = await txn.query(
         'finance_categories',
-        _localValues(child.toMap()),
-        where: 'uuid = ?',
-        whereArgs: [child.uuid],
+        where: 'uuid = ? AND is_deleted = 0',
+        whereArgs: [uuid],
+        limit: 1,
       );
-    }
-    _notifyChanged();
+      if (existing.isEmpty) return false;
+      final category = FinanceCategory.fromMap(existing.first);
+      if (category.isSystem || category.isArchived) return false;
+      category
+        ..isArchived = true
+        ..markAsChanged();
+      await txn.update(
+        'finance_categories',
+        _localValues(category.toMap()),
+        where: 'uuid = ?',
+        whereArgs: [uuid],
+      );
+      final children = await txn.query(
+        'finance_categories',
+        where: 'parent_uuid = ? AND is_deleted = 0 AND is_archived = 0',
+        whereArgs: [uuid],
+      );
+      for (final raw in children) {
+        final child = FinanceCategory.fromMap(raw);
+        if (child.isSystem) continue;
+        child
+          ..isArchived = true
+          ..markAsChanged();
+        await txn.update(
+          'finance_categories',
+          _localValues(child.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [child.uuid],
+        );
+      }
+      return true;
+    });
+    if (changed) _notifyChanged();
   }
 
-  static Future<void> unarchiveCategory(String uuid) async {
+  static Future<bool> unarchiveCategory(String uuid) async {
     await ensureReady();
     final db = await _database;
-    final existing = await db.query(
-      'finance_categories',
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-      limit: 1,
-    );
-    if (existing.isEmpty) return;
-    final category = FinanceCategory.fromMap(existing.first);
-    if (!category.isArchived) return;
-    category.isArchived = false;
-    category.markAsChanged();
-    await db.update(
-      'finance_categories',
-      _localValues(category.toMap()),
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-    );
-    final children = await db.query(
-      'finance_categories',
-      where: 'parent_uuid = ? AND is_deleted = 0 AND is_archived = 1',
-      whereArgs: [uuid],
-    );
-    for (final raw in children) {
-      final child = FinanceCategory.fromMap(raw);
-      if (child.isSystem) continue;
-      child.isArchived = false;
-      child.markAsChanged();
-      await db.update(
+    final restored = await db.transaction<bool>((txn) async {
+      final existing = await txn.query(
         'finance_categories',
-        _localValues(child.toMap()),
         where: 'uuid = ?',
-        whereArgs: [child.uuid],
+        whereArgs: [uuid],
+        limit: 1,
       );
-    }
-    _notifyChanged();
+      if (existing.isEmpty) return false;
+      var category = FinanceCategory.fromMap(existing.first);
+      if (category.isSystem || category.isDeleted) return false;
+      final categoryWasArchived = category.isArchived;
+
+      final parentUuid = _normalizeCategoryParentUuid(category.parentUuid);
+      if (parentUuid != null) {
+        final parentRows = await txn.query(
+          'finance_categories',
+          where: 'uuid = ? AND is_deleted = 0',
+          whereArgs: [parentUuid],
+          limit: 1,
+        );
+        if (parentRows.isEmpty) return false;
+        final parent = FinanceCategory.fromMap(parentRows.first);
+        if (parent.type != category.type ||
+            _normalizeCategoryParentUuid(parent.parentUuid) != null) {
+          return false;
+        }
+        if (parent.isArchived) {
+          category = parent;
+        } else if (!categoryWasArchived) {
+          return false;
+        }
+      } else if (!categoryWasArchived) {
+        return false;
+      }
+
+      if (category.isSystem || !category.isArchived) return false;
+      category
+        ..isArchived = false
+        ..markAsChanged();
+      await txn.update(
+        'finance_categories',
+        _localValues(category.toMap()),
+        where: 'uuid = ?',
+        whereArgs: [category.uuid],
+      );
+      final children = await txn.query(
+        'finance_categories',
+        where: 'parent_uuid = ? AND is_deleted = 0 AND is_archived = 1',
+        whereArgs: [category.uuid],
+      );
+      for (final raw in children) {
+        final child = FinanceCategory.fromMap(raw);
+        if (child.isSystem) continue;
+        child
+          ..isArchived = false
+          ..markAsChanged();
+        await txn.update(
+          'finance_categories',
+          _localValues(child.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [child.uuid],
+        );
+      }
+      return true;
+    });
+    if (restored) _notifyChanged();
+    return restored;
   }
 
   static Future<bool> hasTransactionsForCategory(String uuid) async {
@@ -2630,7 +2679,8 @@ abstract final class FinanceStorage {
           _normalizeCategoryParentUuid(current.parentUuid) !=
               _normalizeCategoryParentUuid(incoming.parentUuid) ||
           current.type != incoming.type ||
-          current.isDeleted != incoming.isDeleted) {
+          current.isDeleted != incoming.isDeleted ||
+          current.isArchived != incoming.isArchived) {
         structuralCandidates.add(entry.key);
       }
     }
@@ -2684,6 +2734,7 @@ abstract final class FinanceStorage {
           final parent = projected[parentUuid];
           if (parent == null ||
               parent.isDeleted ||
+              (parent.isArchived && !cursor.isArchived) ||
               parent.type != cursor.type) {
             if (structuralCandidates.contains(cursor.uuid) &&
                 !rejected.contains(cursor.uuid)) {

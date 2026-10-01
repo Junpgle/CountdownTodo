@@ -251,7 +251,7 @@ abstract final class FinanceRepository {
     return FinanceStorage.archiveCategory(uuid);
   }
 
-  static Future<void> unarchiveCategory(String uuid) {
+  static Future<bool> unarchiveCategory(String uuid) {
     return FinanceStorage.unarchiveCategory(uuid);
   }
 

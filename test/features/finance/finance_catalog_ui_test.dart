@@ -185,6 +185,40 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('归档大类下遗留的活跃小类在归档筛选中仍可恢复', (tester) async {
+    String? restored;
+    final categories = [
+      ..._categories(),
+      FinanceCategory(
+        uuid: 'archived-parent',
+        name: '已归档大类',
+        isArchived: true,
+      ),
+      FinanceCategory(
+        uuid: 'legacy-active-child',
+        name: '历史活跃小类',
+        parentUuid: 'archived-parent',
+      ),
+    ];
+    await _pumpCatalog(
+      tester,
+      categories: categories,
+      onRestore: (category) async => restored = category.uuid,
+    );
+
+    expect(find.text('历史活跃小类'), findsNothing);
+    await tester
+        .tap(find.byKey(const ValueKey('finance-catalog-filter-archived')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('已归档大类'));
+    await tester.pumpAndSettle();
+    expect(find.text('历史活跃小类'), findsOneWidget);
+    await tester.tap(find.byTooltip('恢复历史活跃小类'));
+    await tester.pumpAndSettle();
+    expect(restored, 'legacy-active-child');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('自定义卡片直接编辑并支持归档，系统分类可自定义名称和图标', (tester) async {
     String? edited;
     String? archived;

@@ -89,13 +89,17 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
     final entries = <_CatalogEntry>[];
     for (final category in widget.categories) {
       if (category.isDeleted || category.type != type) continue;
+      final parentUuid = category.parentUuid?.trim();
+      final parent = parentUuid == null || parentUuid.isEmpty
+          ? null
+          : categoriesByUuid[parentUuid];
       entries.add(
         _CatalogEntry(
           uuid: category.uuid,
           name: category.name,
           icon: category.icon,
           isSystem: category.isSystem,
-          isArchived: category.isArchived,
+          isArchived: category.isArchived || parent?.isArchived == true,
           parentUuid: category.parentUuid,
           searchName: _categorySearchName(category, categoriesByUuid),
           onEdit: () => widget.onEditCategory(category),

@@ -163,9 +163,18 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
   }
 
   Future<void> _unarchiveCategory(FinanceCategory category) async {
-    await FinanceRepository.unarchiveCategory(category.uuid);
+    final parentUuid = category.parentUuid?.trim();
+    final restoresParent =
+        parentUuid != null &&
+        parentUuid.isNotEmpty &&
+        _categories.any((item) => item.uuid == parentUuid && item.isArchived);
+    final restored = await FinanceRepository.unarchiveCategory(category.uuid);
+    if (!restored) {
+      _showMessage('分类状态已改变，请刷新后重试');
+      return;
+    }
     await _load();
-    _showMessage('分类已恢复');
+    _showMessage(restoresParent ? '所属一级分类及其二级分类已恢复' : '分类已恢复');
   }
 
   Future<bool> _showPaymentEditor({FinancePaymentMethod? method}) async {

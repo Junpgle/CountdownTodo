@@ -52,6 +52,65 @@ void main() {
     });
   }
 
+  test('从已归档分类中恢复二级分类时同时恢复所属大类', () async {
+    await FinanceStorage.archiveCategory(root.uuid);
+
+    await FinanceStorage.unarchiveCategory(child.uuid);
+
+    final rows = await db.query(
+      'finance_categories',
+      where: 'uuid IN (?, ?)',
+      whereArgs: [root.uuid, child.uuid],
+    );
+    final archivedByUuid = {
+      for (final row in rows) row['uuid'] as String: row['is_archived'] as int,
+    };
+    expect(archivedByUuid[root.uuid], 0);
+    expect(archivedByUuid[child.uuid], 0);
+  });
+
+  test('旧数据中父类已归档的活跃小类不会进入可用列表，并可从子类入口修复', () async {
+    await db.update(
+      'finance_categories',
+      {'is_archived': 1},
+      where: 'uuid = ?',
+      whereArgs: [root.uuid],
+    );
+
+    final activeCategories = await FinanceStorage.getCategories();
+    expect(activeCategories.any((item) => item.uuid == child.uuid), isFalse);
+    expect(await FinanceStorage.unarchiveCategory(child.uuid), isTrue);
+
+    final rows = await db.query(
+      'finance_categories',
+      where: 'uuid IN (?, ?)',
+      whereArgs: [root.uuid, child.uuid],
+    );
+    expect(rows.every((row) => row['is_archived'] == 0), isTrue);
+  });
+
+  test('不能在已归档大类下保存活跃二级分类', () async {
+    await FinanceStorage.archiveCategory(root.uuid);
+    final archivedParentChild = FinanceCategory(
+      uuid: 'child-under-archived-root',
+      name: '归档父类下的新小类',
+      parentUuid: root.uuid,
+    );
+
+    await expectLater(
+      FinanceStorage.saveCategory(archivedParentChild),
+      throwsArgumentError,
+    );
+    expect(
+      await db.query(
+        'finance_categories',
+        where: 'uuid = ?',
+        whereArgs: [archivedParentChild.uuid],
+      ),
+      isEmpty,
+    );
+  });
+
   test('移走子类后可以改层级，普通子类可以换一级大类', () async {
     child.parentUuid = other.uuid;
     await FinanceStorage.saveCategory(child);
@@ -120,6 +179,44 @@ void main() {
         );
       });
     }
+  }
+
+  for (final remote in [false, true]) {
+    test('分类批量写入拒绝活跃子类挂在归档大类下，云端=$remote', () async {
+      final archivedRoot = FinanceCategory(
+        uuid: 'archived-root-$remote',
+        name: '已归档大类',
+        isArchived: true,
+      );
+      final activeChild = FinanceCategory(
+        uuid: 'active-child-$remote',
+        name: '不应活跃的小类',
+        parentUuid: archivedRoot.uuid,
+      );
+      final categories = [activeChild.toMap(), archivedRoot.toMap()];
+
+      if (remote) {
+        expect(
+          await FinanceStorage.mergeRemoteBundle({'categories': categories}),
+          1,
+        );
+      } else {
+        expect(await FinanceStorage.importBundle({'categories': categories}), {
+          'imported': 1,
+          'updated': 0,
+          'skipped': 1,
+        });
+      }
+
+      final rows = await db.query(
+        'finance_categories',
+        where: 'uuid IN (?, ?)',
+        whereArgs: [archivedRoot.uuid, activeChild.uuid],
+      );
+      expect(rows, hasLength(1));
+      expect(rows.single['uuid'], archivedRoot.uuid);
+      expect(rows.single['is_archived'], 1);
+    });
   }
 
   for (final remote in [false, true]) {
