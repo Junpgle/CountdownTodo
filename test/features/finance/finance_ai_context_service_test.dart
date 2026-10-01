@@ -106,4 +106,21 @@ void main() {
         AiTodoContextBuilder.buildActionProtocolPrompt('今天午餐 28 元');
     expect(creationPrompt, contains('categoryUuid'));
   });
+
+  test('finance context resolves an explicit calendar date', () {
+    final range = FinanceAiContextService.resolveDateRange(
+      '查询2026-09-20账单明细',
+      now: DateTime(2026, 10, 1, 12),
+    );
+
+    expect(range.from, DateTime(2026, 9, 20));
+    expect(range.to, DateTime(2026, 9, 21));
+  });
+
+  test('does not inject finance data for an invalid explicit date', () {
+    expect(
+      FinanceAiContextService.shouldInjectFor('查询2026-02-30账单明细'),
+      isFalse,
+    );
+  });
 }

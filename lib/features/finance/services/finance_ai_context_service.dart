@@ -100,6 +100,9 @@ abstract final class FinanceAiContextService {
   static final RegExp _chineseMonthPattern = RegExp(
     r'(?:(\d{4})\s*年\s*)?(十一|十二|十|[一二三四五六七八九]|\d{1,2})\s*月(?:份)?',
   );
+  static final RegExp _calendarDatePattern = RegExp(
+    r'(?:^|[^\d])(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)',
+  );
   static final RegExp _numericYearMonthPattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](0?[1-9]|1[0-2])(?![-/.]\d)',
   );
@@ -155,6 +158,7 @@ abstract final class FinanceAiContextService {
   }) {
     final text = userMessage.trim();
     if (text.isEmpty) return false;
+    if (_hasInvalidExplicitDate(text)) return false;
     final hasFinanceNoun = _containsAny(text, _financeNouns);
     final hasExplicitMonth = _hasExplicitMonth(text);
     final hasPeriod = _containsAny(text, _periodWords) || hasExplicitMonth;
@@ -341,6 +345,13 @@ abstract final class FinanceAiContextService {
   }) {
     final current = _day(now ?? DateTime.now());
     final text = userMessage.trim().toLowerCase();
+    final explicitDate = _parseExplicitDate(text);
+    if (explicitDate != null) {
+      return FinanceDateRange(
+        explicitDate,
+        explicitDate.add(const Duration(days: 1)),
+      );
+    }
     if (text.contains('前天')) {
       final day = current.subtract(const Duration(days: 2));
       return FinanceDateRange(day, day.add(const Duration(days: 1)));
@@ -548,6 +559,23 @@ abstract final class FinanceAiContextService {
   static bool _hasExplicitMonth(String text) =>
       _chineseMonthPattern.hasMatch(text) ||
       _numericYearMonthPattern.hasMatch(text);
+
+  static bool _hasInvalidExplicitDate(String text) =>
+      _calendarDatePattern.hasMatch(text) && _parseExplicitDate(text) == null;
+
+  static DateTime? _parseExplicitDate(String text) {
+    final match = _calendarDatePattern.firstMatch(text);
+    if (match == null) return null;
+    final year = int.parse(match.group(1)!);
+    final month = int.parse(match.group(2)!);
+    final day = int.parse(match.group(3)!);
+    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+    final value = DateTime(year, month, day);
+    if (value.year != year || value.month != month || value.day != day) {
+      return null;
+    }
+    return value;
+  }
 
   static FinanceDateRange? _resolveExplicitMonthRange(
     String text,
