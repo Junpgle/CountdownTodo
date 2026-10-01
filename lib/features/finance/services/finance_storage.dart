@@ -745,7 +745,7 @@ abstract final class FinanceStorage {
       if (existing != null &&
           hasPaidInstallment &&
           _loanTermsDiffer(existing, loan)) {
-        throw StateError('已有还款记录后不能修改本金、利率、期限或还款方式');
+        throw StateError('已有还款记录后不能修改本金、币种、利率、期限、借款日期、还款日或还款方式');
       }
       final allocations = FinanceLoanCalculator.generate(
         principalMinor: loan.principalMinor,
@@ -2985,7 +2985,17 @@ abstract final class FinanceStorage {
       if (existing == null) {
         await db.insert('finance_loans', _localValues(item.toMap()));
         imported++;
-      } else if (item.updatedAt > FinanceLoan.fromMap(existing).updatedAt) {
+      } else {
+        final current = FinanceLoan.fromMap(existing);
+        if (item.updatedAt <= current.updatedAt) {
+          skipped++;
+          continue;
+        }
+        if (_loanTermsDiffer(current, item) &&
+            await _hasPaidLoanInstallments(db, item.uuid)) {
+          skipped++;
+          continue;
+        }
         await db.update(
           'finance_loans',
           _localValues(item.toMap()),
@@ -2993,8 +3003,6 @@ abstract final class FinanceStorage {
           whereArgs: [item.uuid],
         );
         updated++;
-      } else {
-        skipped++;
       }
     }
 
@@ -3068,8 +3076,13 @@ abstract final class FinanceStorage {
           _localValues(item.toMap()),
         );
         imported++;
-      } else if (item.updatedAt >
-          FinanceLoanInstallment.fromMap(existing).updatedAt) {
+      } else {
+        final current = FinanceLoanInstallment.fromMap(existing);
+        if (item.updatedAt <= current.updatedAt ||
+            (current.isPaid && !_sameLoanInstallmentSchedule(current, item))) {
+          skipped++;
+          continue;
+        }
         await db.update(
           'finance_loan_installments',
           _localValues(item.toMap()),
@@ -3077,8 +3090,6 @@ abstract final class FinanceStorage {
           whereArgs: [item.uuid],
         );
         updated++;
-      } else {
-        skipped++;
       }
     }
 
@@ -3734,6 +3745,10 @@ abstract final class FinanceStorage {
           )) {
         continue;
       }
+      if (_loanTermsDiffer(current, item) &&
+          await _hasPaidLoanInstallments(db, item.uuid)) {
+        continue;
+      }
       await db.update(
         'finance_loans',
         _remoteValues(item.toMap()),
@@ -3793,7 +3808,10 @@ abstract final class FinanceStorage {
             item.version,
             current.updatedAt,
             current.version,
-          )) {
+      )) {
+        continue;
+      }
+      if (current.isPaid && !_sameLoanInstallmentSchedule(current, item)) {
         continue;
       }
       await db.update(
@@ -4509,6 +4527,32 @@ abstract final class FinanceStorage {
         (item.paymentMethodUuid == null ||
             (item.isPaid && (item.paidAt ?? 0) > 0));
   }
+
+  static Future<bool> _hasPaidLoanInstallments(
+    DatabaseExecutor db,
+    String loanUuid,
+  ) async {
+    final rows = await db.query(
+      'finance_loan_installments',
+      columns: ['uuid'],
+      where: 'loan_uuid = ? AND is_paid = 1',
+      whereArgs: [loanUuid],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  static bool _sameLoanInstallmentSchedule(
+    FinanceLoanInstallment left,
+    FinanceLoanInstallment right,
+  ) =>
+      left.loanUuid == right.loanUuid &&
+      left.installmentIndex == right.installmentIndex &&
+      left.dueDate == right.dueDate &&
+      left.paymentMinor == right.paymentMinor &&
+      left.principalMinor == right.principalMinor &&
+      left.interestMinor == right.interestMinor &&
+      left.remainingPrincipalMinor == right.remainingPrincipalMinor;
 
   static bool _loanTermsDiffer(FinanceLoan left, FinanceLoan right) {
     return left.principalMinor != right.principalMinor ||

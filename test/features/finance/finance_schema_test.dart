@@ -790,6 +790,69 @@ void main() {
         expect(installments.single.uuid, newer.uuid);
       });
 
+      test('$source 不改写已还期次对应的贷款条款和金额', () async {
+        final loan = FinanceLoan(
+          uuid: 'paid-loan-terms-$source',
+          name: '已有还款的贷款',
+          principalMinor: 10000,
+          annualInterestRateBps: 1200,
+          termMonths: 2,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        await FinanceStorage.saveLoan(loan);
+        final installments = await FinanceStorage.getLoanInstallments(loan.uuid);
+        final paidInstallment = installments.first;
+        await FinanceStorage.setLoanInstallmentPaid(
+          paidInstallment.uuid,
+          true,
+          paymentMethodUuid: 'finance-system-payment-cash',
+        );
+        final currentLoan = (await FinanceStorage.getLoan(loan.uuid))!;
+        final currentInstallment =
+            (await FinanceStorage.getLoanInstallment(paidInstallment.uuid))!;
+        final changedLoan = FinanceLoan.fromMap(currentLoan.toMap())
+          ..annualInterestRateBps = 0
+          ..version = currentLoan.version + 1
+          ..updatedAt = currentLoan.updatedAt + 100;
+        final changedAllocation = FinanceLoanCalculator.generate(
+          principalMinor: changedLoan.principalMinor,
+          annualInterestRateBps: changedLoan.annualInterestRateBps,
+          termMonths: changedLoan.termMonths,
+          startDate: dateFromKey(changedLoan.startDate),
+          repaymentDay: changedLoan.repaymentDay,
+          repaymentMethod: changedLoan.repaymentMethod,
+        ).first;
+        final changedInstallment = FinanceLoanInstallment.fromMap(
+          currentInstallment.toMap(),
+        )
+          ..paymentMinor = changedAllocation.paymentMinor
+          ..principalMinor = changedAllocation.principalMinor
+          ..interestMinor = changedAllocation.interestMinor
+          ..remainingPrincipalMinor = changedAllocation.remainingPrincipalMinor
+          ..version = currentInstallment.version + 1
+          ..updatedAt = currentInstallment.updatedAt + 100;
+        final bundle = {
+          'loans': [changedLoan.toMap()],
+          'loan_installments': [changedInstallment.toMap()],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['updated'], 0);
+          expect(result['skipped'], 2);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 0);
+        }
+        final storedLoan = (await FinanceStorage.getLoan(loan.uuid))!;
+        final storedInstallment =
+            (await FinanceStorage.getLoanInstallment(paidInstallment.uuid))!;
+        expect(storedLoan.annualInterestRateBps, 1200);
+        expect(storedInstallment.paymentMinor, paidInstallment.paymentMinor);
+        expect(storedInstallment.principalMinor, paidInstallment.principalMinor);
+        expect(storedInstallment.interestMinor, paidInstallment.interestMinor);
+      });
+
       test('$source 拒绝缺少账期和还款期次的记录', () async {
         final transaction = FinanceTransaction(
           uuid: 'missing-transaction-date-$source',
