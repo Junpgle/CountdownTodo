@@ -1256,6 +1256,63 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('周视图分类详情进入账单时保留选中周范围', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final inWeek = FinanceTransaction(
+      uuid: 'weekly-category-in-range',
+      amountMinor: 2400,
+      categoryUuid: 'test-food',
+      transactionDate: '2026-06-03',
+      merchant: '本周账单',
+    );
+    final outsideWeek = FinanceTransaction(
+      uuid: 'weekly-category-out-of-range',
+      amountMinor: 5600,
+      categoryUuid: 'test-food',
+      transactionDate: '2026-06-12',
+      merchant: '其它日期账单',
+    );
+    List<FinanceTransaction>? selectedPeriodTransactions;
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: DateTime(2026, 6),
+          summary: FinanceSummary.fromTransactions([inWeek, outsideWeek]),
+          transactions: [inWeek, outsideWeek],
+          categories: {
+            'test-food': FinanceCategory(
+              uuid: 'test-food',
+              name: '日常餐饮',
+              icon: '🍜',
+            ),
+          },
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+          onCategorySelected: (_, _, periodTransactions) async {
+            selectedPeriodTransactions = periodTransactions;
+          },
+        ),
+      ),
+    );
+    await _tap(tester, find.text('周视图'));
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('finance-overview-category-test-food')),
+    );
+    await tester.pumpAndSettle();
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('finance-category-detail-test-food')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(selectedPeriodTransactions, [inWeek]);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('历史月份账单为空时显示所选月份', (tester) async {
     final now = DateTime.now();
     final selectedMonth = DateTime(now.year, now.month - 1);

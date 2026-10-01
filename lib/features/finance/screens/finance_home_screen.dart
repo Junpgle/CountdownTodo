@@ -541,6 +541,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   Future<void> _pushCategoryLedger(
     String categoryUuid,
     GlobalKey sourceKey,
+    List<FinanceTransaction> periodTransactions,
   ) async {
     final category = _categoryMap[categoryUuid];
     final colorScheme = Theme.of(context).colorScheme;
@@ -551,7 +552,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         month: _month,
         categoryUuid: categoryUuid,
         initialData: (
-          transactions: _transactions,
+          transactions: periodTransactions,
           summary: _summary,
           categories: _categories,
           paymentMethods: _paymentMethods,

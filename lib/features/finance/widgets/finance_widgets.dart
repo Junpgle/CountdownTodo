@@ -19,6 +19,7 @@ enum _FinanceOverviewView { month, week, day }
 typedef FinanceCategorySelectionCallback = Future<void> Function(
   String categoryUuid,
   GlobalKey sourceKey,
+  List<FinanceTransaction> periodTransactions,
 );
 
 class FinanceOverviewPanel extends StatefulWidget {
@@ -663,7 +664,10 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       rootCategoryUuid: entry.categoryUuid,
       transactions: period.transactions,
       categories: categories,
-      onCategorySelected: onCategorySelected,
+      onCategorySelected: onCategorySelected == null
+          ? null
+          : (categoryUuid, sourceKey, _) =>
+              onCategorySelected!(categoryUuid, sourceKey, period.transactions),
     );
     await PageTransitions.pushFromRect<String>(
       context: context,

@@ -9,8 +9,11 @@ class FinanceCategoryDetailScreen extends StatefulWidget {
   final String? rootCategoryUuid;
   final List<FinanceTransaction> transactions;
   final Map<String, FinanceCategory> categories;
-  final Future<void> Function(String categoryUuid, GlobalKey sourceKey)?
-      onCategorySelected;
+  final Future<void> Function(
+    String categoryUuid,
+    GlobalKey sourceKey,
+    List<FinanceTransaction> periodTransactions,
+  )? onCategorySelected;
 
   const FinanceCategoryDetailScreen({
     super.key,
@@ -279,7 +282,7 @@ class _FinanceCategoryDetailScreenState
           if (_openingCategoryLedger) return;
           _openingCategoryLedger = true;
           try {
-            await onSelected(item.categoryUuid, sourceKey);
+          await onSelected(item.categoryUuid, sourceKey, transactions);
           } finally {
             _openingCategoryLedger = false;
           }

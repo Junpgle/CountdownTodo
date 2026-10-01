@@ -511,6 +511,7 @@ void main() {
       merchant: '临时支出',
     );
     String? selectedCategoryUuid;
+    List<FinanceTransaction>? selectedPeriodTransactions;
 
     await tester.pumpWidget(MaterialApp(
       home: FinanceCategoryDetailScreen(
@@ -518,8 +519,9 @@ void main() {
         rootCategoryUuid: null,
         transactions: [transaction],
         categories: const {},
-        onCategorySelected: (categoryUuid, _) async {
+        onCategorySelected: (categoryUuid, _, periodTransactions) async {
           selectedCategoryUuid = categoryUuid;
+          selectedPeriodTransactions = periodTransactions;
         },
       ),
     ));
@@ -540,6 +542,7 @@ void main() {
     await tester.pump();
 
     expect(selectedCategoryUuid, financeUncategorizedCategoryFilterUuid);
+    expect(selectedPeriodTransactions, [transaction]);
     expect(tester.takeException(), isNull);
   });
 }
