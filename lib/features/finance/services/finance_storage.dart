@@ -2144,6 +2144,7 @@ abstract final class FinanceStorage {
             );
       });
     final changedOriginalUuids = <String>{};
+    var pendingTransactions = <FinanceTransaction>[];
     for (final map in transactionMaps) {
       final item = FinanceTransaction.fromMap(map);
       item.uuid = remap(item.uuid);
@@ -2167,38 +2168,50 @@ abstract final class FinanceStorage {
         skipped++;
         continue;
       }
-      try {
-        await _validateTransactionRefundState(db, item, alignCategory: false);
-      } on StateError {
-        skipped++;
-        continue;
-      }
-      final existing = await _findByUuid(db, 'finance_transactions', item.uuid);
-      if (existing == null) {
-        await db.insert('finance_transactions', _localValues(item.toMap()));
+      pendingTransactions.add(item);
+    }
+    while (pendingTransactions.isNotEmpty) {
+      final deferred = <FinanceTransaction>[];
+      var applied = 0;
+      for (final item in pendingTransactions) {
+        final existing = await _findByUuid(db, 'finance_transactions', item.uuid);
+        if (existing != null &&
+            item.updatedAt <= FinanceTransaction.fromMap(existing).updatedAt) {
+          skipped++;
+          continue;
+        }
+        try {
+          await _validateTransactionRefundState(db, item, alignCategory: false);
+        } on StateError {
+          deferred.add(item);
+          continue;
+        }
+        if (existing == null) {
+          await db.insert('finance_transactions', _localValues(item.toMap()));
+          imported++;
+        } else {
+          await db.update(
+            'finance_transactions',
+            _localValues(item.toMap()),
+            where: 'uuid = ?',
+            whereArgs: [item.uuid],
+          );
+          updated++;
+        }
+        applied++;
         changedOriginalUuids.add(item.uuid);
         if (item.type == FinanceTransactionType.refund &&
             item.relatedTransactionUuid != null) {
           changedOriginalUuids.add(item.relatedTransactionUuid!);
         }
-        imported++;
-      } else if (item.updatedAt >
-          FinanceTransaction.fromMap(existing).updatedAt) {
-        await db.update(
-          'finance_transactions',
-          _localValues(item.toMap()),
-          where: 'uuid = ?',
-          whereArgs: [item.uuid],
-        );
-        changedOriginalUuids.add(item.uuid);
-        if (item.type == FinanceTransactionType.refund &&
-            item.relatedTransactionUuid != null) {
-          changedOriginalUuids.add(item.relatedTransactionUuid!);
-        }
-        updated++;
-      } else {
-        skipped++;
       }
+      // A refund decrease/deletion can unblock an earlier expense decrease or
+      // another refund increase. Retry only while this batch makes progress.
+      if (applied == 0) {
+        skipped += deferred.length;
+        break;
+      }
+      pendingTransactions = deferred;
     }
     final repairedRefunds = <String>{};
     await _alignLinkedRefunds(
@@ -2665,52 +2678,52 @@ abstract final class FinanceStorage {
         return _transactionMergePriority(left)
             .compareTo(_transactionMergePriority(right));
       });
-    for (final item in orderedItems) {
-      final existing = await _findByUuid(db, 'finance_transactions', item.uuid);
-      if (existing == null) {
+    var pending = orderedItems;
+    while (pending.isNotEmpty) {
+      final deferred = <FinanceTransaction>[];
+      final changedBeforeRound = changed;
+      for (final item in pending) {
+        final existing = await _findByUuid(db, 'finance_transactions', item.uuid);
+        if (existing != null) {
+          final current = FinanceTransaction.fromMap(existing);
+          if (!forceRemoteKeys.contains('transactions:${item.uuid}') &&
+              !_isIncomingWinner(
+                item.updatedAt,
+                item.version,
+                current.updatedAt,
+                current.version,
+              )) {
+            continue;
+          }
+        }
         try {
           await _validateTransactionRefundState(db, item, alignCategory: false);
         } on StateError {
-          deferredTransactionUuids?.add(item.uuid);
+          deferred.add(item);
           continue;
         }
-        await db.insert('finance_transactions', _remoteValues(item.toMap()));
+        if (existing == null) {
+          await db.insert('finance_transactions', _remoteValues(item.toMap()));
+        } else {
+          await db.update(
+            'finance_transactions',
+            _remoteValues(item.toMap()),
+            where: 'uuid = ?',
+            whereArgs: [item.uuid],
+          );
+        }
         changedOriginalUuids.add(item.uuid);
         if (item.type == FinanceTransactionType.refund &&
             item.relatedTransactionUuid != null) {
           changedOriginalUuids.add(item.relatedTransactionUuid!);
         }
         changed++;
-        continue;
       }
-      final current = FinanceTransaction.fromMap(existing);
-      if (!forceRemoteKeys.contains('transactions:${item.uuid}') &&
-          !_isIncomingWinner(
-            item.updatedAt,
-            item.version,
-            current.updatedAt,
-            current.version,
-          )) {
-        continue;
+      if (changed == changedBeforeRound) {
+        deferredTransactionUuids?.addAll(deferred.map((item) => item.uuid));
+        break;
       }
-      try {
-        await _validateTransactionRefundState(db, item, alignCategory: false);
-      } on StateError {
-        deferredTransactionUuids?.add(item.uuid);
-        continue;
-      }
-      await db.update(
-        'finance_transactions',
-        _remoteValues(item.toMap()),
-        where: 'uuid = ?',
-        whereArgs: [item.uuid],
-      );
-      changedOriginalUuids.add(item.uuid);
-      if (item.type == FinanceTransactionType.refund &&
-          item.relatedTransactionUuid != null) {
-        changedOriginalUuids.add(item.relatedTransactionUuid!);
-      }
-      changed++;
+      pending = deferred;
     }
     final repairedRefunds = <String>{};
     await _alignLinkedRefunds(
