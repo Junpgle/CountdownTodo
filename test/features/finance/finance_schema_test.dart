@@ -266,6 +266,59 @@ void main() {
           isEmpty,
         );
       });
+
+      test('$source 拒绝未来或月份不匹配的账户余额快照', () async {
+        final now = DateTime.now();
+        final futureAt = now.add(const Duration(days: 1));
+        final oldAt = now.subtract(const Duration(days: 40));
+        final scenarios = [
+          (
+            suffix: 'future',
+            monthKey: financeMonthKey(futureAt),
+            snapshotAt: futureAt,
+          ),
+          (
+            suffix: 'wrong-month',
+            monthKey: financeMonthKey(now),
+            snapshotAt: oldAt,
+          ),
+        ];
+        final budgets = <Map<String, dynamic>>[];
+        for (final scenario in scenarios) {
+          final paymentMethodUuid =
+              'invalid-balance-snapshot-method-$source-${scenario.suffix}';
+          await db.insert(
+            'finance_payment_methods',
+            FinancePaymentMethod(
+              uuid: paymentMethodUuid,
+              name: '无效余额快照账户 ${scenario.suffix}',
+            ).toMap(),
+          );
+          budgets.add(
+            FinanceBudget(
+              uuid: 'invalid-balance-snapshot-$source-${scenario.suffix}',
+              monthKey: scenario.monthKey,
+              paymentMethodUuid: paymentMethodUuid,
+              amountMinor: 1000,
+              balanceSnapshotAt: scenario.snapshotAt.millisecondsSinceEpoch,
+            ).toMap(),
+          );
+        }
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'budgets': budgets,
+          });
+          expect(result['imported'], 0);
+          expect(result['skipped'], 2);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle({'budgets': budgets}), 0);
+        }
+        expect(
+          await FinanceStorage.getBudgets(includeDeleted: true),
+          isEmpty,
+        );
+      });
     }
 
     test('本地预算拒绝收入分类和不存在的关联项', () async {

@@ -4602,10 +4602,16 @@ abstract final class FinanceStorage {
 
   static bool _isValidBudget(FinanceBudget item) {
     final balanceSnapshotAt = item.balanceSnapshotAt;
+    final now = DateTime.now().millisecondsSinceEpoch;
     final hasValidBalanceSnapshot = item.isPaymentMethod
         ? balanceSnapshotAt == null ||
               (balanceSnapshotAt > 0 &&
-                  balanceSnapshotAt <= _maxDateTimeMillis)
+                  balanceSnapshotAt <= _maxDateTimeMillis &&
+                  balanceSnapshotAt <= now &&
+                  _isBalanceSnapshotForMonth(
+                    item.monthKey,
+                    balanceSnapshotAt,
+                  ))
         : balanceSnapshotAt == null;
     return item.uuid.trim().isNotEmpty &&
         !(item.categoryUuid != null && item.paymentMethodUuid != null) &&
@@ -4613,6 +4619,21 @@ abstract final class FinanceStorage {
         (item.isPaymentMethod ? item.amountMinor >= 0 : item.amountMinor > 0) &&
         hasValidBalanceSnapshot &&
         RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(item.monthKey);
+  }
+
+  static bool _isBalanceSnapshotForMonth(String monthKey, int snapshotAt) {
+    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(monthKey)) return false;
+    final parts = monthKey.split('-');
+    final year = int.parse(parts[0]);
+    final month = int.parse(parts[1]);
+    final monthStart = DateTime(year, month);
+    final nextMonth = DateTime(year, month + 1);
+    final snapshot = DateTime.fromMillisecondsSinceEpoch(snapshotAt);
+    // Snapshot timestamps do not store their source timezone. Allow the
+    // maximum offset difference between devices around month boundaries.
+    const timezoneDrift = Duration(hours: 28);
+    return !snapshot.isBefore(monthStart.subtract(timezoneDrift)) &&
+        snapshot.isBefore(nextMonth.add(timezoneDrift));
   }
 
   static bool _hasValidRawBalanceSnapshot(Map<String, dynamic> map) {
