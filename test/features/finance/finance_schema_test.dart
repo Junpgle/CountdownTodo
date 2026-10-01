@@ -49,6 +49,64 @@ void main() {
       await db.close();
     });
 
+    test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {
+      final unsafeTransaction = FinanceTransaction(
+        uuid: 'unsafe-large-transaction',
+        amountMinor: maxFinanceAmountMinor + 1,
+        transactionDate: '2026-09-01',
+      );
+      await expectLater(
+        FinanceStorage.saveTransaction(unsafeTransaction),
+        throwsArgumentError,
+      );
+      expect(
+        await FinanceStorage.mergeRemoteBundle({
+          'transactions': [unsafeTransaction.toMap()],
+        }),
+        0,
+      );
+      final negativeTransaction = FinanceTransaction(
+        uuid: 'negative-remote-transaction',
+        amountMinor: -100,
+        transactionDate: '2026-09-01',
+      );
+      expect(
+        await FinanceStorage.mergeRemoteBundle({
+          'transactions': [negativeTransaction.toMap()],
+        }),
+        0,
+      );
+      final transactionImport = await FinanceStorage.importBundle({
+        'transactions': [
+          unsafeTransaction.toMap(),
+          negativeTransaction.toMap(),
+        ],
+      });
+      expect(transactionImport['imported'], 0);
+      expect(transactionImport['skipped'], 2);
+      expect(
+        await FinanceStorage.getTransaction(unsafeTransaction.uuid),
+        isNull,
+      );
+
+      final unsafeBalance = FinanceBudget(
+        uuid: 'unsafe-large-balance',
+        monthKey: '2026-09',
+        paymentMethodUuid: account,
+        amountMinor: maxFinanceAmountMinor + 1,
+      );
+      await expectLater(
+        FinanceStorage.saveBudget(unsafeBalance),
+        throwsArgumentError,
+      );
+      final balanceImport = await FinanceStorage.importBundle({
+        'budgets': [unsafeBalance.toMap()],
+      });
+      expect(balanceImport['imported'], 0);
+      expect(balanceImport['skipped'], 1);
+      expect(await FinanceStorage.getBudget(unsafeBalance.uuid), isNull);
+    });
+
     test('V56本地余额升级时只排队一次，保留零余额及快照时刻', () async {
       final snapshotAt = DateTime(2026, 9, 20).millisecondsSinceEpoch;
       await db.insert(

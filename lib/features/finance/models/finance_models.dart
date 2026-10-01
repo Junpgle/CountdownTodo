@@ -13,6 +13,13 @@ enum FinanceCategoryType { expense, income }
 
 enum FinanceEntrySource { manual, import, ai, automation }
 
+/// Largest amount in minor units that remains exact on every supported
+/// platform and in JSON/SQLite storage.
+const int maxFinanceAmountMinor = 9007199254740991;
+
+bool isSafeFinanceAmountMinor(int amountMinor) =>
+    amountMinor >= 0 && amountMinor <= maxFinanceAmountMinor;
+
 FinanceCategoryType financeCategoryTypeForTransaction(
   FinanceTransactionType type,
 ) {
@@ -47,7 +54,7 @@ abstract final class FinanceInstallmentCalculator {
     required int count,
     required DateTime startDate,
   }) {
-    if (totalMinor <= 0) {
+    if (!isSafeFinanceAmountMinor(totalMinor) || totalMinor == 0) {
       throw ArgumentError.value(totalMinor, 'totalMinor', '金额必须大于 0');
     }
     if (count < minCount || count > maxCount) {
@@ -152,7 +159,7 @@ abstract final class FinanceLoanCalculator {
     FinanceLoanRepaymentMethod repaymentMethod =
         FinanceLoanRepaymentMethod.equalPrincipalInterest,
   }) {
-    if (principalMinor <= 0) {
+    if (!isSafeFinanceAmountMinor(principalMinor) || principalMinor == 0) {
       throw ArgumentError.value(principalMinor, 'principalMinor', '本金必须大于 0');
     }
     if (annualInterestRateBps < 0 ||
@@ -230,7 +237,7 @@ abstract final class FinanceLoanCalculator {
   }) {
     final factor = math.pow(1 + monthlyRate, termMonths).toDouble();
     final payment = principalMinor * monthlyRate * factor / (factor - 1);
-    return payment.round().clamp(1, 9007199254740991).toInt();
+    return payment.round().clamp(1, maxFinanceAmountMinor).toInt();
   }
 
   static DateTime _dueDate(
@@ -1674,7 +1681,7 @@ class FinanceEntryDraft {
                 map['money'] ??
                 map['price'],
           )
-        : _int(minorValue).abs();
+        : _safeDraftMinorValue(minorValue);
     return FinanceEntryDraft(
       type: _draftTransactionType(
         map['type'] ?? map['transaction_type'] ?? map['transactionType'],
@@ -1711,18 +1718,48 @@ class FinanceEntryDraft {
   }
 
   static int _draftAmountMinor(dynamic value) {
-    if (value is num) return (value.toDouble() * 100).round().abs();
-    final normalized = value
-        ?.toString()
-        .trim()
+    final normalized = (value is num ? value.toString() : value?.toString())
+        ?.trim()
         .replaceAll(',', '')
         .replaceAll(RegExp(r'^[¥￥$€£]'), '')
         .replaceAll(
           RegExp(r'\s*(?:元|块|人民币|CNY)\s*$', caseSensitive: false),
           '',
         );
-    final parsed = double.tryParse(normalized ?? '');
-    return parsed == null ? 0 : (parsed * 100).round().abs();
+    final match = RegExp(r'^([+-]?)(\d*)(?:\.(\d*))?$').firstMatch(
+      normalized ?? '',
+    );
+    if (match == null) return 0;
+    final wholeText = match.group(2) ?? '';
+    final fraction = match.group(3) ?? '';
+    if (wholeText.isEmpty && fraction.isEmpty) return 0;
+    final whole = BigInt.tryParse(wholeText.isEmpty ? '0' : wholeText);
+    if (whole == null) return 0;
+    var amountMinor = whole * BigInt.from(100) +
+        BigInt.tryParse(fraction.padRight(2, '0').substring(0, 2))!;
+    if (fraction.length > 2 && fraction.codeUnitAt(2) >= 53) {
+      amountMinor += BigInt.one;
+    }
+    if (amountMinor > BigInt.from(maxFinanceAmountMinor)) return 0;
+    return amountMinor.toInt();
+  }
+
+  static int _safeDraftMinorValue(dynamic value) {
+    BigInt? parsed;
+    if (value is int) {
+      parsed = BigInt.from(value);
+    } else if (value is num &&
+        value.isFinite &&
+        value.abs() <= maxFinanceAmountMinor &&
+        value == value.roundToDouble()) {
+      parsed = BigInt.from(value.toInt());
+    } else if (value is String) {
+      parsed = BigInt.tryParse(value.trim());
+    }
+    if (parsed == null) return 0;
+    final amountMinor = parsed.abs();
+    if (amountMinor > BigInt.from(maxFinanceAmountMinor)) return 0;
+    return amountMinor.toInt();
   }
 }
 

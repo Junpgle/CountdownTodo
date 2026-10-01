@@ -406,7 +406,7 @@ abstract final class FinanceRepository {
         return [
           transaction.transactionDate,
           transaction.type.label,
-          (amount / 100).toStringAsFixed(2),
+          formatFinanceAmount(amount, withSymbol: false),
           sanitizeFinanceCsvText(
             category == null
                 ? '未分类'
@@ -465,17 +465,22 @@ int? parseFinanceAmount(String raw, {bool allowZero = false}) {
   }
   final value = input.replaceAll(',', '');
   final parts = value.split('.');
-  final whole = int.tryParse(parts.first);
+  final whole = BigInt.tryParse(parts.first);
   if (whole == null) return null;
   final fraction = parts.length == 1 ? '' : parts[1];
-  final cents = int.tryParse(fraction.padRight(2, '0')) ?? 0;
-  final result = whole * 100 + cents;
+  final cents = BigInt.tryParse(fraction.padRight(2, '0')) ?? BigInt.zero;
+  final amountMinor = whole * BigInt.from(100) + cents;
+  if (amountMinor > BigInt.from(maxFinanceAmountMinor)) return null;
+  final result = amountMinor.toInt();
   return result > 0 || (allowZero && result == 0) ? result : null;
 }
 
 String formatFinanceAmount(int amountMinor, {bool withSymbol = true}) {
-  final value =
-      NumberFormat('#,##0.00', 'zh_CN').format(amountMinor.abs() / 100);
+  final absolute = amountMinor.abs();
+  final whole = absolute ~/ 100;
+  final cents = (absolute % 100).toString().padLeft(2, '0');
+  final groupedWhole = NumberFormat('#,##0', 'zh_CN').format(whole);
+  final value = '$groupedWhole.$cents';
   final sign = amountMinor < 0 ? '-' : '';
   return withSymbol ? '$sign¥$value' : '$sign$value';
 }

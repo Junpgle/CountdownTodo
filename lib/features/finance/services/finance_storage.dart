@@ -291,11 +291,22 @@ abstract final class FinanceStorage {
     FinanceTransaction transaction, {
     FinanceTransaction? original,
   }) async {
-    if (transaction.amountMinor <= 0) {
+    if (!isSafeFinanceAmountMinor(transaction.amountMinor) ||
+        transaction.amountMinor == 0) {
       throw ArgumentError.value(
         transaction.amountMinor,
         'amountMinor',
         '金额必须大于 0',
+      );
+    }
+    final installmentTotalMinor = transaction.installmentTotalMinor;
+    if (installmentTotalMinor != null &&
+        (!isSafeFinanceAmountMinor(installmentTotalMinor) ||
+            installmentTotalMinor == 0)) {
+      throw ArgumentError.value(
+        installmentTotalMinor,
+        'installmentTotalMinor',
+        '分期总额超出可保存范围',
       );
     }
     if (original != null && original.uuid != transaction.uuid) {
@@ -1640,7 +1651,7 @@ abstract final class FinanceStorage {
     bool resetBalanceSnapshot = false,
     int? balanceSnapshotAt,
   }) async {
-    if (budget.amountMinor < 0 ||
+    if (!isSafeFinanceAmountMinor(budget.amountMinor) ||
         (!budget.isPaymentMethod && budget.amountMinor == 0)) {
       throw ArgumentError.value(
         budget.amountMinor,
@@ -2327,7 +2338,7 @@ abstract final class FinanceStorage {
     if (rule.type == FinanceTransactionType.refund) {
       throw ArgumentError.value(rule.type, 'type', '周期规则不支持退款类型');
     }
-    if (rule.amountMinor <= 0) {
+    if (!isSafeFinanceAmountMinor(rule.amountMinor) || rule.amountMinor == 0) {
       throw ArgumentError.value(rule.amountMinor, 'amountMinor', '金额必须大于 0');
     }
     if (!_isDateKey(rule.startDate)) {
@@ -2371,7 +2382,8 @@ abstract final class FinanceStorage {
     if (template.type == FinanceTransactionType.refund) {
       throw ArgumentError.value(template.type, 'type', '模板不支持退款类型');
     }
-    if (template.amountMinor <= 0) {
+    if (!isSafeFinanceAmountMinor(template.amountMinor) ||
+        template.amountMinor == 0) {
       throw ArgumentError.value(
         template.amountMinor,
         'amountMinor',
@@ -2947,6 +2959,11 @@ abstract final class FinanceStorage {
         )
         .toList(growable: false);
     final transactions = _listOfMaps(bundle['transactions'])
+        .where(
+          (map) => _isSafeRawFinanceAmount(
+            map['amount_minor'] ?? map['amountMinor'],
+          ),
+        )
         .map(FinanceTransaction.fromMap)
         .where(_isValidTransaction)
         .toList(growable: false);
@@ -3708,7 +3725,11 @@ abstract final class FinanceStorage {
 
   static bool _isValidTransaction(FinanceTransaction item) {
     return item.uuid.trim().isNotEmpty &&
+        isSafeFinanceAmountMinor(item.amountMinor) &&
         item.amountMinor > 0 &&
+        (item.installmentTotalMinor == null ||
+            (isSafeFinanceAmountMinor(item.installmentTotalMinor!) &&
+                item.installmentTotalMinor! > 0)) &&
         _isDateKey(item.transactionDate);
   }
 
@@ -3842,9 +3863,27 @@ abstract final class FinanceStorage {
     return rawUuid?.toString().trim().isNotEmpty == true &&
         rawDate is String &&
         _isDateKey(rawDate) &&
+        _isSafeRawFinanceAmount(rawAmount) &&
         _asInt(rawAmount) > 0 &&
         validType &&
         _isValidTransaction(item);
+  }
+
+  static bool _isSafeRawFinanceAmount(dynamic value) {
+    if (value is int) return isSafeFinanceAmountMinor(value);
+    if (value is num) {
+      return value.isFinite &&
+          value >= 0 &&
+          value <= maxFinanceAmountMinor &&
+          value == value.roundToDouble();
+    }
+    if (value is String) {
+      final parsed = BigInt.tryParse(value.trim());
+      return parsed != null &&
+          parsed >= BigInt.zero &&
+          parsed <= BigInt.from(maxFinanceAmountMinor);
+    }
+    return false;
   }
 
   static bool _isValidLoan(FinanceLoan item) {
@@ -3890,11 +3929,14 @@ abstract final class FinanceStorage {
         item.loanUuid.trim().isNotEmpty &&
         item.installmentIndex > 0 &&
         _isDateKey(item.dueDate) &&
+        isSafeFinanceAmountMinor(item.paymentMinor) &&
         item.paymentMinor > 0 &&
+        isSafeFinanceAmountMinor(item.principalMinor) &&
         item.principalMinor > 0 &&
-        item.interestMinor >= 0 &&
+        isSafeFinanceAmountMinor(item.interestMinor) &&
+        item.principalMinor <= maxFinanceAmountMinor - item.interestMinor &&
         item.paymentMinor == item.principalMinor + item.interestMinor &&
-        item.remainingPrincipalMinor >= 0 &&
+        isSafeFinanceAmountMinor(item.remainingPrincipalMinor) &&
         (item.paymentMethodUuid == null ||
             (item.isPaid && (item.paidAt ?? 0) > 0));
   }
@@ -3946,6 +3988,7 @@ abstract final class FinanceStorage {
   static bool _isValidBudget(FinanceBudget item) {
     return item.uuid.trim().isNotEmpty &&
         !(item.categoryUuid != null && item.paymentMethodUuid != null) &&
+        isSafeFinanceAmountMinor(item.amountMinor) &&
         (item.isPaymentMethod ? item.amountMinor >= 0 : item.amountMinor > 0) &&
         RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(item.monthKey);
   }

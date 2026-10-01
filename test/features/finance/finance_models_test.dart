@@ -58,6 +58,54 @@ void main() {
       expect(parseFinanceAmount('0.00', allowZero: true), 0);
       expect(parseFinanceAmount('0'), isNull);
     });
+
+    test('金额上限在整数边界内精确解析和显示', () {
+      expect(parseFinanceAmount('90071992547409.91'), maxFinanceAmountMinor);
+      expect(parseFinanceAmount('90071992547409.92'), isNull);
+      expect(parseFinanceAmount('100000000000000000'), isNull);
+      expect(
+        formatFinanceAmount(maxFinanceAmountMinor),
+        '¥90,071,992,547,409.91',
+      );
+    });
+
+    test('AI 识别草稿金额也保持精确并拒绝越界值', () {
+      expect(
+        FinanceEntryDraft.fromJson({'amount': '90071992547409.91'}).amountMinor,
+        maxFinanceAmountMinor,
+      );
+      expect(
+        FinanceEntryDraft.fromJson({'amount': '100000000000000000'})
+            .amountMinor,
+        0,
+      );
+      expect(
+        FinanceEntryDraft.fromJson({'amount_minor': maxFinanceAmountMinor + 1})
+            .amountMinor,
+        0,
+      );
+    });
+  });
+
+  test('分期和贷款本金拒绝超出跨平台安全范围的金额', () {
+    expect(
+      () => FinanceInstallmentCalculator.split(
+        totalMinor: maxFinanceAmountMinor + 1,
+        count: 2,
+        startDate: DateTime(2026, 9),
+      ),
+      throwsArgumentError,
+    );
+    expect(
+      () => FinanceLoanCalculator.generate(
+        principalMinor: maxFinanceAmountMinor + 1,
+        annualInterestRateBps: 0,
+        termMonths: 1,
+        startDate: DateTime(2026, 9),
+        repaymentDay: 1,
+      ),
+      throwsArgumentError,
+    );
   });
 
   test('交易模型可以在 SQLite/JSON 字段之间往返', () {
