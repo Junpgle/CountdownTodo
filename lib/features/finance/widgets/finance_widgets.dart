@@ -686,10 +686,12 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     _FinanceOverviewPeriod period,
   ) {
     if (_view == _FinanceOverviewView.day) {
-      final values = List<int>.filled(24, 0);
+      const unknownHourIndex = 24;
+      final values = List<int>.filled(unknownHourIndex + 1, 0);
       for (final transaction in period.transactions) {
         if (transaction.type == FinanceTransactionType.income) continue;
-        final hour = _financeTransactionHour(transaction);
+        final hour =
+            _financeTransactionHour(transaction) ?? unknownHourIndex;
         values[hour] += transaction.type == FinanceTransactionType.refund
             ? -transaction.amountMinor
             : transaction.amountMinor;
@@ -700,11 +702,18 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
         values: values,
         labels: [
           for (var hour = 0; hour < values.length; hour++)
-            hour % 3 == 0 ? '$hour时' : '',
+            if (hour == unknownHourIndex)
+              '未知'
+            else if (hour % 3 == 0)
+              '$hour时'
+            else
+              '',
         ],
         tooltips: [
           for (var hour = 0; hour < values.length; hour++)
-            '$hour时 · 净支出 ${formatFinanceAmount(values[hour])}',
+            hour == unknownHourIndex
+                ? '未知时刻 · 净支出 ${formatFinanceAmount(values[hour])}'
+                : '$hour时 · 净支出 ${formatFinanceAmount(values[hour])}',
         ],
         emptyMessage: '${period.shortTitle}还没有净支出记录',
         barWidth: 28,
@@ -742,12 +751,12 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     );
   }
 
-  int _financeTransactionHour(FinanceTransaction transaction) {
+  int? _financeTransactionHour(FinanceTransaction transaction) {
     final occurred = transaction.occurrenceLocalTime;
-    if (occurred == null) return 12;
-    return dateKey(occurred) == transaction.transactionDate
-        ? occurred.hour
-        : 12;
+    if (occurred == null || dateKey(occurred) != transaction.transactionDate) {
+      return null;
+    }
+    return occurred.hour;
   }
 
   String _formatFinanceChartDayLabel(DateTime date) {

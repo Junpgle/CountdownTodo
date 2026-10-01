@@ -955,6 +955,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('日视图把未知发生时刻单独显示', (tester) async {
+    final entryAt = DateTime.now().subtract(const Duration(minutes: 1));
+    final transaction = FinanceTransaction.fromMap({
+      'uuid': 'overview-unknown-occurrence-hour',
+      'amount_minor': 2000,
+      'transaction_date': dateKey(entryAt),
+      'created_at': entryAt.millisecondsSinceEpoch,
+      'updated_at': entryAt.millisecondsSinceEpoch,
+      'merchant': '时间未知账单',
+    });
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: DateTime(entryAt.year, entryAt.month),
+          summary: FinanceSummary.fromTransactions([transaction]),
+          transactions: [transaction],
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+    await _tap(tester, find.text('日视图'));
+
+    expect(find.byTooltip('未知时刻 · 净支出 ¥20.00'), findsOneWidget);
+    expect(find.byTooltip('12时 · 净支出 ¥20.00'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('退款超过支出时净支出图表仍显示负值', (tester) async {
     final refund = FinanceTransaction(
       uuid: 'overview-net-refund',
