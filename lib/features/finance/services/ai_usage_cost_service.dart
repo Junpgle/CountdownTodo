@@ -314,7 +314,10 @@ abstract final class AiUsageCostService {
   // DeepSeek entries below were checked against their official domestic
   // pricing pages on 2026-08-31. NIM is deliberately not included: NVIDIA's
   // hosted models do not have one universal public per-token price.
-  // Sources: https://bigmodel.cn/pricing and
+  // MiMo V2.6 rates are sourced from the official model pages:
+  // https://mimo.mi.com/models/zh-CN/mimo-v2.6-flash and
+  // https://mimo.mi.com/models/zh-CN/mimo-v2.6-pro.
+  // Other sources: https://bigmodel.cn/pricing and
   // https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
   //
   // Domestic MiMo pay-as-you-go prices are included, while Token Plan is
@@ -327,6 +330,22 @@ abstract final class AiUsageCostService {
       cachedInputMicrosPerMillion: 20000,
       inputMicrosPerMillion: 1000000,
       outputMicrosPerMillion: 2000000,
+      imageTokensIncluded: true,
+    ),
+    AiUsagePricing(
+      provider: 'mimo',
+      model: 'mimo-v2.6-flash',
+      cachedInputMicrosPerMillion: 20000,
+      inputMicrosPerMillion: 1000000,
+      outputMicrosPerMillion: 2000000,
+      imageTokensIncluded: true,
+    ),
+    AiUsagePricing(
+      provider: 'mimo',
+      model: 'mimo-v2.6-pro',
+      cachedInputMicrosPerMillion: 25000,
+      inputMicrosPerMillion: 3000000,
+      outputMicrosPerMillion: 6000000,
       imageTokensIncluded: true,
     ),
     AiUsagePricing(
@@ -766,26 +785,74 @@ abstract final class AiUsageCostService {
     return record;
   }
 
-  /// 将本月已记录的、可计价的调用重新汇总到个人账本。
+  /// Reprice newly supported calls, then sync priced calls to the ledger.
   ///
-  /// 这一步既覆盖自动记账关闭期间积累的明细，也会把旧版本按日生成的
-  /// AI 账单合并为本月账单，避免低于 1 分的 MiMo 调用永远无法出现在账本。
+  /// This also upgrades older records that were retained as unpriced when
+  /// their model did not yet have a built-in or configured rate. Records
+  /// without token or audio usage are left unpriced rather than guessed.
   static Future<bool> reconcileCurrentMonth({DateTime? now}) async {
     final settings = await _loadSettings();
-    if (!settings.autoLedger) return false;
-
     final current = now ?? DateTime.now();
     final monthStart = DateTime(current.year, current.month);
     final monthEnd = DateTime(current.year, current.month + 1);
     final db = await _database;
     await DatabaseHelper.ensureFinanceSchema(db);
     await DatabaseHelper.ensureAiUsageSchema(db);
+    var changed = false;
+    final unpricedRows = await db.query(
+      'ai_usage_records',
+      where: 'is_priced = 0 AND created_at >= ? AND created_at < ?',
+      whereArgs: [
+        monthStart.millisecondsSinceEpoch,
+        monthEnd.millisecondsSinceEpoch,
+      ],
+    );
+    for (final row in unpricedRows) {
+      final record = AiUsageRecord.fromMap(row);
+      if (record.promptTokens + record.completionTokens <= 0 &&
+          record.audioSeconds <= 0) {
+        continue;
+      }
+      final pricing = settings.prices
+          .where((item) =>
+              item.provider == record.provider && item.model == record.model)
+          .firstOrNull;
+      final costMicros = _calculateCostMicros(
+        pricing,
+        provider: record.provider,
+        model: record.model,
+        promptTokens: record.promptTokens,
+        completionTokens: record.completionTokens,
+        cachedPromptTokens: record.cachedPromptTokens,
+        imageTokens: record.imageTokens,
+        audioSeconds: record.audioSeconds,
+        imageCount: record.imageCount,
+        at: record.createdAt,
+      );
+      if (costMicros == null) continue;
+      await db.update(
+        'ai_usage_records',
+        {
+          'cost_micros': costMicros,
+          'is_priced': 1,
+          'ledger_key': _monthlyLedgerKey(
+            financeMonthKey(record.createdAt),
+            record.provider,
+            record.model,
+          ),
+        },
+        where: 'uuid = ? AND is_priced = 0',
+        whereArgs: [record.uuid],
+      );
+      changed = true;
+    }
+    if (!settings.autoLedger) return changed;
+
     final providersAndModels = await db.rawQuery(
       'SELECT DISTINCT provider, model FROM ai_usage_records '
       'WHERE is_priced = 1 AND created_at >= ? AND created_at < ?',
       [monthStart.millisecondsSinceEpoch, monthEnd.millisecondsSinceEpoch],
     );
-    var changed = false;
     for (final row in providersAndModels) {
       final provider = row['provider']?.toString() ?? '';
       final model = row['model']?.toString() ?? '';
