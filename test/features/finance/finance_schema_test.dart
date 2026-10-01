@@ -738,6 +738,58 @@ void main() {
         );
       });
 
+      test('$source 相同期次只保留版本较新的还款计划', () async {
+        final loan = FinanceLoan(
+          uuid: 'duplicate-installment-loan-$source',
+          name: '重复期次贷款',
+          principalMinor: 1000,
+          termMonths: 2,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        final older = FinanceLoanInstallment(
+          uuid: 'duplicate-installment-a-$source',
+          loanUuid: loan.uuid,
+          installmentIndex: 1,
+          dueDate: '2026-10-01',
+          paymentMinor: 500,
+          principalMinor: 400,
+          interestMinor: 100,
+          remainingPrincipalMinor: 600,
+          version: 1,
+          updatedAt: 100,
+        );
+        final newer = FinanceLoanInstallment(
+          uuid: 'duplicate-installment-b-$source',
+          loanUuid: loan.uuid,
+          installmentIndex: 1,
+          dueDate: '2026-10-01',
+          paymentMinor: 500,
+          principalMinor: 500,
+          interestMinor: 0,
+          remainingPrincipalMinor: 500,
+          version: 2,
+          updatedAt: 200,
+        );
+        final bundle = {
+          'loans': [loan.toMap()],
+          'loan_installments': [older.toMap(), newer.toMap()],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['imported'], 2);
+          expect(result['skipped'], 1);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 2);
+        }
+        final installments = await FinanceStorage.getLoanInstallments(
+          loan.uuid,
+        );
+        expect(installments, hasLength(1));
+        expect(installments.single.uuid, newer.uuid);
+      });
+
       test('$source 拒绝缺少账期和还款期次的记录', () async {
         final transaction = FinanceTransaction(
           uuid: 'missing-transaction-date-$source',

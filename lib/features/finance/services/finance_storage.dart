@@ -3003,7 +3003,9 @@ abstract final class FinanceStorage {
       'loan_installments',
     );
     skipped += loanInstallmentInput.invalidCount;
-    final loanInstallmentMaps = loanInstallmentInput.maps;
+    final loanInstallmentMaps = loanInstallmentInput.maps
+      ..sort(_compareRawLoanInstallmentMaps);
+    final seenActiveLoanInstallments = <String>{};
     for (final map in loanInstallmentMaps) {
       if (!_hasRawFinanceUuid(map) ||
           !_hasSafeRawLoanInstallmentAmounts(map) ||
@@ -3036,6 +3038,24 @@ abstract final class FinanceStorage {
           (!item.isDeleted && item.installmentIndex > loan.termMonths)) {
         skipped++;
         continue;
+      }
+      final scheduleKey = '${item.loanUuid}\u0000${item.installmentIndex}';
+      if (!item.isDeleted && !seenActiveLoanInstallments.add(scheduleKey)) {
+        skipped++;
+        continue;
+      }
+      if (!item.isDeleted) {
+        final duplicateSchedules = await db.query(
+          'finance_loan_installments',
+          columns: ['uuid'],
+          where:
+              'loan_uuid = ? AND installment_index = ? AND is_deleted = 0',
+          whereArgs: [item.loanUuid, item.installmentIndex],
+        );
+        if (duplicateSchedules.any((row) => row['uuid'] != item.uuid)) {
+          skipped++;
+          continue;
+        }
       }
       final existing = await _findByUuid(
         db,
@@ -3188,14 +3208,16 @@ abstract final class FinanceStorage {
         .map(FinanceLoan.fromMap)
         .where(_isValidLoan)
         .toList(growable: false);
-    final loanInstallments = _listOfMaps(bundle['loan_installments'])
-        .where(_hasRawFinanceUuid)
-        .where(_hasSafeRawLoanInstallmentAmounts)
-        .where(_hasValidRawLoanInstallmentScheduleFields)
-        .where(_hasSafeRawFinanceTimestamps)
-        .map(FinanceLoanInstallment.fromMap)
-        .where(_isValidLoanInstallment)
-        .toList(growable: false);
+    final loanInstallments = _deduplicateActiveLoanInstallments(
+      _listOfMaps(bundle['loan_installments'])
+          .where(_hasRawFinanceUuid)
+          .where(_hasSafeRawLoanInstallmentAmounts)
+          .where(_hasValidRawLoanInstallmentScheduleFields)
+          .where(_hasSafeRawFinanceTimestamps)
+          .map(FinanceLoanInstallment.fromMap)
+          .where(_isValidLoanInstallment)
+          .toList(growable: false),
+    );
 
     final db = await _database;
     var changed = 0;
@@ -3738,6 +3760,18 @@ abstract final class FinanceStorage {
           (loan.isDeleted && !item.isDeleted) ||
           (!item.isDeleted && item.installmentIndex > loan.termMonths)) {
         continue;
+      }
+      if (!item.isDeleted) {
+        final duplicateSchedules = await db.query(
+          'finance_loan_installments',
+          columns: ['uuid'],
+          where:
+              'loan_uuid = ? AND installment_index = ? AND is_deleted = 0',
+          whereArgs: [item.loanUuid, item.installmentIndex],
+        );
+        if (duplicateSchedules.any((row) => row['uuid'] != item.uuid)) {
+          continue;
+        }
       }
       final existing = await _findByUuid(
         db,
@@ -4288,6 +4322,72 @@ abstract final class FinanceStorage {
         1,
         FinanceLoanCalculator.maxTermMonths,
       );
+
+  static int _compareRawLoanInstallmentMaps(
+    Map<String, dynamic> left,
+    Map<String, dynamic> right,
+  ) {
+    final leftLoan =
+        (left['loan_uuid'] ?? left['loanUuid'])?.toString() ?? '';
+    final rightLoan =
+        (right['loan_uuid'] ?? right['loanUuid'])?.toString() ?? '';
+    final byLoan = leftLoan.compareTo(rightLoan);
+    if (byLoan != 0) return byLoan;
+
+    final leftIndex = _rawFinanceInteger(
+      left['installment_index'] ?? left['installmentIndex'],
+    ) ?? 0;
+    final rightIndex = _rawFinanceInteger(
+      right['installment_index'] ?? right['installmentIndex'],
+    ) ?? 0;
+    final byIndex = leftIndex.compareTo(rightIndex);
+    if (byIndex != 0) return byIndex;
+
+    final leftUpdatedAt = _rawFinanceTimestampMillis(
+      left['updated_at'] ?? left['updatedAt'],
+      allowDateString: true,
+    ) ?? 0;
+    final rightUpdatedAt = _rawFinanceTimestampMillis(
+      right['updated_at'] ?? right['updatedAt'],
+      allowDateString: true,
+    ) ?? 0;
+    final byUpdatedAt = rightUpdatedAt.compareTo(leftUpdatedAt);
+    if (byUpdatedAt != 0) return byUpdatedAt;
+
+    final leftVersion = _rawFinanceInteger(left['version']) ?? 0;
+    final rightVersion = _rawFinanceInteger(right['version']) ?? 0;
+    final byVersion = rightVersion.compareTo(leftVersion);
+    if (byVersion != 0) return byVersion;
+
+    final leftUuid = (left['uuid'] ?? left['id'])?.toString() ?? '';
+    final rightUuid = (right['uuid'] ?? right['id'])?.toString() ?? '';
+    return leftUuid.compareTo(rightUuid);
+  }
+
+  static List<FinanceLoanInstallment> _deduplicateActiveLoanInstallments(
+    List<FinanceLoanInstallment> items,
+  ) {
+    final deleted = <FinanceLoanInstallment>[];
+    final activeBySchedule = <String, FinanceLoanInstallment>{};
+    for (final item in items) {
+      if (item.isDeleted) {
+        deleted.add(item);
+        continue;
+      }
+      final key = '${item.loanUuid}\u0000${item.installmentIndex}';
+      final current = activeBySchedule[key];
+      if (current == null ||
+          item.updatedAt > current.updatedAt ||
+          (item.updatedAt == current.updatedAt &&
+              item.version > current.version) ||
+          (item.updatedAt == current.updatedAt &&
+              item.version == current.version &&
+              item.uuid.compareTo(current.uuid) < 0)) {
+        activeBySchedule[key] = item;
+      }
+    }
+    return [...deleted, ...activeBySchedule.values];
+  }
 
   static bool _hasSafeRawTemplateUseCount(Map<String, dynamic> map) =>
       _isSafeRawFinanceCount(
