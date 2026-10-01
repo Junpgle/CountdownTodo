@@ -306,6 +306,7 @@ abstract final class FinanceStorage {
         _localValues(transaction.toMap()),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
+      await _alignLinkedRefunds(txn, originalUuids: [transaction.uuid]);
     });
     _notifyChanged();
   }
@@ -427,6 +428,10 @@ abstract final class FinanceStorage {
           whereArgs: [old.uuid],
         );
       }
+      await _alignLinkedRefunds(
+        txn,
+        originalUuids: saved.map((item) => item.uuid),
+      );
     });
     _notifyChanged();
     return saved;
@@ -2138,6 +2143,7 @@ abstract final class FinanceStorage {
               _transactionMergePriority(FinanceTransaction.fromMap(right)),
             );
       });
+    final changedOriginalUuids = <String>{};
     for (final map in transactionMaps) {
       final item = FinanceTransaction.fromMap(map);
       item.uuid = remap(item.uuid);
@@ -2162,7 +2168,7 @@ abstract final class FinanceStorage {
         continue;
       }
       try {
-        await _validateTransactionRefundState(db, item);
+        await _validateTransactionRefundState(db, item, alignCategory: false);
       } on StateError {
         skipped++;
         continue;
@@ -2170,6 +2176,11 @@ abstract final class FinanceStorage {
       final existing = await _findByUuid(db, 'finance_transactions', item.uuid);
       if (existing == null) {
         await db.insert('finance_transactions', _localValues(item.toMap()));
+        changedOriginalUuids.add(item.uuid);
+        if (item.type == FinanceTransactionType.refund &&
+            item.relatedTransactionUuid != null) {
+          changedOriginalUuids.add(item.relatedTransactionUuid!);
+        }
         imported++;
       } else if (item.updatedAt >
           FinanceTransaction.fromMap(existing).updatedAt) {
@@ -2179,11 +2190,25 @@ abstract final class FinanceStorage {
           where: 'uuid = ?',
           whereArgs: [item.uuid],
         );
+        changedOriginalUuids.add(item.uuid);
+        if (item.type == FinanceTransactionType.refund &&
+            item.relatedTransactionUuid != null) {
+          changedOriginalUuids.add(item.relatedTransactionUuid!);
+        }
         updated++;
       } else {
         skipped++;
       }
     }
+    final repairedRefunds = <String>{};
+    await _alignLinkedRefunds(
+      db,
+      originalUuids: changedOriginalUuids,
+      repairedUuids: repairedRefunds,
+    );
+    updated += repairedRefunds
+        .where((uuid) => !changedOriginalUuids.contains(uuid))
+        .length;
 
     final importedBudgets = <FinanceBudget>[];
     for (final map in _listOfMaps(bundle['budgets'])) {
@@ -2376,6 +2401,7 @@ abstract final class FinanceStorage {
 
     final db = await _database;
     var changed = 0;
+    final repairedRefundUuids = <String>{};
     await db.transaction((txn) async {
       changed += await _mergeCategories(
         txn,
@@ -2392,6 +2418,7 @@ abstract final class FinanceStorage {
         transactions,
         forceRemoteKeys: forceRemoteKeys,
         deferredTransactionUuids: deferredTransactionUuids,
+        repairedRefundUuids: repairedRefundUuids,
       );
       changed += await _mergeLoans(
         txn,
@@ -2419,7 +2446,9 @@ abstract final class FinanceStorage {
         forceRemoteKeys: forceRemoteKeys,
       );
     });
-    if (changed > 0) _notifyChanged(requestSync: false);
+    if (changed > 0) {
+      _notifyChanged(requestSync: repairedRefundUuids.isNotEmpty);
+    }
     return changed;
   }
 
@@ -2625,8 +2654,10 @@ abstract final class FinanceStorage {
     List<FinanceTransaction> items, {
     Set<String> forceRemoteKeys = const {},
     Set<String>? deferredTransactionUuids,
+    Set<String>? repairedRefundUuids,
   }) async {
     var changed = 0;
+    final changedOriginalUuids = <String>{};
     final orderedItems = [...items]
       ..sort((left, right) {
         // Create/restore originals before active refunds, but remove refunds
@@ -2638,12 +2669,17 @@ abstract final class FinanceStorage {
       final existing = await _findByUuid(db, 'finance_transactions', item.uuid);
       if (existing == null) {
         try {
-          await _validateTransactionRefundState(db, item);
+          await _validateTransactionRefundState(db, item, alignCategory: false);
         } on StateError {
           deferredTransactionUuids?.add(item.uuid);
           continue;
         }
         await db.insert('finance_transactions', _remoteValues(item.toMap()));
+        changedOriginalUuids.add(item.uuid);
+        if (item.type == FinanceTransactionType.refund &&
+            item.relatedTransactionUuid != null) {
+          changedOriginalUuids.add(item.relatedTransactionUuid!);
+        }
         changed++;
         continue;
       }
@@ -2658,7 +2694,7 @@ abstract final class FinanceStorage {
         continue;
       }
       try {
-        await _validateTransactionRefundState(db, item);
+        await _validateTransactionRefundState(db, item, alignCategory: false);
       } on StateError {
         deferredTransactionUuids?.add(item.uuid);
         continue;
@@ -2669,8 +2705,23 @@ abstract final class FinanceStorage {
         where: 'uuid = ?',
         whereArgs: [item.uuid],
       );
+      changedOriginalUuids.add(item.uuid);
+      if (item.type == FinanceTransactionType.refund &&
+          item.relatedTransactionUuid != null) {
+        changedOriginalUuids.add(item.relatedTransactionUuid!);
+      }
       changed++;
     }
+    final repairedRefunds = <String>{};
+    await _alignLinkedRefunds(
+      db,
+      originalUuids: changedOriginalUuids,
+      repairedUuids: repairedRefunds,
+    );
+    changed += repairedRefunds
+        .where((uuid) => !changedOriginalUuids.contains(uuid))
+        .length;
+    repairedRefundUuids?.addAll(repairedRefunds);
     return changed;
   }
 
@@ -2931,6 +2982,50 @@ abstract final class FinanceStorage {
         _isDateKey(item.transactionDate);
   }
 
+  /// Linked refunds inherit classification from their original. Repair after
+  /// the whole batch so this derived edit cannot block a newer refund amount.
+  static Future<int> _alignLinkedRefunds(
+    DatabaseExecutor db, {
+    required Iterable<String> originalUuids,
+    Set<String>? repairedUuids,
+  }) async {
+    final uuids = originalUuids.toSet().toList();
+    if (uuids.isEmpty) return 0;
+    var repaired = 0;
+    // Older Android SQLite builds allow only 999 bound variables per query.
+    for (var offset = 0; offset < uuids.length; offset += 500) {
+      final end = offset + 500;
+      final chunk = uuids.sublist(offset, end > uuids.length ? uuids.length : end);
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      final rows = await db.rawQuery('''
+      SELECT refund.*, original.category_uuid AS original_category_uuid,
+        original.currency_code AS original_currency_code
+      FROM finance_transactions AS refund
+      JOIN finance_transactions AS original
+        ON original.uuid = refund.related_transaction_uuid
+      WHERE refund.type = 'refund' AND original.type = 'expense'
+        AND original.is_deleted = 0 AND original.uuid IN ($placeholders)
+        AND (refund.category_uuid IS NOT original.category_uuid
+          OR refund.currency_code IS NOT original.currency_code)
+    ''', chunk);
+      for (final row in rows) {
+        final refund = FinanceTransaction.fromMap(row)
+          ..categoryUuid = row['original_category_uuid'] as String?
+          ..currencyCode = row['original_currency_code'] as String;
+        refund.markAsChanged();
+        await db.update(
+          'finance_transactions',
+          _localValues(refund.toMap()),
+          where: 'uuid = ?',
+          whereArgs: [refund.uuid],
+        );
+        repairedUuids?.add(refund.uuid);
+      }
+      repaired += rows.length;
+    }
+    return repaired;
+  }
+
   static Future<int> _activeRefundedMinor(
     DatabaseExecutor db,
     String originalUuid, {
@@ -2956,8 +3051,9 @@ abstract final class FinanceStorage {
 
   static Future<void> _validateTransactionRefundState(
     DatabaseExecutor db,
-    FinanceTransaction transaction,
-  ) async {
+    FinanceTransaction transaction, {
+    bool alignCategory = true,
+  }) async {
     final originalUuid = transaction.relatedTransactionUuid?.trim();
     if (transaction.type == FinanceTransactionType.refund &&
         !transaction.isDeleted &&
@@ -2986,9 +3082,11 @@ abstract final class FinanceStorage {
         final remainingMinor = remaining.clamp(0, original.amountMinor).toInt();
         throw StateError('退款金额超过剩余可退金额 $remainingMinor 分');
       }
-      transaction
-        ..currencyCode = original.currencyCode
-        ..categoryUuid = original.categoryUuid;
+      if (alignCategory) {
+        transaction
+          ..currencyCode = original.currencyCode
+          ..categoryUuid = original.categoryUuid;
+      }
     }
 
     final activeRefunded = await _activeRefundedMinor(db, transaction.uuid);
