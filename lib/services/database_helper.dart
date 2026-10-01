@@ -2598,6 +2598,7 @@ class DatabaseHelper {
     List<String>? uuids,
     Set<String>? recurrenceSeriesIds,
     int? limit,
+    int offset = 0,
     bool inlineTextColumns = false,
     bool includeConflictData = false,
     Database? databaseOverride,
@@ -2674,6 +2675,7 @@ class DatabaseHelper {
     sql.write(' ORDER BY t.updated_at DESC');
     if (limit != null) {
       sql.write(' LIMIT $limit');
+      if (offset > 0) sql.write(' OFFSET $offset');
     }
 
     final rows = await db.rawQuery(sql.toString(), whereArgs);

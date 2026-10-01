@@ -264,6 +264,7 @@ abstract class _StorageServiceBase {
     String username, {
     required bool includeDeleted,
     required int? limit,
+    required int offset,
   });
   List<TodoItem> _cloneTodoItems(List<TodoItem> items);
   Future<void> _clearTodoPrefsMirror(String username);
@@ -323,15 +324,16 @@ abstract class _StorageServiceBase {
   Future<void> _syncTodosToBand(List<TodoItem> items);
   Future<void> updateSingleTodo(String username, TodoItem item,
       {bool sync = true});
+  Future<TodoItem?> getTodoByUuid(String username, String uuid);
   Future<void> permanentlyDeleteTodo(String username, String uuid);
   Future<void> clearTodoRecycleBin(String username);
   bool _isHistoricalTodo(TodoItem todo, DateTime today);
   Future<int> clearHistoricalTodos(String username);
   Future<void> permanentlyDeleteCountdown(String username, String uuid);
   Future<List<TodoItem>> getTodos(String username,
-      {bool includeDeleted = false, int? limit});
+      {bool includeDeleted = false, int? limit, int offset = 0});
   Future<List<TodoItem>> _getTodosInternal(String username,
-      {bool includeDeleted = false, int? limit});
+      {bool includeDeleted = false, int? limit, int offset = 0});
   Future<void> clearTeamItems(String teamUuid);
   Future<List<TodoItem>> _handleRecurrenceLogic(
       String username, List<TodoItem> todos);

@@ -477,6 +477,9 @@ class StorageService {
           {bool sync = true}) =>
       _storage.updateSingleTodo(username, item, sync: sync);
 
+  static Future<TodoItem?> getTodoByUuid(String username, String uuid) =>
+      _storage.getTodoByUuid(username, uuid);
+
   static Future<void> permanentlyDeleteTodo(String username, String uuid) =>
       _storage.permanentlyDeleteTodo(username, uuid);
 
@@ -491,8 +494,9 @@ class StorageService {
       _storage.permanentlyDeleteCountdown(username, uuid);
 
   static Future<List<TodoItem>> getTodos(String username,
-          {bool includeDeleted = false, int? limit}) =>
-      _storage.getTodos(username, includeDeleted: includeDeleted, limit: limit);
+          {bool includeDeleted = false, int? limit, int offset = 0}) =>
+      _storage.getTodos(username,
+          includeDeleted: includeDeleted, limit: limit, offset: offset);
 
   static Future<void> clearTeamItems(String teamUuid) =>
       _storage.clearTeamItems(teamUuid);
