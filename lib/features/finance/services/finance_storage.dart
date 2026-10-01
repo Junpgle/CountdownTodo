@@ -582,19 +582,6 @@ abstract final class FinanceStorage {
     _validateLoan(loan);
     await ensureReady();
     final db = await _database;
-    final existing = await getLoan(loan.uuid, includeDeleted: true);
-    final existingInstallments = existing == null
-        ? <FinanceLoanInstallment>[]
-        : await getLoanInstallments(loan.uuid, includeDeleted: true);
-    final hasPaidInstallment = existingInstallments.any(
-      (item) => item.isPaid && !item.isDeleted,
-    );
-    if (existing != null &&
-        hasPaidInstallment &&
-        _loanTermsDiffer(existing, loan)) {
-      throw StateError('已有还款记录后不能修改本金、利率、期限或还款方式');
-    }
-
     final allocations = FinanceLoanCalculator.generate(
       principalMinor: loan.principalMinor,
       annualInterestRateBps: loan.annualInterestRateBps,
@@ -603,24 +590,35 @@ abstract final class FinanceStorage {
       repaymentDay: loan.repaymentDay,
       repaymentMethod: loan.repaymentMethod,
     );
-    final existingByIndex = <int, FinanceLoanInstallment>{};
-    for (final item in existingInstallments) {
-      if (item.installmentIndex > 0) {
-        existingByIndex[item.installmentIndex] = item;
-      }
-    }
-
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (existing != null) {
-      loan.version = existing.version;
-      loan.createdAt = existing.createdAt;
-      loan.updatedAt = existing.updatedAt;
-      loan.markAsChanged();
-    } else {
-      loan.pendingSync = true;
-    }
-
     await db.transaction((txn) async {
+      final existingRow = await _findByUuid(txn, 'finance_loans', loan.uuid);
+      final existing = existingRow == null
+          ? null
+          : FinanceLoan.fromMap(existingRow);
+      final existingInstallments = existing == null
+          ? <FinanceLoanInstallment>[]
+          : await _loanInstallmentsInTransaction(txn, loan.uuid);
+      final hasPaidInstallment = existingInstallments.any((item) => item.isPaid);
+      if (existing != null &&
+          hasPaidInstallment &&
+          _loanTermsDiffer(existing, loan)) {
+        throw StateError('已有还款记录后不能修改本金、利率、期限或还款方式');
+      }
+      final existingByIndex = <int, FinanceLoanInstallment>{};
+      for (final item in existingInstallments) {
+        if (item.installmentIndex > 0) {
+          existingByIndex[item.installmentIndex] = item;
+        }
+      }
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (existing != null) {
+        loan.version = existing.version;
+        loan.createdAt = existing.createdAt;
+        loan.updatedAt = existing.updatedAt;
+        loan.markAsChanged();
+      } else {
+        loan.pendingSync = true;
+      }
       await txn.insert(
         'finance_loans',
         _localValues(loan.toMap()),
@@ -930,42 +928,37 @@ abstract final class FinanceStorage {
   }
 
   static Future<void> deleteLoan(String uuid) async {
-    final loan = await getLoan(uuid);
-    if (loan == null) return;
-    final installments = await getLoanInstallments(uuid, includeDeleted: true);
-    loan.isDeleted = true;
-    loan.markAsChanged();
-    final db = await _database;
-    await db.transaction((txn) async {
-      await txn.update(
-        'finance_loans',
-        _localValues(loan.toMap()),
-        where: 'uuid = ?',
-        whereArgs: [uuid],
-      );
-      for (final installment in installments) {
-        if (installment.isDeleted) continue;
-        installment.isDeleted = true;
-        installment.markAsChanged();
-        await txn.update(
-          'finance_loan_installments',
-          _localValues(installment.toMap()),
-          where: 'uuid = ?',
-          whereArgs: [installment.uuid],
-        );
-      }
-    });
-    _notifyChanged();
+    await _setLoanDeleted(uuid, true);
   }
 
   static Future<void> restoreLoan(String uuid) async {
-    final loan = await getLoan(uuid, includeDeleted: true);
-    if (loan == null || !loan.isDeleted) return;
-    final installments = await getLoanInstallments(uuid, includeDeleted: true);
-    loan.isDeleted = false;
-    loan.markAsChanged();
+    await _setLoanDeleted(uuid, false);
+  }
+
+  static Future<List<FinanceLoanInstallment>> _loanInstallmentsInTransaction(
+    DatabaseExecutor db,
+    String loanUuid,
+  ) async {
+    final rows = await db.query(
+      'finance_loan_installments',
+      where: 'loan_uuid = ?',
+      whereArgs: [loanUuid],
+      orderBy: 'installment_index ASC, due_date ASC',
+    );
+    return rows.map(FinanceLoanInstallment.fromMap).toList();
+  }
+
+  static Future<void> _setLoanDeleted(String uuid, bool deleted) async {
+    await ensureReady();
     final db = await _database;
-    await db.transaction((txn) async {
+    final changed = await db.transaction<bool>((txn) async {
+      final row = await _findByUuid(txn, 'finance_loans', uuid);
+      if (row == null) return false;
+      final loan = FinanceLoan.fromMap(row);
+      if (loan.isDeleted == deleted) return false;
+      final installments = await _loanInstallmentsInTransaction(txn, uuid);
+      loan.isDeleted = deleted;
+      loan.markAsChanged();
       await txn.update(
         'finance_loans',
         _localValues(loan.toMap()),
@@ -973,11 +966,11 @@ abstract final class FinanceStorage {
         whereArgs: [uuid],
       );
       for (final installment in installments) {
-        if (!installment.isDeleted ||
-            installment.installmentIndex > loan.termMonths) {
+        if (installment.isDeleted == deleted ||
+            (!deleted && installment.installmentIndex > loan.termMonths)) {
           continue;
         }
-        installment.isDeleted = false;
+        installment.isDeleted = deleted;
         installment.markAsChanged();
         await txn.update(
           'finance_loan_installments',
@@ -986,8 +979,9 @@ abstract final class FinanceStorage {
           whereArgs: [installment.uuid],
         );
       }
+      return true;
     });
-    _notifyChanged();
+    if (changed) _notifyChanged();
   }
 
   static Future<void> deleteTransaction(String uuid) async {
