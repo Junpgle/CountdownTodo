@@ -668,12 +668,21 @@ abstract final class FinanceStorage {
   }) async {
     await ensureReady();
     final db = await _database;
+    final loanRow = await _findByUuid(db, 'finance_loans', loanUuid);
+    if (loanRow == null) return const [];
+    final loan = FinanceLoan.fromMap(loanRow);
     final where = <String>['loan_uuid = ?'];
-    if (!includeDeleted) where.add('is_deleted = 0');
+    final args = <Object?>[loanUuid];
+    if (!includeDeleted) {
+      where
+        ..add('is_deleted = 0')
+        ..add('installment_index <= ?');
+      args.add(loan.termMonths);
+    }
     final rows = await db.query(
       'finance_loan_installments',
       where: where.join(' AND '),
-      whereArgs: [loanUuid],
+      whereArgs: args,
       orderBy: 'installment_index ASC, due_date ASC',
     );
     return rows.map(FinanceLoanInstallment.fromMap).toList();
@@ -824,6 +833,10 @@ abstract final class FinanceStorage {
       JOIN finance_loans AS loan ON loan.uuid = installment.loan_uuid
       WHERE installment.is_paid = 1 AND installment.paid_at > 0
         AND installment.payment_method_uuid IS NOT NULL
+        AND (
+          installment.is_deleted = 1
+          OR installment.installment_index <= loan.term_months
+        )
     ''');
     return rows.map(FinanceLoanInstallment.fromMap).toList();
   }
@@ -936,6 +949,9 @@ abstract final class FinanceStorage {
         throw StateError('关联的贷款不存在或已删除');
       }
       final loan = FinanceLoan.fromMap(loanRow);
+      if (installment.installmentIndex > loan.termMonths) {
+        throw StateError('还款期次超出贷款期限');
+      }
       if (installment.isPaid == paid &&
           paymentMethodUuid == null &&
           paidAt == null) {
@@ -3000,8 +3016,12 @@ abstract final class FinanceStorage {
         continue;
       }
       final parentLoan = await _findByUuid(db, 'finance_loans', item.loanUuid);
-      if (parentLoan == null ||
-          (FinanceLoan.fromMap(parentLoan).isDeleted && !item.isDeleted)) {
+      final loan = parentLoan == null
+          ? null
+          : FinanceLoan.fromMap(parentLoan);
+      if (loan == null ||
+          (loan.isDeleted && !item.isDeleted) ||
+          (!item.isDeleted && item.installmentIndex > loan.termMonths)) {
         skipped++;
         continue;
       }
@@ -3682,8 +3702,12 @@ abstract final class FinanceStorage {
     var changed = 0;
     for (final item in items) {
       final parentLoan = await _findByUuid(db, 'finance_loans', item.loanUuid);
-      if (parentLoan == null ||
-          (FinanceLoan.fromMap(parentLoan).isDeleted && !item.isDeleted)) {
+      final loan = parentLoan == null
+          ? null
+          : FinanceLoan.fromMap(parentLoan);
+      if (loan == null ||
+          (loan.isDeleted && !item.isDeleted) ||
+          (!item.isDeleted && item.installmentIndex > loan.termMonths)) {
         continue;
       }
       final existing = await _findByUuid(

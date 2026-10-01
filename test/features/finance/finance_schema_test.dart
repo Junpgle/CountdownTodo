@@ -698,6 +698,46 @@ void main() {
         );
       });
 
+      test('$source 拒绝超过贷款期限的还款计划', () async {
+        final loan = FinanceLoan(
+          uuid: 'short-loan-$source',
+          name: '一个月贷款',
+          principalMinor: 1000,
+          termMonths: 1,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        final installment = FinanceLoanInstallment(
+          uuid: 'out-of-term-installment-$source',
+          loanUuid: loan.uuid,
+          installmentIndex: 2,
+          dueDate: '2026-11-01',
+          paymentMinor: 1000,
+          principalMinor: 1000,
+          interestMinor: 0,
+          remainingPrincipalMinor: 0,
+        );
+        final bundle = {
+          'loans': [loan.toMap()],
+          'loan_installments': [installment.toMap()],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['imported'], 1);
+          expect(result['skipped'], 1);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 1);
+        }
+        expect(
+          await FinanceStorage.getLoanInstallments(
+            loan.uuid,
+            includeDeleted: true,
+          ),
+          isEmpty,
+        );
+      });
+
       test('$source 拒绝缺少名称的记账记录', () async {
         final category = FinanceCategory(
           uuid: 'missing-name-category-$source',
@@ -812,6 +852,39 @@ void main() {
           throwsArgumentError,
         );
       }
+    });
+
+    test('本地已有的超期活跃还款期次不显示、不影响余额且不能还款', () async {
+      final loan = FinanceLoan(
+        uuid: 'existing-short-loan',
+        name: '一个月贷款',
+        principalMinor: 1000,
+        termMonths: 1,
+        startDate: '2026-09-01',
+        repaymentDay: 1,
+      );
+      final installment = FinanceLoanInstallment(
+        uuid: 'existing-out-of-term-installment',
+        loanUuid: loan.uuid,
+        installmentIndex: 2,
+        dueDate: '2026-11-01',
+        paymentMinor: 1000,
+        principalMinor: 1000,
+        interestMinor: 0,
+        remainingPrincipalMinor: 0,
+        isPaid: true,
+        paidAt: DateTime.now().millisecondsSinceEpoch,
+        paymentMethodUuid: 'finance-system-payment-cash',
+      );
+      await db.insert('finance_loans', loan.toMap());
+      await db.insert('finance_loan_installments', installment.toMap());
+
+      expect(await FinanceStorage.getLoanInstallments(loan.uuid), isEmpty);
+      expect(await FinanceStorage.getPaidLoanInstallments(), isEmpty);
+      await expectLater(
+        FinanceStorage.setLoanInstallmentPaid(installment.uuid, true),
+        throwsStateError,
+      );
     });
 
     test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {
