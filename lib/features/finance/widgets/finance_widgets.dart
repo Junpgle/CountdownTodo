@@ -1126,6 +1126,9 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         ? transaction.merchant!
         : categoryName ?? transaction.type.label;
     final subtitleParts = <String>[
+      if (transaction.balanceEventAt() >
+          DateTime.now().millisecondsSinceEpoch)
+        '待发生',
       if (category != null) '${category.icon} $categoryName',
       if (payment != null) '${payment.icon} ${payment.name}',
       if (transaction.installmentLabel != null)

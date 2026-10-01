@@ -809,6 +809,41 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('账单列表将尚未发生的未来账单标记出来', (tester) async {
+    final futureAt = DateTime.now().add(const Duration(hours: 1));
+    final transaction = FinanceTransaction(
+      uuid: 'ledger-upcoming-bill',
+      amountMinor: 3000,
+      transactionDate: dateKey(futureAt),
+      occurredAt: futureAt.millisecondsSinceEpoch,
+      createdAt: DateTime.now().millisecondsSinceEpoch,
+      merchant: '未来房租',
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          transactions: [transaction],
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('待发生'), findsOneWidget);
+    expect(find.text('未来房租'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('预算卡片直接编辑并保存，范围和备注保持不变', (tester) async {
     final db = await _seed(tester);
     await _pump(tester, FinanceBudgetScreen(initialMonth: _month),
