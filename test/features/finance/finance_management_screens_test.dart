@@ -886,20 +886,25 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('退款抵消支出后分类空状态不再说没有记账', (tester) async {
+  testWidgets('历史月份的小结和分类空状态显示所选月份', (tester) async {
+    final now = DateTime.now();
+    final selectedMonth = DateTime(now.year, now.month - 1);
+    final transactionDate = dateKey(
+      DateTime(selectedMonth.year, selectedMonth.month, 2),
+    );
     final transactions = [
       FinanceTransaction(
         uuid: 'overview-offset-expense',
         amountMinor: 5000,
         categoryUuid: 'test-food',
-        transactionDate: '2026-09-02',
+        transactionDate: transactionDate,
       ),
       FinanceTransaction(
         uuid: 'overview-offset-refund',
         type: FinanceTransactionType.refund,
         amountMinor: 5000,
         categoryUuid: 'test-food',
-        transactionDate: '2026-09-02',
+        transactionDate: transactionDate,
       ),
     ];
 
@@ -907,7 +912,7 @@ void main() {
       tester,
       Scaffold(
         body: FinanceOverviewPanel(
-          month: _month,
+          month: selectedMonth,
           summary: FinanceSummary.fromTransactions(transactions),
           transactions: transactions,
           categories: const {},
@@ -918,8 +923,29 @@ void main() {
       ),
     );
 
-    expect(find.text('本月没有可展示的净支出分类'), findsOneWidget);
-    expect(find.text('本月还没有支出记录'), findsNothing);
+    final monthLabel = '${selectedMonth.year}年${selectedMonth.month}月';
+    expect(find.text('$monthLabel没有可展示的净支出分类'), findsOneWidget);
+    expect(find.text('$monthLabel小结'), findsOneWidget);
+    expect(find.text('本月没有可展示的净支出分类'), findsNothing);
+    expect(find.text('本月小结'), findsNothing);
+
+    await _tap(tester, find.text('周视图'));
+    final weeklyChartTitle = tester
+        .widget<Text>(find.textContaining('每日净支出').first)
+        .data!;
+    expect(weeklyChartTitle, isNot('本周每日净支出'));
+    final weekLabel = weeklyChartTitle.replaceFirst('每日净支出', '');
+    expect(find.text('$weekLabel小结'), findsOneWidget);
+    expect(find.text('$weekLabel没有可展示的净支出分类'), findsOneWidget);
+
+    await _tap(tester, find.text('日视图'));
+    final dailyChartTitle = tester
+        .widget<Text>(find.textContaining('时段净支出').first)
+        .data!;
+    expect(dailyChartTitle, isNot('当天时段净支出'));
+    final dayLabel = dailyChartTitle.replaceFirst('时段净支出', '');
+    expect(find.text('$dayLabel没有可展示的净支出分类'), findsOneWidget);
+    expect(find.text('$dayLabel还没有净支出记录'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

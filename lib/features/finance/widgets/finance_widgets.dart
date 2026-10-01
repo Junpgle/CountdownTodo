@@ -186,16 +186,24 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     final periodSummary = _view == _FinanceOverviewView.month && !includesNow
         ? summary
         : FinanceRepository.summarizeTransactions(periodTransactions);
+    final selectedMonthIsCurrent =
+        now.year == month.year && now.month == month.month;
     final title = switch (_view) {
       _FinanceOverviewView.month => '${month.year} 年 ${month.month} 月',
       _FinanceOverviewView.week =>
-        _formatFinanceDateRange(range.from, range.to),
+          _formatFinanceDateRange(range.from, range.to),
       _FinanceOverviewView.day => _formatFinanceDayLabel(dateKey(_focusedDate)),
     };
     final shortTitle = switch (_view) {
-      _FinanceOverviewView.month => '本月',
-      _FinanceOverviewView.week => '本周',
-      _FinanceOverviewView.day => '当天',
+      _FinanceOverviewView.month => selectedMonthIsCurrent
+          ? '本月'
+          : '${month.year}年${month.month}月',
+      _FinanceOverviewView.week => includesNow
+          ? '本周'
+          : _formatFinanceDateRange(range.from, range.to),
+      _FinanceOverviewView.day => dateKey(now) == dateKey(_focusedDate)
+          ? '今天'
+          : _formatFinanceDayLabel(dateKey(_focusedDate)),
     };
     return _FinanceOverviewPeriod(
       from: range.from,
@@ -207,11 +215,19 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     );
   }
 
-  String get _spendingChartTitle => switch (_view) {
-        _FinanceOverviewView.month => '每日净支出',
-        _FinanceOverviewView.week => '本周每日净支出',
-        _FinanceOverviewView.day => '当天时段净支出',
-      };
+  String get _spendingChartTitle {
+    final now = DateTime.now();
+    return switch (_view) {
+      _FinanceOverviewView.month => '每日净支出',
+      _FinanceOverviewView.week =>
+        !now.isBefore(_periodRange.from) && now.isBefore(_periodRange.to)
+            ? '本周每日净支出'
+            : '${_formatFinanceDateRange(_periodRange.from, _periodRange.to)}每日净支出',
+      _FinanceOverviewView.day => dateKey(now) == dateKey(_focusedDate)
+          ? '当天时段净支出'
+          : '${_formatFinanceDayLabel(dateKey(_focusedDate))}时段净支出',
+    };
+  }
 
   _FinanceDateRange get _periodRange {
     switch (_view) {
@@ -859,9 +875,12 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           children: [
             Icon(icon, color: colorScheme.onSurfaceVariant),
             const SizedBox(width: 8),
-            Text(
-              message,
-              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            Flexible(
+              child: Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: colorScheme.onSurfaceVariant),
+              ),
             ),
           ],
         ),
