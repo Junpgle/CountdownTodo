@@ -82,14 +82,22 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
       final occurredTransactions = transactions
           .where((transaction) => transaction.balanceEventAt() <= asOfAt)
           .toList(growable: false);
+      final latestTransaction = occurredTransactions
+          .fold<FinanceTransaction?>(null, (latest, transaction) {
+        if (latest == null) return transaction;
+        final latestEventAt = latest.balanceEventAt();
+        final transactionEventAt = transaction.balanceEventAt();
+        if (transactionEventAt != latestEventAt) {
+          return transactionEventAt > latestEventAt ? transaction : latest;
+        }
+        return transaction.updatedAt > latest.updatedAt ? transaction : latest;
+      });
       setState(() {
         _summary = FinanceSummary.fromTransactions(
           transactions,
           asOfAt: asOfAt,
         );
-        _latestTransaction = occurredTransactions.isEmpty
-            ? null
-            : occurredTransactions.first;
+        _latestTransaction = latestTransaction;
         _isLoading = false;
         _hasError = false;
       });

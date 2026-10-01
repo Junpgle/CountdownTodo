@@ -712,6 +712,49 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('首页最近一笔按有效发生时刻排序旧账单', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final legacyCreatedAt = now.subtract(const Duration(hours: 1));
+    final earlierAt = now.subtract(const Duration(hours: 2));
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction.fromMap({
+          'uuid': 'today-section-legacy-latest',
+          'amount_minor': 3000,
+          'transaction_date': dateKey(now),
+          'created_at': legacyCreatedAt.millisecondsSinceEpoch,
+          'updated_at': now.millisecondsSinceEpoch,
+          'merchant': '时间未知但较晚',
+        }).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'today-section-known-earlier',
+          amountMinor: 2000,
+          transactionDate: dateKey(now),
+          occurredAt: earlierAt.millisecondsSinceEpoch,
+          createdAt: earlierAt.millisecondsSinceEpoch,
+          updatedAt: earlierAt.millisecondsSinceEpoch,
+          merchant: '有时刻但较早',
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      const Scaffold(
+        body: FinanceTodaySection(username: 'default'),
+      ),
+    );
+
+    expect(find.text('时间未知但较晚'), findsOneWidget);
+    expect(find.text('有时刻但较早'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('日视图小时分布使用账单记录时区', (tester) async {
     final now = DateTime.now();
     final transaction = FinanceTransaction(
