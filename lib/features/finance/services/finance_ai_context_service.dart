@@ -20,6 +20,9 @@ class FinanceDateRange {
 /// asking about existing bills, budgets, or a bill mutation.  Mutations still
 /// require a confirmation card in the chat UI.
 abstract final class FinanceAiContextService {
+  static const _maxContextBudgetDetails = 20;
+  static const _maxContextTransactionDetails = 60;
+
   static const _financeNouns = [
     '记账',
     '账单',
@@ -521,7 +524,7 @@ abstract final class FinanceAiContextService {
 
     if (budgets.isNotEmpty) {
       String? displayedMonth;
-      for (final budget in budgets.take(20)) {
+      for (final budget in budgets.take(_maxContextBudgetDetails)) {
         if (displayedMonth != budget.monthKey) {
           displayedMonth = budget.monthKey;
           lines.add('预算（${budget.monthKey}，整月）:');
@@ -539,13 +542,21 @@ abstract final class FinanceAiContextService {
           '${remaining < 0 ? '超支' : '剩余'} ${formatFinanceAmount(remaining.abs())}',
         );
       }
+      if (budgets.length > _maxContextBudgetDetails) {
+        lines.add(
+          '预算条目共${budgets.length}项，当前仅列出前$_maxContextBudgetDetails项，'
+          '另有${budgets.length - _maxContextBudgetDetails}项未展开；'
+          '当前预算信息不完整，不能据此计算全范围预算剩余。',
+        );
+      }
     }
 
     lines.add('账单明细（每条都有真实 transactionId，只能用于用户明确的修改/删除；禁止编造ID）:');
     if (transactions.isEmpty) {
       lines.add('- 当前范围没有账单');
     } else {
-      for (final transaction in transactions.take(60)) {
+      for (final transaction
+          in transactions.take(_maxContextTransactionDetails)) {
         final signed =
             transaction.type.signedPrefix +
             formatFinanceAmount(transaction.amountMinor);
@@ -562,6 +573,14 @@ abstract final class FinanceAiContextService {
         lines.add(
           '- $status[transactionId: ${transaction.uuid}] ${transaction.transactionDate} | '
           '${transaction.type.label} $signed$category$merchant$payment$note',
+        );
+      }
+      if (transactions.length > _maxContextTransactionDetails) {
+        lines.add(
+          '账单明细共${transactions.length}笔，当前仅列出前'
+          '$_maxContextTransactionDetails笔，'
+          '其余${transactions.length - _maxContextTransactionDetails}笔没有逐笔列出；'
+          '以上明细不完整，不要据此判断某笔账单不存在。',
         );
       }
     }

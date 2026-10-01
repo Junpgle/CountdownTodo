@@ -95,6 +95,53 @@ void main() {
     expect(week.label, '2026-10-26 至 2026-11-01');
   });
 
+  test('AI 财务上下文会说明账单和预算明细被截断', () {
+    final categories = [
+      for (var index = 0; index < 21; index++)
+        FinanceCategory(
+          uuid: 'context-category-$index',
+          name: '上下文分类$index',
+        ),
+    ];
+    final budgets = [
+      for (var index = 0; index < 21; index++)
+        FinanceBudget(
+          uuid: 'context-budget-$index',
+          monthKey: '2026-09',
+          categoryUuid: 'context-category-$index',
+          amountMinor: 10000,
+        ),
+    ];
+    final transactions = [
+      for (var index = 0; index < 61; index++)
+        FinanceTransaction(
+          uuid: 'context-transaction-$index',
+          amountMinor: 100,
+          transactionDate: dateKey(DateTime(2026, 9, index % 30 + 1)),
+          occurredAt: DateTime(
+            2026,
+            9,
+            index % 30 + 1,
+            12,
+          ).millisecondsSinceEpoch,
+        ),
+    ];
+    final context = FinanceAiContextService.formatContext(
+      range: FinanceDateRange(DateTime(2026, 9), DateTime(2026, 10)),
+      summary: FinanceSummary.fromTransactions(transactions),
+      transactions: transactions,
+      categories: categories,
+      paymentMethods: const [],
+      budgets: budgets,
+      budgetSummaries: const {'2026-09': FinanceSummary()},
+      asOfAt: DateTime(2026, 10).millisecondsSinceEpoch,
+    );
+
+    expect(context, contains('预算条目共21项，当前仅列出前20项，另有1项未展开'));
+    expect(context, contains('账单明细共61笔，当前仅列出前60笔'));
+    expect(context, contains('其余1笔没有逐笔列出'));
+  });
+
   test('今年查询按实际月份给出预算，账单汇总仍按全年', () async {
     final context = await FinanceAiContextService.buildContext(
       userMessage: '今年支出和预算还有多少',
