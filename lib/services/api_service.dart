@@ -36,7 +36,7 @@ class ApiService {
   static String baseUrl = kIsWeb ? aliyunCloudflareUrl : aliyunProdUrl;
   static String? _baseUrlOverride;
 
-  // 🛡️ 全局使用的、跳过 SSL 证书验证的 HTTP 客户端
+  // 复用使用平台默认 TLS 证书校验的 HTTP 客户端。
   static http.Client? _clientInstance;
   static http.Client? _deltaSyncClient;
   static http.Client get _client {

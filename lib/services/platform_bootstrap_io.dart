@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
@@ -11,15 +9,6 @@ import '../windows_island/island_entry.dart' as island_entry;
 import '../windows_island/island_ipc_paths.dart';
 import 'float_window_service.dart';
 import 'window_service.dart';
-
-class MyHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    return super.createHttpClient(context)
-      ..badCertificateCallback =
-          (X509Certificate cert, String host, int port) => true;
-  }
-}
 
 class PlatformBootstrap {
   PlatformBootstrap._();
@@ -35,10 +24,6 @@ class PlatformBootstrap {
     return false;
   }
 
-  static void configureHttpOverrides() {
-    HttpOverrides.global = MyHttpOverrides();
-  }
-
   static Future<void> initDatabaseFactory() async {
     if (AppPlatform.isDesktop) {
       // debugPrint("🛠️ [Main] 检测到桌面平台，正在全局初始化 SQL FFI 引擎...");
@@ -51,7 +36,7 @@ class PlatformBootstrap {
 
   static Future<void> initMobileDownloader() async {
     if (AppPlatform.isAndroid || AppPlatform.isIOS) {
-      await FlutterDownloader.initialize(debug: kDebugMode, ignoreSsl: true);
+      await FlutterDownloader.initialize(debug: kDebugMode);
     }
   }
 

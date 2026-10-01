@@ -1,20 +1,9 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../storage_service.dart';
 import '../models.dart';
 import 'api_service.dart';
 import 'course_service.dart';
-
-/// 临时 HTTP 覆盖类，用于在迁移期间忽略可能存在的 SSL 证书问题
-class _IgnoreSslHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    return super.createHttpClient(context)
-      ..badCertificateCallback =
-          (X509Certificate cert, String host, int port) => true;
-  }
-}
 
 class MigrationService {
   /// 一键迁移：从旧 Cloudflare D1 拉取数据，推送到新阿里云 ECS。
@@ -28,18 +17,6 @@ class MigrationService {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final activeUsername = await StorageService.getLoginSession();
-
-    // 🌟 防弹机制 1：临时忽略所有 SSL 证书问题
-    HttpOverrides.global = _IgnoreSslHttpOverrides();
-
-    // 🌟 防弹机制 2：自动纠正手滑填错的 https 协议
-    // 很多时候阿里云 ECS 没配域名和证书，直接填 https://IP:8082 必报 HandshakeException
-    if (newUrl.startsWith('https://') &&
-        (newUrl.contains(':8082') ||
-            RegExp(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}').hasMatch(newUrl))) {
-      newUrl = newUrl.replaceFirst('https://', 'http://');
-      onProgress("⚠️ 检测到新服务器为裸 IP 或特定端口，已自动修正为 http:// 协议以防止握手失败...");
-    }
 
     try {
       // ==========================================
@@ -229,8 +206,6 @@ class MigrationService {
     } finally {
       // 无论成功失败，恢复动态选择的逻辑，防止后续请求全发错地方
       ApiService.clearBaseUrlOverride();
-      // 恢复 HTTP SSL 限制，保证后续业务安全性
-      HttpOverrides.global = null;
     }
   }
 
