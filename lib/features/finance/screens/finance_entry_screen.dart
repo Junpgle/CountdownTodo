@@ -818,6 +818,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   }
 
   Future<void> _save() async {
+    if (_isSaving || _isLoading) return;
     if (!_formKey.currentState!.validate()) return;
     final amount = parseFinanceAmount(_amountController.text);
     if (amount == null) {

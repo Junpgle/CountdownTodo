@@ -211,6 +211,38 @@ Future<void> _top(WidgetTester tester) async {
 void main() {
   sqfliteFfiInit();
 
+  testWidgets('快速重复点保存不会创建重复账单', (tester) async {
+    final db = await _seed(tester);
+    await _pump(
+      tester,
+      FinanceEntryScreen(
+        initialDraft: FinanceEntryDraft(
+          amountMinor: 1200,
+          transactionDate: dateKey(DateTime.now()),
+        ),
+      ),
+    );
+
+    final saveButton = find.text('保存账单');
+    await tester.ensureVisible(saveButton);
+    await tester.pump();
+    await tester.tap(saveButton);
+    await tester.tap(saveButton);
+    var rows = <Map<String, Object?>>[];
+    for (var attempt = 0; attempt < 100; attempt++) {
+      rows = (await tester.runAsync(
+        () => db.query('finance_transactions', where: 'is_deleted = 0'),
+      ))!;
+      if (rows.isNotEmpty) break;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(rows, hasLength(1));
+  });
+
   testWidgets('记账分类先选大类，再选小类并支持现场新增', (tester) async {
     final db = await _seed(tester);
     await _pump(tester, const FinanceEntryScreen());
