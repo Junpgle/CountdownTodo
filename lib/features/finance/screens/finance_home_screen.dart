@@ -495,22 +495,33 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   Future<void> _exportCsv() async {
-    final path = await FinanceRepository.exportCsv(
-      transactions: _transactions,
-      categories: _categoryMap,
-      paymentMethods: _paymentMethodMap,
-    );
-    if (!mounted) return;
-    AppSnackBars.showSnackBar(
-      context,
-      SnackBar(
-        content: Text(
-            path == null
-                ? '已取消导出'
-                : '已导出$_selectedMonthLabel账单${path.isEmpty ? '' : '：$path'}'),
-        duration: const Duration(seconds: 4),
-      ),
-    );
+    try {
+      final path = await FinanceRepository.exportCsv(
+        transactions: _transactions,
+        categories: _categoryMap,
+        paymentMethods: _paymentMethodMap,
+      );
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(
+          content: Text(
+              path == null
+                  ? '已取消导出'
+                  : '已导出$_selectedMonthLabel账单${path.isEmpty ? '' : '：$path'}'),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(
+          content: Text('导出失败：$error'),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   String get _selectedMonthLabel {

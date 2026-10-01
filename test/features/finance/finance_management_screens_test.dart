@@ -18,6 +18,7 @@ import 'package:countdown_todo/features/finance/widgets/finance_widgets.dart';
 import 'package:countdown_todo/services/database_helper.dart';
 import 'package:countdown_todo/widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -809,6 +810,35 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('导出本月 CSV'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('CSV 导出失败时向用户显示错误', (tester) async {
+    await _seed(tester);
+    const pathProviderChannel =
+        MethodChannel('plugins.flutter.io/path_provider');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(pathProviderChannel, (call) async {
+      if (call.method == 'getApplicationDocumentsDirectory') {
+        throw PlatformException(
+          code: 'test_storage_unavailable',
+          message: '测试存储不可用',
+        );
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(pathProviderChannel, null),
+    );
+    await _pump(tester, const FinanceHomeScreen(username: 'default'));
+
+    await _tap(tester, find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('导出本月账单 CSV'));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.textContaining('导出失败：'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
