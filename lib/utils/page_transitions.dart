@@ -247,6 +247,7 @@ class PageTransitions {
     required BuildContext context,
     required Widget page,
     required GlobalKey sourceKey,
+    RouteSettings? settings,
     Rect? targetRect,
     BorderRadius? targetBorderRadius,
     Color? sourceColor,
@@ -263,7 +264,10 @@ class PageTransitions {
       return null;
     }
     if (!_AnimSettings.animationsEnabled) {
-      return Navigator.push(context, material(builder: (_) => page));
+      return Navigator.push<T>(
+        context,
+        material<T>(builder: (_) => page, settings: settings),
+      );
     }
 
     await Future.delayed(const Duration(milliseconds: 16));
@@ -274,7 +278,10 @@ class PageTransitions {
         sourceKey.currentContext?.findRenderObject() as RenderBox?;
 
     if (renderBox == null || renderBox.size.isEmpty) {
-      return Navigator.push(context, material(builder: (_) => page));
+      return Navigator.push<T>(
+        context,
+        material<T>(builder: (_) => page, settings: settings),
+      );
     }
 
     final position = renderBox.localToGlobal(Offset.zero);
@@ -286,6 +293,7 @@ class PageTransitions {
       context,
       ContainerTransformRoute<T>(
         page: page,
+        settings: settings,
         sourceRect: rect,
         targetRect: targetRect,
         targetBorderRadius: targetBorderRadius,
@@ -864,6 +872,7 @@ class ContainerTransformRoute<T> extends PageRouteBuilder<T> {
 
   ContainerTransformRoute({
     required this.page,
+    super.settings,
     this.placeholderIcon,
     this.placeholderBuilder,
     required this.sourceRect,

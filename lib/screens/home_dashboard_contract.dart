@@ -4,7 +4,7 @@ part of 'home_dashboard.dart';
 // 所有页面分片共享的成员契约。
 // 具体实现仍位于各职责 mixin，这里只为 Dart 提供跨分片的静态类型信息。
 mixin _HomeDashboardContract {
-  Future<void> _openAiAssistantFromAppBar();
+  Future<void> _openAiAssistantFromAppBar({GlobalKey? sourceKey});
 
   Future<void> _openPendingRecognitionChat();
 

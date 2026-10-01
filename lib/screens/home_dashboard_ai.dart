@@ -22,10 +22,11 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
     }
   }
 
-  Future<void> _openAiAssistantFromAppBar() async {
+  Future<void> _openAiAssistantFromAppBar({GlobalKey? sourceKey}) async {
+    final transitionSourceKey = sourceKey ?? _aiButtonKey;
     final todoState = _todoSectionKey.currentState;
     if (todoState != null) {
-      await todoState.openAiAssistant(sourceKey: _aiButtonKey);
+      await todoState.openAiAssistant(sourceKey: transitionSourceKey);
       return;
     }
 
@@ -56,7 +57,7 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
       await AiTodoChatLauncher.open(
         context,
         username: widget.username,
-        sourceKey: _aiButtonKey,
+        sourceKey: transitionSourceKey,
         todos: _todos.where((t) => !t.isDone && !t.isDeleted).toList(),
         todoGroups: _todoGroups,
         courses: courses,

@@ -107,7 +107,7 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
     final aiContext = await _loadAiAssistantContext();
     if (!mounted) return;
 
-    AiTodoChatLauncher.open(
+    await AiTodoChatLauncher.open(
       context,
       username: widget.username,
       sourceKey: sourceKey,
