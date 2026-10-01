@@ -613,6 +613,75 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('编辑未分类账单时不自动添加默认分类', (tester) async {
+    final db = await _seed(tester);
+    final transaction = FinanceTransaction(
+      uuid: 'edit-uncategorized-entry',
+      amountMinor: 1250,
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '原本未分类',
+    );
+    await tester.runAsync(() => FinanceStorage.saveTransaction(transaction));
+
+    await _pump(tester, FinanceEntryScreen(transaction: transaction));
+    expect(find.text('未分类'), findsOneWidget);
+    await _tap(tester, find.text('保存账单'));
+    var rows = <Map<String, Object?>>[];
+    for (var attempt = 0; attempt < 100; attempt++) {
+      rows = (await tester.runAsync(
+        () => db.query(
+          'finance_transactions',
+          where: 'uuid = ?',
+          whereArgs: [transaction.uuid],
+        ),
+      ))!;
+      if (rows.single['version'] == 2) break;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(rows.single['version'], 2);
+    expect(rows.single['category_uuid'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('未分类支出的新退款继续保持未分类', (tester) async {
+    final db = await _seed(tester);
+    final original = FinanceTransaction(
+      uuid: 'uncategorized-refund-original',
+      amountMinor: 5000,
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '未分类原账单',
+    );
+    await tester.runAsync(() => FinanceStorage.saveTransaction(original));
+
+    await _pump(tester, FinanceEntryScreen(originalTransaction: original));
+    expect(find.text('未分类'), findsOneWidget);
+    await _tap(tester, find.text('保存账单'));
+    var rows = <Map<String, Object?>>[];
+    for (var attempt = 0; attempt < 100; attempt++) {
+      rows = (await tester.runAsync(
+        () => db.query(
+          'finance_transactions',
+          where: 'related_transaction_uuid = ?',
+          whereArgs: [original.uuid],
+        ),
+      ))!;
+      if (rows.isNotEmpty) break;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(rows, hasLength(1));
+    expect(rows.single['type'], FinanceTransactionType.refund.name);
+    expect(rows.single['category_uuid'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('当前月预算不提前统计尚未发生的未来账单', (tester) async {
     final db = await _seed(tester);
     var clockNow = DateTime(2026, 9, 15, 12);

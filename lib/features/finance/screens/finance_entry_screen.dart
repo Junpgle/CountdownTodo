@@ -252,7 +252,12 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       });
       _resolveDraftSelections();
       _normalizeSelections(
-        allowDefaultCategory: !_shouldKeepUnresolvedDraftCategory(),
+        allowDefaultCategory:
+            widget.transaction == null &&
+            widget.originalTransaction == null &&
+            !_shouldKeepUnresolvedDraftCategory(),
+        preserveUnresolvedCategory:
+            widget.transaction != null || widget.originalTransaction != null,
       );
     } catch (error) {
       if (!mounted) return;
@@ -450,9 +455,14 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   void _normalizeSelections({
     bool notify = true,
     bool allowDefaultCategory = true,
+    bool preserveUnresolvedCategory = false,
   }) {
     final categories = _visibleCategories;
-    if (_categoryUuid == null ||
+    if (_categoryUuid == null) {
+      _categoryUuid = allowDefaultCategory && categories.isNotEmpty
+          ? categories.first.uuid
+          : null;
+    } else if (!preserveUnresolvedCategory &&
         categories.every((item) => item.uuid != _categoryUuid)) {
       _categoryUuid = allowDefaultCategory && categories.isNotEmpty
           ? categories.first.uuid
@@ -1113,7 +1123,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       key: ValueKey('finance-category-$_type-$_categoryUuid'),
       colorScheme: colorScheme,
       label: '分类',
-      placeholder: '请选择分类',
+      placeholder: _categoryUuid == null
+          ? _editingTransaction != null || widget.originalTransaction != null
+                ? '未分类'
+                : '请选择分类'
+          : '已删除或未知分类',
       selectedName: selectedCategory == null
           ? null
           : _categoryName(selectedCategory),
