@@ -87,6 +87,48 @@ void main() {
       );
     });
 
+    test('发现已有周期账单后回填进度仍触发刷新和同步', () async {
+      final rule = FinanceRecurringRule(
+        uuid: 'repair-recurring-generation-marker',
+        name: '月费',
+        amountMinor: 10000,
+        startDate: '2026-01-01',
+      );
+      await FinanceStorage.saveRecurringRule(rule);
+      const periodKey = '2026-09';
+      final dueAt = DateTime(2026, 9, 1, 9);
+      expect(
+        await FinanceStorage.materializeRecurringRule(
+          rule,
+          dueAt: dueAt,
+          periodKey: periodKey,
+        ),
+        true,
+      );
+      await db.update(
+        'finance_recurring_rules',
+        {'last_generated_period': '2026-08', 'pending_sync': 0},
+        where: 'uuid = ?',
+        whereArgs: [rule.uuid],
+      );
+      final staleRule = (await FinanceStorage.getRecurringRule(rule.uuid))!;
+      final revisionBefore = FinanceStorage.revision.value;
+
+      expect(
+        await FinanceStorage.materializeRecurringRule(
+          staleRule,
+          dueAt: dueAt,
+          periodKey: periodKey,
+        ),
+        false,
+      );
+
+      final repaired = (await FinanceStorage.getRecurringRule(rule.uuid))!;
+      expect(repaired.lastGeneratedPeriod, periodKey);
+      expect(repaired.pendingSync, true);
+      expect(FinanceStorage.revision.value, greaterThan(revisionBefore));
+    });
+
     test('其他设备删除周期账单后拒绝保存旧页面中的编辑', () async {
       final rule = FinanceRecurringRule(
         uuid: 'stale-edit-deleted-recurring-rule',

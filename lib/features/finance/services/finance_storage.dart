@@ -1983,6 +1983,7 @@ abstract final class FinanceStorage {
     if (periodKey.trim().isEmpty) return false;
     await ensureReady();
     final db = await _database;
+    var repairedGenerationMarker = false;
     final generated = await db.transaction<bool>((txn) async {
       final rows = await txn.query(
         'finance_recurring_rules',
@@ -2029,6 +2030,7 @@ abstract final class FinanceStorage {
           periodKey,
         );
         current.markAsChanged();
+        repairedGenerationMarker = true;
         await txn.update(
           'finance_recurring_rules',
           _localValues(current.toMap()),
@@ -2077,7 +2079,7 @@ abstract final class FinanceStorage {
       );
       return true;
     });
-    if (generated) _notifyChanged();
+    if (generated || repairedGenerationMarker) _notifyChanged();
     return generated;
   }
 
