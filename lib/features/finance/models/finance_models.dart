@@ -2268,8 +2268,9 @@ class FinanceSummary {
   });
 
   static FinanceSummary fromTransactions(
-    Iterable<FinanceTransaction> transactions,
-  ) {
+    Iterable<FinanceTransaction> transactions, {
+    int? asOfAt,
+  }) {
     var income = 0;
     var expense = 0;
     var refund = 0;
@@ -2279,6 +2280,7 @@ class FinanceSummary {
     final expenseByDate = <String, int>{};
 
     for (final transaction in transactions) {
+      if (asOfAt != null && transaction.balanceEventAt() > asOfAt) continue;
       transactionCount++;
       final categoryUuid = transaction.categoryUuid ?? '';
       switch (transaction.type) {

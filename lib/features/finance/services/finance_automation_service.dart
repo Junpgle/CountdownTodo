@@ -286,9 +286,13 @@ abstract final class FinanceAutomationService {
     final monthKey = financeMonthKey(current);
     final budgets = await FinanceStorage.getBudgets(monthKey: monthKey);
     if (budgets.isEmpty) return;
-    final summary = await FinanceStorage.getSummary(
+    final transactions = await FinanceStorage.getTransactions(
       from: DateTime(current.year, current.month),
       to: DateTime(current.year, current.month + 1),
+    );
+    final summary = FinanceSummary.fromTransactions(
+      transactions,
+      asOfAt: current.millisecondsSinceEpoch,
     );
     final categories = await FinanceStorage.getCategories(
       includeArchived: true,

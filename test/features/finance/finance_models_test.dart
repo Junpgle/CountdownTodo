@@ -55,6 +55,36 @@ void main() {
     expect(transaction.balanceEventAt(), future.millisecondsSinceEpoch);
   });
 
+  test('预算截止汇总排除尚未发生的同日和未来日期账单', () {
+    final asOf = DateTime(2026, 10, 2, 12);
+    final summary = FinanceSummary.fromTransactions(
+      [
+        FinanceTransaction(
+          uuid: 'budget-before-cutoff',
+          amountMinor: 40000,
+          transactionDate: '2026-10-02',
+          occurredAt: DateTime(2026, 10, 2, 11).millisecondsSinceEpoch,
+        ),
+        FinanceTransaction(
+          uuid: 'budget-after-cutoff',
+          amountMinor: 20000,
+          transactionDate: '2026-10-02',
+          occurredAt: DateTime(2026, 10, 2, 13).millisecondsSinceEpoch,
+        ),
+        FinanceTransaction(
+          uuid: 'budget-next-day',
+          amountMinor: 150000,
+          transactionDate: '2026-10-03',
+          occurredAt: DateTime(2026, 10, 3, 12).millisecondsSinceEpoch,
+        ),
+      ],
+      asOfAt: asOf.millisecondsSinceEpoch,
+    );
+
+    expect(summary.expenseMinor, 40000);
+    expect(summary.transactionCount, 1);
+  });
+
   test('未来发生时刻不因记录日期与保存时区不一致而提前计入余额', () {
     final createdAt = DateTime.utc(2026, 10, 1, 16, 30);
     final occurredAt = createdAt.add(const Duration(minutes: 1));

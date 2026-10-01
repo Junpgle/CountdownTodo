@@ -457,10 +457,9 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       return FinanceRepository.summarizeTransactions(_transactions);
     }
     final cutoff = asOfAt ?? _balanceAsOfAt;
-    return FinanceRepository.summarizeTransactions(
-      _transactions.where(
-        (transaction) => _balanceEventTime(transaction) <= cutoff,
-      ),
+    return FinanceSummary.fromTransactions(
+      _transactions,
+      asOfAt: cutoff,
     );
   }
 

@@ -140,7 +140,7 @@ abstract final class FinanceRepository {
     await FinanceStorage.saveTransaction(transaction, original: original);
     try {
       await FinanceAutomationService.checkBudgetAlerts(
-        now: dateFromKey(transaction.transactionDate),
+        now: DateTime.now(),
       );
     } catch (_) {
       // 预算通知失败不能回滚已经保存成功的账单。
@@ -163,14 +163,10 @@ abstract final class FinanceRepository {
       startDate: startDate,
       existingInstallments: existingInstallments,
     );
-    for (final item in saved) {
-      try {
-        await FinanceAutomationService.checkBudgetAlerts(
-          now: dateFromKey(item.transactionDate),
-        );
-      } catch (_) {
-        // 预算通知失败不能回滚已经保存成功的分期账单。
-      }
+    try {
+      await FinanceAutomationService.checkBudgetAlerts();
+    } catch (_) {
+      // 预算通知失败不能回滚已经保存成功的分期账单。
     }
     return saved;
   }
