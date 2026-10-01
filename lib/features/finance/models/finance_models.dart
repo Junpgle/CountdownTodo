@@ -9,6 +9,10 @@ import '../../../utils/json_value_parser.dart';
 /// 金额在模型中始终保存为正整数（人民币分），方向由该枚举决定。
 enum FinanceTransactionType { expense, income, refund }
 
+/// Reserved ledger filter value for transactions without a category.
+const String financeUncategorizedCategoryFilterUuid =
+    '__finance_uncategorized__';
+
 enum FinanceCategoryType { expense, income }
 
 enum FinanceEntrySource { manual, import, ai, automation }

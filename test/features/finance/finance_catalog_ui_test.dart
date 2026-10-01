@@ -502,4 +502,44 @@ void main() {
     expect(find.text('未细分'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('未分类支出详情可以进入对应账单', (tester) async {
+    final transaction = FinanceTransaction(
+      uuid: 'uncategorized-entry',
+      amountMinor: 2450,
+      transactionDate: '2026-09-24',
+      merchant: '临时支出',
+    );
+    String? selectedCategoryUuid;
+
+    await tester.pumpWidget(MaterialApp(
+      home: FinanceCategoryDetailScreen(
+        periodTitle: '本月',
+        rootCategoryUuid: null,
+        transactions: [transaction],
+        categories: const {},
+        onCategorySelected: (categoryUuid, _) async {
+          selectedCategoryUuid = categoryUuid;
+        },
+      ),
+    ));
+
+    final item = find.byKey(
+      const ValueKey(
+        'finance-category-detail-$financeUncategorizedCategoryFilterUuid',
+      ),
+    );
+    expect(find.text('没有可筛选的分类账单'), findsNothing);
+    expect(
+      find.descendant(of: item, matching: find.text('未分类')),
+      findsOneWidget,
+    );
+    expect(find.text('1 笔账单 · 点击查看'), findsOneWidget);
+
+    await tester.tap(item);
+    await tester.pump();
+
+    expect(selectedCategoryUuid, financeUncategorizedCategoryFilterUuid);
+    expect(tester.takeException(), isNull);
+  });
 }

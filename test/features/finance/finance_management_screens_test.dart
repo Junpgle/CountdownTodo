@@ -1202,6 +1202,60 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('未分类账单筛选只显示未关联分类的账单', (tester) async {
+    final uncategorized = FinanceTransaction(
+      uuid: 'ledger-uncategorized',
+      amountMinor: 1200,
+      transactionDate: '2026-09-04',
+      merchant: '未分类支出',
+    );
+    final categorized = FinanceTransaction(
+      uuid: 'ledger-categorized',
+      amountMinor: 1800,
+      categoryUuid: 'test-food',
+      transactionDate: '2026-09-04',
+      merchant: '分类支出',
+    );
+    String? changedCategoryUuid = financeUncategorizedCategoryFilterUuid;
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          transactions: [uncategorized, categorized],
+          categories: {
+            'test-food': FinanceCategory(
+              uuid: 'test-food',
+              name: '日常餐饮',
+              icon: '🍜',
+            ),
+          },
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          categoryUuid: financeUncategorizedCategoryFilterUuid,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onCategoryChanged: (value) => changedCategoryUuid = value,
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('未分类支出'), findsOneWidget);
+    expect(find.text('分类支出'), findsNothing);
+    expect(find.text('分类 · 未分类'), findsOneWidget);
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('finance-ledger-category-filter')),
+    );
+    expect(changedCategoryUuid, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('历史月份账单为空时显示所选月份', (tester) async {
     final now = DateTime.now();
     final selectedMonth = DateTime(now.year, now.month - 1);

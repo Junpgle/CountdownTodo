@@ -89,7 +89,19 @@ class _FinanceCategoryDetailScreenState
     List<FinanceTransaction> matchingTransactions,
   ) {
     final root = _rootCategory;
-    if (root == null) return const [];
+    if (root == null) {
+      final amount = _netExpense(matchingTransactions);
+      if (amount <= 0) return const [];
+      return [
+        _FinanceCategoryDetailItem(
+          categoryUuid: financeUncategorizedCategoryFilterUuid,
+          title: '未分类',
+          icon: '💰',
+          amountMinor: amount,
+          transactionCount: matchingTransactions.length,
+        ),
+      ];
+    }
 
     final children = _childCategories(root);
     final result = <_FinanceCategoryDetailItem>[];

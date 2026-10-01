@@ -1020,8 +1020,12 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   Widget build(BuildContext context) {
     final filtered = transactions.where((transaction) {
       if (filterType != null && transaction.type != filterType) return false;
-      if (categoryUuid != null && transaction.categoryUuid != categoryUuid) {
-        return false;
+      if (categoryUuid != null) {
+        final matchesCategory =
+            categoryUuid == financeUncategorizedCategoryFilterUuid
+                ? transaction.categoryUuid == null
+                : transaction.categoryUuid == categoryUuid;
+        if (!matchesCategory) return false;
       }
       if (keyword.trim().isEmpty) return true;
       final query = keyword.trim().toLowerCase();
@@ -1124,10 +1128,14 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   }
 
   Widget _buildCategoryFilterChip(BuildContext context) {
-    final category = categories[categoryUuid];
-    final label = category == null
-        ? '分类筛选'
-        : '分类 · ${financeCategoryDisplayName(category, categories.values)}';
+    final isUncategorized =
+        categoryUuid == financeUncategorizedCategoryFilterUuid;
+    final category = isUncategorized ? null : categories[categoryUuid];
+    final label = isUncategorized
+        ? '分类 · 未分类'
+        : category == null
+            ? '分类筛选'
+            : '分类 · ${financeCategoryDisplayName(category, categories.values)}';
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: FilterChip(
