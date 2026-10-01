@@ -698,6 +698,51 @@ void main() {
         );
       });
 
+      test('$source 拒绝未来时间标记为已还的贷款期次', () async {
+        final loan = FinanceLoan(
+          uuid: 'future-paid-loan-$source',
+          name: '未来还款贷款',
+          principalMinor: 1000,
+          termMonths: 1,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        final installment = FinanceLoanInstallment(
+          uuid: 'future-paid-installment-$source',
+          loanUuid: loan.uuid,
+          installmentIndex: 1,
+          dueDate: '2026-10-01',
+          paymentMinor: 1000,
+          principalMinor: 1000,
+          interestMinor: 0,
+          remainingPrincipalMinor: 0,
+          isPaid: true,
+          paidAt: DateTime.now()
+              .add(const Duration(days: 1))
+              .millisecondsSinceEpoch,
+          paymentMethodUuid: 'finance-system-payment-cash',
+        );
+        final bundle = {
+          'loans': [loan.toMap()],
+          'loan_installments': [installment.toMap()],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['imported'], 1);
+          expect(result['skipped'], 1);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 1);
+        }
+        expect(
+          await FinanceStorage.getLoanInstallments(
+            loan.uuid,
+            includeDeleted: true,
+          ),
+          isEmpty,
+        );
+      });
+
       test('$source 拒绝超过贷款期限的还款计划', () async {
         final loan = FinanceLoan(
           uuid: 'short-loan-$source',

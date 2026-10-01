@@ -4512,6 +4512,7 @@ abstract final class FinanceStorage {
   }
 
   static bool _isValidLoanInstallment(FinanceLoanInstallment item) {
+    final paidAt = item.paidAt;
     return item.uuid.trim().isNotEmpty &&
         item.loanUuid.trim().isNotEmpty &&
         item.installmentIndex > 0 &&
@@ -4524,8 +4525,9 @@ abstract final class FinanceStorage {
         item.principalMinor <= maxFinanceAmountMinor - item.interestMinor &&
         item.paymentMinor == item.principalMinor + item.interestMinor &&
         isSafeFinanceAmountMinor(item.remainingPrincipalMinor) &&
+        (paidAt == null || paidAt <= DateTime.now().millisecondsSinceEpoch) &&
         (item.paymentMethodUuid == null ||
-            (item.isPaid && (item.paidAt ?? 0) > 0));
+            (item.isPaid && (paidAt ?? 0) > 0));
   }
 
   static Future<bool> _hasPaidLoanInstallments(
