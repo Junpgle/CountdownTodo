@@ -9,6 +9,7 @@ import '../services/finance_storage.dart';
 import '../services/finance_text_parser.dart';
 import '../widgets/finance_amount_calculator.dart';
 import '../widgets/finance_catalog_editor.dart';
+import 'finance_loan_screen.dart';
 import '../../../utils/app_dialogs.dart';
 
 class _FinanceOptionSelection<T> {
@@ -56,6 +57,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   String? _amountExpression;
   List<FinanceTransaction> _existingInstallments = const [];
   FinanceTransaction? _originalTransaction;
+  FinanceTransaction? _editingTransaction;
+  FinanceLoanInstallment? _linkedRepayment;
   int _remainingRefundableMinor = 0;
   bool _installmentEnabled = false;
   int _installmentCount = FinanceInstallmentCalculator.minCount;
@@ -63,6 +66,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   bool _isSaving = false;
 
   bool get _isEditing => widget.transaction != null;
+  bool get _isLoanInterest => _linkedRepayment != null;
   bool get _isEditingInstallment => widget.transaction?.isInstallment == true;
   bool get _hasRefundBinding =>
       widget.originalTransaction != null ||
@@ -74,6 +78,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   void initState() {
     super.initState();
     final transaction = widget.transaction;
+    _editingTransaction = transaction;
     _timezoneOffsetMinutes = transaction?.timezoneOffsetMinutes ??
         DateTime.now().timeZoneOffset.inMinutes;
     final template = transaction == null ? widget.initialTemplate : null;
@@ -188,6 +193,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 boundOriginalUuid,
                 excludingRefundUuid: widget.transaction?.uuid,
               ),
+        widget.transaction == null
+            ? Future.value(null)
+            : FinanceStorage.getRepaymentForInterestTransaction(
+                widget.transaction!.uuid,
+              ),
       ]);
       if (!mounted) return;
       final installmentGroup = options[3] as List<FinanceTransaction>;
@@ -230,6 +240,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         _templates = options[2] as List<FinanceEntryTemplate>;
         _originalTransaction = originalTransaction;
         _remainingRefundableMinor = remainingRefundableMinor;
+        _linkedRepayment = options[6] as FinanceLoanInstallment?;
         if (!_isEditing &&
             originalTransaction != null &&
             _amountController.text.trim().isEmpty &&
@@ -463,6 +474,54 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     FocusManager.instance.primaryFocus?.unfocus(
       disposition: UnfocusDisposition.scope,
     );
+  }
+
+  Future<void> _openRepayment() async {
+    final repayment = _linkedRepayment;
+    if (repayment == null) return;
+    try {
+      final loan = await FinanceStorage.getLoan(
+        repayment.loanUuid,
+        includeDeleted: true,
+      );
+      if (!mounted) return;
+      if (loan == null || loan.isDeleted) {
+        _showError('请先在记账回收站恢复这笔贷款，再修改或撤销还款');
+        return;
+      }
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(builder: (_) => FinanceLoanDetailScreen(loan: loan)),
+      );
+      final transaction = await FinanceStorage.getTransaction(
+        widget.transaction!.uuid,
+      );
+      if (!mounted || transaction == null) return;
+      if (transaction.isDeleted) {
+        Navigator.of(context).pop(transaction);
+        return;
+      }
+      final currentRepayment = await FinanceStorage.getRepaymentForInterestTransaction(
+        transaction.uuid,
+      );
+      if (!mounted) return;
+      // Refresh repayment fields and version while keeping unsaved text edits.
+      setState(() {
+        _editingTransaction = transaction;
+        _linkedRepayment = currentRepayment;
+        _type = transaction.type;
+        _categoryUuid = transaction.categoryUuid;
+        _paymentMethodUuid = transaction.paymentMethodUuid;
+        _date = dateFromKey(transaction.transactionDate);
+        _occurredAt = transaction.occurrenceLocalTime;
+        _timezoneOffsetMinutes = transaction.timezoneOffsetMinutes;
+        _amountController.text = formatFinanceAmount(
+          transaction.amountMinor,
+          withSymbol: false,
+        );
+      });
+    } catch (error) {
+      if (mounted) _showError('打开还款记录失败：$error');
+    }
   }
 
   void _ensureFocusedFieldVisible() {
@@ -796,7 +855,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     }
 
     setState(() => _isSaving = true);
-    final old = widget.transaction;
+    final old = _editingTransaction;
     final now = DateTime.now().millisecondsSinceEpoch;
     final transaction = FinanceTransaction(
       uuid: old?.uuid,
@@ -1049,7 +1108,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           : _categoryName(selectedCategory),
       selectedIcon: selectedCategory?.icon,
       fieldIcon: Icons.category_outlined,
-      onTap: _isSaving || _isBoundRefund ? null : _pickCategory,
+      onTap: _isSaving || _isBoundRefund || _isLoanInterest ? null : _pickCategory,
     );
 
     final payment = _buildFinancePickerField(
@@ -1062,7 +1121,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       selectedName: selectedPaymentMethod?.name,
       selectedIcon: selectedPaymentMethod?.icon,
       fieldIcon: Icons.account_balance_wallet_outlined,
-      onTap: _isSaving ? null : _pickPaymentMethod,
+      onTap: _isSaving || _isLoanInterest ? null : _pickPaymentMethod,
     );
     if (!isWide) {
       return Column(children: [category, const SizedBox(height: 14), payment]);
@@ -1569,7 +1628,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: _isSaving ? null : _pickDate,
+        onTap: _isSaving || _isLoanInterest ? null : _pickDate,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
           child: Row(
@@ -1628,7 +1687,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           ),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
-            onTap: _isSaving ? null : _pickOccurrenceTime,
+            onTap: _isSaving || _isLoanInterest ? null : _pickOccurrenceTime,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
               child: Row(
@@ -1904,6 +1963,24 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                       ),
                       children: [
                         _buildTypeSelector(colorScheme),
+                        if (_isLoanInterest) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            '贷款利息金额由还款计划确定，账户和时间请在还款记录中修改。商家和备注仍可编辑。',
+                            style: TextStyle(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton.icon(
+                              key: const ValueKey('finance-linked-repayment'),
+                              onPressed: _isSaving ? null : _openRepayment,
+                              icon: const Icon(Icons.account_balance_outlined),
+                              label: const Text('查看还款记录'),
+                            ),
+                          ),
+                        ],
                         if (_isBoundRefund) ...[
                           const SizedBox(height: 12),
                           _buildRefundContextCard(colorScheme),
@@ -1922,7 +1999,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                           readOnly: true,
                           showCursor: false,
                           keyboardType: TextInputType.none,
-                          onTap: _isSaving ? null : _showAmountCalculator,
+                          onTap: _isSaving || _isLoanInterest
+                              ? null
+                              : _showAmountCalculator,
                           decoration: _fieldDecoration(
                             colorScheme,
                             labelText: _installmentEnabled ? '分期总额' : '金额',
@@ -1961,7 +2040,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                         _buildDateField(colorScheme),
                         const SizedBox(height: 8),
                         _buildOccurrenceTimeField(colorScheme),
-                        if (_type == FinanceTransactionType.expense) ...[
+                        if (_type == FinanceTransactionType.expense &&
+                            !_isLoanInterest) ...[
                           const SizedBox(height: 14),
                           _buildInstallmentField(colorScheme),
                         ],
@@ -2017,7 +2097,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 label: type.label,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(10),
-                  onTap: () {
+                  onTap: _isSaving || _isLoanInterest ? null : () {
                     _dismissKeyboard();
                     if (type == _type ||
                         _isEditingInstallment ||

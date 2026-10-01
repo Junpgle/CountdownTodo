@@ -299,6 +299,7 @@ abstract final class FinanceStorage {
     await ensureReady();
     final db = await _database;
     await db.transaction((txn) async {
+      await _validateLoanInterestEdit(txn, transaction);
       await _validateTransactionRefundState(txn, transaction);
       await txn.insert(
         'finance_transactions',
@@ -398,6 +399,7 @@ abstract final class FinanceStorage {
         );
         if (old != null) item.markAsChanged();
         item.pendingSync = true;
+        await _validateLoanInterestEdit(txn, item);
         await _validateTransactionRefundState(txn, item);
         await txn.insert(
           'finance_transactions',
@@ -416,6 +418,7 @@ abstract final class FinanceStorage {
         }
         old.isDeleted = true;
         old.markAsChanged();
+        await _validateLoanInterestEdit(txn, old);
         await _validateTransactionRefundState(txn, old);
         await txn.update(
           'finance_transactions',
@@ -455,6 +458,7 @@ abstract final class FinanceStorage {
       for (final transaction in group) {
         transaction.isDeleted = true;
         transaction.markAsChanged();
+        await _validateLoanInterestEdit(txn, transaction);
         await _validateTransactionRefundState(txn, transaction);
         await txn.update(
           'finance_transactions',
@@ -491,6 +495,7 @@ abstract final class FinanceStorage {
       for (final transaction in restorable) {
         transaction.isDeleted = false;
         transaction.markAsChanged();
+        await _validateLoanInterestEdit(txn, transaction);
         await _validateTransactionRefundState(txn, transaction);
         await txn.update(
           'finance_transactions',
@@ -675,6 +680,86 @@ abstract final class FinanceStorage {
         AND installment.payment_method_uuid IS NOT NULL
     ''');
     return rows.map(FinanceLoanInstallment.fromMap).toList();
+  }
+
+  /// Includes recycled and canceled repayments so their interest bills remain
+  /// managed through the repayment even after its current bill pointer clears.
+  static Future<FinanceLoanInstallment?> getRepaymentForInterestTransaction(
+    String transactionUuid,
+  ) async {
+    await ensureReady();
+    return _findRepaymentForInterestTransaction(
+      await _database,
+      transactionUuid,
+    );
+  }
+
+  static Future<FinanceLoanInstallment?> _findRepaymentForInterestTransaction(
+    DatabaseExecutor db,
+    String transactionUuid,
+  ) async {
+    final rows = await db.rawQuery('''
+      SELECT installment.* FROM finance_loan_installments AS installment
+      WHERE installment.interest_transaction_uuid = ?
+        OR installment.uuid = (
+          SELECT related_transaction_uuid FROM finance_transactions WHERE uuid = ?
+        )
+      ORDER BY CASE WHEN installment.interest_transaction_uuid = ? THEN 0 ELSE 1 END
+      LIMIT 1
+    ''', [transactionUuid, transactionUuid, transactionUuid]);
+    return rows.isEmpty ? null : FinanceLoanInstallment.fromMap(rows.single);
+  }
+
+  static Future<void> _validateLoanInterestEdit(
+    DatabaseExecutor db,
+    FinanceTransaction transaction,
+  ) async {
+    final repayment = await _findRepaymentForInterestTransaction(
+      db,
+      transaction.uuid,
+    );
+    if (repayment == null) return;
+    if (!repayment.isPaid ||
+        repayment.interestTransactionUuid != transaction.uuid) {
+      // Canceled or replaced bills may be deleted to clean up legacy data,
+      // but only the repayment operation can activate its current interest.
+      if (!transaction.isDeleted) {
+        throw StateError(
+          repayment.isPaid
+              ? '这笔利息已由新的还款账单替代，请在贷款还款中查看当前账单'
+              : '关联还款已撤销，不能单独恢复利息账单；请在贷款还款中重新标记已还款',
+        );
+      }
+      return;
+    }
+    if (transaction.isDeleted) {
+      throw StateError('贷款利息账单由还款记录管理，请在贷款还款中修改或撤销还款');
+    }
+    final existing = await _findByUuid(
+      db,
+      'finance_transactions',
+      transaction.uuid,
+    );
+    final values = transaction.toMap();
+    const repaymentFields = [
+      'type',
+      'amount_minor',
+      'currency_code',
+      'category_uuid',
+      'payment_method_uuid',
+      'transaction_date',
+      'occurred_at',
+      'timezone_offset_minutes',
+      'related_transaction_uuid',
+      'installment_group_uuid',
+      'installment_index',
+      'installment_count',
+      'installment_total_minor',
+    ];
+    if (existing == null ||
+        repaymentFields.any((key) => existing[key] != values[key])) {
+      throw StateError('贷款利息账单由还款记录管理，请在贷款还款中修改或撤销还款');
+    }
   }
 
   /// Only interest enters consumption statistics. The full repayment amount
