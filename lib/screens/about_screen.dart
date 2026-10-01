@@ -138,9 +138,9 @@ class _AboutScreenState extends State<AboutScreen> {
           _migrationErrors = p.errors;
           _migrationSuccessCount = p.totalSuccess;
           if (p.isCompleted) {
-            _migrationCompleted = true;
             _isMigrating = false;
-            _needsMigration = false;
+            _migrationCompleted = p.errors.isEmpty;
+            _needsMigration = p.errors.isNotEmpty;
           }
         });
       }
@@ -1444,17 +1444,45 @@ class _AboutScreenState extends State<AboutScreen> {
             ),
             const SizedBox(height: 16),
             if (!_isMigrating && !_migrationCompleted) ...[
-              const Text(
-                '您的数据目前存储在旧版引擎中。升级到 Uni-Sync 4.0 (SQLite) 将获得极速搜索、离线同步和更稳定的数据保护。',
-                style: TextStyle(fontSize: 13, height: 1.4),
+              Text(
+                _migrationErrors.isEmpty
+                    ? '您的数据目前存储在旧版引擎中。升级到 Uni-Sync 4.0 (SQLite) 将获得极速搜索、离线同步和更稳定的数据保护。'
+                    : '上次迁移有 ${_migrationErrors.length} 条异常，旧数据仍保留。修复问题后可以重试。',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  color: colorScheme.onSurface,
+                ),
               ),
+              if (_migrationErrors.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '成功: $_migrationSuccessCount | 失败: ${_migrationErrors.length}',
+                  style: TextStyle(fontSize: 11, color: colorScheme.error),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _migrationErrors.take(3).join('\n'),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colorScheme.error,
+                    fontFamily: 'monospace',
+                  ),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
                   onPressed: _startMigration,
                   icon: const Icon(Icons.rocket_launch_rounded),
-                  label: const Text('立即开始极速迁移'),
+                  label: Text(
+                    _migrationErrors.isEmpty
+                        ? '立即开始极速迁移'
+                        : '重试未完成迁移',
+                  ),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
@@ -1493,7 +1521,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.1),
+                    color: colorScheme.errorContainer,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
@@ -1501,31 +1529,38 @@ class _AboutScreenState extends State<AboutScreen> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.warning_amber_rounded,
-                              color: Colors.orange, size: 16),
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            color: colorScheme.onErrorContainer,
+                            size: 16,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             '迁移发现 ${_migrationErrors.length} 条异常',
-                            style: const TextStyle(
-                                color: Colors.orange,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: colorScheme.onErrorContainer,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 4),
                       Text(
                         _migrationErrors.take(3).join('\n'),
-                        style: const TextStyle(
-                            color: Colors.orange,
-                            fontSize: 10,
-                            fontFamily: 'monospace'),
+                        style: TextStyle(
+                          color: colorScheme.onErrorContainer,
+                          fontSize: 10,
+                          fontFamily: 'monospace',
+                        ),
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                       ),
                       if (_migrationErrors.length > 3)
-                        const Text('...',
-                            style: TextStyle(color: Colors.orange)),
+                        Text(
+                          '...',
+                          style: TextStyle(color: colorScheme.onErrorContainer),
+                        ),
                     ],
                   ),
                 ),

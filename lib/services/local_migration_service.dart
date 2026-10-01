@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../storage_service.dart';
 import 'course_service.dart';
@@ -24,6 +25,18 @@ class MigrationProgress {
 
 class LocalMigrationService {
   static const String keyMigrationCompletedV4 = 'migration_completed_v4';
+
+  @visibleForTesting
+  static Future<void> persistCompletionIfSuccessful(
+    List<String> errors,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (errors.isEmpty) {
+      await prefs.setBool(keyMigrationCompletedV4, true);
+    } else {
+      await prefs.remove(keyMigrationCompletedV4);
+    }
+  }
 
   static Future<bool> needsMigration() async {
     final prefs = await SharedPreferences.getInstance();
@@ -119,20 +132,40 @@ class LocalMigrationService {
 
     // 3. 其他静默迁移 (保持原逻辑)
     yield MigrationProgress(stage: '正在迁移文件夹...', progress: 0.6, errors: errors);
-    await StorageService.getTodoGroups(username, includeDeleted: true);
+    try {
+      await StorageService.getTodoGroups(username, includeDeleted: true);
+    } catch (e) {
+      errors.add('文件夹迁移失败: $e');
+    }
 
     yield MigrationProgress(
         stage: '正在迁移时间日志...', progress: 0.75, errors: errors);
-    await StorageService.getTimeLogs(username);
+    try {
+      await StorageService.getTimeLogs(username);
+    } catch (e) {
+      errors.add('时间日志迁移失败: $e');
+    }
 
     yield MigrationProgress(
         stage: '正在迁移课表与专注数据...', progress: 0.9, errors: errors);
-    await CourseService.getAllCourses(username);
-    await PomodoroService.getTags();
+    try {
+      await CourseService.getAllCourses(username);
+    } catch (e) {
+      errors.add('课表迁移失败: $e');
+    }
+    try {
+      await PomodoroService.getTags();
+    } catch (e) {
+      errors.add('专注标签迁移失败: $e');
+    }
 
-    await prefs.setBool(keyMigrationCompletedV4, true);
+    try {
+      await persistCompletionIfSuccessful(errors);
+    } catch (e) {
+      errors.add('迁移状态保存失败: $e');
+    }
     yield MigrationProgress(
-        stage: '本地升级完成！',
+        stage: errors.isEmpty ? '本地升级完成！' : '迁移结束，请处理异常后重试',
         progress: 1.0,
         isCompleted: true,
         errors: errors,
