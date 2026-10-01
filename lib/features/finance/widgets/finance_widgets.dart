@@ -208,9 +208,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   }
 
   String get _spendingChartTitle => switch (_view) {
-        _FinanceOverviewView.month => '每日支出',
-        _FinanceOverviewView.week => '本周每日支出',
-        _FinanceOverviewView.day => '当天时段支出',
+        _FinanceOverviewView.month => '每日净支出',
+        _FinanceOverviewView.week => '本周每日净支出',
+        _FinanceOverviewView.day => '当天时段净支出',
       };
 
   _FinanceDateRange get _periodRange {
@@ -660,7 +660,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           for (var hour = 0; hour < values.length; hour++)
             '$hour时 · 净支出 ${formatFinanceAmount(values[hour])}',
         ],
-        emptyMessage: '${period.shortTitle}还没有支出记录',
+        emptyMessage: '${period.shortTitle}还没有净支出记录',
         barWidth: 28,
       );
     }
@@ -691,7 +691,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           '${_formatFinanceDayLabel(dateKey(dates[index]))} · '
               '净支出 ${formatFinanceAmount(values[index])}',
       ],
-      emptyMessage: '${period.shortTitle}还没有支出记录',
+      emptyMessage: '${period.shortTitle}还没有净支出记录',
       barWidth: _view == _FinanceOverviewView.month ? 24 : 40,
     );
   }
@@ -719,9 +719,11 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     required String emptyMessage,
     required double barWidth,
   }) {
-    final maxValue =
-        values.fold<int>(0, (max, value) => value > max ? value : max);
-    if (maxValue == 0) {
+    final maxMagnitude = values.fold<int>(0, (maximum, value) {
+      final magnitude = value.abs();
+      return magnitude > maximum ? magnitude : maximum;
+    });
+    if (maxMagnitude == 0) {
       return _buildEmptyCard(
         context,
         icon: Icons.bar_chart_outlined,
@@ -729,6 +731,14 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
         nested: true,
       );
     }
+    const plotHeight = 88.0;
+    final hasPositive = values.any((value) => value > 0);
+    final hasNegative = values.any((value) => value < 0);
+    final baseline = hasPositive && hasNegative
+        ? plotHeight / 2
+        : hasPositive
+            ? plotHeight
+            : 0.0;
     return SizedBox(
       height: 142,
       child: SingleChildScrollView(
@@ -742,25 +752,55 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 3),
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.bottomCenter,
-                          child: Tooltip(
-                            message: tooltips[index],
-                            preferBelow: false,
-                            child: Container(
-                              width: 12,
-                              height: values[index] <= 0
-                                  ? 2
-                                  : 88 * values[index] / maxValue + 2,
-                              decoration: BoxDecoration(
-                                color: colorScheme.primary,
-                                borderRadius: BorderRadius.circular(6),
+                      SizedBox(
+                        height: plotHeight,
+                        child: Stack(
+                          children: [
+                            if (hasPositive && hasNegative)
+                              Positioned(
+                                left: 0,
+                                right: 0,
+                                top: baseline,
+                                child: Container(
+                                  height: 1,
+                                  color: colorScheme.outlineVariant,
+                                ),
+                              ),
+                            Positioned(
+                              left: (barWidth - 18) / 2,
+                              top: values[index] < 0 ||
+                                      (values[index] == 0 && !hasPositive)
+                                  ? baseline
+                                  : null,
+                              bottom: values[index] < 0 ||
+                                      (values[index] == 0 && !hasPositive)
+                                  ? null
+                                  : plotHeight - baseline,
+                              child: Tooltip(
+                                message: tooltips[index],
+                                preferBelow: false,
+                                child: Container(
+                                  width: 12,
+                                  height: values[index] == 0
+                                      ? 2
+                                      : ((values[index].abs() /
+                                                      maxMagnitude) *
+                                                  (values[index] < 0
+                                                      ? plotHeight - baseline
+                                                      : baseline))
+                                              .clamp(2, plotHeight)
+                                              .toDouble(),
+                                  decoration: BoxDecoration(
+                                    color: values[index] < 0
+                                        ? colorScheme.primary
+                                        : colorScheme.error,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 6),

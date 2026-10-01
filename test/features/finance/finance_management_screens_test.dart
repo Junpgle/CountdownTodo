@@ -758,6 +758,42 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('退款超过支出时净支出图表仍显示负值', (tester) async {
+    final refund = FinanceTransaction(
+      uuid: 'overview-net-refund',
+      type: FinanceTransactionType.refund,
+      amountMinor: 5000,
+      transactionDate: '2026-09-02',
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: _month,
+          summary: FinanceSummary.fromTransactions([refund]),
+          transactions: [refund],
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('每日净支出'), findsOneWidget);
+    expect(find.text('本月还没有净支出记录'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            widget.message?.contains('净支出 -¥50.00') == true,
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('概览平均净支出不把收入笔数计入分母', (tester) async {
     final occurredAt = DateTime(2026, 9, 2, 10).millisecondsSinceEpoch;
     final transactions = [
