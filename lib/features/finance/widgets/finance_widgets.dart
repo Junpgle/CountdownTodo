@@ -240,17 +240,22 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       case _FinanceOverviewView.week:
         final weekStart = _startOfWeek(_focusedDate);
         return _FinanceDateRange(
-            weekStart, weekStart.add(const Duration(days: 7)));
+          weekStart,
+          financeCalendarDayOffset(weekStart, 7),
+        );
       case _FinanceOverviewView.day:
         final day =
             DateTime(_focusedDate.year, _focusedDate.month, _focusedDate.day);
-        return _FinanceDateRange(day, day.add(const Duration(days: 1)));
+        return _FinanceDateRange(day, financeCalendarDayOffset(day, 1));
     }
   }
 
   DateTime _startOfWeek(DateTime value) {
     final day = DateTime(value.year, value.month, value.day);
-    return day.subtract(Duration(days: day.weekday - DateTime.monday));
+    return financeCalendarDayOffset(
+      day,
+      DateTime.monday - day.weekday,
+    );
   }
 
   List<FinanceTransaction> _transactionsInRange(_FinanceDateRange range) {
@@ -430,8 +435,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
 
   void _shiftFocusedPeriod(int delta) {
     final next = _view == _FinanceOverviewView.week
-        ? _focusedDate.add(Duration(days: delta * 7))
-        : _focusedDate.add(Duration(days: delta));
+        ? financeCalendarDayOffset(_focusedDate, delta * 7)
+        : financeCalendarDayOffset(_focusedDate, delta);
     setState(() => _focusedDate = _clampToSelectedMonth(next));
   }
 
@@ -449,7 +454,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     if (_view == _FinanceOverviewView.month) return true;
     final days = _view == _FinanceOverviewView.week ? delta * 7 : delta;
     final next = _clampToSelectedMonth(
-      _focusedDate.add(Duration(days: days)),
+      financeCalendarDayOffset(_focusedDate, days),
     );
     if (_view == _FinanceOverviewView.week) {
       return dateKey(_startOfWeek(next)) != dateKey(_startOfWeek(_focusedDate));
@@ -731,12 +736,13 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       count,
       (index) =>
           period.summary
-              .expenseByDate[dateKey(period.from.add(Duration(days: index)))] ??
+              .expenseByDate[
+                  dateKey(financeCalendarDayOffset(period.from, index))] ??
           0,
     );
     final dates = List<DateTime>.generate(
       count,
-      (index) => period.from.add(Duration(days: index)),
+      (index) => financeCalendarDayOffset(period.from, index),
     );
     return _buildBarChart(
       context,
@@ -1367,7 +1373,7 @@ class _FinanceCategoryTotal {
 }
 
 String _formatFinanceDateRange(DateTime from, DateTime to) {
-  final lastDay = to.subtract(const Duration(days: 1));
+  final lastDay = financeCalendarDayOffset(to, -1);
   if (from.year == lastDay.year && from.month == lastDay.month) {
     return '${from.month}月${from.day}日 - ${lastDay.day}日';
   }

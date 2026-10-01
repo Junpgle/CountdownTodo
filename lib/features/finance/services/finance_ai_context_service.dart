@@ -10,7 +10,7 @@ class FinanceDateRange {
   const FinanceDateRange(this.from, this.to);
 
   String get label =>
-      '${dateKey(from)} 至 ${dateKey(to.subtract(const Duration(days: 1)))}';
+      '${dateKey(from)} 至 ${dateKey(financeCalendarDayOffset(to, -1))}';
 }
 
 /// Builds a small, query-scoped finance snapshot for the AI assistant.
@@ -400,28 +400,28 @@ abstract final class FinanceAiContextService {
     if (explicitDate != null) {
       return FinanceDateRange(
         explicitDate,
-        explicitDate.add(const Duration(days: 1)),
+        financeCalendarDayOffset(explicitDate, 1),
       );
     }
     if (text.contains('前天')) {
-      final day = current.subtract(const Duration(days: 2));
-      return FinanceDateRange(day, day.add(const Duration(days: 1)));
+      final day = financeCalendarDayOffset(current, -2);
+      return FinanceDateRange(day, financeCalendarDayOffset(day, 1));
     }
     if (text.contains('昨天') || text.contains('yesterday')) {
-      final day = current.subtract(const Duration(days: 1));
-      return FinanceDateRange(day, day.add(const Duration(days: 1)));
+      final day = financeCalendarDayOffset(current, -1);
+      return FinanceDateRange(day, financeCalendarDayOffset(day, 1));
     }
     if (text.contains('今天') || text.contains('今日') || text.contains('today')) {
-      return FinanceDateRange(current, current.add(const Duration(days: 1)));
+      return FinanceDateRange(current, financeCalendarDayOffset(current, 1));
     }
     if (text.contains('上周') || text.contains('上星期')) {
       final thisMonday = _mondayOf(current);
-      final from = thisMonday.subtract(const Duration(days: 7));
+      final from = financeCalendarDayOffset(thisMonday, -7);
       return FinanceDateRange(from, thisMonday);
     }
     if (text.contains('本周') || text.contains('这周') || text.contains('这星期')) {
       final from = _mondayOf(current);
-      return FinanceDateRange(from, from.add(const Duration(days: 7)));
+      return FinanceDateRange(from, financeCalendarDayOffset(from, 7));
     }
     if (_containsAny(text, [
       '这一个月',
@@ -436,8 +436,8 @@ abstract final class FinanceAiContextService {
       '近30天',
       '近三十天',
     ])) {
-      final from = current.subtract(const Duration(days: 29));
-      return FinanceDateRange(from, current.add(const Duration(days: 1)));
+      final from = financeCalendarDayOffset(current, -29);
+      return FinanceDateRange(from, financeCalendarDayOffset(current, 1));
     }
     final explicitMonth = _resolveExplicitMonthRange(text, current);
     if (explicitMonth != null) return explicitMonth;
@@ -454,8 +454,8 @@ abstract final class FinanceAiContextService {
       return FinanceDateRange(from, DateTime(current.year, current.month + 1));
     }
     if (text.contains('最近7天') || text.contains('最近七天')) {
-      final from = current.subtract(const Duration(days: 6));
-      return FinanceDateRange(from, current.add(const Duration(days: 1)));
+      final from = financeCalendarDayOffset(current, -6);
+      return FinanceDateRange(from, financeCalendarDayOffset(current, 1));
     }
     // A bare “账单/支出/余额” query defaults to the current month.  This is
     // predictable and avoids sending the entire lifetime ledger to a model.
@@ -698,7 +698,10 @@ abstract final class FinanceAiContextService {
 
   static DateTime _mondayOf(DateTime value) {
     final day = _day(value);
-    return day.subtract(Duration(days: day.weekday - DateTime.monday));
+    return financeCalendarDayOffset(
+      day,
+      DateTime.monday - day.weekday,
+    );
   }
 
   static String _shorten(String text, int maxLength) {

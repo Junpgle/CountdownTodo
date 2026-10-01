@@ -32,16 +32,19 @@ void main() {
         uuid: 'august',
         amountMinor: 1000,
         transactionDate: '2026-08-31',
+        occurredAt: DateTime(2026, 8, 31, 12).millisecondsSinceEpoch,
       ),
       FinanceTransaction(
         uuid: 'earlier-september',
         amountMinor: 3000,
         transactionDate: '2026-09-01',
+        occurredAt: DateTime(2026, 9, 1, 12).millisecondsSinceEpoch,
       ),
       FinanceTransaction(
         uuid: 'today',
         amountMinor: 2000,
         transactionDate: '2026-09-02',
+        occurredAt: DateTime(2026, 9, 2, 12).millisecondsSinceEpoch,
       ),
     ]) {
       await FinanceStorage.saveTransaction(item);
@@ -55,7 +58,7 @@ void main() {
   test('今天明细只包含当天，月预算包含整月支出', () async {
     final context = await FinanceAiContextService.buildContext(
       userMessage: '今天支出和预算还有多少',
-      now: DateTime(2026, 9, 2),
+      now: DateTime(2026, 9, 2, 23, 59),
     );
     expect(context, contains('整体: 额度 ¥100.00 | 已用 ¥50.00 | 剩余 ¥50.00'));
     expect(context, contains('[transactionId: today]'));
@@ -67,17 +70,35 @@ void main() {
   test('跨月周查询分别给出两个自然月预算，不能混用整周支出', () async {
     final context = await FinanceAiContextService.buildContext(
       userMessage: '本周支出和预算还有多少',
-      now: DateTime(2026, 9, 2),
+      now: DateTime(2026, 9, 2, 23, 59),
     );
     expect(context, contains('整体: 额度 ¥100.00 | 已用 ¥10.00 | 剩余 ¥90.00'));
     expect(context, contains('整体: 额度 ¥100.00 | 已用 ¥50.00 | 剩余 ¥50.00'));
     expect(context, contains('净支出 ¥60.00'));
   });
 
+  test('夏令时回拨日按自然日计算 AI 账单范围和标签', () {
+    final today = FinanceAiContextService.resolveDateRange(
+      '今天支出',
+      now: DateTime(2026, 11, 1, 12),
+    );
+    expect(dateKey(today.from), '2026-11-01');
+    expect(dateKey(today.to), '2026-11-02');
+    expect(today.label, '2026-11-01 至 2026-11-01');
+
+    final week = FinanceAiContextService.resolveDateRange(
+      '本周支出',
+      now: DateTime(2026, 11, 1, 12),
+    );
+    expect(dateKey(week.from), '2026-10-26');
+    expect(dateKey(week.to), '2026-11-02');
+    expect(week.label, '2026-10-26 至 2026-11-01');
+  });
+
   test('今年查询按实际月份给出预算，账单汇总仍按全年', () async {
     final context = await FinanceAiContextService.buildContext(
       userMessage: '今年支出和预算还有多少',
-      now: DateTime(2026, 9, 2),
+      now: DateTime(2026, 9, 2, 23, 59),
     );
     expect(context, contains('整体: 额度 ¥100.00 | 已用 ¥10.00 | 剩余 ¥90.00'));
     expect(context, contains('整体: 额度 ¥100.00 | 已用 ¥50.00 | 剩余 ¥50.00'));

@@ -1080,13 +1080,13 @@ abstract final class FinanceTextParser {
     final value = raw.trim().toLowerCase();
     if (value.contains('今天') || value == 'today') return _day(now);
     if (value.contains('昨天') || value == 'yesterday') {
-      return _day(now.subtract(const Duration(days: 1)));
+      return financeCalendarDayOffset(_day(now), -1);
     }
     if (value.contains('前天')) {
-      return _day(now.subtract(const Duration(days: 2)));
+      return financeCalendarDayOffset(_day(now), -2);
     }
     if (value.contains('明天') || value == 'tomorrow') {
-      return _day(now.add(const Duration(days: 1)));
+      return financeCalendarDayOffset(_day(now), 1);
     }
 
     final normalized = value

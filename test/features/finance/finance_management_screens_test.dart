@@ -1013,6 +1013,62 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('夏令时回拨日以及月底账单在日周月视图中都能显示', (tester) async {
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'dst-fallback-first-day',
+        amountMinor: 2000,
+        transactionDate: '2026-11-01',
+      ),
+      FinanceTransaction(
+        uuid: 'dst-fallback-month-end',
+        amountMinor: 3000,
+        transactionDate: '2026-11-30',
+      ),
+    ];
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: DateTime(2026, 11),
+          summary: FinanceSummary.fromTransactions(transactions),
+          transactions: transactions,
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+      size: const Size(1100, 1200),
+    );
+
+    await _tap(tester, find.text('日视图'));
+    expect(find.byTooltip('未知时刻 · 净支出 ¥20.00'), findsOneWidget);
+
+    await _tap(tester, find.text('周视图'));
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            widget.message?.contains('11月1日') == true &&
+            widget.message?.contains('净支出 ¥20.00') == true,
+      ),
+      findsOneWidget,
+    );
+
+    await _tap(tester, find.text('月视图'));
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            widget.message?.contains('11月30日') == true &&
+            widget.message?.contains('净支出 ¥30.00') == true,
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('日视图小时分布使用账单记录时区', (tester) async {
     final now = DateTime.now();
     final transaction = FinanceTransaction(

@@ -201,8 +201,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     final from = DateTime(_month.year, _month.month);
     final to = DateTime(_month.year, _month.month + 1);
     // 周视图需要覆盖月初前和月末后的完整自然周，避免边界日期被截断。
-    final overviewFrom = from.subtract(const Duration(days: 7));
-    final overviewTo = to.add(const Duration(days: 7));
+    final overviewFrom = financeCalendarDayOffset(from, -7);
+    final overviewTo = financeCalendarDayOffset(to, 7);
     final values = await Future.wait<dynamic>([
       // 这个范围已经包含本月，后续在内存中切出本月账单，避免重复查询。
       FinanceRepository.getTransactions(from: overviewFrom, to: overviewTo),

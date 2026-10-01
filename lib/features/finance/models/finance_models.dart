@@ -2362,6 +2362,13 @@ String dateKey(DateTime date) =>
     '${date.month.toString().padLeft(2, '0')}-'
     '${date.day.toString().padLeft(2, '0')}';
 
+DateTime financeCalendarDayOffset(DateTime value, int days) {
+  if (value.isUtc) {
+    return DateTime.utc(value.year, value.month, value.day + days);
+  }
+  return DateTime(value.year, value.month, value.day + days);
+}
+
 String financeMonthKey(DateTime date) =>
     '${date.year.toString().padLeft(4, '0')}-'
     '${date.month.toString().padLeft(2, '0')}';
