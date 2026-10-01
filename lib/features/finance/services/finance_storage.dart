@@ -2518,7 +2518,9 @@ abstract final class FinanceStorage {
     var updated = 0;
 
     final categoryCandidates = <String, FinanceCategory>{};
-    final categoryMaps = _listOfMaps(bundle['categories']);
+    final categoryInput = _importListOfMaps(bundle, 'categories');
+    skipped += categoryInput.invalidCount;
+    final categoryMaps = categoryInput.maps;
     for (final map in categoryMaps) {
       if (!_hasRawFinanceUuid(map) || !_hasValidRawCategoryType(map)) {
         skipped++;
@@ -2618,7 +2620,9 @@ abstract final class FinanceStorage {
       }
     }
 
-    final paymentMaps = _listOfMaps(bundle['payment_methods']);
+    final paymentInput = _importListOfMaps(bundle, 'payment_methods');
+    skipped += paymentInput.invalidCount;
+    final paymentMaps = paymentInput.maps;
     for (final map in paymentMaps) {
       if (!_hasRawFinanceUuid(map)) {
         skipped++;
@@ -2663,7 +2667,9 @@ abstract final class FinanceStorage {
       }
     }
 
-    final recurringRuleMaps = _listOfMaps(bundle['recurring_rules']);
+    final recurringRuleInput = _importListOfMaps(bundle, 'recurring_rules');
+    skipped += recurringRuleInput.invalidCount;
+    final recurringRuleMaps = recurringRuleInput.maps;
     for (final map in recurringRuleMaps) {
       if (!_hasRawFinanceUuid(map) ||
           !_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor')) {
@@ -2711,7 +2717,9 @@ abstract final class FinanceStorage {
       }
     }
 
-    final templateMaps = _listOfMaps(bundle['templates']);
+    final templateInput = _importListOfMaps(bundle, 'templates');
+    skipped += templateInput.invalidCount;
+    final templateMaps = templateInput.maps;
     for (final map in templateMaps) {
       if (!_hasRawFinanceUuid(map) ||
           !_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor')) {
@@ -2754,7 +2762,9 @@ abstract final class FinanceStorage {
       }
     }
 
-    final transactionMaps = _listOfMaps(bundle['transactions'])
+    final transactionInput = _importListOfMaps(bundle, 'transactions');
+    skipped += transactionInput.invalidCount;
+    final transactionMaps = transactionInput.maps
       ..sort((left, right) {
         return _transactionMergePriority(FinanceTransaction.fromMap(left))
             .compareTo(
@@ -2842,7 +2852,9 @@ abstract final class FinanceStorage {
         .length;
 
     final importedBudgets = <FinanceBudget>[];
-    for (final map in _listOfMaps(bundle['budgets'])) {
+    final budgetInput = _importListOfMaps(bundle, 'budgets');
+    skipped += budgetInput.invalidCount;
+    for (final map in budgetInput.maps) {
       if (!_hasRawFinanceUuid(map) ||
           !_isSafeRawFinanceAmount(map['amount_minor'] ?? map['amountMinor'])) {
         skipped++;
@@ -2899,7 +2911,9 @@ abstract final class FinanceStorage {
       }
     }
 
-    final loanMaps = _listOfMaps(bundle['loans']);
+    final loanInput = _importListOfMaps(bundle, 'loans');
+    skipped += loanInput.invalidCount;
+    final loanMaps = loanInput.maps;
     for (final map in loanMaps) {
       if (!_hasRawFinanceUuid(map) ||
           !_hasSafeRawFinanceAmount(
@@ -2934,7 +2948,12 @@ abstract final class FinanceStorage {
       }
     }
 
-    final loanInstallmentMaps = _listOfMaps(bundle['loan_installments']);
+    final loanInstallmentInput = _importListOfMaps(
+      bundle,
+      'loan_installments',
+    );
+    skipped += loanInstallmentInput.invalidCount;
+    final loanInstallmentMaps = loanInstallmentInput.maps;
     for (final map in loanInstallmentMaps) {
       if (!_hasRawFinanceUuid(map) ||
           !_hasSafeRawLoanInstallmentAmounts(map)) {
@@ -4313,6 +4332,41 @@ abstract final class FinanceStorage {
   static List<Map<String, dynamic>> _listOfMaps(dynamic raw) {
     if (raw is! List) return <Map<String, dynamic>>[];
     return raw.whereType<Map>().map(Map<String, dynamic>.from).toList();
+  }
+
+  static ({List<Map<String, dynamic>> maps, int invalidCount})
+  _importListOfMaps(Map<String, dynamic> bundle, String key) {
+    final raw = bundle[key];
+    if (raw is! List) {
+      return (
+        maps: <Map<String, dynamic>>[],
+        invalidCount: raw == null ? 0 : 1,
+      );
+    }
+
+    final maps = <Map<String, dynamic>>[];
+    var invalidCount = 0;
+    for (final item in raw) {
+      if (item is! Map) {
+        invalidCount++;
+        continue;
+      }
+      final map = <String, dynamic>{};
+      var hasOnlyStringKeys = true;
+      for (final entry in item.entries) {
+        if (entry.key is! String) {
+          hasOnlyStringKeys = false;
+          break;
+        }
+        map[entry.key as String] = entry.value;
+      }
+      if (hasOnlyStringKeys) {
+        maps.add(map);
+      } else {
+        invalidCount++;
+      }
+    }
+    return (maps: maps, invalidCount: invalidCount);
   }
 
   static String? _remapNullable(

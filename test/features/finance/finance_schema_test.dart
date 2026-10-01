@@ -399,6 +399,15 @@ void main() {
       });
     }
 
+    test('备份导入统计格式错误的财务数据行', () async {
+      final result = await FinanceStorage.importBundle({
+        'categories': [null, <dynamic, dynamic>{1: '非字符串键'}],
+        'payment_methods': '错误的数据段',
+      });
+
+      expect(result, {'imported': 0, 'skipped': 3, 'updated': 0});
+    });
+
     test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {
       final unsafeTransaction = FinanceTransaction(
         uuid: 'unsafe-large-transaction',
