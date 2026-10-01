@@ -2965,7 +2965,8 @@ abstract final class FinanceStorage {
     final loanInstallmentMaps = loanInstallmentInput.maps;
     for (final map in loanInstallmentMaps) {
       if (!_hasRawFinanceUuid(map) ||
-          !_hasSafeRawLoanInstallmentAmounts(map)) {
+          !_hasSafeRawLoanInstallmentAmounts(map) ||
+          !_hasSafeRawFinanceTimestamps(map)) {
         skipped++;
         continue;
       }
@@ -3122,6 +3123,7 @@ abstract final class FinanceStorage {
     final loanInstallments = _listOfMaps(bundle['loan_installments'])
         .where(_hasRawFinanceUuid)
         .where(_hasSafeRawLoanInstallmentAmounts)
+        .where(_hasSafeRawFinanceTimestamps)
         .map(FinanceLoanInstallment.fromMap)
         .where(_isValidLoanInstallment)
         .toList(growable: false);
@@ -4054,6 +4056,7 @@ abstract final class FinanceStorage {
     final createdAtRaw = raw['created_at'] ?? raw['createdAt'];
     final updatedAtRaw = raw['updated_at'] ?? raw['updatedAt'];
     final occurredAtRaw = raw['occurred_at'] ?? raw['occurredAt'];
+    final paidAtRaw = raw['paid_at'] ?? raw['paidAt'];
     final timezoneOffsetRaw =
         raw['timezone_offset_minutes'] ?? raw['timezoneOffsetMinutes'];
 
@@ -4066,9 +4069,11 @@ abstract final class FinanceStorage {
       allowDateString: true,
     );
     final occurredAt = _rawFinanceTimestampMillis(occurredAtRaw);
+    final paidAt = _rawFinanceTimestampMillis(paidAtRaw);
     if ((createdAtRaw != null && createdAt == null) ||
         (updatedAtRaw != null && updatedAt == null) ||
-        (occurredAtRaw != null && occurredAt == null)) {
+        (occurredAtRaw != null && occurredAt == null) ||
+        (paidAtRaw != null && paidAt == null)) {
       return false;
     }
 

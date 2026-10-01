@@ -654,6 +654,49 @@ void main() {
           isEmpty,
         );
       });
+
+      test('$source 拒绝超出日期时间范围的贷款还款时刻', () async {
+        final loan = FinanceLoan(
+          uuid: 'loan-with-invalid-paid-at-$source',
+          name: '异常还款时刻贷款',
+          principalMinor: 1000,
+          termMonths: 1,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        final installment = FinanceLoanInstallment(
+          uuid: 'invalid-paid-at-installment-$source',
+          loanUuid: loan.uuid,
+          installmentIndex: 1,
+          dueDate: '2026-10-01',
+          paymentMinor: 1000,
+          principalMinor: 1000,
+          interestMinor: 0,
+          remainingPrincipalMinor: 0,
+          isPaid: true,
+          paidAt: 9000000000000000,
+          paymentMethodUuid: 'finance-system-payment-cash',
+        );
+        final bundle = {
+          'loans': [loan.toMap()],
+          'loan_installments': [installment.toMap()],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['imported'], 1);
+          expect(result['skipped'], 1);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 1);
+        }
+        expect(
+          await FinanceStorage.getLoanInstallments(
+            loan.uuid,
+            includeDeleted: true,
+          ),
+          isEmpty,
+        );
+      });
     }
 
     test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {
