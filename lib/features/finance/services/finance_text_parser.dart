@@ -570,6 +570,7 @@ abstract final class FinanceTextParser {
         draft.amountMinor,
         draft.transactionDate,
         draft.categoryUuid ?? draft.categoryName ?? '',
+        draft.paymentMethodUuid ?? draft.paymentMethodName ?? '',
         draft.merchant ?? '',
         draft.note ?? '',
       ].join('|').toLowerCase();
