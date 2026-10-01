@@ -618,6 +618,7 @@ void main() {
     final transaction = FinanceTransaction(
       uuid: 'edit-uncategorized-entry',
       amountMinor: 1250,
+      paymentMethodUuid: 'deleted-payment-method',
       transactionDate: dateKey(DateTime.now()),
       merchant: '原本未分类',
     );
@@ -625,6 +626,7 @@ void main() {
 
     await _pump(tester, FinanceEntryScreen(transaction: transaction));
     expect(find.text('未分类'), findsOneWidget);
+    expect(find.text('已删除或未知付款方式'), findsOneWidget);
     await _tap(tester, find.text('保存账单'));
     var rows = <Map<String, Object?>>[];
     for (var attempt = 0; attempt < 100; attempt++) {
@@ -644,6 +646,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(rows.single['version'], 2);
     expect(rows.single['category_uuid'], isNull);
+    expect(rows.single['payment_method_uuid'], 'deleted-payment-method');
     expect(tester.takeException(), isNull);
   });
 
@@ -652,6 +655,7 @@ void main() {
     final original = FinanceTransaction(
       uuid: 'uncategorized-refund-original',
       amountMinor: 5000,
+      paymentMethodUuid: 'deleted-payment-method',
       transactionDate: dateKey(DateTime.now()),
       merchant: '未分类原账单',
     );
@@ -679,6 +683,7 @@ void main() {
     expect(rows, hasLength(1));
     expect(rows.single['type'], FinanceTransactionType.refund.name);
     expect(rows.single['category_uuid'], isNull);
+    expect(rows.single['payment_method_uuid'], 'deleted-payment-method');
     expect(tester.takeException(), isNull);
   });
 

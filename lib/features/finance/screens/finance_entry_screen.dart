@@ -258,6 +258,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
             !_shouldKeepUnresolvedDraftCategory(),
         preserveUnresolvedCategory:
             widget.transaction != null || widget.originalTransaction != null,
+        preserveUnresolvedPaymentMethod:
+            widget.transaction != null || widget.originalTransaction != null,
       );
     } catch (error) {
       if (!mounted) return;
@@ -456,6 +458,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     bool notify = true,
     bool allowDefaultCategory = true,
     bool preserveUnresolvedCategory = false,
+    bool preserveUnresolvedPaymentMethod = false,
   }) {
     final categories = _visibleCategories;
     if (_categoryUuid == null) {
@@ -468,7 +471,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           ? categories.first.uuid
           : null;
     }
-    if (_paymentMethodUuid != null &&
+    if (!preserveUnresolvedPaymentMethod &&
+        _paymentMethodUuid != null &&
         _visiblePaymentMethods.every(
           (item) => item.uuid != _paymentMethodUuid,
         )) {
@@ -1140,9 +1144,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       key: ValueKey('finance-payment-$_paymentMethodUuid'),
       colorScheme: colorScheme,
       label: _type == FinanceTransactionType.income ? '到账账户（可选）' : '付款方式（可选）',
-      placeholder: _type == FinanceTransactionType.income
-          ? '未指定（不更新账户余额）'
-          : '未指定',
+      placeholder: _paymentMethodUuid != null && selectedPaymentMethod == null
+          ? '已删除或未知付款方式'
+          : _type == FinanceTransactionType.income
+              ? '未指定（不更新账户余额）'
+              : '未指定',
       selectedName: selectedPaymentMethod?.name,
       selectedIcon: selectedPaymentMethod?.icon,
       fieldIcon: Icons.account_balance_wallet_outlined,
@@ -2138,7 +2144,12 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                       if (type != FinanceTransactionType.expense) {
                         _installmentEnabled = false;
                       }
-                      _normalizeSelections(notify: false);
+                      _normalizeSelections(
+                        notify: false,
+                        preserveUnresolvedPaymentMethod:
+                            widget.transaction != null ||
+                            widget.originalTransaction != null,
+                      );
                     });
                   },
                   child: AnimatedContainer(
