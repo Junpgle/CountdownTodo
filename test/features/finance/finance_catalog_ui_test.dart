@@ -545,4 +545,73 @@ void main() {
     expect(selectedPeriodTransactions, [transaction]);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('退款超过小类支出时详情仍显示负净额以便对账', (tester) async {
+    final root = FinanceCategory(
+      uuid: 'daily-expenses',
+      name: '日常支出',
+      icon: '🧾',
+    );
+    final dining = FinanceCategory(
+      uuid: 'dining',
+      name: '餐饮',
+      parentUuid: root.uuid,
+    );
+    final transport = FinanceCategory(
+      uuid: 'transport',
+      name: '交通',
+      parentUuid: root.uuid,
+    );
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'dining-expense',
+        amountMinor: 1000,
+        categoryUuid: dining.uuid,
+        transactionDate: '2026-09-01',
+      ),
+      FinanceTransaction(
+        uuid: 'transport-expense',
+        amountMinor: 1000,
+        categoryUuid: transport.uuid,
+        transactionDate: '2026-09-01',
+      ),
+      FinanceTransaction(
+        uuid: 'transport-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 1800,
+        categoryUuid: transport.uuid,
+        transactionDate: '2026-09-02',
+      ),
+    ];
+
+    await tester.pumpWidget(MaterialApp(
+      home: FinanceCategoryDetailScreen(
+        periodTitle: '2026年9月',
+        rootCategoryUuid: root.uuid,
+        transactions: transactions,
+        categories: {
+          root.uuid: root,
+          dining.uuid: dining,
+          transport.uuid: transport,
+        },
+      ),
+    ));
+
+    final transportItem = find.byKey(
+      const ValueKey('finance-category-detail-transport'),
+    );
+    expect(find.text('¥2.00'), findsOneWidget);
+    expect(
+      find.descendant(of: transportItem, matching: find.text('-¥8.00')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: transportItem,
+        matching: find.text('2 笔账单 · 点击查看'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }

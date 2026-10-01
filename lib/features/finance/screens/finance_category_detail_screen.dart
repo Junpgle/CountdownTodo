@@ -112,8 +112,8 @@ class _FinanceCategoryDetailScreenState
       final categoryTransactions = matchingTransactions
           .where((transaction) => transaction.categoryUuid == category.uuid)
           .toList();
+      if (categoryTransactions.isEmpty) continue;
       final amount = _netExpense(categoryTransactions);
-      if (amount <= 0) continue;
       result.add(_FinanceCategoryDetailItem(
         categoryUuid: category.uuid,
         title: category.name,
@@ -127,7 +127,7 @@ class _FinanceCategoryDetailScreenState
         .where((transaction) => transaction.categoryUuid == root.uuid)
         .toList();
     final directAmount = _netExpense(directTransactions);
-    if (directAmount > 0) {
+    if (directTransactions.isNotEmpty) {
       result.add(_FinanceCategoryDetailItem(
         categoryUuid: root.uuid,
         title: root.name,
