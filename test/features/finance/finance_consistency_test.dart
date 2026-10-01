@@ -262,6 +262,44 @@ void main() {
       expect(await FinanceStorage.getBudgets(), isEmpty);
     });
 
+    for (final reverse in [false, true]) {
+      test('实际备份同时删除原单和退款，顺序反转=$reverse', () async {
+        final initialAt = DateTime.now().millisecondsSinceEpoch - 1000;
+        final original = FinanceTransaction(
+          uuid: 'original',
+          amountMinor: 10000,
+          transactionDate: '2026-09-01',
+          createdAt: initialAt,
+          updatedAt: initialAt,
+        );
+        final refund = FinanceTransaction(
+          uuid: 'refund',
+          type: FinanceTransactionType.refund,
+          amountMinor: 1000,
+          relatedTransactionUuid: original.uuid,
+          transactionDate: '2026-09-02',
+          createdAt: initialAt,
+          updatedAt: initialAt,
+        );
+        await db.insert('finance_transactions', original.toMap());
+        await db.insert('finance_transactions', refund.toMap());
+        await FinanceStorage.deleteTransaction(refund.uuid);
+        await FinanceStorage.deleteTransaction(original.uuid);
+        final backup = await FinanceStorage.getExportBundle();
+        final maps = List<Map<String, dynamic>>.from(
+          backup['transactions'] as List,
+        )..sort((a, b) => a['uuid'].toString().compareTo(b['uuid'].toString()));
+        backup['transactions'] = reverse ? maps.reversed.toList() : maps;
+        await db.delete('finance_transactions');
+        await db.insert('finance_transactions', original.toMap());
+        await db.insert('finance_transactions', refund.toMap());
+        final result = await FinanceStorage.importBundle(backup);
+        expect(result['updated'], 2);
+        expect(await FinanceStorage.getTransactions(), isEmpty);
+        expect(await FinanceStorage.getDeletedTransactions(), hasLength(2));
+      });
+    }
+
     test('贷款利息拒绝直接修改现金流、删除和拆分，备注仍可修改', () async {
       final paid = await _payLoan();
       final interest = (await FinanceStorage.getTransaction(

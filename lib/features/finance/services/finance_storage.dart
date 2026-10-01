@@ -2103,9 +2103,10 @@ abstract final class FinanceStorage {
 
     final transactionMaps = _listOfMaps(bundle['transactions'])
       ..sort((left, right) {
-        final leftRefund = _isRawRefundType(left['type']) ? 1 : 0;
-        final rightRefund = _isRawRefundType(right['type']) ? 1 : 0;
-        return leftRefund.compareTo(rightRefund);
+        return _transactionMergePriority(FinanceTransaction.fromMap(left))
+            .compareTo(
+              _transactionMergePriority(FinanceTransaction.fromMap(right)),
+            );
       });
     for (final map in transactionMaps) {
       final item = FinanceTransaction.fromMap(map);
@@ -2989,9 +2990,6 @@ abstract final class FinanceStorage {
         validType &&
         _isValidTransaction(item);
   }
-
-  static bool _isRawRefundType(Object? rawType) =>
-      rawType == 'refund' || rawType == 2 || rawType == '2';
 
   static bool _isValidLoan(FinanceLoan item) {
     if (item.uuid.trim().isEmpty ||
