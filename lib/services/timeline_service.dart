@@ -314,6 +314,19 @@ class TimelineService {
     return timestamp;
   }
 
+  static List<FinanceTransaction> financeTransactionsThroughNow({
+    required Iterable<FinanceTransaction> transactions,
+    required DateTime periodStart,
+    required DateTime now,
+  }) {
+    final entries = transactions.toList(growable: false);
+    if (periodStart.isAfter(now)) return entries;
+    final asOfAt = now.millisecondsSinceEpoch;
+    return entries
+        .where((transaction) => transaction.balanceEventAt() <= asOfAt)
+        .toList(growable: false);
+  }
+
   String _planStatusLabel(TodoPlanStatus status) {
     switch (status) {
       case TodoPlanStatus.finished:

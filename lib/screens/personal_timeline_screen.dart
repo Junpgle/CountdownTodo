@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
@@ -61,6 +62,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   bool _isExportingPoster = false;
   bool _isLoadingAllTimeMedals = false;
   int _loadGeneration = 0;
+  Timer? _financeOccurrenceRefreshTimer;
   late AnimationController _animationController;
   late final ScrollController _timelineScrollController;
   final ValueNotifier<double> _timelineTitleProgress =
@@ -135,6 +137,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   @override
   void dispose() {
     FinanceStorage.revision.removeListener(_onFinanceChanged);
+    _financeOccurrenceRefreshTimer?.cancel();
     _timelineScrollController.dispose();
     _timelineTitleProgress.dispose();
     _animationController.dispose();
@@ -146,6 +149,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   }
 
   Future<void> _loadData() async {
+    _financeOccurrenceRefreshTimer?.cancel();
+    _financeOccurrenceRefreshTimer = null;
     final loadGeneration = ++_loadGeneration;
     setState(() {
       _isLoading = true;
@@ -192,16 +197,23 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
       FinanceSummary financeSummary = const FinanceSummary();
       List<FinanceTransaction> financeTransactions = const [];
+      List<FinanceTransaction> allFinanceTransactions = const [];
       List<FinanceCategory> financeCategories = const [];
+      DateTime? financeAsOf;
       try {
         final financeData = await Future.wait<dynamic>([
-          FinanceRepository.getSummary(from: start, to: end),
           FinanceRepository.getTransactions(from: start, to: end),
           FinanceRepository.getCategories(includeArchived: true),
         ]);
-        financeSummary = financeData[0] as FinanceSummary;
-        financeTransactions = financeData[1] as List<FinanceTransaction>;
-        financeCategories = financeData[2] as List<FinanceCategory>;
+        allFinanceTransactions = financeData[0] as List<FinanceTransaction>;
+        financeCategories = financeData[1] as List<FinanceCategory>;
+        financeAsOf = DateTime.now();
+        financeTransactions = TimelineService.financeTransactionsThroughNow(
+          transactions: allFinanceTransactions,
+          periodStart: start,
+          now: financeAsOf,
+        );
+        financeSummary = FinanceSummary.fromTransactions(financeTransactions);
       } catch (error) {
         debugPrint('❌ get timeline finance data error: $error');
       }
@@ -409,6 +421,14 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           _isLoading = false;
         });
 
+        if (financeAsOf != null) {
+          _scheduleFinanceOccurrenceRefresh(
+            transactions: allFinanceTransactions,
+            periodStart: start,
+            now: financeAsOf,
+          );
+        }
+
         // Async ML insights generation
         TimelineMLService.instance
             .generateInsights(
@@ -477,6 +497,38 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  void _scheduleFinanceOccurrenceRefresh({
+    required Iterable<FinanceTransaction> transactions,
+    required DateTime periodStart,
+    required DateTime now,
+  }) {
+    _financeOccurrenceRefreshTimer?.cancel();
+    _financeOccurrenceRefreshTimer = null;
+    if (periodStart.isAfter(now)) return;
+
+    final nowAt = now.millisecondsSinceEpoch;
+    int? nextEventAt;
+    for (final transaction in transactions) {
+      final eventAt = transaction.balanceEventAt();
+      if (eventAt > nowAt &&
+          (nextEventAt == null || eventAt < nextEventAt)) {
+        nextEventAt = eventAt;
+      }
+    }
+    if (nextEventAt == null) return;
+
+    final delayMs = (nextEventAt - nowAt + 1)
+        .clamp(1, const Duration(days: 24).inMilliseconds)
+        .toInt();
+    _financeOccurrenceRefreshTimer = Timer(
+      Duration(milliseconds: delayMs),
+      () {
+        _financeOccurrenceRefreshTimer = null;
+        if (mounted) unawaited(_loadData());
+      },
+    );
   }
 
   Future<void> _openFinanceEntry() async {

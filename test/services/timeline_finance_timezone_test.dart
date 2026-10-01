@@ -53,4 +53,49 @@ void main() {
       DateTime(2026, 10, 2, 12),
     );
   });
+
+  test('时间轴当前期间的账单汇总排除未来记录，未来期间保留计划记录', () {
+    final now = DateTime(2026, 10, 2, 12);
+    final pastAt = now.subtract(const Duration(hours: 1));
+    final futureAt = now.add(const Duration(hours: 1));
+    final currentTransactions = [
+      FinanceTransaction(
+        uuid: 'timeline-summary-past',
+        amountMinor: 4000,
+        transactionDate: dateKey(now),
+        occurredAt: pastAt.millisecondsSinceEpoch,
+        createdAt: pastAt.millisecondsSinceEpoch,
+      ),
+      FinanceTransaction(
+        uuid: 'timeline-summary-future',
+        amountMinor: 9000,
+        transactionDate: dateKey(now),
+        occurredAt: futureAt.millisecondsSinceEpoch,
+        createdAt: now.millisecondsSinceEpoch,
+      ),
+    ];
+    final futureTransaction = FinanceTransaction(
+      uuid: 'timeline-summary-planned-next-month',
+      amountMinor: 12000,
+      transactionDate: '2026-11-02',
+      occurredAt: DateTime(2026, 11, 2, 10).millisecondsSinceEpoch,
+      createdAt: now.millisecondsSinceEpoch,
+    );
+
+    final currentPeriod = TimelineService.financeTransactionsThroughNow(
+      transactions: currentTransactions,
+      periodStart: DateTime(2026, 10),
+      now: now,
+    );
+    final futurePeriod = TimelineService.financeTransactionsThroughNow(
+      transactions: [futureTransaction],
+      periodStart: DateTime(2026, 11),
+      now: now,
+    );
+
+    expect(currentPeriod.map((item) => item.uuid), ['timeline-summary-past']);
+    expect(futurePeriod.map((item) => item.uuid), [
+      'timeline-summary-planned-next-month',
+    ]);
+  });
 }
