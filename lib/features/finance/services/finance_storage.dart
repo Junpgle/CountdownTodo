@@ -16,6 +16,7 @@ import '../models/finance_models.dart';
 abstract final class FinanceStorage {
   static const int _maxDateTimeMillis = 8640000000000000;
   static const int _maxFinanceTimezoneOffsetMinutes = 14 * 60;
+  static const int _maxTemplateUseCount = 0x7fffffff;
 
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
   @visibleForTesting
@@ -2424,6 +2425,13 @@ abstract final class FinanceStorage {
         '金额必须大于 0',
       );
     }
+    if (template.useCount < 0 || template.useCount > _maxTemplateUseCount) {
+      throw ArgumentError.value(
+        template.useCount,
+        'useCount',
+        '使用次数必须在 0 到 $_maxTemplateUseCount 之间',
+      );
+    }
   }
 
   static bool _isDateKey(String value) {
@@ -2733,6 +2741,7 @@ abstract final class FinanceStorage {
       if (!_hasRawFinanceUuid(map) ||
           !_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') ||
           !_hasValidRawFinanceName(map) ||
+          !_hasSafeRawTemplateUseCount(map) ||
           !_hasValidRawOptionalTransactionType(map)) {
         skipped++;
         continue;
@@ -3109,6 +3118,7 @@ abstract final class FinanceStorage {
           (map) => _hasRawFinanceUuid(map) &&
               _hasValidRawFinanceName(map) &&
               _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') &&
+              _hasSafeRawTemplateUseCount(map) &&
               _hasValidRawOptionalTransactionType(map),
         )
         .map(FinanceEntryTemplate.fromMap)
@@ -4168,6 +4178,30 @@ abstract final class FinanceStorage {
     }
     return false;
   }
+
+  static bool _isSafeRawFinanceCount(dynamic value, int maximum) {
+    if (value == null) return true;
+    if (value is int) return value >= 0 && value <= maximum;
+    if (value is num) {
+      return value.isFinite &&
+          value >= 0 &&
+          value <= maximum &&
+          value == value.roundToDouble();
+    }
+    if (value is String) {
+      final parsed = BigInt.tryParse(value.trim());
+      return parsed != null &&
+          parsed >= BigInt.zero &&
+          parsed <= BigInt.from(maximum);
+    }
+    return false;
+  }
+
+  static bool _hasSafeRawTemplateUseCount(Map<String, dynamic> map) =>
+      _isSafeRawFinanceCount(
+        map['use_count'] ?? map['useCount'],
+        _maxTemplateUseCount,
+      );
 
   static bool _hasValidRawCategoryType(Map<String, dynamic> map) {
     final value = map['type'] ?? map['category_type'];

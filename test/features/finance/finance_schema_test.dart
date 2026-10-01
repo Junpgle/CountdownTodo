@@ -766,7 +766,53 @@ void main() {
         );
         expect(await FinanceStorage.getLoans(includeDeleted: true), isEmpty);
       });
+
+      test('$source 拒绝无效的快捷模板使用次数', () async {
+        final templates = [
+          FinanceEntryTemplate(
+            uuid: 'invalid-template-negative-use-count-$source',
+            name: '负数使用次数',
+            amountMinor: 100,
+            useCount: -3,
+          ).toMap(),
+          FinanceEntryTemplate(
+            uuid: 'invalid-template-overflow-use-count-$source',
+            name: '溢出使用次数',
+            amountMinor: 100,
+            useCount: 0x80000000,
+          ).toMap(),
+        ];
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'templates': templates,
+          });
+          expect(result['imported'], 0);
+          expect(result['skipped'], 2);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({'templates': templates}),
+            0,
+          );
+        }
+        expect(await FinanceStorage.getTemplates(includeDeleted: true), isEmpty);
+      });
     }
+
+    test('本地保存拒绝超范围的快捷模板使用次数', () async {
+      for (final useCount in [-3, 0x80000000]) {
+        await expectLater(
+          FinanceStorage.saveTemplate(
+            FinanceEntryTemplate(
+              name: '超范围使用次数',
+              amountMinor: 100,
+              useCount: useCount,
+            ),
+          ),
+          throwsArgumentError,
+        );
+      }
+    });
 
     test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {
       final unsafeTransaction = FinanceTransaction(
