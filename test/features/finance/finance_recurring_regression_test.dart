@@ -87,6 +87,38 @@ void main() {
       );
     });
 
+    test('删除期间合并到同步更新并恢复后仍保留原启用状态', () async {
+      final rule = FinanceRecurringRule(
+        uuid: 'restore-enabled-recurring-after-sync',
+        name: '启用中的订阅',
+        amountMinor: 10000,
+        startDate: '2026-01-01',
+      );
+      await FinanceStorage.saveRecurringRule(rule);
+      final baseline = (await FinanceStorage.getRecurringRule(rule.uuid))!;
+      final localDelete = FinanceRecurringRule.fromMap(baseline.toMap())
+        ..isDeleted = true;
+      localDelete.markAsChanged();
+      final remoteUpdate = FinanceRecurringRule.fromMap(baseline.toMap())
+        ..note = '删除期间同步的备注'
+        ..version = baseline.version + 1
+        ..updatedAt = localDelete.updatedAt + 10000;
+      await FinanceStorage.mergeRemoteBundle({
+        'recurring_rules': [remoteUpdate.toMap()],
+      });
+
+      await FinanceStorage.saveRecurringRule(localDelete, original: baseline);
+      final deleted = (await FinanceStorage.getRecurringRule(rule.uuid))!;
+      expect(deleted.isDeleted, true);
+      expect(deleted.isEnabled, true);
+      expect(deleted.note, '删除期间同步的备注');
+
+      await FinanceStorage.restoreRecurringRule(rule.uuid);
+      final restored = (await FinanceStorage.getRecurringRule(rule.uuid))!;
+      expect(restored.isDeleted, false);
+      expect(restored.isEnabled, true);
+    });
+
     for (final transport in ['remote', 'backup']) {
       Future<void> apply(FinanceRecurringRule rule) async {
         final bundle = {

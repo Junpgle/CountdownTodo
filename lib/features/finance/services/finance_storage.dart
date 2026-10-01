@@ -2159,7 +2159,6 @@ abstract final class FinanceStorage {
     if (incoming.isDeleted != original.isDeleted) {
       merged.isDeleted = incoming.isDeleted;
     }
-    if (merged.isDeleted) merged.isEnabled = false;
     return merged;
   }
 
