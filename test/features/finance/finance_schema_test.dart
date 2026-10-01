@@ -697,6 +697,75 @@ void main() {
           isEmpty,
         );
       });
+
+      test('$source 拒绝缺少名称的记账记录', () async {
+        final category = FinanceCategory(
+          uuid: 'missing-name-category-$source',
+          name: '残缺分类',
+        ).toMap()
+          ..remove('name');
+        final paymentMethod = FinancePaymentMethod(
+          uuid: 'missing-name-method-$source',
+          name: '残缺账户',
+        ).toMap()
+          ..remove('name');
+        final recurringRule = FinanceRecurringRule(
+          uuid: 'missing-name-rule-$source',
+          name: '残缺周期规则',
+          amountMinor: 100,
+          startDate: '2026-09-01',
+        ).toMap()
+          ..remove('name');
+        final template = FinanceEntryTemplate(
+          uuid: 'missing-name-template-$source',
+          name: '残缺模板',
+          amountMinor: 100,
+        ).toMap()
+          ..remove('name');
+        final loan = FinanceLoan(
+          uuid: 'missing-name-loan-$source',
+          name: '残缺贷款',
+          principalMinor: 1000,
+          termMonths: 1,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        ).toMap()
+          ..remove('name');
+        final bundle = {
+          'categories': [category],
+          'payment_methods': [paymentMethod],
+          'recurring_rules': [recurringRule],
+          'templates': [template],
+          'loans': [loan],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['imported'], 0);
+          expect(result['skipped'], 5);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 0);
+        }
+        expect(
+          (await FinanceStorage.getCategories(includeArchived: true))
+              .where((item) => item.uuid == category['uuid']),
+          isEmpty,
+        );
+        expect(
+          (await FinanceStorage.getPaymentMethods(includeArchived: true))
+              .where((item) => item.uuid == paymentMethod['uuid']),
+          isEmpty,
+        );
+        expect(
+          await FinanceStorage.getRecurringRules(includeDeleted: true),
+          isEmpty,
+        );
+        expect(
+          await FinanceStorage.getTemplates(includeDeleted: true),
+          isEmpty,
+        );
+        expect(await FinanceStorage.getLoans(includeDeleted: true), isEmpty);
+      });
     }
 
     test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {
