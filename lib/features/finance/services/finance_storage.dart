@@ -1316,19 +1316,86 @@ abstract final class FinanceStorage {
     return rows.map(FinancePaymentMethod.fromMap).toList();
   }
 
-  static Future<void> savePaymentMethod(FinancePaymentMethod method) async {
+  static Future<void> savePaymentMethod(
+    FinancePaymentMethod method, {
+    FinancePaymentMethod? original,
+  }) async {
     if (method.name.trim().isEmpty) {
       throw ArgumentError.value(method.name, 'name', '付款方式名称不能为空');
     }
-    method.pendingSync = true;
+    if (original != null && original.uuid != method.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '付款方式标识不匹配');
+    }
     await ensureReady();
     final db = await _database;
-    await db.insert(
-      'finance_payment_methods',
-      _localValues(method.toMap()),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.transaction((txn) async {
+      final existingRows = await txn.query(
+        'finance_payment_methods',
+        where: 'uuid = ?',
+        whereArgs: [method.uuid],
+        limit: 1,
+      );
+      var itemToSave = FinancePaymentMethod.fromMap(method.toMap());
+      if (existingRows.isNotEmpty) {
+        final existing = FinancePaymentMethod.fromMap(existingRows.first);
+        final baselineChanged = original != null &&
+            (existing.version != original.version ||
+                existing.updatedAt != original.updatedAt);
+        if (baselineChanged) {
+          _mergePaymentMethodEdits(existing, original, itemToSave);
+          itemToSave
+            ..version = existing.version
+            ..updatedAt = existing.updatedAt
+            ..createdAt = existing.createdAt;
+          itemToSave.markAsChanged();
+        } else if (original == null &&
+            (existing.version > itemToSave.version ||
+                existing.updatedAt > itemToSave.updatedAt)) {
+          throw StateError('付款方式已更新，请重新加载后再保存');
+        }
+        if (existing.isDeleted) {
+          throw StateError('付款方式已删除，请重新加载后再编辑');
+        }
+        if (existing.isSystem) {
+          throw StateError('系统付款方式不能编辑');
+        }
+        itemToSave.createdAt = existing.createdAt;
+      }
+      if (itemToSave.name.trim().isEmpty) {
+        throw ArgumentError.value(itemToSave.name, 'name', '付款方式名称不能为空');
+      }
+      itemToSave.pendingSync = true;
+      await txn.insert(
+        'finance_payment_methods',
+        _localValues(itemToSave.toMap()),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
     _notifyChanged();
+  }
+
+  static void _mergePaymentMethodEdits(
+    FinancePaymentMethod current,
+    FinancePaymentMethod original,
+    FinancePaymentMethod incoming,
+  ) {
+    if (incoming.name == original.name) incoming.name = current.name;
+    if (incoming.icon == original.icon) incoming.icon = current.icon;
+    if (incoming.colorValue == original.colorValue) {
+      incoming.colorValue = current.colorValue;
+    }
+    if (incoming.isSystem == original.isSystem) {
+      incoming.isSystem = current.isSystem;
+    }
+    if (incoming.isArchived == original.isArchived) {
+      incoming.isArchived = current.isArchived;
+    }
+    if (incoming.isDeleted == original.isDeleted) {
+      incoming.isDeleted = current.isDeleted;
+    }
+    if (incoming.sortOrder == original.sortOrder) {
+      incoming.sortOrder = current.sortOrder;
+    }
   }
 
   static Future<void> archivePaymentMethod(String uuid) async {

@@ -194,7 +194,10 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
             ..name = draft.name
             ..icon = draft.icon;
           if (method != null) updated.markAsChanged();
-          await FinanceRepository.savePaymentMethod(updated);
+          await FinanceRepository.savePaymentMethod(
+            updated,
+            original: method,
+          );
         },
       ),
     );

@@ -262,8 +262,11 @@ abstract final class FinanceRepository {
     return FinanceStorage.hasTransactionsForCategory(uuid);
   }
 
-  static Future<void> savePaymentMethod(FinancePaymentMethod method) {
-    return FinanceStorage.savePaymentMethod(method);
+  static Future<void> savePaymentMethod(
+    FinancePaymentMethod method, {
+    FinancePaymentMethod? original,
+  }) {
+    return FinanceStorage.savePaymentMethod(method, original: original);
   }
 
   static Future<void> archivePaymentMethod(String uuid) {
