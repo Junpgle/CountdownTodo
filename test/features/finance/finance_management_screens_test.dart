@@ -449,6 +449,27 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('自然语言历史账单没有时刻时提示按录入时间估算', (tester) async {
+    await _seed(tester);
+    await _pump(
+      tester,
+      const FinanceEntryScreen(),
+      size: const Size(1100, 1800),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('finance-quick-entry-input')),
+      '昨天早餐 8 元',
+    );
+    await _tap(tester, find.text('识别账单'));
+
+    expect(find.text('补充时间'), findsOneWidget);
+    expect(
+      find.text('这笔账单没有与日期匹配的发生时刻，余额计算暂按录入时间估算。'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('自定义大类也可以新增自定义小类', (tester) async {
     final db = await _seed(tester);
     await tester.runAsync(() => FinanceStorage.saveCategory(FinanceCategory(
@@ -495,7 +516,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('一次性入账说明跟随所选历史月份', (tester) async {
+  testWidgets('历史草稿按所选月份说明并提示未知发生时刻', (tester) async {
     await _seed(tester);
     final now = DateTime.now();
     final selectedMonth = DateTime(now.year, now.month - 1);
@@ -516,6 +537,38 @@ void main() {
 
     expect(find.text(expectedDescription), findsOneWidget);
     expect(find.text('将整笔金额一次性计入当前月份'), findsNothing);
+    expect(find.text('补充时间'), findsOneWidget);
+    expect(
+      find.text('这笔账单没有与日期匹配的发生时刻，余额计算暂按录入时间估算。'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('手动选择历史日期后不沿用未经确认的当前时刻', (tester) async {
+    await _seed(tester);
+    await _pump(
+      tester,
+      const FinanceEntryScreen(),
+      size: const Size(1100, 1800),
+    );
+
+    await tester.tap(find.text('账单日期'));
+    await tester.pumpAndSettle();
+    final previousMonthButton = find.byTooltip('Previous month');
+    expect(previousMonthButton, findsOneWidget);
+    await tester.tap(previousMonthButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('15').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('补充时间'), findsOneWidget);
+    expect(
+      find.text('这笔账单没有与日期匹配的发生时刻，余额计算暂按录入时间估算。'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 

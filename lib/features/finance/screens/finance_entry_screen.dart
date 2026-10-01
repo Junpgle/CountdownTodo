@@ -47,6 +47,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   FinanceTransactionType _type = FinanceTransactionType.expense;
   DateTime _date = DateTime.now();
   DateTime? _occurredAt;
+  bool _occurrenceTimeExplicit = false;
   late int _timezoneOffsetMinutes;
   List<FinanceCategory> _categories = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
@@ -103,19 +104,14 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         : dateFromKey(transaction.transactionDate);
     if (transaction == null) {
       final now = DateTime.now();
-      _occurredAt = DateTime(
-        _date.year,
-        _date.month,
-        _date.day,
-        now.hour,
-        now.minute,
-      );
+      _occurredAt = _defaultOccurrenceTimeFor(_date, now);
     } else {
       final occurred = transaction.occurrenceLocalTime;
       _occurredAt =
           occurred != null && dateKey(occurred) == transaction.transactionDate
           ? occurred
           : null;
+      _occurrenceTimeExplicit = _occurredAt != null;
     }
     _amountController = TextEditingController(
       text: transaction == null
@@ -224,6 +220,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 dateKey(firstOccurred) == first.transactionDate
             ? firstOccurred
             : null;
+        _occurrenceTimeExplicit = _occurredAt != null;
         _amountExpression = null;
         _amountController.text = formatFinanceAmount(total, withSymbol: false);
         _merchantController.text = first.merchant ?? '';
@@ -513,6 +510,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         _paymentMethodUuid = transaction.paymentMethodUuid;
         _date = dateFromKey(transaction.transactionDate);
         _occurredAt = transaction.occurrenceLocalTime;
+        _occurrenceTimeExplicit = _occurredAt != null;
         _timezoneOffsetMinutes = transaction.timezoneOffsetMinutes;
         _amountController.text = formatFinanceAmount(
           transaction.amountMinor,
@@ -570,17 +568,24 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     );
     _dismissKeyboard();
     if (picked == null || !mounted) return;
+    final pickedDate = DateTime(picked.year, picked.month, picked.day);
+    final now = DateTime.now();
+    final shouldClearEstimatedTime =
+        !_occurrenceTimeExplicit &&
+        _defaultOccurrenceTimeFor(pickedDate, now) == null;
     setState(() {
-      _date = DateTime(picked.year, picked.month, picked.day);
+      _date = pickedDate;
       final occurredAt = _occurredAt;
       if (occurredAt != null) {
-        _occurredAt = DateTime(
-          _date.year,
-          _date.month,
-          _date.day,
-          occurredAt.hour,
-          occurredAt.minute,
-        );
+        _occurredAt = shouldClearEstimatedTime
+            ? null
+            : DateTime(
+                _date.year,
+                _date.month,
+                _date.day,
+                occurredAt.hour,
+                occurredAt.minute,
+              );
       }
     });
   }
@@ -604,7 +609,13 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         picked.hour,
         picked.minute,
       );
+      _occurrenceTimeExplicit = true;
     });
+  }
+
+  DateTime? _defaultOccurrenceTimeFor(DateTime date, DateTime now) {
+    if (date.isBefore(DateTime(now.year, now.month, now.day))) return null;
+    return DateTime(date.year, date.month, date.day, now.hour, now.minute);
   }
 
   Future<void> _applyQuickEntry() async {
@@ -635,13 +646,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _date = dateFromKey(draft.transactionDate);
       final now = DateTime.now();
       _timezoneOffsetMinutes = now.timeZoneOffset.inMinutes;
-      _occurredAt = DateTime(
-        _date.year,
-        _date.month,
-        _date.day,
-        now.hour,
-        now.minute,
-      );
+      _occurredAt = _defaultOccurrenceTimeFor(_date, now);
+      _occurrenceTimeExplicit = false;
       _amountExpression = null;
       _amountController.text = formatFinanceAmount(
         draft.amountMinor,
