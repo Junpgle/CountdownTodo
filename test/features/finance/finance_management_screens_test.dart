@@ -1074,6 +1074,7 @@ void main() {
   testWidgets('还款扣减本金及利息一次，撤销后恢复账户余额', (tester) async {
     final db = await _seed(tester);
     final now = DateTime.now();
+    final paidAt = now.subtract(const Duration(hours: 1));
     final snapshotAt = now
         .subtract(const Duration(hours: 2))
         .millisecondsSinceEpoch;
@@ -1092,7 +1093,7 @@ void main() {
         'test-installment-2',
         true,
         paymentMethodUuid: 'finance-system-payment-cash',
-        paidAt: now.subtract(const Duration(hours: 1)),
+        paidAt: paidAt,
       );
     });
     final repayment = (await tester.runAsync(
@@ -1101,7 +1102,7 @@ void main() {
     final interest = (await tester.runAsync(
       () => FinanceStorage.getTransaction(repayment.interestTransactionUuid!),
     ))!;
-    expect(interest.transactionDate, dateKey(now));
+    expect(interest.transactionDate, dateKey(paidAt));
     expect(interest.paymentMethodUuid, 'finance-system-payment-cash');
     await _pump(
       tester,

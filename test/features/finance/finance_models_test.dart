@@ -5,6 +5,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('新交易默认保存创建时的本机时区', () {
+    final createdAt = DateTime.now().millisecondsSinceEpoch;
+    final localDate = dateKey(DateTime.fromMillisecondsSinceEpoch(createdAt));
+    final transaction = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: localDate,
+      occurredAt: createdAt,
+    );
+
+    expect(
+      transaction.timezoneOffsetMinutes,
+      DateTime.fromMillisecondsSinceEpoch(createdAt).timeZoneOffset.inMinutes,
+    );
+    expect(dateKey(transaction.occurrenceLocalTime!), localDate);
+  });
+
   test('分期发生时刻使用记录时区，跨日期后仍按实际时刻扣减', () {
     final eventAt = DateTime.utc(2026, 10, 1, 10, 30).millisecondsSinceEpoch;
     final transaction = FinanceTransaction(
@@ -37,6 +53,37 @@ void main() {
     });
     expect(transaction.balanceEventAt(), future.millisecondsSinceEpoch);
   });
+
+  test('未来发生时刻不因记录日期与保存时区不一致而提前计入余额', () {
+    final createdAt = DateTime.utc(2026, 10, 1, 16, 30);
+    final occurredAt = createdAt.add(const Duration(minutes: 1));
+    final transaction = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: '2026-10-02',
+      occurredAt: occurredAt.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: 0,
+      createdAt: createdAt.millisecondsSinceEpoch,
+    );
+
+    expect(
+      transaction.balanceEventAt(snapshotAt: createdAt.millisecondsSinceEpoch),
+      occurredAt.millisecondsSinceEpoch,
+    );
+  });
+
+  test('已录入的历史日期账单不回溯修改付款余额', () {
+    final createdAt = DateTime.utc(2026, 10, 2);
+    final transaction = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: '2026-10-01',
+      occurredAt: createdAt.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: 0,
+      createdAt: createdAt.millisecondsSinceEpoch,
+    );
+
+    expect(transaction.balanceEventAt(), createdAt.millisecondsSinceEpoch);
+  });
+
   group('记账金额解析', () {
     test('支持整数和两位小数，并转换为分', () {
       expect(parseFinanceAmount('12'), 1200);

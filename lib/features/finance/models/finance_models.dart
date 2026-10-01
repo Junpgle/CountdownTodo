@@ -1453,7 +1453,7 @@ class FinanceTransaction {
     this.paymentMethodUuid,
     required this.transactionDate,
     int? occurredAt,
-    this.timezoneOffsetMinutes = 0,
+    int? timezoneOffsetMinutes,
     this.merchant,
     this.note,
     this.source = FinanceEntrySource.manual,
@@ -1470,7 +1470,9 @@ class FinanceTransaction {
     int? updatedAt,
     this.deviceId,
     this.pendingSync = false,
-  }) : uuid = uuid ?? const Uuid().v4(),
+  }) : timezoneOffsetMinutes =
+           timezoneOffsetMinutes ?? DateTime.now().timeZoneOffset.inMinutes,
+       uuid = uuid ?? const Uuid().v4(),
        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
        occurredAt = occurredAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -1502,21 +1504,32 @@ class FinanceTransaction {
   int balanceEventAt({int? snapshotAt}) {
     final timestamp = occurredAt;
     final occurred = occurrenceLocalTime;
-    if (timestamp == null ||
-        occurred == null ||
-        dateKey(occurred) != transactionDate) {
+    final dateStartAt = dateFromKey(transactionDate).millisecondsSinceEpoch;
+    var eventAt = timestamp;
+    if (eventAt == null || occurred == null) {
       // Legacy rows without a reliable time use their entry time, while a
       // future ledger date must still wait until that date begins.
-      final dateStartAt = dateFromKey(transactionDate).millisecondsSinceEpoch;
-      return createdAt > dateStartAt ? createdAt : dateStartAt;
+      eventAt = createdAt > dateStartAt ? createdAt : dateStartAt;
+    } else if (dateKey(occurred) != transactionDate) {
+      final createdDate = dateKey(
+        DateTime.fromMillisecondsSinceEpoch(createdAt, isUtc: true).add(
+          Duration(minutes: timezoneOffsetMinutes),
+        ),
+      );
+      if (transactionDate.compareTo(createdDate) <= 0) {
+        // A mismatched legacy occurrence timestamp should not rewrite an
+        // account's balance before the row was entered. A future ledger day
+        // still uses its known occurrence time so it is not counted early.
+        eventAt = createdAt > dateStartAt ? createdAt : dateStartAt;
+      }
     }
     if (snapshotAt != null &&
-        timestamp <= snapshotAt &&
-        timestamp ~/ 60000 == snapshotAt ~/ 60000 &&
+        eventAt <= snapshotAt &&
+        eventAt ~/ 60000 == snapshotAt ~/ 60000 &&
         createdAt > snapshotAt) {
       return createdAt;
     }
-    return timestamp;
+    return eventAt;
   }
 
   void markAsChanged() {
