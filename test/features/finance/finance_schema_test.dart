@@ -156,6 +156,68 @@ void main() {
           isEmpty,
         );
       });
+
+      test('$source 拒绝负数周期、模板和贷款金额', () async {
+        final recurringRule = FinanceRecurringRule(
+          uuid: 'negative-$source-recurring-rule',
+          name: '负数周期账单',
+          amountMinor: -100,
+          startDate: '2026-09-01',
+        );
+        final template = FinanceEntryTemplate(
+          uuid: 'negative-$source-template',
+          name: '负数模板',
+          amountMinor: -100,
+        );
+        final loan = FinanceLoan(
+          uuid: 'negative-$source-loan',
+          name: '负数贷款',
+          principalMinor: -100,
+          termMonths: 1,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        final installment = FinanceLoanInstallment(
+          uuid: 'negative-$source-installment',
+          loanUuid: loan.uuid,
+          installmentIndex: 1,
+          dueDate: '2026-10-01',
+          paymentMinor: -100,
+          principalMinor: -100,
+          interestMinor: 0,
+          remainingPrincipalMinor: 0,
+        );
+        final bundle = {
+          'recurring_rules': [recurringRule.toMap()],
+          'templates': [template.toMap()],
+          'loans': [loan.toMap()],
+          'loan_installments': [installment.toMap()],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['skipped'], 4);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 0);
+        }
+
+        expect(
+          await FinanceStorage.getRecurringRules(includeDeleted: true),
+          isEmpty,
+        );
+        expect(
+          await FinanceStorage.getTemplates(includeDeleted: true),
+          isEmpty,
+        );
+        expect(await FinanceStorage.getLoans(includeDeleted: true), isEmpty);
+        expect(
+          await FinanceStorage.getLoanInstallments(
+            loan.uuid,
+            includeDeleted: true,
+          ),
+          isEmpty,
+        );
+      });
     }
 
     test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {

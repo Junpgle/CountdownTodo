@@ -2650,6 +2650,10 @@ abstract final class FinanceStorage {
 
     final recurringRuleMaps = _listOfMaps(bundle['recurring_rules']);
     for (final map in recurringRuleMaps) {
+      if (!_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor')) {
+        skipped++;
+        continue;
+      }
       final item = FinanceRecurringRule.fromMap(map);
       item.uuid = remap(item.uuid);
       item.categoryUuid = _remapNullable(item.categoryUuid, remap);
@@ -2693,6 +2697,10 @@ abstract final class FinanceStorage {
 
     final templateMaps = _listOfMaps(bundle['templates']);
     for (final map in templateMaps) {
+      if (!_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor')) {
+        skipped++;
+        continue;
+      }
       final item = FinanceEntryTemplate.fromMap(map);
       item.uuid = remap(item.uuid);
       item.categoryUuid = _remapNullable(item.categoryUuid, remap);
@@ -2877,6 +2885,14 @@ abstract final class FinanceStorage {
 
     final loanMaps = _listOfMaps(bundle['loans']);
     for (final map in loanMaps) {
+      if (!_hasSafeRawFinanceAmount(
+        map,
+        'principal_minor',
+        'principalMinor',
+      )) {
+        skipped++;
+        continue;
+      }
       final item = FinanceLoan.fromMap(map);
       item.uuid = remap(item.uuid);
       if (!_isValidLoan(item)) {
@@ -2902,6 +2918,10 @@ abstract final class FinanceStorage {
 
     final loanInstallmentMaps = _listOfMaps(bundle['loan_installments']);
     for (final map in loanInstallmentMaps) {
+      if (!_hasSafeRawLoanInstallmentAmounts(map)) {
+        skipped++;
+        continue;
+      }
       final item = FinanceLoanInstallment.fromMap(map);
       item.uuid = remap(item.uuid);
       item.loanUuid = remap(item.loanUuid);
@@ -3008,18 +3028,34 @@ abstract final class FinanceStorage {
           .toList(growable: false),
     );
     final recurringRules = _listOfMaps(bundle['recurring_rules'])
+        .where(
+          (map) =>
+              _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor'),
+        )
         .map(FinanceRecurringRule.fromMap)
         .where(_isValidRecurringRule)
         .toList(growable: false);
     final templates = _listOfMaps(bundle['templates'])
+        .where(
+          (map) =>
+              _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor'),
+        )
         .map(FinanceEntryTemplate.fromMap)
         .where(_isValidTemplate)
         .toList(growable: false);
     final loans = _listOfMaps(bundle['loans'])
+        .where(
+          (map) => _hasSafeRawFinanceAmount(
+            map,
+            'principal_minor',
+            'principalMinor',
+          ),
+        )
         .map(FinanceLoan.fromMap)
         .where(_isValidLoan)
         .toList(growable: false);
     final loanInstallments = _listOfMaps(bundle['loan_installments'])
+        .where(_hasSafeRawLoanInstallmentAmounts)
         .map(FinanceLoanInstallment.fromMap)
         .where(_isValidLoanInstallment)
         .toList(growable: false);
@@ -3919,6 +3955,23 @@ abstract final class FinanceStorage {
     }
     return false;
   }
+
+  static bool _hasSafeRawFinanceAmount(
+    Map<String, dynamic> map,
+    String snakeCaseKey,
+    String camelCaseKey,
+  ) =>
+      _isSafeRawFinanceAmount(map[snakeCaseKey] ?? map[camelCaseKey]);
+
+  static bool _hasSafeRawLoanInstallmentAmounts(Map<String, dynamic> map) =>
+      _hasSafeRawFinanceAmount(map, 'payment_minor', 'paymentMinor') &&
+      _hasSafeRawFinanceAmount(map, 'principal_minor', 'principalMinor') &&
+      _hasSafeRawFinanceAmount(map, 'interest_minor', 'interestMinor') &&
+      _hasSafeRawFinanceAmount(
+        map,
+        'remaining_principal_minor',
+        'remainingPrincipalMinor',
+      );
 
   static bool _isValidLoan(FinanceLoan item) {
     if (item.uuid.trim().isEmpty ||
