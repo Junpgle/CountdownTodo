@@ -61,6 +61,32 @@ void main() {
       await db.close();
     });
 
+    test('恢复已暂停的周期账单后仍保持暂停', () async {
+      final rule = FinanceRecurringRule(
+        uuid: 'restore-paused-recurring-rule',
+        name: '暂停的订阅',
+        amountMinor: 10000,
+        startDate: '2026-01-01',
+        isEnabled: false,
+      );
+      await FinanceStorage.saveRecurringRule(rule);
+
+      await FinanceStorage.deleteRecurringRule(rule.uuid);
+      expect(
+        (await FinanceStorage.getRecurringRule(rule.uuid))!.isDeleted,
+        true,
+      );
+
+      await FinanceStorage.restoreRecurringRule(rule.uuid);
+      final restored = (await FinanceStorage.getRecurringRule(rule.uuid))!;
+      expect(restored.isDeleted, false);
+      expect(restored.isEnabled, false);
+      expect(
+        await FinanceStorage.getRecurringRules(enabledOnly: true),
+        isEmpty,
+      );
+    });
+
     for (final transport in ['remote', 'backup']) {
       Future<void> apply(FinanceRecurringRule rule) async {
         final bundle = {

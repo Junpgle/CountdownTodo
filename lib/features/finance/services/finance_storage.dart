@@ -1878,7 +1878,6 @@ abstract final class FinanceStorage {
     if (rule == null || rule.isDeleted) return;
     final original = FinanceRecurringRule.fromMap(rule.toMap());
     rule.isDeleted = true;
-    rule.isEnabled = false;
     rule.markAsChanged();
     await saveRecurringRule(rule, original: original);
   }
@@ -1888,7 +1887,6 @@ abstract final class FinanceStorage {
     if (rule == null || !rule.isDeleted) return;
     final original = FinanceRecurringRule.fromMap(rule.toMap());
     rule.isDeleted = false;
-    rule.isEnabled = true;
     rule.markAsChanged();
     await saveRecurringRule(rule, original: original);
   }
