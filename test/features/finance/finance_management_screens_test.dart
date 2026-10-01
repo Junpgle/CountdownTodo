@@ -614,6 +614,55 @@ void main() {
     );
   });
 
+  testWidgets('未来月份预算用计划用语显示待发生账单', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final futureMonth = DateTime(now.year, now.month + 1);
+    final plannedAt = DateTime(
+      futureMonth.year,
+      futureMonth.month,
+      10,
+      12,
+    );
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'future-overall-budget',
+          monthKey: financeMonthKey(futureMonth),
+          amountMinor: 10000,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'future-planned-expense',
+          amountMinor: 2000,
+          transactionDate: dateKey(plannedAt),
+          occurredAt: plannedAt.millisecondsSinceEpoch,
+          timezoneOffsetMinutes: plannedAt.timeZoneOffset.inMinutes,
+          createdAt: now.millisecondsSinceEpoch,
+          merchant: '计划账单',
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: futureMonth),
+      size: const Size(1100, 1000),
+    );
+
+    expect(
+      find.text('${futureMonth.year}年${futureMonth.month}月总预算'),
+      findsOneWidget,
+    );
+    expect(find.text('计划使用 ¥20.00 / ¥100.00'), findsOneWidget);
+    expect(find.text('计划剩余 ¥80.00'), findsWidgets);
+    expect(find.text('已使用 ¥20.00 / ¥100.00'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('记账概览不提前统计本月未来发生的账单', (tester) async {
     final db = await _seed(tester);
     final now = DateTime.now();

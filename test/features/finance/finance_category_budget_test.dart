@@ -303,7 +303,10 @@ void main() {
         ),
       ),
     );
-    await waitFor(tester, () => find.text('分类预算合计').evaluate().isNotEmpty);
+    await waitFor(
+      tester,
+      () => find.text('2026年9月分类预算合计').evaluate().isNotEmpty,
+    );
     expect(tester.takeException(), isNull);
     final usedLine = visibleText().singleWhere(
       (text) => text.startsWith('已使用 '),
