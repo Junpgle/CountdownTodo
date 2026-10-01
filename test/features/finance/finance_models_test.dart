@@ -169,6 +169,21 @@ void main() {
     );
   });
 
+  test('快速记账区分金额千位逗号与多笔账单分隔符', () {
+    final now = DateTime(2026, 10, 2);
+    final groupedAmount = FinanceTextParser.parseQuickEntries(
+      '午餐1,234.56元',
+      now: now,
+    );
+
+    expect(groupedAmount, hasLength(1));
+    expect(groupedAmount.single.amountMinor, 123456);
+    expect(
+      FinanceTextParser.parseOneSentence('午餐12,34元', now: now),
+      isNull,
+    );
+  });
+
   test('分期和贷款本金拒绝超出跨平台安全范围的金额', () {
     expect(
       () => FinanceInstallmentCalculator.split(

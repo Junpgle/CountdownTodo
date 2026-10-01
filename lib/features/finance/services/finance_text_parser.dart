@@ -7,6 +7,8 @@ import 'finance_repository.dart';
 /// Recognizes the small, deliberately explicit text format used by the
 /// finance import entry point and by the AI assistant.
 abstract final class FinanceTextParser {
+  static const String _numericCommaMarker = '\uE000';
+
   static const String formatHelp = '''推荐格式（每笔一段）：
 #记账
 类型: 支出
@@ -609,9 +611,13 @@ abstract final class FinanceTextParser {
   }
 
   static List<String> _splitCommaSeparatedQuickEntries(String text) {
-    final clauses = text
+    final protectedText = text.replaceAllMapped(
+      RegExp(r'(?<=\d),(?=\d)'),
+      (_) => _numericCommaMarker,
+    );
+    final clauses = protectedText
         .split(RegExp(r'\s*[,，]\s*'))
-        .map((part) => part.trim())
+        .map((part) => part.replaceAll(_numericCommaMarker, ',').trim())
         .where((part) => part.isNotEmpty)
         .toList();
     if (clauses.length < 2) return [text];
@@ -751,7 +757,6 @@ abstract final class FinanceTextParser {
     if (raw == null || raw.trim().isEmpty) return null;
     final normalized = raw
         .trim()
-        .replaceAll(',', '')
         .replaceAll(RegExp(r'^[¥￥$€£]\s*'), '')
         .replaceAll(RegExp(r'\s*(?:元|块|人民币|CNY)\s*$', caseSensitive: false), '')
         .replaceFirst(RegExp(r'^\+'), '')
