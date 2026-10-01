@@ -228,6 +228,44 @@ void main() {
           isEmpty,
         );
       });
+
+      test('$source 拒绝无效的账户余额快照时间', () async {
+        final invalidSnapshotTimes = <num>[-1, 0, 9000000000000000, 1000.5];
+        final budgets = <Map<String, dynamic>>[];
+        for (var index = 0; index < invalidSnapshotTimes.length; index++) {
+          final paymentMethodUuid = 'invalid-snapshot-method-$source-$index';
+          await db.insert(
+            'finance_payment_methods',
+            FinancePaymentMethod(
+              uuid: paymentMethodUuid,
+              name: '快照时间测试账户 $index',
+            ).toMap(),
+          );
+          budgets.add(
+            FinanceBudget(
+              uuid: 'invalid-snapshot-budget-$source-$index',
+              monthKey: '2026-10',
+              paymentMethodUuid: paymentMethodUuid,
+              amountMinor: 1000,
+              balanceSnapshotAt: 1000,
+            ).toMap()..['balance_snapshot_at'] = invalidSnapshotTimes[index],
+          );
+        }
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({'budgets': budgets});
+          expect(result['skipped'], invalidSnapshotTimes.length);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({'budgets': budgets}),
+            0,
+          );
+        }
+        expect(
+          await FinanceStorage.getBudgets(includeDeleted: true),
+          isEmpty,
+        );
+      });
     }
 
     test('本地预算拒绝收入分类和不存在的关联项', () async {

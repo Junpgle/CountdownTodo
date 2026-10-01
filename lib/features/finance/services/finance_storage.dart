@@ -2859,7 +2859,8 @@ abstract final class FinanceStorage {
     skipped += budgetInput.invalidCount;
     for (final map in budgetInput.maps) {
       if (!_hasRawFinanceUuid(map) ||
-          !_isSafeRawFinanceAmount(map['amount_minor'] ?? map['amountMinor'])) {
+          !_isSafeRawFinanceAmount(map['amount_minor'] ?? map['amountMinor']) ||
+          !_hasValidRawBalanceSnapshot(map)) {
         skipped++;
         continue;
       }
@@ -3071,7 +3072,8 @@ abstract final class FinanceStorage {
                 _hasRawFinanceUuid(map) &&
                 _isSafeRawFinanceAmount(
                   map['amount_minor'] ?? map['amountMinor'],
-                ),
+                ) &&
+                _hasValidRawBalanceSnapshot(map),
           )
           .map(FinanceBudget.fromMap)
           .where(_isValidBudget)
@@ -4261,11 +4263,25 @@ abstract final class FinanceStorage {
   }
 
   static bool _isValidBudget(FinanceBudget item) {
+    final balanceSnapshotAt = item.balanceSnapshotAt;
+    final hasValidBalanceSnapshot = item.isPaymentMethod
+        ? balanceSnapshotAt == null ||
+              (balanceSnapshotAt > 0 &&
+                  balanceSnapshotAt <= _maxDateTimeMillis)
+        : balanceSnapshotAt == null;
     return item.uuid.trim().isNotEmpty &&
         !(item.categoryUuid != null && item.paymentMethodUuid != null) &&
         isSafeFinanceAmountMinor(item.amountMinor) &&
         (item.isPaymentMethod ? item.amountMinor >= 0 : item.amountMinor > 0) &&
+        hasValidBalanceSnapshot &&
         RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(item.monthKey);
+  }
+
+  static bool _hasValidRawBalanceSnapshot(Map<String, dynamic> map) {
+    final raw = map['balance_snapshot_at'] ?? map['balanceSnapshotAt'];
+    if (raw == null) return true;
+    final timestamp = _rawFinanceTimestampMillis(raw);
+    return timestamp != null && timestamp > 0;
   }
 
   static Future<bool> _hasValidBudgetScope(
