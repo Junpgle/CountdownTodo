@@ -155,25 +155,48 @@ abstract final class FinanceAiContextService {
 
     final nowValue = now ?? DateTime.now();
     final range = resolveDateRange(userMessage, now: nowValue);
+    final monthFrom = DateTime(range.from.year, range.from.month);
+    final lastDay = range.to.subtract(const Duration(microseconds: 1));
+    final monthTo = DateTime(lastDay.year, lastDay.month + 1);
     try {
       final values = await Future.wait<dynamic>([
-        FinanceRepository.getSummary(from: range.from, to: range.to),
         FinanceRepository.getTransactions(
-          from: range.from,
-          to: range.to,
-          limit: 60,
+          from: monthFrom,
+          to: monthTo,
         ),
-        FinanceRepository.getBudgets(monthKey: financeMonthKey(range.from)),
+        FinanceRepository.getBudgets(),
       ]);
+      final monthTransactions = values[0] as List<FinanceTransaction>;
+      final fromKey = dateKey(range.from);
+      final toKey = dateKey(range.to);
+      final transactions = monthTransactions
+          .where((item) =>
+              item.transactionDate.compareTo(fromKey) >= 0 &&
+              item.transactionDate.compareTo(toKey) < 0)
+          .toList(growable: false);
+      final budgets = (values[1] as List<FinanceBudget>)
+          .where((budget) =>
+              !budget.isPaymentMethod &&
+              budget.monthKey.compareTo(financeMonthKey(monthFrom)) >= 0 &&
+              budget.monthKey.compareTo(financeMonthKey(monthTo)) < 0)
+          .toList(growable: false);
+      // Budget limits belong to full calendar months even when the ledger
+      // question covers only one day/week or spans several different months.
+      final budgetSummaries = {
+        for (final month in budgets.map((item) => item.monthKey).toSet())
+          month: FinanceRepository.summarizeTransactions(
+            monthTransactions.where((item) =>
+                item.transactionDate.startsWith('$month-')),
+          ),
+      };
       final ledger = _formatContext(
         range: range,
-        summary: values[0] as FinanceSummary,
-        transactions: values[1] as List<FinanceTransaction>,
+        summary: FinanceRepository.summarizeTransactions(transactions),
+        transactions: transactions,
         categories: catalogData.categories,
         paymentMethods: catalogData.paymentMethods,
-        budgets: (values[2] as List<FinanceBudget>)
-            .where((budget) => !budget.isPaymentMethod)
-            .toList(growable: false),
+        budgets: budgets,
+        budgetSummaries: budgetSummaries,
       );
       return [
         if (needsCatalog) catalog,
@@ -260,6 +283,7 @@ abstract final class FinanceAiContextService {
     required List<FinanceCategory> categories,
     required List<FinancePaymentMethod> paymentMethods,
     required List<FinanceBudget> budgets,
+    required Map<String, FinanceSummary> budgetSummaries,
   }) {
     final categoryMap = {for (final item in categories) item.uuid: item};
     final paymentMap = {for (final item in paymentMethods) item.uuid: item};
@@ -279,7 +303,7 @@ abstract final class FinanceAiContextService {
 
     final lines = <String>[
       '【相关记账上下文｜只读快照】',
-      '查询范围: ${range.label}（结束日期不含当天）',
+      '查询范围: ${range.label}（含首尾日期）',
       '汇总: 收入 ${formatFinanceAmount(summary.incomeMinor)} | '
           '支出 ${formatFinanceAmount(summary.expenseMinor)} | '
           '退款 ${formatFinanceAmount(summary.refundMinor)} | '
@@ -306,9 +330,14 @@ abstract final class FinanceAiContextService {
     }
 
     if (budgets.isNotEmpty) {
-      lines.add('预算（${financeMonthKey(range.from)}）:');
+      String? displayedMonth;
       for (final budget in budgets.take(20)) {
-        final used = summary.spendingForBudget(budget, categories);
+        if (displayedMonth != budget.monthKey) {
+          displayedMonth = budget.monthKey;
+          lines.add('预算（${budget.monthKey}，整月）:');
+        }
+        final used = (budgetSummaries[budget.monthKey] ?? const FinanceSummary())
+            .spendingForBudget(budget, categories);
         final remaining = budget.amountMinor - used;
         final scope = budget.categoryUuid == null
             ? '整体'
