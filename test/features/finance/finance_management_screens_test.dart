@@ -707,6 +707,34 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('导出菜单按所选月份命名账单', (tester) async {
+    await _seed(tester);
+    final now = DateTime.now();
+    final selectedMonth = DateTime(now.year, now.month - 1);
+    await _pump(tester, const FinanceHomeScreen(username: 'default'));
+
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('finance-overview-period-previous')),
+    );
+    await _waitFor(
+      tester,
+      () =>
+          find
+              .text('${selectedMonth.year}年${selectedMonth.month}月')
+              .evaluate()
+              .isNotEmpty,
+    );
+    await _tap(tester, find.byTooltip('更多操作'));
+
+    expect(
+      find.text('导出${selectedMonth.year}年${selectedMonth.month}月账单 CSV'),
+      findsOneWidget,
+    );
+    expect(find.text('导出本月 CSV'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('首页记账摘要不提前计入未来账单且最近一笔显示已发生记录',
       (tester) async {
     final db = await _seed(tester);

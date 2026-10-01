@@ -505,10 +505,19 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       context,
       SnackBar(
         content: Text(
-            path == null ? '已取消导出' : '已导出本月账单${path.isEmpty ? '' : '：$path'}'),
+            path == null
+                ? '已取消导出'
+                : '已导出$_selectedMonthLabel账单${path.isEmpty ? '' : '：$path'}'),
         duration: const Duration(seconds: 4),
       ),
     );
+  }
+
+  String get _selectedMonthLabel {
+    final now = DateTime.now();
+    return _month.year == now.year && _month.month == now.month
+        ? '本月'
+        : '${_month.year}年${_month.month}月';
   }
 
   void _setMonth(DateTime value) {
@@ -604,8 +613,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                 );
               }
             },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
+            itemBuilder: (context) => [
+              const PopupMenuItem(
                 value: 'text',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -618,10 +627,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.file_download_outlined),
-                  title: Text('导出本月 CSV'),
+                  title: Text('导出$_selectedMonthLabel账单 CSV'),
                 ),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'automation',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -629,7 +638,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                   title: Text('自动化与快捷模板'),
                 ),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'loans',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -637,7 +646,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                   title: Text('贷款'),
                 ),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'ai_cost',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -653,7 +662,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                   title: Text('记账设置'),
                 ),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'trash',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
