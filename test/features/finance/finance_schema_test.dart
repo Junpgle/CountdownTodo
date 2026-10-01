@@ -325,6 +325,43 @@ void main() {
       });
     }
 
+    for (final source in ['backup', 'remote']) {
+      test('$source 拒绝被归一化的无效分类类型', () async {
+        final numericType = FinanceCategory(
+          uuid: 'invalid-$source-numeric-category-type',
+          name: '数值越界分类',
+        ).toMap()
+          ..['type'] = 99;
+        final unknownType = FinanceCategory(
+          uuid: 'invalid-$source-string-category-type',
+          name: '未知类型分类',
+        ).toMap()
+          ..['type'] = 'unknown';
+        final bundle = {
+          'categories': [numericType, unknownType],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['skipped'], 2);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 0);
+        }
+
+        final categories = await FinanceStorage.getCategories(
+          includeArchived: true,
+        );
+        expect(
+          categories.map((category) => category.uuid),
+          isNot(contains('invalid-$source-numeric-category-type')),
+        );
+        expect(
+          categories.map((category) => category.uuid),
+          isNot(contains('invalid-$source-string-category-type')),
+        );
+      });
+    }
+
     test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {
       final unsafeTransaction = FinanceTransaction(
         uuid: 'unsafe-large-transaction',

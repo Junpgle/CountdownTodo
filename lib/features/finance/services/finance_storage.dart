@@ -2520,6 +2520,10 @@ abstract final class FinanceStorage {
     final categoryCandidates = <String, FinanceCategory>{};
     final categoryMaps = _listOfMaps(bundle['categories']);
     for (final map in categoryMaps) {
+      if (!_hasValidRawCategoryType(map)) {
+        skipped++;
+        continue;
+      }
       final item = FinanceCategory.fromMap(map);
       final oldUuid = item.uuid;
       if (_isSystemUuid(oldUuid)) {
@@ -2991,6 +2995,7 @@ abstract final class FinanceStorage {
   }) async {
     await ensureReady();
     final categories = _listOfMaps(bundle['categories'])
+        .where(_hasValidRawCategoryType)
         .map((map) {
           final item = FinanceCategory.fromMap(map);
           item.parentUuid = _normalizeCategoryParentUuid(item.parentUuid);
@@ -3964,6 +3969,20 @@ abstract final class FinanceStorage {
           parsed <= BigInt.from(maxFinanceAmountMinor);
     }
     return false;
+  }
+
+  static bool _hasValidRawCategoryType(Map<String, dynamic> map) {
+    final value = map['type'] ?? map['category_type'];
+    if (value == null) return true;
+    if (value is num) {
+      return value.isFinite &&
+          value >= 0 &&
+          value < FinanceCategoryType.values.length &&
+          value == value.roundToDouble();
+    }
+    final type = value.toString().trim().toLowerCase();
+    return type == FinanceCategoryType.expense.name ||
+        type == FinanceCategoryType.income.name;
   }
 
   static bool _hasSafeRawFinanceAmount(
