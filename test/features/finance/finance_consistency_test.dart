@@ -262,6 +262,193 @@ void main() {
       expect(await FinanceStorage.getBudgets(), isEmpty);
     });
 
+    for (final newer in [false, true]) {
+      test('导入旧余额UUID时统一比较同范围记录，新备份=$newer', () async {
+        final old = FinanceBudget(
+          uuid: 'old-import-balance',
+          monthKey: '2026-09',
+          paymentMethodUuid: _cash,
+          amountMinor: 10000,
+          isDeleted: true,
+          updatedAt: 100,
+        );
+        final current = FinanceBudget(
+          uuid: 'current-import-balance',
+          monthKey: old.monthKey,
+          paymentMethodUuid: _cash,
+          amountMinor: 20000,
+          updatedAt: 200,
+        );
+        final unrelated = [
+          FinanceBudget(
+            uuid: 'other-account',
+            monthKey: old.monthKey,
+            paymentMethodUuid: _wechat,
+            amountMinor: 30000,
+          ),
+          FinanceBudget(
+            uuid: 'other-month',
+            monthKey: '2026-10',
+            paymentMethodUuid: _cash,
+            amountMinor: 40000,
+          ),
+          FinanceBudget(
+            uuid: 'overall-budget',
+            monthKey: old.monthKey,
+            amountMinor: 50000,
+          ),
+        ];
+        for (final budget in [old, current, ...unrelated]) {
+          await db.insert('finance_budgets', budget.toMap());
+        }
+        await FinanceStorage.importBundle({
+          'budgets': [
+            {...old.toMap(), 'is_deleted': 0, 'updated_at': newer ? 300 : 150},
+          ],
+        });
+        final scoped = (await FinanceStorage.getBudgets(monthKey: old.monthKey))
+            .where((budget) => budget.paymentMethodUuid == _cash)
+            .toList();
+        expect(scoped, hasLength(1));
+        expect(scoped.single.uuid, newer ? old.uuid : current.uuid);
+        expect(scoped.single.amountMinor, newer ? 10000 : 20000);
+        expect(scoped.single.pendingSync, newer);
+        expect(
+          await db.query(
+            'finance_budgets',
+            where: 'month_key = ? AND payment_method_uuid = ?',
+            whereArgs: [old.monthKey, _cash],
+          ),
+          hasLength(1),
+        );
+        for (final budget in unrelated) {
+          expect(
+            (await FinanceStorage.getBudget(budget.uuid))!.toMap(),
+            budget.toMap(),
+          );
+        }
+      });
+    }
+
+    for (final reverse in [false, true]) {
+      test('备份中的余额替换与旧删除不受导入顺序影响，反转=$reverse', () async {
+        final old = FinanceBudget(
+          uuid: 'backup-retired-balance',
+          monthKey: '2026-09',
+          paymentMethodUuid: _cash,
+          amountMinor: 10000,
+          isDeleted: true,
+          version: 8,
+          updatedAt: 200,
+        );
+        final replacement = FinanceBudget(
+          uuid: 'backup-active-balance',
+          monthKey: old.monthKey,
+          paymentMethodUuid: _cash,
+          amountMinor: 20000,
+          version: 1,
+          updatedAt: 200,
+        );
+        final rows = [old.toMap(), replacement.toMap()];
+        final result = await FinanceStorage.importBundle({
+          'budgets': reverse ? rows.reversed.toList() : rows,
+        });
+        expect(result, {'imported': 1, 'updated': 0, 'skipped': 1});
+        final stored = (await FinanceStorage.getBudgets(includeDeleted: true))
+            .single;
+        expect(stored.uuid, replacement.uuid);
+        expect(stored.isDeleted, false);
+        expect(stored.pendingSync, true);
+      });
+    }
+
+    test('备份同一余额UUID按版本删除和恢复，旧备份不能越过新删除', () async {
+      final balance = FinanceBudget(
+        uuid: 'backup-same-balance',
+        monthKey: '2026-09',
+        paymentMethodUuid: _cash,
+        amountMinor: 0,
+        updatedAt: 200,
+      );
+      await FinanceStorage.importBundle({
+        'budgets': [balance.toMap()],
+      });
+      balance
+        ..isDeleted = true
+        ..version = 2;
+      await FinanceStorage.importBundle({
+        'budgets': [balance.toMap()],
+      });
+      expect(await FinanceStorage.getBudgets(), isEmpty);
+      await FinanceStorage.importBundle({
+        'budgets': [
+          {...balance.toMap(), 'uuid': 'older-backup', 'updated_at': 100},
+        ],
+      });
+      expect(
+        (await FinanceStorage.getBudgets(includeDeleted: true)).single.uuid,
+        balance.uuid,
+      );
+      balance
+        ..isDeleted = false
+        ..version = 3;
+      await FinanceStorage.importBundle({
+        'budgets': [balance.toMap()],
+      });
+      expect((await FinanceStorage.getBudgets()).single.version, 3);
+    });
+
+    test('备份拒绝同时关联分类和账户的余额，保留合法的独立范围', () async {
+      final invalid = FinanceBudget(
+        uuid: 'invalid-double-scope',
+        monthKey: '2026-09',
+        categoryUuid: 'finance-system-category-food',
+        paymentMethodUuid: _cash,
+        amountMinor: 10000,
+      );
+      final valid = [
+        FinanceBudget(monthKey: invalid.monthKey, amountMinor: 10000),
+        FinanceBudget(
+          monthKey: invalid.monthKey,
+          categoryUuid: invalid.categoryUuid,
+          amountMinor: 5000,
+        ),
+        FinanceBudget(
+          monthKey: invalid.monthKey,
+          paymentMethodUuid: _cash,
+          amountMinor: 0,
+        ),
+      ];
+      final result = await FinanceStorage.importBundle({
+        'budgets': [invalid.toMap(), ...valid.map((item) => item.toMap())],
+      });
+      expect(result, {'imported': 3, 'updated': 0, 'skipped': 1});
+      expect(await FinanceStorage.getBudget(invalid.uuid), isNull);
+      expect(await FinanceStorage.getBudgets(), hasLength(3));
+    });
+
+    test('旧备份不能把较新的同UUID余额移回旧月份', () async {
+      final local = FinanceBudget(
+        uuid: 'moved-balance',
+        monthKey: '2026-10',
+        paymentMethodUuid: _cash,
+        amountMinor: 20000,
+        updatedAt: 200,
+      );
+      await db.insert('finance_budgets', local.toMap());
+      final result = await FinanceStorage.importBundle({
+        'budgets': [
+          {...local.toMap(), 'month_key': '2026-09', 'updated_at': 100},
+        ],
+      });
+      expect(result['skipped'], 1);
+      expect(
+        (await FinanceStorage.getBudget(local.uuid))!.toMap(),
+        local.toMap(),
+      );
+      expect(await FinanceStorage.getBudgets(monthKey: '2026-09'), isEmpty);
+    });
+
     for (final reverse in [false, true]) {
       test('实际备份同时删除原单和退款，顺序反转=$reverse', () async {
         final initialAt = DateTime.now().millisecondsSinceEpoch - 1000;

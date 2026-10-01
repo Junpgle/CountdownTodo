@@ -2155,52 +2155,57 @@ abstract final class FinanceStorage {
       }
     }
 
-    final budgetMaps = _listOfMaps(bundle['budgets']);
-    for (final map in budgetMaps) {
+    final importedBudgets = <FinanceBudget>[];
+    for (final map in _listOfMaps(bundle['budgets'])) {
       final item = FinanceBudget.fromMap(map);
       item.uuid = remap(item.uuid);
       item.categoryUuid = _remapNullable(item.categoryUuid, remap);
       item.paymentMethodUuid = _remapNullable(item.paymentMethodUuid, remap);
       item.amountMinor = item.amountMinor.abs();
-      if ((!item.isPaymentMethod && item.amountMinor == 0) ||
-          !RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(item.monthKey)) {
+      if (!_isValidBudget(item)) {
         skipped++;
         continue;
       }
+      importedBudgets.add(item);
+    }
+    final budgets = _latestBudgetsByScope(importedBudgets);
+    skipped += importedBudgets.length - budgets.length;
+    for (final item in budgets) {
       final existing = await _findByUuid(db, 'finance_budgets', item.uuid);
-      final existingScope = existing == null
-          ? await _findBudgetByScope(db, item)
-          : null;
-      if (existing == null && existingScope != null) {
-        final current = FinanceBudget.fromMap(existingScope);
-        if (item.updatedAt <= current.updatedAt) {
+      if (existing != null) {
+        final current = FinanceBudget.fromMap(existing);
+        if (_budgetScopeKey(current) != _budgetScopeKey(item) &&
+            !_isIncomingBudgetWinner(item, current)) {
           skipped++;
           continue;
         }
-        item.uuid = current.uuid;
-        await db.update(
-          'finance_budgets',
-          _localValues(item.toMap()),
-          where: 'uuid = ?',
-          whereArgs: [current.uuid],
-        );
-        updated++;
-      } else if (existing == null) {
-        await db.insert(
-          'finance_budgets',
-          _localValues(item.toMap()),
-        );
-        imported++;
-      } else if (item.updatedAt > FinanceBudget.fromMap(existing).updatedAt) {
-        await db.update(
-          'finance_budgets',
-          _localValues(item.toMap()),
-          where: 'uuid = ?',
-          whereArgs: [item.uuid],
-        );
-        updated++;
-      } else {
+      }
+      final scopeRows = await _findAllBudgetsByScope(db, item);
+      final current = scopeRows.isEmpty
+          ? null
+          : _latestBudgetsByScope(
+              scopeRows.map(FinanceBudget.fromMap).toList(),
+            ).single;
+      if (current != null && !_isIncomingBudgetWinner(item, current)) {
+        // Repair duplicates left by older importers without overwriting the
+        // newest local value with a stale backup.
+        if (scopeRows.length > 1) {
+          await _deleteOtherBudgetsInScope(db, current);
+          updated++;
+        }
         skipped++;
+        continue;
+      }
+      await _deleteOtherBudgetsInScope(db, item);
+      await db.insert(
+        'finance_budgets',
+        _localValues(item.toMap()),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      if (existing == null && scopeRows.isEmpty) {
+        imported++;
+      } else {
+        updated++;
       }
     }
 
@@ -3101,35 +3106,6 @@ abstract final class FinanceStorage {
       table,
       where: 'uuid = ?',
       whereArgs: [uuid],
-      limit: 1,
-    );
-    return rows.isEmpty ? null : rows.first;
-  }
-
-  static Future<Map<String, dynamic>?> _findBudgetByScope(
-    DatabaseExecutor db,
-    FinanceBudget budget,
-  ) async {
-    final where = <String>['month_key = ?', 'is_deleted = 0'];
-    final args = <Object?>[budget.monthKey];
-    if (budget.paymentMethodUuid != null) {
-      where
-        ..add('category_uuid IS NULL')
-        ..add('payment_method_uuid = ?');
-      args.add(budget.paymentMethodUuid);
-    } else {
-      where.add('payment_method_uuid IS NULL');
-      if (budget.categoryUuid == null) {
-        where.add('category_uuid IS NULL');
-      } else {
-        where.add('category_uuid = ?');
-        args.add(budget.categoryUuid);
-      }
-    }
-    final rows = await db.query(
-      'finance_budgets',
-      where: where.join(' AND '),
-      whereArgs: args,
       limit: 1,
     );
     return rows.isEmpty ? null : rows.first;
