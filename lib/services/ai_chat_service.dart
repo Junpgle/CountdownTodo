@@ -321,7 +321,7 @@ class AiChatService {
     var emittedCount = 0;
     var lastError = '';
     var cancelled = false;
-    var usageRecorded = false;
+    AiTokenUsage? streamUsage;
 
     try {
       if (cancelToken?.isCompleted == true) return;
@@ -406,25 +406,15 @@ class AiChatService {
             }
 
             final usage = AiTokenUsage.fromJson(json['usage']);
-            ChatUsageSummary? usageSummary;
-            if (usage != null && !usageRecorded) {
-              usageSummary = await _recordUsage(
-                provider: effective,
-                model: model,
-                operation: usageOperation,
-                usage: usage,
-                imageCount: imageCount,
-              );
-              usageRecorded = true;
-            }
+            if (usage != null) streamUsage = usage;
 
+            // MiMo documents usage as nullable on streaming chunks. Keep the
+            // latest non-null value and record it after consuming the stream;
+            // finish_reason only ends a choice, not the SSE response.
             final choices = json['choices'] as List?;
             if (choices == null || choices.isEmpty) {
               if (usage != null) {
-                yield AiChatStreamChunk(
-                  usage: usage,
-                  usageSummary: usageSummary,
-                );
+                yield AiChatStreamChunk(usage: usage);
               }
               continue;
             }
@@ -432,13 +422,6 @@ class AiChatService {
             final choice = choices[0] as Map<String, dynamic>;
             final delta = choice['delta'] as Map<String, dynamic>?;
             if (delta == null) continue;
-
-            final finishReason = choice['finish_reason']?.toString();
-            if (finishReason != null &&
-                finishReason.isNotEmpty &&
-                finishReason != 'null') {
-              streamDone = true;
-            }
 
             final content = delta['content'] as String? ?? '';
             final reasoningContent =
@@ -452,7 +435,6 @@ class AiChatService {
                 reasoningContent: reasoningContent,
                 content: content,
                 usage: usage,
-                usageSummary: usageSummary,
               );
             }
 
@@ -463,12 +445,22 @@ class AiChatService {
         }
       }
 
-      if (!cancelled && (chunkCount == 0 || emittedCount == 0)) {
-        throw Exception(
-          '未收到有效回复${lastError.isNotEmpty ? ': $lastError' : ''}',
+      final completedUsage = streamUsage;
+      if (completedUsage != null) {
+        final usageSummary = await _recordUsage(
+          provider: effective,
+          model: model,
+          operation: usageOperation,
+          usage: completedUsage,
+          imageCount: imageCount,
         );
-      }
-      if (!cancelled && !usageRecorded) {
+        if (usageSummary != null) {
+          yield AiChatStreamChunk(
+            usage: completedUsage,
+            usageSummary: usageSummary,
+          );
+        }
+      } else if (!cancelled && chunkCount > 0 && emittedCount > 0) {
         final usageSummary = await _recordUsage(
           provider: effective,
           model: model,
@@ -478,6 +470,11 @@ class AiChatService {
         if (usageSummary != null) {
           yield AiChatStreamChunk(usageSummary: usageSummary);
         }
+      }
+      if (!cancelled && (chunkCount == 0 || emittedCount == 0)) {
+        throw Exception(
+          '未收到有效回复${lastError.isNotEmpty ? ': $lastError' : ''}',
+        );
       }
     } finally {
       client.close();
