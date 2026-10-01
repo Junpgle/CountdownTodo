@@ -321,6 +321,35 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
     await _load();
   }
 
+  Future<void> _removePricing(AiUsagePricing item) async {
+    final isBuiltIn = AiUsageCostService.isBuiltInPricing(item);
+    final actionLabel = isBuiltIn ? '恢复' : '删除';
+    final confirmed = await showAppDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(isBuiltIn ? '恢复内置单价' : '删除模型单价'),
+        content: Text(
+          isBuiltIn
+              ? '将“${item.provider} · ${item.model}”恢复为应用内置价格。'
+              : '将删除“${item.provider} · ${item.model}”的单价。已计价记录会保留，之后没有可用单价的调用会显示为待定价。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(actionLabel),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await AiUsageCostService.deletePricing(item.id);
+    await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -439,7 +468,7 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
     SwitchListTile.adaptive(
       contentPadding: const EdgeInsets.symmetric(horizontal: 4),
       title: const Text('自动写入记账'),
-      subtitle: const Text('同一天、同一服务商与模型的费用会汇总成一笔“AI 服务”支出'),
+      subtitle: const Text('同一月份、同一服务商与模型的费用会汇总成一笔“AI 服务”支出'),
       value: _autoLedger,
       onChanged: _toggleAutoLedger,
     ),
@@ -573,15 +602,28 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
               '${AiUsageCostService.isBuiltInPricing(item) ? ' · 内置' : ''}',
             ),
             subtitle: Text(_pricingSubtitle(item)),
-            trailing: IconButton(
-              icon: const Icon(Icons.edit_outlined),
-              tooltip: '编辑单价',
-              onPressed: () => _editPricing(item),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined),
+                  tooltip: '编辑单价',
+                  onPressed: () => _editPricing(item),
+                ),
+                IconButton(
+                  icon: Icon(
+                    AiUsageCostService.isBuiltInPricing(item)
+                        ? Icons.restore_outlined
+                        : Icons.delete_outline,
+                  ),
+                  tooltip: AiUsageCostService.isBuiltInPricing(item)
+                      ? '恢复内置单价'
+                      : '删除模型单价',
+                  onPressed: () => _removePricing(item),
+                ),
+              ],
             ),
-            onLongPress: () async {
-              await AiUsageCostService.deletePricing(item.id);
-              await _load();
-            },
+            onLongPress: () => _removePricing(item),
           ),
         ),
       ),
