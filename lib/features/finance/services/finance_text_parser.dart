@@ -625,7 +625,12 @@ abstract final class FinanceTextParser {
     final groups = <String>[];
     var current = '';
     for (final clause in clauses) {
-      final startsEntry = _findSentenceAmountMatch(clause) != null;
+      final amountMatch = _findSentenceAmountMatch(clause);
+      final startsEntry =
+          amountMatch != null &&
+          current.trim().isNotEmpty &&
+          _findSentenceAmountMatch(current) != null &&
+          clause.substring(0, amountMatch.start).trim().isNotEmpty;
       if (startsEntry && current.trim().isNotEmpty) {
         groups.add(current.trim());
         current = clause;

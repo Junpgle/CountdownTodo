@@ -305,6 +305,18 @@ void main() {
     );
   });
 
+  test('逗号分隔字段时保留每笔账单的分类和付款方式', () {
+    final drafts = FinanceTextParser.parseQuickEntries(
+      '今天早餐，8元，微信；中午午餐，25元，支付宝',
+      now: now,
+    );
+
+    expect(drafts, hasLength(2));
+    expect(drafts.map((draft) => draft.amountMinor), [800, 2500]);
+    expect(drafts.map((draft) => draft.categoryName), ['早餐', '午餐']);
+    expect(drafts.map((draft) => draft.paymentMethodName), ['微信', '支付宝']);
+  });
+
   test('自然语言快速记账兼容全角冒号的结构化文本', () {
     final drafts = FinanceTextParser.parseQuickEntries(
       '类型：支出\n金额：28.50\n分类：餐饮\n商家：午餐',
