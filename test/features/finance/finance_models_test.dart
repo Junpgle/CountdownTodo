@@ -144,6 +144,31 @@ void main() {
     expect(drafts.map((draft) => draft.amountMinor).toList(), [2000, 3000]);
   });
 
+  test('自然语言快速记账拒绝不存在的明确日期', () {
+    final now = DateTime(2026, 10, 2);
+
+    expect(
+      FinanceTextParser.parseQuickEntries('2026-02-30 午餐20元', now: now),
+      isEmpty,
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('2月30日 午餐20元', now: now),
+      isEmpty,
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('2026-02-28 午餐20元', now: now)
+          .single
+          .transactionDate,
+      '2026-02-28',
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('午餐20元', now: now)
+          .single
+          .transactionDate,
+      '2026-10-02',
+    );
+  });
+
   test('分期和贷款本金拒绝超出跨平台安全范围的金额', () {
     expect(
       () => FinanceInstallmentCalculator.split(

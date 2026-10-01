@@ -254,6 +254,8 @@ abstract final class FinanceTextParser {
     if (amount == null || amount <= 0 || amountMatch == null) return null;
 
     final current = now ?? DateTime.now();
+    final sentenceDate = _parseSentenceDate(text, current);
+    if (sentenceDate == null) return null;
     final type = _parseType(text);
     final explicitCategory = _extractSentenceValue(
       text,
@@ -294,7 +296,7 @@ abstract final class FinanceTextParser {
     return FinanceEntryDraft(
       type: type,
       amountMinor: amount,
-      transactionDate: dateKey(_parseSentenceDate(text, current)),
+      transactionDate: dateKey(sentenceDate),
       categoryName: category,
       paymentMethodName: payment,
       merchant: merchant,
@@ -994,45 +996,42 @@ abstract final class FinanceTextParser {
         .replaceAll(RegExp(r'\d{1,2}\s*/\s*\d{1,2}'), '');
   }
 
-  static DateTime _parseSentenceDate(String text, DateTime now) {
+  static DateTime? _parseSentenceDate(String text, DateTime now) {
     final relative = RegExp(r'今天|昨天|前天|明天').firstMatch(text)?.group(0);
-    if (relative != null) return _parseDate(relative, now) ?? _day(now);
+    if (relative != null) return _parseDate(relative, now);
 
     final full = RegExp(
       r'(?<!\d)(\d{4})\s*(?:年|[-/.])\s*(\d{1,2})\s*'
       r'(?:月|[-/.])\s*(\d{1,2})\s*日?',
     ).firstMatch(text);
     if (full != null) {
-      final parsed = _safeSentenceDate(
+      return _safeSentenceDate(
         int.tryParse(full.group(1) ?? ''),
         int.tryParse(full.group(2) ?? ''),
         int.tryParse(full.group(3) ?? ''),
       );
-      if (parsed != null) return parsed;
     }
 
     final monthDay = RegExp(
       r'(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*日?',
     ).firstMatch(text);
     if (monthDay != null) {
-      final parsed = _safeSentenceDate(
+      return _safeSentenceDate(
         now.year,
         int.tryParse(monthDay.group(1) ?? ''),
         int.tryParse(monthDay.group(2) ?? ''),
       );
-      if (parsed != null) return parsed;
     }
 
     final slashMonthDay = RegExp(
       r'(?<!\d)(\d{1,2})\s*/\s*(\d{1,2})(?!\d)',
     ).firstMatch(text);
     if (slashMonthDay != null) {
-      final parsed = _safeSentenceDate(
+      return _safeSentenceDate(
         now.year,
         int.tryParse(slashMonthDay.group(1) ?? ''),
         int.tryParse(slashMonthDay.group(2) ?? ''),
       );
-      if (parsed != null) return parsed;
     }
     return _day(now);
   }
