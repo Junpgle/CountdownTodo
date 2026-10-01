@@ -144,7 +144,9 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       final from = DateTime(month.year, month.month);
       final to = DateTime(month.year, month.month + 1);
       final now = widget.clock();
-      final asOfAt = month.year == now.year && month.month == now.month
+      final isCurrentMonth =
+          month.year == now.year && month.month == now.month;
+      final asOfAt = isCurrentMonth
           ? now.millisecondsSinceEpoch
           : to.millisecondsSinceEpoch - 1;
       final values = await Future.wait<dynamic>([
@@ -198,7 +200,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
             .whereType<String>()
             .toSet();
         _balanceSyncSupported = values[5] as bool?;
-        _summary = FinanceRepository.summarizeTransactions(_transactions);
+        _summary = _summaryForCurrentView();
         _isLoading = false;
         _loadError = null;
       });
@@ -221,12 +223,20 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       for (final budget in _paymentBudgets)
         budget.paymentMethodUuid!: budget.effectiveBalanceSnapshotAt,
     };
-    if (snapshotsByMethod.isEmpty) return;
 
     final now = widget.clock().millisecondsSinceEpoch;
     final monthEndAt =
         DateTime(_month.year, _month.month + 1).millisecondsSinceEpoch - 1;
     int? nextEventAt;
+    for (final transaction in _transactions) {
+      final eventAt = _balanceEventTime(transaction);
+      if (eventAt <= now ||
+          eventAt > monthEndAt ||
+          (nextEventAt != null && eventAt >= nextEventAt)) {
+        continue;
+      }
+      nextEventAt = eventAt;
+    }
     for (final transaction in _balanceTransactions) {
       final paymentMethodUuid = transaction.paymentMethodUuid;
       final snapshotAt = snapshotsByMethod[paymentMethodUuid];
@@ -261,7 +271,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     );
     _balanceRefreshTimer = Timer(delay, () {
       if (!mounted) return;
-      setState(() {});
+      setState(() => _summary = _summaryForCurrentView());
       _scheduleBalanceRefresh();
     });
   }
@@ -440,6 +450,18 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     int? snapshotAt,
   }) {
     return transaction.balanceEventAt(snapshotAt: snapshotAt);
+  }
+
+  FinanceSummary _summaryForCurrentView([int? asOfAt]) {
+    if (!_isCurrentMonth) {
+      return FinanceRepository.summarizeTransactions(_transactions);
+    }
+    final cutoff = asOfAt ?? _balanceAsOfAt;
+    return FinanceRepository.summarizeTransactions(
+      _transactions.where(
+        (transaction) => _balanceEventTime(transaction) <= cutoff,
+      ),
+    );
   }
 
   String _budgetTitle(FinanceBudget budget) {

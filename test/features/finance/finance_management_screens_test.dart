@@ -493,6 +493,85 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('当前月预算不提前统计尚未发生的未来账单', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 9, 15, 12);
+    final now = clockNow;
+    final laterToday = now.add(const Duration(hours: 1));
+    final tomorrow = now.add(const Duration(days: 1));
+    await tester.runAsync(() async {
+      for (final transaction in [
+        FinanceTransaction(
+          uuid: 'budget-current-expense',
+          amountMinor: 40000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(now),
+          occurredAt: now
+              .subtract(const Duration(hours: 1))
+              .millisecondsSinceEpoch,
+          timezoneOffsetMinutes: now.timeZoneOffset.inMinutes,
+          createdAt: now
+              .subtract(const Duration(hours: 1))
+              .millisecondsSinceEpoch,
+        ),
+        FinanceTransaction(
+          uuid: 'budget-future-today-expense',
+          amountMinor: 20000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(laterToday),
+          occurredAt: laterToday.millisecondsSinceEpoch,
+          timezoneOffsetMinutes: now.timeZoneOffset.inMinutes,
+          createdAt: now.millisecondsSinceEpoch,
+        ),
+        FinanceTransaction(
+          uuid: 'budget-future-day-expense',
+          amountMinor: 150000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(tomorrow),
+          occurredAt: tomorrow.millisecondsSinceEpoch,
+          timezoneOffsetMinutes: now.timeZoneOffset.inMinutes,
+          createdAt: now.millisecondsSinceEpoch,
+        ),
+      ]) {
+        await db.insert('finance_transactions', transaction.toMap());
+      }
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: now, clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-test-category-budget');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('剩余 ¥800.00')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: card, matching: find.textContaining('超支')),
+      findsNothing,
+    );
+
+    clockNow = laterToday;
+    await tester.pump(const Duration(hours: 1, seconds: 1));
+    expect(
+      find.descendant(of: card, matching: find.text('剩余 ¥600.00')),
+      findsOneWidget,
+    );
+
+    clockNow = tomorrow;
+    await tester.pump(const Duration(hours: 23, seconds: 1));
+    expect(
+      find.descendant(of: card, matching: find.text('超支 ¥900.00')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('预算卡片直接编辑并保存，范围和备注保持不变', (tester) async {
     final db = await _seed(tester);
     await _pump(tester, FinanceBudgetScreen(initialMonth: _month),
