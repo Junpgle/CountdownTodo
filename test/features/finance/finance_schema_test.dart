@@ -362,6 +362,43 @@ void main() {
       });
     }
 
+    for (final source in ['backup', 'remote']) {
+      test('$source 忽略缺少标识的分类和付款方式', () async {
+        final category = FinanceCategory(
+          uuid: 'missing-$source-category-uuid',
+          name: '无标识分类',
+        ).toMap()
+          ..remove('uuid');
+        final paymentMethod = FinancePaymentMethod(
+          uuid: 'missing-$source-payment-uuid',
+          name: '无标识账户',
+        ).toMap()
+          ..remove('uuid');
+        final bundle = {
+          'categories': [category],
+          'payment_methods': [paymentMethod],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['skipped'], 2);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 0);
+        }
+
+        expect(
+          (await FinanceStorage.getCategories(includeArchived: true))
+              .where((item) => item.name == '无标识分类'),
+          isEmpty,
+        );
+        expect(
+          (await FinanceStorage.getPaymentMethods(includeArchived: true))
+              .where((item) => item.name == '无标识账户'),
+          isEmpty,
+        );
+      });
+    }
+
     test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {
       final unsafeTransaction = FinanceTransaction(
         uuid: 'unsafe-large-transaction',

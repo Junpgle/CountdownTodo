@@ -2520,7 +2520,7 @@ abstract final class FinanceStorage {
     final categoryCandidates = <String, FinanceCategory>{};
     final categoryMaps = _listOfMaps(bundle['categories']);
     for (final map in categoryMaps) {
-      if (!_hasValidRawCategoryType(map)) {
+      if (!_hasRawFinanceUuid(map) || !_hasValidRawCategoryType(map)) {
         skipped++;
         continue;
       }
@@ -2620,6 +2620,10 @@ abstract final class FinanceStorage {
 
     final paymentMaps = _listOfMaps(bundle['payment_methods']);
     for (final map in paymentMaps) {
+      if (!_hasRawFinanceUuid(map)) {
+        skipped++;
+        continue;
+      }
       final item = FinancePaymentMethod.fromMap(map);
       if (item.isSystem || _isSystemUuid(item.uuid)) {
         skipped++;
@@ -2661,7 +2665,8 @@ abstract final class FinanceStorage {
 
     final recurringRuleMaps = _listOfMaps(bundle['recurring_rules']);
     for (final map in recurringRuleMaps) {
-      if (!_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor')) {
+      if (!_hasRawFinanceUuid(map) ||
+          !_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor')) {
         skipped++;
         continue;
       }
@@ -2708,7 +2713,8 @@ abstract final class FinanceStorage {
 
     final templateMaps = _listOfMaps(bundle['templates']);
     for (final map in templateMaps) {
-      if (!_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor')) {
+      if (!_hasRawFinanceUuid(map) ||
+          !_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor')) {
         skipped++;
         continue;
       }
@@ -2837,9 +2843,8 @@ abstract final class FinanceStorage {
 
     final importedBudgets = <FinanceBudget>[];
     for (final map in _listOfMaps(bundle['budgets'])) {
-      if (!_isSafeRawFinanceAmount(
-        map['amount_minor'] ?? map['amountMinor'],
-      )) {
+      if (!_hasRawFinanceUuid(map) ||
+          !_isSafeRawFinanceAmount(map['amount_minor'] ?? map['amountMinor'])) {
         skipped++;
         continue;
       }
@@ -2896,11 +2901,12 @@ abstract final class FinanceStorage {
 
     final loanMaps = _listOfMaps(bundle['loans']);
     for (final map in loanMaps) {
-      if (!_hasSafeRawFinanceAmount(
-        map,
-        'principal_minor',
-        'principalMinor',
-      ) ||
+      if (!_hasRawFinanceUuid(map) ||
+          !_hasSafeRawFinanceAmount(
+            map,
+            'principal_minor',
+            'principalMinor',
+          ) ||
           !_hasSafeRawLoanInterestRate(map)) {
         skipped++;
         continue;
@@ -2930,7 +2936,8 @@ abstract final class FinanceStorage {
 
     final loanInstallmentMaps = _listOfMaps(bundle['loan_installments']);
     for (final map in loanInstallmentMaps) {
-      if (!_hasSafeRawLoanInstallmentAmounts(map)) {
+      if (!_hasRawFinanceUuid(map) ||
+          !_hasSafeRawLoanInstallmentAmounts(map)) {
         skipped++;
         continue;
       }
@@ -2995,6 +3002,7 @@ abstract final class FinanceStorage {
   }) async {
     await ensureReady();
     final categories = _listOfMaps(bundle['categories'])
+        .where(_hasRawFinanceUuid)
         .where(_hasValidRawCategoryType)
         .map((map) {
           final item = FinanceCategory.fromMap(map);
@@ -3012,6 +3020,7 @@ abstract final class FinanceStorage {
         })
         .toList(growable: false);
     final paymentMethods = _listOfMaps(bundle['payment_methods'])
+        .where(_hasRawFinanceUuid)
         .map(FinancePaymentMethod.fromMap)
         .where(
           (item) =>
@@ -3022,9 +3031,11 @@ abstract final class FinanceStorage {
         .toList(growable: false);
     final transactions = _listOfMaps(bundle['transactions'])
         .where(
-          (map) => _isSafeRawFinanceAmount(
-            map['amount_minor'] ?? map['amountMinor'],
-          ),
+          (map) =>
+              _hasRawFinanceUuid(map) &&
+              _isSafeRawFinanceAmount(
+                map['amount_minor'] ?? map['amountMinor'],
+              ),
         )
         .map(FinanceTransaction.fromMap)
         .where(_isValidTransaction)
@@ -3032,9 +3043,11 @@ abstract final class FinanceStorage {
     final budgets = _latestBudgetsByScope(
       _listOfMaps(bundle['budgets'])
           .where(
-            (map) => _isSafeRawFinanceAmount(
-              map['amount_minor'] ?? map['amountMinor'],
-            ),
+            (map) =>
+                _hasRawFinanceUuid(map) &&
+                _isSafeRawFinanceAmount(
+                  map['amount_minor'] ?? map['amountMinor'],
+                ),
           )
           .map(FinanceBudget.fromMap)
           .where(_isValidBudget)
@@ -3042,7 +3055,7 @@ abstract final class FinanceStorage {
     );
     final recurringRules = _listOfMaps(bundle['recurring_rules'])
         .where(
-          (map) =>
+          (map) => _hasRawFinanceUuid(map) &&
               _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor'),
         )
         .map(FinanceRecurringRule.fromMap)
@@ -3050,7 +3063,7 @@ abstract final class FinanceStorage {
         .toList(growable: false);
     final templates = _listOfMaps(bundle['templates'])
         .where(
-          (map) =>
+          (map) => _hasRawFinanceUuid(map) &&
               _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor'),
         )
         .map(FinanceEntryTemplate.fromMap)
@@ -3058,17 +3071,20 @@ abstract final class FinanceStorage {
         .toList(growable: false);
     final loans = _listOfMaps(bundle['loans'])
         .where(
-          (map) => _hasSafeRawFinanceAmount(
-            map,
-            'principal_minor',
-            'principalMinor',
-          ) &&
+          (map) =>
+              _hasRawFinanceUuid(map) &&
+              _hasSafeRawFinanceAmount(
+                map,
+                'principal_minor',
+                'principalMinor',
+              ) &&
               _hasSafeRawLoanInterestRate(map),
         )
         .map(FinanceLoan.fromMap)
         .where(_isValidLoan)
         .toList(growable: false);
     final loanInstallments = _listOfMaps(bundle['loan_installments'])
+        .where(_hasRawFinanceUuid)
         .where(_hasSafeRawLoanInstallmentAmounts)
         .map(FinanceLoanInstallment.fromMap)
         .where(_isValidLoanInstallment)
@@ -3983,6 +3999,12 @@ abstract final class FinanceStorage {
     final type = value.toString().trim().toLowerCase();
     return type == FinanceCategoryType.expense.name ||
         type == FinanceCategoryType.income.name;
+  }
+
+  static bool _hasRawFinanceUuid(Map<String, dynamic> map) {
+    final raw = map['uuid'] ?? map['id'];
+    final value = raw?.toString().trim();
+    return value != null && value.isNotEmpty && value != 'null';
   }
 
   static bool _hasSafeRawFinanceAmount(
