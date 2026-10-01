@@ -1035,6 +1035,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('历史月份账单为空时显示所选月份', (tester) async {
+    final now = DateTime.now();
+    final selectedMonth = DateTime(now.year, now.month - 1);
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          month: selectedMonth,
+          transactions: const [],
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(
+      find.text('${selectedMonth.year}年${selectedMonth.month}月还没有账单'),
+      findsOneWidget,
+    );
+    expect(find.text('本月还没有账单'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('编辑缺少发生时刻的旧账单不会改变当天排序', (tester) async {
     final legacy = FinanceTransaction.fromMap({
       'uuid': 'ledger-edited-legacy-time',

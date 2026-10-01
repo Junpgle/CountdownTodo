@@ -891,6 +891,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
 
 class FinanceLedgerPanel extends StatefulWidget {
   final double topPadding;
+  final DateTime? month;
   final List<FinanceTransaction> transactions;
   final Map<String, FinanceCategory> categories;
   final Map<String, FinancePaymentMethod> paymentMethods;
@@ -908,6 +909,7 @@ class FinanceLedgerPanel extends StatefulWidget {
   const FinanceLedgerPanel({
     super.key,
     this.topPadding = 0,
+    this.month,
     required this.transactions,
     required this.categories,
     required this.paymentMethods,
@@ -1252,6 +1254,12 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
 
   Widget _buildEmptyState(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final selectedMonth = widget.month ?? DateTime.now();
+    final now = DateTime.now();
+    final monthLabel = selectedMonth.year == now.year &&
+            selectedMonth.month == now.month
+        ? '本月'
+        : '${selectedMonth.year}年${selectedMonth.month}月';
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1261,7 +1269,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
           const SizedBox(height: 12),
           Text(
             keyword.isEmpty && filterType == null && categoryUuid == null
-                ? '本月还没有账单'
+                ? '$monthLabel还没有账单'
                 : '没有匹配的账单',
             style: TextStyle(color: colorScheme.onSurfaceVariant),
           ),

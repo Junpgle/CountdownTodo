@@ -693,6 +693,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                             ),
                             FinanceLedgerPanel(
                               topPadding: topBarHeight,
+                              month: _month,
                               transactions: _transactions,
                               categories: _categoryMap,
                               paymentMethods: _paymentMethodMap,

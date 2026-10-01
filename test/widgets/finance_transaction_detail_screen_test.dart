@@ -168,7 +168,7 @@ void main() {
     );
 
     expect(find.text('月视图'), findsOneWidget);
-    expect(find.text('每日支出'), findsOneWidget);
+    expect(find.text('每日净支出'), findsOneWidget);
     expect(find.text('2026 年 9 月'), findsOneWidget);
 
     await tester.tap(
@@ -180,12 +180,12 @@ void main() {
     await tester.tap(find.text('周视图'));
     await tester.pumpAndSettle();
     expect(find.text('周一至周日'), findsOneWidget);
-    expect(find.text('本周每日支出'), findsOneWidget);
+    expect(find.text('8月31日 - 9月6日每日净支出'), findsOneWidget);
 
     await tester.tap(find.text('日视图'));
     await tester.pumpAndSettle();
     expect(find.text('选择具体日期'), findsOneWidget);
-    expect(find.text('当天时段支出'), findsOneWidget);
+    expect(find.text('9月1日 周二时段净支出'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
