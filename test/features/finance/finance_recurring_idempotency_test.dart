@@ -60,7 +60,8 @@ void main() {
       // 编辑页打开时可能还停留在上个月的快照，而不是简单的 null。
       lastGeneratedPeriod: '2026-07',
     );
-    await FinanceStorage.saveRecurringRule(staleEdit);
+    staleEdit.markAsChanged();
+    await FinanceStorage.saveRecurringRule(staleEdit, original: persisted);
     expect(
       (await FinanceStorage.getRecurringRule('rule-phone'))
           ?.lastGeneratedPeriod,
