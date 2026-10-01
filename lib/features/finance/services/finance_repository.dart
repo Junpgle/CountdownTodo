@@ -147,6 +147,7 @@ abstract final class FinanceRepository {
 
   static Future<List<FinanceTransaction>> saveInstallmentPlan({
     required FinanceTransaction transaction,
+    FinanceTransaction? original,
     required int totalAmountMinor,
     required int installmentCount,
     required DateTime startDate,
@@ -154,6 +155,7 @@ abstract final class FinanceRepository {
   }) async {
     final saved = await FinanceStorage.saveInstallmentPlan(
       transaction: transaction,
+      original: original,
       totalAmountMinor: totalAmountMinor,
       installmentCount: installmentCount,
       startDate: startDate,

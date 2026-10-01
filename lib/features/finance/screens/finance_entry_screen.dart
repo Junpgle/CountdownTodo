@@ -901,6 +901,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       if (installmentCount > 1) {
         saved = await FinanceRepository.saveInstallmentPlan(
           transaction: transaction,
+          original: old,
           totalAmountMinor: amount,
           installmentCount: installmentCount,
           startDate: _date,

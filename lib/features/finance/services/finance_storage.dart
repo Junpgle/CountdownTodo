@@ -351,11 +351,15 @@ abstract final class FinanceStorage {
   /// 沿用现有路径；分期字段只负责把这些交易重新识别为同一组。
   static Future<List<FinanceTransaction>> saveInstallmentPlan({
     required FinanceTransaction transaction,
+    FinanceTransaction? original,
     required int totalAmountMinor,
     required int installmentCount,
     required DateTime startDate,
     List<FinanceTransaction> existingInstallments = const [],
   }) async {
+    if (original != null && original.uuid != transaction.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '分期账单标识不匹配');
+    }
     final allocations = FinanceInstallmentCalculator.split(
       totalMinor: totalAmountMinor,
       count: installmentCount,
@@ -388,6 +392,29 @@ abstract final class FinanceStorage {
     final db = await _database;
 
     await db.transaction((txn) async {
+      final currentRows = await txn.query(
+        'finance_transactions',
+        where: 'installment_group_uuid = ?',
+        whereArgs: [groupUuid],
+      );
+      final currentByUuid = <String, FinanceTransaction>{};
+      for (final row in currentRows) {
+        final current = FinanceTransaction.fromMap(row);
+        currentByUuid[current.uuid] = current;
+      }
+      final staleGroup = existing.length != currentByUuid.length ||
+          existing.any((baseline) {
+            final current = currentByUuid[baseline.uuid];
+            return current == null ||
+                current.version != baseline.version ||
+                current.updatedAt != baseline.updatedAt;
+          });
+      final staleEditedItem = original != null &&
+          (currentByUuid[original.uuid]?.version != original.version ||
+              currentByUuid[original.uuid]?.updatedAt != original.updatedAt);
+      if (staleGroup || staleEditedItem) {
+        throw StateError('分期组已同步更新，请重新打开整组编辑后再保存');
+      }
       for (final allocation in allocations) {
         final old = existingByIndex[allocation.index];
         final previousOccurrence =
