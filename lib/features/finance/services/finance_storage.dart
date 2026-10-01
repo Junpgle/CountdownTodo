@@ -1952,6 +1952,7 @@ abstract final class FinanceStorage {
     var skipped = 0;
     var updated = 0;
 
+    final categoryCandidates = <String, FinanceCategory>{};
     final categoryMaps = _listOfMaps(bundle['categories']);
     for (final map in categoryMaps) {
       final item = FinanceCategory.fromMap(map);
@@ -2002,28 +2003,49 @@ abstract final class FinanceStorage {
         continue;
       }
       item.uuid = remap(oldUuid);
-      item.parentUuid = _remapNullable(item.parentUuid, remap);
+      item.parentUuid = _normalizeCategoryParentUuid(
+        _remapNullable(item.parentUuid, remap),
+      );
+      if (_isSystemUuid(item.uuid)) {
+        skipped++;
+        continue;
+      }
+      final existing = await _findByUuid(db, 'finance_categories', item.uuid);
+      if (existing != null &&
+          item.updatedAt <= FinanceCategory.fromMap(existing).updatedAt) {
+        skipped++;
+        continue;
+      }
+      final previous = categoryCandidates[item.uuid];
+      if (previous != null && item.updatedAt <= previous.updatedAt) {
+        skipped++;
+        continue;
+      }
+      if (previous != null) skipped++;
+      categoryCandidates[item.uuid] = item;
+    }
+
+    final invalidCategoryUuids = await _invalidCategoryHierarchyUuids(
+      db,
+      categoryCandidates.values,
+    );
+    for (final item in categoryCandidates.values) {
+      if (invalidCategoryUuids.contains(item.uuid)) {
+        skipped++;
+        continue;
+      }
       final existing = await _findByUuid(db, 'finance_categories', item.uuid);
       if (existing == null) {
-        await db.insert(
-          'finance_categories',
-          item.isSystem
-              ? _remoteValues(item.toMap())
-              : _localValues(item.toMap()),
-        );
+        await db.insert('finance_categories', _localValues(item.toMap()));
         imported++;
-      } else if (item.updatedAt > FinanceCategory.fromMap(existing).updatedAt) {
+      } else {
         await db.update(
           'finance_categories',
-          item.isSystem
-              ? _remoteValues(item.toMap())
-              : _localValues(item.toMap()),
+          _localValues(item.toMap()),
           where: 'uuid = ?',
           whereArgs: [item.uuid],
         );
         updated++;
-      } else {
-        skipped++;
       }
     }
 
@@ -2378,7 +2400,11 @@ abstract final class FinanceStorage {
   }) async {
     await ensureReady();
     final categories = _listOfMaps(bundle['categories'])
-        .map(FinanceCategory.fromMap)
+        .map((map) {
+          final item = FinanceCategory.fromMap(map);
+          item.parentUuid = _normalizeCategoryParentUuid(item.parentUuid);
+          return item;
+        })
         .where((item) {
           if (!_isValidName(item.name)) return false;
           if (_isSystemUuid(item.uuid)) {
@@ -2577,13 +2603,167 @@ abstract final class FinanceStorage {
     return acknowledged;
   }
 
+  /// Filters category writes that would leave the local catalog with a broken
+  /// or deeper-than-two-level hierarchy. Validate the projected batch instead
+  /// of its input order so a valid root/child pair still imports when the
+  /// child appears first in a backup or sync response.
+  static Future<Set<String>> _invalidCategoryHierarchyUuids(
+    DatabaseExecutor db,
+    Iterable<FinanceCategory> candidates,
+  ) async {
+    final candidateByUuid = <String, FinanceCategory>{
+      for (final item in candidates)
+        if (!item.isSystem && !_isSystemUuid(item.uuid)) item.uuid: item,
+    };
+    if (candidateByUuid.isEmpty) return <String>{};
+
+    final rows = await db.query('finance_categories');
+    final currentByUuid = <String, FinanceCategory>{
+      for (final row in rows)
+        FinanceCategory.fromMap(row).uuid: FinanceCategory.fromMap(row),
+    };
+    final structuralCandidates = <String>{};
+    for (final entry in candidateByUuid.entries) {
+      final current = currentByUuid[entry.key];
+      final incoming = entry.value;
+      if (current == null ||
+          _normalizeCategoryParentUuid(current.parentUuid) !=
+              _normalizeCategoryParentUuid(incoming.parentUuid) ||
+          current.type != incoming.type ||
+          current.isDeleted != incoming.isDeleted) {
+        structuralCandidates.add(entry.key);
+      }
+    }
+    if (structuralCandidates.isEmpty) return <String>{};
+
+    final rejected = <String>{};
+    while (true) {
+      final projected = Map<String, FinanceCategory>.from(currentByUuid);
+      for (final entry in candidateByUuid.entries) {
+        if (!rejected.contains(entry.key)) projected[entry.key] = entry.value;
+      }
+
+      final newlyRejected = <String>{};
+      for (final start in projected.values.where((item) => !item.isDeleted)) {
+        final path = <FinanceCategory>[];
+        final pathIndex = <String, int>{};
+        var cursor = start;
+        var reachedRoot = false;
+        var foundBrokenEdge = false;
+
+        while (true) {
+          final cycleStart = pathIndex[cursor.uuid];
+          if (cycleStart != null) {
+            final cycleUuids = path
+                .skip(cycleStart)
+                .map((item) => item.uuid)
+                .where(structuralCandidates.contains)
+                .where((uuid) => !rejected.contains(uuid))
+                .toList();
+            if (cycleUuids.isNotEmpty) {
+              cycleUuids.sort((left, right) {
+                final byTimestamp = candidateByUuid[left]!.updatedAt.compareTo(
+                  candidateByUuid[right]!.updatedAt,
+                );
+                return byTimestamp != 0 ? byTimestamp : left.compareTo(right);
+              });
+              newlyRejected.add(cycleUuids.first);
+            }
+            foundBrokenEdge = true;
+            break;
+          }
+
+          pathIndex[cursor.uuid] = path.length;
+          path.add(cursor);
+          final parentUuid = _normalizeCategoryParentUuid(cursor.parentUuid);
+          if (parentUuid == null) {
+            reachedRoot = true;
+            break;
+          }
+
+          final parent = projected[parentUuid];
+          if (parent == null ||
+              parent.isDeleted ||
+              parent.type != cursor.type) {
+            if (structuralCandidates.contains(cursor.uuid) &&
+                !rejected.contains(cursor.uuid)) {
+              newlyRejected.add(cursor.uuid);
+            } else if (structuralCandidates.contains(parentUuid) &&
+                !rejected.contains(parentUuid)) {
+              newlyRejected.add(parentUuid);
+            }
+            foundBrokenEdge = true;
+            break;
+          }
+          cursor = parent;
+        }
+
+        if (reachedRoot && !foundBrokenEdge && path.length > 2) {
+          // `path` runs from the current category toward its root. The node
+          // and its parent at each level are the two incoming edges that can
+          // have introduced a third level. Prefer rejecting the deepest
+          // incoming category so the valid parent hierarchy can be retained.
+          for (var index = 0; index + 2 < path.length; index++) {
+            final child = path[index];
+            final parent = path[index + 1];
+            if (structuralCandidates.contains(child.uuid) &&
+                !rejected.contains(child.uuid)) {
+              newlyRejected.add(child.uuid);
+              break;
+            }
+            if (structuralCandidates.contains(parent.uuid) &&
+                !rejected.contains(parent.uuid)) {
+              newlyRejected.add(parent.uuid);
+              break;
+            }
+          }
+        }
+      }
+
+      if (newlyRejected.isEmpty) break;
+      rejected.addAll(newlyRejected);
+    }
+    return rejected;
+  }
+
+  static String? _normalizeCategoryParentUuid(String? value) {
+    final normalized = value?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
+  }
+
   static Future<int> _mergeCategories(
     DatabaseExecutor db,
     List<FinanceCategory> items, {
     Set<String> forceRemoteKeys = const {},
   }) async {
+    final hierarchyCandidates = <FinanceCategory>[];
+    for (final item in items.where((item) => !item.isSystem)) {
+      final existing = await _findByUuid(db, 'finance_categories', item.uuid);
+      if (existing == null) {
+        hierarchyCandidates.add(item);
+        continue;
+      }
+      final current = FinanceCategory.fromMap(existing);
+      if (forceRemoteKeys.contains('categories:${item.uuid}') ||
+          _isIncomingWinner(
+            item.updatedAt,
+            item.version,
+            current.updatedAt,
+            current.version,
+          )) {
+        hierarchyCandidates.add(item);
+      }
+    }
+    final invalidCategoryUuids = await _invalidCategoryHierarchyUuids(
+      db,
+      hierarchyCandidates,
+    );
+
     var changed = 0;
     for (final item in items) {
+      if (!item.isSystem && invalidCategoryUuids.contains(item.uuid)) {
+        continue;
+      }
       final existing = await _findByUuid(db, 'finance_categories', item.uuid);
       if (existing == null) {
         await db.insert('finance_categories', _remoteValues(item.toMap()));

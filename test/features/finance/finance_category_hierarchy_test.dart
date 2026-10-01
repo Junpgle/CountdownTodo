@@ -67,6 +67,145 @@ void main() {
     );
   });
 
+  for (final remote in [false, true]) {
+    for (final reverse in [false, true]) {
+      test('分类批量写入拒绝三级层级，云端=$remote，反序=$reverse', () async {
+        final importedRoot = FinanceCategory(
+          uuid: 'batch-root-$remote-$reverse',
+          name: '批量大类',
+        );
+        final importedChild = FinanceCategory(
+          uuid: 'batch-child-$remote-$reverse',
+          name: '批量小类',
+          parentUuid: importedRoot.uuid,
+        );
+        final importedGrandchild = FinanceCategory(
+          uuid: 'batch-grandchild-$remote-$reverse',
+          name: '批量三级分类',
+          parentUuid: importedChild.uuid,
+        );
+        final rows = [
+          importedGrandchild.toMap(),
+          importedChild.toMap(),
+          importedRoot.toMap(),
+        ];
+        final categories = reverse ? rows.reversed.toList() : rows;
+
+        if (remote) {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({'categories': categories}),
+            2,
+          );
+        } else {
+          expect(
+            await FinanceStorage.importBundle({'categories': categories}),
+            {'imported': 2, 'updated': 0, 'skipped': 1},
+          );
+        }
+
+        final stored = await db.query(
+          'finance_categories',
+          where: 'uuid IN (?, ?, ?)',
+          whereArgs: [
+            importedRoot.uuid,
+            importedChild.uuid,
+            importedGrandchild.uuid,
+          ],
+        );
+        expect(stored.map((row) => row['uuid']), contains(importedRoot.uuid));
+        expect(stored.map((row) => row['uuid']), contains(importedChild.uuid));
+        expect(
+          stored.map((row) => row['uuid']),
+          isNot(contains(importedGrandchild.uuid)),
+        );
+      });
+    }
+  }
+
+  for (final remote in [false, true]) {
+    test('批量写入不能把仍有子类的大类移到另一个大类下，云端=$remote', () async {
+      final movedRoot = FinanceCategory(
+        uuid: root.uuid,
+        name: root.name,
+        parentUuid: other.uuid,
+        createdAt: root.createdAt,
+        updatedAt: root.updatedAt + 100,
+        version: root.version + 1,
+      );
+      if (remote) {
+        expect(
+          await FinanceStorage.mergeRemoteBundle({
+            'categories': [movedRoot.toMap()],
+          }),
+          0,
+        );
+      } else {
+        expect(
+          await FinanceStorage.importBundle({
+            'categories': [movedRoot.toMap()],
+          }),
+          {'imported': 0, 'updated': 0, 'skipped': 1},
+        );
+      }
+      final storedRoot = (await db.query(
+        'finance_categories',
+        where: 'uuid = ?',
+        whereArgs: [root.uuid],
+      )).single;
+      expect(storedRoot['parent_uuid'], isNull);
+    });
+  }
+
+  for (final remote in [false, true]) {
+    for (final reverse in [false, true]) {
+      test('同批移走子类后允许调整大类层级，云端=$remote，反序=$reverse', () async {
+        final movedRoot = FinanceCategory(
+          uuid: root.uuid,
+          name: root.name,
+          parentUuid: other.uuid,
+          createdAt: root.createdAt,
+          updatedAt: root.updatedAt + 100,
+          version: root.version + 1,
+        );
+        final movedChild = FinanceCategory(
+          uuid: child.uuid,
+          name: child.name,
+          parentUuid: other.uuid,
+          createdAt: child.createdAt,
+          updatedAt: child.updatedAt + 100,
+          version: child.version + 1,
+        );
+        final rows = [movedRoot.toMap(), movedChild.toMap()];
+        final categories = reverse ? rows.reversed.toList() : rows;
+
+        if (remote) {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({'categories': categories}),
+            2,
+          );
+        } else {
+          expect(
+            await FinanceStorage.importBundle({'categories': categories}),
+            {'imported': 0, 'updated': 2, 'skipped': 0},
+          );
+        }
+
+        final savedRoot = (await db.query(
+          'finance_categories',
+          where: 'uuid = ?',
+          whereArgs: [root.uuid],
+        )).single;
+        final savedChild = (await db.query(
+          'finance_categories',
+          where: 'uuid = ?',
+          whereArgs: [child.uuid],
+        )).single;
+        expect(savedRoot['parent_uuid'], other.uuid);
+        expect(savedChild['parent_uuid'], other.uuid);
+      });
+    }
+  }
+
   for (final hasChildren in [false, true]) {
     testWidgets('编辑分类上级选择正确锁定，含二级分类=$hasChildren', (tester) async {
       tester.view.physicalSize = const Size(900, 1200);
