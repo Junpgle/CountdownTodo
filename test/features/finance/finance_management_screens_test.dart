@@ -794,6 +794,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('退款抵消支出后分类空状态不再说没有记账', (tester) async {
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'overview-offset-expense',
+        amountMinor: 5000,
+        categoryUuid: 'test-food',
+        transactionDate: '2026-09-02',
+      ),
+      FinanceTransaction(
+        uuid: 'overview-offset-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 5000,
+        categoryUuid: 'test-food',
+        transactionDate: '2026-09-02',
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: _month,
+          summary: FinanceSummary.fromTransactions(transactions),
+          transactions: transactions,
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('本月没有可展示的净支出分类'), findsOneWidget);
+    expect(find.text('本月还没有支出记录'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('概览平均净支出不把收入笔数计入分母', (tester) async {
     final occurredAt = DateTime(2026, 9, 2, 10).millisecondsSinceEpoch;
     final transactions = [

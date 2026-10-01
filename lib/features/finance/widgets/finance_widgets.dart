@@ -129,7 +129,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
             _buildEmptyCard(
               context,
               icon: Icons.pie_chart_outline,
-              message: '${period.shortTitle}还没有支出记录',
+              message: '${period.shortTitle}没有可展示的净支出分类',
             )
           else
             Card(
