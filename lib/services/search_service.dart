@@ -52,6 +52,21 @@ class SearchService {
   static final SearchService instance = SearchService._();
   SearchService._();
 
+  static List<TodoItem> _filterOverdueTodos({
+    required List<TodoItem> todos,
+    required Set<String> excludedRecurrenceSeriesIds,
+    required DateTime before,
+  }) {
+    return todos
+        .where((item) =>
+            !item.isDeleted &&
+            !item.isDone &&
+            item.dueDate != null &&
+            item.dueDate!.isBefore(before) &&
+            !excludedRecurrenceSeriesIds.contains(item.recurrenceSeriesId))
+        .toList();
+  }
+
   static const _windowsOnlySettings = {
     'float_window_style',
     'force_refresh',
@@ -1560,13 +1575,18 @@ class SearchService {
     // ordered so the visible ranking is stable.
     final coursesFuture =
         CourseService.getAllCourses(username).catchError((_) => <CourseItem>[]);
+    // Keep the recommendation count aligned with the todo list and filter
+    // used by the result detail and the home screen.
+    final overdueTodosFuture = Future.wait<dynamic>([
+      StorageService.getTodos(username),
+      HabitRepository.getHabitOnlyRecurringTodoSeriesIds(),
+    ]).then((results) => _filterOverdueTodos(
+          todos: results[0] as List<TodoItem>,
+          excludedRecurrenceSeriesIds: results[1] as Set<String>,
+          before: now,
+        )).catchError((_) => <TodoItem>[]);
     final overdueCountFuture =
-        HabitRepository.getHabitOnlyRecurringTodoSeriesIds()
-            .then((seriesIds) => db.countOverdueTodos(
-                  now.millisecondsSinceEpoch,
-                  excludedRecurrenceSeriesIds: seriesIds,
-                ))
-            .catchError((_) => 0);
+        overdueTodosFuture.then((overdueTodos) => overdueTodos.length);
     final topHistoryFuture = db
         .getRecentSearches(limit: 1)
         .catchError((_) => <Map<String, dynamic>>[]);
@@ -1776,16 +1796,11 @@ class SearchNavigationHandler {
           StorageService.getTodos(username),
           HabitRepository.getHabitOnlyRecurringTodoSeriesIds(),
         ]);
-        final todos = results[0] as List<TodoItem>;
-        final habitOnlySeriesIds = results[1] as Set<String>;
-        final overdue = todos
-            .where((item) =>
-                !item.isDeleted &&
-                !item.isDone &&
-                item.dueDate != null &&
-                item.dueDate!.isBefore(DateTime.now()) &&
-                !habitOnlySeriesIds.contains(item.recurrenceSeriesId))
-            .toList();
+        final overdue = SearchService._filterOverdueTodos(
+          todos: results[0] as List<TodoItem>,
+          excludedRecurrenceSeriesIds: results[1] as Set<String>,
+          before: DateTime.now(),
+        );
         if (!context.mounted) return;
         await _push(
             context,
