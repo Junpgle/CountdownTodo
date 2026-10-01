@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
+import '../services/finance_storage.dart';
 import '../widgets/finance_management_widgets.dart';
 import '../widgets/finance_loan_payment_dialog.dart';
 import 'finance_loan_entry_screen.dart';
@@ -21,15 +22,26 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen> {
   bool? _paidOffFilter;
   bool _isLoading = true;
   String? _loadError;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
     super.initState();
+    FinanceStorage.revision.addListener(_onFinanceChanged);
     _load();
   }
 
-  Future<void> _load() async {
-    if (mounted) {
+  @override
+  void dispose() {
+    FinanceStorage.revision.removeListener(_onFinanceChanged);
+    super.dispose();
+  }
+
+  void _onFinanceChanged() => _load(showLoading: false);
+
+  Future<void> _load({bool showLoading = true}) async {
+    final generation = ++_loadGeneration;
+    if (mounted && showLoading) {
       setState(() {
         _isLoading = true;
         _loadError = null;
@@ -42,7 +54,7 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen> {
           (loan) => FinanceRepository.getLoanInstallments(loan.uuid),
         ),
       );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _overviews = [
           for (var index = 0; index < loans.length; index++)
@@ -52,9 +64,10 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen> {
             ),
         ];
         _isLoading = false;
+        _loadError = null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _isLoading = false;
         _loadError = error.toString();
@@ -373,17 +386,28 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
   final _updating = <String>{};
   bool _isLoading = true;
   String? _loadError;
+  int _loadGeneration = 0;
 
   FinanceLoan get _currentLoan => _loan ?? widget.loan;
 
   @override
   void initState() {
     super.initState();
+    FinanceStorage.revision.addListener(_onFinanceChanged);
     _load();
   }
 
-  Future<void> _load() async {
-    if (mounted) {
+  @override
+  void dispose() {
+    FinanceStorage.revision.removeListener(_onFinanceChanged);
+    super.dispose();
+  }
+
+  void _onFinanceChanged() => _load(showLoading: false);
+
+  Future<void> _load({bool showLoading = true}) async {
+    final generation = ++_loadGeneration;
+    if (mounted && showLoading) {
       setState(() {
         _isLoading = true;
         _loadError = null;
@@ -397,15 +421,16 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
       final paymentMethods = await FinanceRepository.getPaymentMethods(
         includeArchived: true,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loan = loan;
         _installments = installments;
         _paymentMethods = paymentMethods;
         _isLoading = false;
+        _loadError = null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _isLoading = false;
         _loadError = error.toString();
