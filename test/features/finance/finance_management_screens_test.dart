@@ -1216,13 +1216,20 @@ void main() {
       transactionDate: '2026-09-04',
       merchant: '分类支出',
     );
+    final deletedCategoryEntry = FinanceTransaction(
+      uuid: 'ledger-deleted-category',
+      amountMinor: 900,
+      categoryUuid: 'deleted-food-category',
+      transactionDate: '2026-09-04',
+      merchant: '删除分类后保留的账单',
+    );
     String? changedCategoryUuid = financeUncategorizedCategoryFilterUuid;
 
     await _pump(
       tester,
       Scaffold(
         body: FinanceLedgerPanel(
-          transactions: [uncategorized, categorized],
+          transactions: [uncategorized, categorized, deletedCategoryEntry],
           categories: {
             'test-food': FinanceCategory(
               uuid: 'test-food',
@@ -1247,6 +1254,7 @@ void main() {
 
     expect(find.text('未分类支出'), findsOneWidget);
     expect(find.text('分类支出'), findsNothing);
+    expect(find.text('删除分类后保留的账单'), findsOneWidget);
     expect(find.text('分类 · 未分类'), findsOneWidget);
     await _tap(
       tester,

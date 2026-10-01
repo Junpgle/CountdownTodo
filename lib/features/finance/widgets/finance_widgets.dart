@@ -1027,7 +1027,8 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
       if (categoryUuid != null) {
         final matchesCategory =
             categoryUuid == financeUncategorizedCategoryFilterUuid
-                ? transaction.categoryUuid == null
+                ? transaction.categoryUuid == null ||
+                    !categories.containsKey(transaction.categoryUuid)
                 : transaction.categoryUuid == categoryUuid;
         if (!matchesCategory) return false;
       }
