@@ -457,30 +457,57 @@ class WidgetService {
     final from = DateTime(now.year, now.month);
     final to = DateTime(now.year, now.month + 1);
     try {
-      final values = await Future.wait<dynamic>([
-        FinanceRepository.getSummary(from: from, to: to),
-        FinanceRepository.getTransactions(from: from, to: to, limit: 1),
-      ]);
-      final summary = values[0] as FinanceSummary;
-      final transactions = values[1] as List<FinanceTransaction>;
-      final latest = transactions.isEmpty ? null : transactions.first;
-      final latestTitle = latest?.merchant?.trim().isNotEmpty == true
-          ? latest!.merchant!.trim()
-          : latest?.type.label ?? '';
-      return WidgetFinanceSummary(
-        monthLabel: '${now.year}年${now.month}月',
-        incomeMinor: summary.incomeMinor,
-        netExpenseMinor: summary.netExpenseMinor,
-        balanceMinor: summary.balanceMinor,
-        transactionCount: summary.transactionCount,
-        latestTitle: latestTitle,
-        latestAmountMinor: latest?.amountMinor ?? 0,
-        latestType: latest?.type.name ?? '',
-        latestDate: latest?.transactionDate ?? '',
+      final transactions = await FinanceRepository.getTransactions(
+        from: from,
+        to: to,
+      );
+      return financeWidgetSummaryForTransactions(
+        now: DateTime.now(),
+        transactions: transactions,
       );
     } catch (_) {
       return WidgetFinanceSummary(monthLabel: '${now.year}年${now.month}月');
     }
+  }
+
+  @visibleForTesting
+  static WidgetFinanceSummary financeWidgetSummaryForTransactions({
+    required DateTime now,
+    required Iterable<FinanceTransaction> transactions,
+  }) {
+    final entries = transactions.toList(growable: false);
+    final asOfAt = now.millisecondsSinceEpoch;
+    final occurredTransactions = entries
+        .where((transaction) => transaction.balanceEventAt() <= asOfAt)
+        .toList(growable: false);
+    final latest = occurredTransactions.isEmpty
+        ? null
+        : occurredTransactions.reduce(
+            (latest, transaction) =>
+                transaction.balanceEventAt() > latest.balanceEventAt() ||
+                    (transaction.balanceEventAt() == latest.balanceEventAt() &&
+                        transaction.updatedAt > latest.updatedAt)
+                ? transaction
+                : latest,
+          );
+    final summary = FinanceSummary.fromTransactions(
+      entries,
+      asOfAt: asOfAt,
+    );
+    final latestTitle = latest?.merchant?.trim().isNotEmpty == true
+        ? latest!.merchant!.trim()
+        : latest?.type.label ?? '';
+    return WidgetFinanceSummary(
+      monthLabel: '${now.year}年${now.month}月',
+      incomeMinor: summary.incomeMinor,
+      netExpenseMinor: summary.netExpenseMinor,
+      balanceMinor: summary.balanceMinor,
+      transactionCount: summary.transactionCount,
+      latestTitle: latestTitle,
+      latestAmountMinor: latest?.amountMinor ?? 0,
+      latestType: latest?.type.name ?? '',
+      latestDate: latest?.transactionDate ?? '',
+    );
   }
 
   static String _formatFixedScheduleTime(FixedScheduleItem item) {
