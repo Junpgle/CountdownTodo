@@ -251,8 +251,11 @@ abstract final class FinanceRepository {
     return FinanceStorage.deleteTransaction(uuid);
   }
 
-  static Future<void> saveCategory(FinanceCategory category) {
-    return FinanceStorage.saveCategory(category);
+  static Future<void> saveCategory(
+    FinanceCategory category, {
+    FinanceCategory? original,
+  }) {
+    return FinanceStorage.saveCategory(category, original: original);
   }
 
   static Future<void> archiveCategory(String uuid) {

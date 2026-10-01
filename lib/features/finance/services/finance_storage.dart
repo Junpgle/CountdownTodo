@@ -1139,9 +1139,15 @@ abstract final class FinanceStorage {
     return rows.map(FinanceCategory.fromMap).toList();
   }
 
-  static Future<void> saveCategory(FinanceCategory category) async {
+  static Future<void> saveCategory(
+    FinanceCategory category, {
+    FinanceCategory? original,
+  }) async {
     if (category.name.trim().isEmpty) {
       throw ArgumentError.value(category.name, 'name', '分类名称不能为空');
+    }
+    if (original != null && original.uuid != category.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '分类标识不匹配');
     }
     final parentUuid = category.parentUuid?.trim();
     category.parentUuid = parentUuid == null || parentUuid.isEmpty
@@ -1158,6 +1164,25 @@ abstract final class FinanceStorage {
       );
       if (existingRows.isNotEmpty) {
         final existing = FinanceCategory.fromMap(existingRows.first);
+        if (existing.isDeleted) {
+          throw StateError('分类已删除，请重新加载后再编辑');
+        }
+        final baselineChanged =
+            original != null &&
+            (existing.version != original.version ||
+                existing.updatedAt != original.updatedAt);
+        if (baselineChanged) {
+          _mergeCategoryEdits(existing, original, category);
+          category
+            ..version = existing.version
+            ..updatedAt = existing.updatedAt
+            ..createdAt = existing.createdAt
+            ..markAsChanged();
+        } else if (original == null &&
+            (category.version < existing.version ||
+                category.updatedAt < existing.updatedAt)) {
+          throw StateError('分类已更新，请重新加载后再保存');
+        }
         if (existing.isSystem) {
           // System categories keep their built-in identity and hierarchy while
           // name and icon overrides remain user-owned fields.
@@ -1188,6 +1213,10 @@ abstract final class FinanceStorage {
               ..updatedAt = existing.updatedAt
               ..markAsChanged();
           }
+        } else {
+          category
+            ..isSystem = false
+            ..createdAt = existing.createdAt;
         }
       } else if (category.isSystem || _isSystemUuid(category.uuid)) {
         throw ArgumentError.value(category.uuid, 'uuid', '系统分类只能使用内置分类标识');
@@ -1251,6 +1280,40 @@ abstract final class FinanceStorage {
 
     });
     _notifyChanged();
+  }
+
+  static void _mergeCategoryEdits(
+    FinanceCategory current,
+    FinanceCategory original,
+    FinanceCategory incoming,
+  ) {
+    if (incoming.name == original.name) incoming.name = current.name;
+    if (incoming.type == original.type) incoming.type = current.type;
+    if (incoming.icon == original.icon) incoming.icon = current.icon;
+    if (incoming.iconCustomized == original.iconCustomized) {
+      incoming.iconCustomized = current.iconCustomized;
+    }
+    if (incoming.nameCustomized == original.nameCustomized) {
+      incoming.nameCustomized = current.nameCustomized;
+    }
+    if (incoming.colorValue == original.colorValue) {
+      incoming.colorValue = current.colorValue;
+    }
+    if (incoming.parentUuid == original.parentUuid) {
+      incoming.parentUuid = current.parentUuid;
+    }
+    if (incoming.isSystem == original.isSystem) {
+      incoming.isSystem = current.isSystem;
+    }
+    if (incoming.isArchived == original.isArchived) {
+      incoming.isArchived = current.isArchived;
+    }
+    if (incoming.isDeleted == original.isDeleted) {
+      incoming.isDeleted = current.isDeleted;
+    }
+    if (incoming.sortOrder == original.sortOrder) {
+      incoming.sortOrder = current.sortOrder;
+    }
   }
 
   static Future<void> archiveCategory(String uuid) async {

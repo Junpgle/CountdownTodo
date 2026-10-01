@@ -126,6 +126,27 @@ void main() {
     );
   });
 
+  test('编辑分类图标时保留同步到的名称排序和归档状态', () async {
+    final baseline = FinanceCategory.fromMap(child.toMap());
+    final localEdit = FinanceCategory.fromMap(baseline.toMap())..icon = '🧾';
+    localEdit.markAsChanged();
+    final remoteUpdate = FinanceCategory.fromMap(baseline.toMap())
+      ..name = '远端分类名称'
+      ..sortOrder = 90
+      ..isArchived = true;
+    remoteUpdate.markAsChanged();
+    await FinanceStorage.saveCategory(remoteUpdate);
+
+    await FinanceStorage.saveCategory(localEdit, original: baseline);
+
+    final saved = (await FinanceStorage.getCategories(includeArchived: true))
+        .singleWhere((item) => item.uuid == child.uuid);
+    expect(saved.name, '远端分类名称');
+    expect(saved.icon, '🧾');
+    expect(saved.sortOrder, 90);
+    expect(saved.isArchived, true);
+  });
+
   for (final remote in [false, true]) {
     for (final reverse in [false, true]) {
       test('分类批量写入拒绝三级层级，云端=$remote，反序=$reverse', () async {

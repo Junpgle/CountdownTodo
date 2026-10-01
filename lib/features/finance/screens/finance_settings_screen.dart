@@ -98,7 +98,10 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
             ..icon = draft.icon
             ..parentUuid = draft.parentUuid;
           if (category != null) updated.markAsChanged();
-          await FinanceRepository.saveCategory(updated);
+          await FinanceRepository.saveCategory(
+            updated,
+            original: category,
+          );
           savedCategory = updated;
         },
       ),
