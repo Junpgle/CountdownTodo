@@ -243,7 +243,19 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byType(ShaderMask), findsOneWidget);
+    RenderObject? renderObject = tester.renderObject(
+      find.text('Faded content'),
+    );
+    RenderObject? fadeRenderObject;
+    while (renderObject != null) {
+      if (renderObject.runtimeType.toString() ==
+          '_RenderFloatingGlassTopBarContentFadeBox') {
+        fadeRenderObject = renderObject;
+        break;
+      }
+      renderObject = renderObject.parent;
+    }
+    expect(fadeRenderObject, isNotNull);
     expect(find.byType(BackdropFilter), findsNothing);
     expect(find.text('Faded content'), findsOneWidget);
   });
