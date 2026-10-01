@@ -87,6 +87,35 @@ void main() {
       );
     });
 
+    test('其他设备删除周期账单后拒绝保存旧页面中的编辑', () async {
+      final rule = FinanceRecurringRule(
+        uuid: 'stale-edit-deleted-recurring-rule',
+        name: '原名称',
+        amountMinor: 10000,
+        startDate: '2026-01-01',
+      );
+      await FinanceStorage.saveRecurringRule(rule);
+      final staleOriginal = (await FinanceStorage.getRecurringRule(rule.uuid))!;
+      final staleEdit = FinanceRecurringRule.fromMap(staleOriginal.toMap())
+        ..name = '旧页面中的新名称'
+        ..markAsChanged();
+      final remoteDelete = FinanceRecurringRule.fromMap(staleOriginal.toMap())
+        ..isDeleted = true
+        ..version = staleOriginal.version + 1
+        ..updatedAt = staleEdit.updatedAt + 10000;
+      await FinanceStorage.mergeRemoteBundle({
+        'recurring_rules': [remoteDelete.toMap()],
+      });
+
+      await expectLater(
+        FinanceStorage.saveRecurringRule(staleEdit, original: staleOriginal),
+        throwsA(isA<StateError>()),
+      );
+      final stored = (await FinanceStorage.getRecurringRule(rule.uuid))!;
+      expect(stored.name, '原名称');
+      expect(stored.isDeleted, true);
+    });
+
     test('删除期间合并到同步更新并恢复后仍保留原启用状态', () async {
       final rule = FinanceRecurringRule(
         uuid: 'restore-enabled-recurring-after-sync',

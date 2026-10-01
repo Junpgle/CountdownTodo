@@ -1908,6 +1908,10 @@ abstract final class FinanceStorage {
       var itemToSave = rule;
       if (existingRows.isNotEmpty) {
         final existing = FinanceRecurringRule.fromMap(existingRows.first);
+        if (existing.isDeleted &&
+            (original == null || rule.isDeleted == original.isDeleted)) {
+          throw StateError('周期账单已删除，请重新加载后再编辑');
+        }
         final baselineChanged = original != null &&
             (existing.version != original.version ||
                 existing.updatedAt != original.updatedAt);
@@ -2257,6 +2261,10 @@ abstract final class FinanceStorage {
       var itemToSave = FinanceEntryTemplate.fromMap(template.toMap());
       if (existingRows.isNotEmpty) {
         final existing = FinanceEntryTemplate.fromMap(existingRows.first);
+        if (existing.isDeleted &&
+            (original == null || itemToSave.isDeleted == original.isDeleted)) {
+          throw StateError('快捷模板已删除，请重新加载后再编辑');
+        }
         final baselineChanged =
             original != null &&
             (existing.version != original.version ||

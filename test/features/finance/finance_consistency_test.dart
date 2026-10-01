@@ -200,6 +200,34 @@ void main() {
       );
     });
 
+    test('其他设备删除快捷模板后拒绝保存旧页面中的编辑', () async {
+      final template = FinanceEntryTemplate(
+        uuid: 'stale-edit-deleted-template',
+        name: '原模板',
+        amountMinor: 1200,
+      );
+      await FinanceStorage.saveTemplate(template);
+      final staleOriginal = (await FinanceStorage.getTemplate(template.uuid))!;
+      final staleEdit = FinanceEntryTemplate.fromMap(staleOriginal.toMap())
+        ..name = '旧页面中的新名称'
+        ..markAsChanged();
+      final remoteDelete = FinanceEntryTemplate.fromMap(staleOriginal.toMap())
+        ..isDeleted = true
+        ..version = staleOriginal.version + 1
+        ..updatedAt = staleEdit.updatedAt + 10000;
+      await FinanceStorage.mergeRemoteBundle({
+        'templates': [remoteDelete.toMap()],
+      });
+
+      await expectLater(
+        FinanceStorage.saveTemplate(staleEdit, original: staleOriginal),
+        throwsA(isA<StateError>()),
+      );
+      final stored = (await FinanceStorage.getTemplate(template.uuid))!;
+      expect(stored.name, '原模板');
+      expect(stored.isDeleted, true);
+    });
+
     test('同一余额UUID仍按版本接受删除和恢复', () async {
       final balance = FinanceBudget(
         uuid: 'same-balance',
