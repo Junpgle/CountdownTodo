@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
+
 import '../../services/ai_chat_service.dart';
 import '../../services/llm_service.dart';
 import '../../services/minor_mode_policy.dart';
@@ -203,6 +204,33 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       isPaid: true,
     ),
     // === 小米 MiMo 模型 ===
+    TextModelInfo(
+      id: 'mimo-v2.6-pro',
+      name: 'MiMo-V2.6-Pro',
+      description: 'MiMo V2.6 旗舰推理模型，支持函数调用',
+      context: '1M',
+      maxOutput: '128K',
+      isPaid: true,
+      provider: 'mimo',
+    ),
+    TextModelInfo(
+      id: 'mimo-v2.6-flash',
+      name: 'MiMo-V2.6-Flash',
+      description: 'MiMo V2.6 高速推理模型，支持函数调用',
+      context: '1M',
+      maxOutput: '128K',
+      isPaid: true,
+      provider: 'mimo',
+    ),
+    TextModelInfo(
+      id: 'mimo-v2.6-pro-ultraspeed',
+      name: 'MiMo-V2.6-Pro-Ultraspeed',
+      description: 'MiMo V2.6 旗舰高速模型，支持函数调用',
+      context: '1M',
+      maxOutput: '128K',
+      isPaid: true,
+      provider: 'mimo',
+    ),
     TextModelInfo(
       id: 'mimo-v2.5-pro',
       name: 'MiMo-V2.5-Pro',
@@ -451,8 +479,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       final visionModelId = config.visionModel;
 
       final textModelExists = textModels.any((m) => m.id == textModelId);
-      final customTextMatch =
-          _customTextModels.where((m) => m.modelId == textModelId).firstOrNull;
+      final customTextMatch = _customTextModels
+          .where((m) => m.modelId == textModelId)
+          .firstOrNull;
 
       final visionModelExists = visionModels.any((m) => m.id == visionModelId);
       final customVisionMatch = _customVisionModels
@@ -581,7 +610,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   }
 
   void _setFetchedProviderModels(String provider, List<String> modelIds) {
-    final normalized = modelIds
+    final normalized =
+        modelIds
         .map((id) => id.trim())
         .where((id) => id.isNotEmpty)
         .toSet()
@@ -616,8 +646,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   }
 
   void _updateApiKeyDisplay() {
-    final customText =
-        _customTextModels.where((m) => m.id == _selectedTextModel).firstOrNull;
+    final customText = _customTextModels
+        .where((m) => m.id == _selectedTextModel)
+        .firstOrNull;
     if (customText != null) {
       _presetApiKeyCtrl.text = customText.apiKey;
     } else {
@@ -638,14 +669,16 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   }
 
   String _getEffectiveApiKey() {
-    final customText =
-        _customTextModels.where((m) => m.id == _selectedTextModel).firstOrNull;
+    final customText = _customTextModels
+        .where((m) => m.id == _selectedTextModel)
+        .firstOrNull;
     return customText?.apiKey ?? _presetApiKeyCtrl.text.trim();
   }
 
   String _getEffectiveApiUrl() {
-    final customText =
-        _customTextModels.where((m) => m.id == _selectedTextModel).firstOrNull;
+    final customText = _customTextModels
+        .where((m) => m.id == _selectedTextModel)
+        .firstOrNull;
     if (customText != null) return customText.apiUrl;
     final provider = _selectedTextModelProvider == 'custom'
         ? _getModelProvider(
@@ -660,8 +693,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   }
 
   String _getEffectiveModelId() {
-    final customText =
-        _customTextModels.where((m) => m.id == _selectedTextModel).firstOrNull;
+    final customText = _customTextModels
+        .where((m) => m.id == _selectedTextModel)
+        .firstOrNull;
     return customText?.modelId ?? (_selectedTextModel ?? '');
   }
 
@@ -700,7 +734,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           context,
           SnackBar(
             content: Text(
-                '连接成功！响应: ${result.substring(0, result.length > 50 ? 50 : result.length)}...'),
+              '连接成功！响应: ${result.substring(0, result.length > 50 ? 50 : result.length)}...',
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -709,10 +744,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       if (mounted) {
         AppSnackBars.showSnackBar(
           context,
-          SnackBar(
-            content: Text('连接失败: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('连接失败: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -747,8 +779,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       visionModel: _getEffectiveVisionModelId(),
       apiUrl: _getEffectiveApiUrl(),
       textPrompt: _textPromptCtrl.text.isEmpty ? null : _textPromptCtrl.text,
-      visionPrompt:
-          _visionPromptCtrl.text.isEmpty ? null : _visionPromptCtrl.text,
+      visionPrompt: _visionPromptCtrl.text.isEmpty
+          ? null
+          : _visionPromptCtrl.text,
     );
 
     // 保存所有已填写的 provider API keys
@@ -846,9 +879,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     int maxColumns = 2,
   }) {
     if (maxWidth.isInfinite) return minWidth;
-    final columns = (maxWidth / (minWidth + spacing))
-        .floor()
-        .clamp(1, itemCount.clamp(1, maxColumns));
+    final columns = (maxWidth / (minWidth + spacing)).floor().clamp(
+      1,
+      itemCount.clamp(1, maxColumns),
+    );
     return (maxWidth - spacing * (columns - 1)) / columns;
   }
 
@@ -906,8 +940,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           children: [
             Text(
               '这里只管理服务商、API Key 和模型连接。助手行为、智能上下文和对话提示词请在“AI 助手设置”中调整。',
-              style:
-                  TextStyle(fontSize: 13, color: Colors.grey[700], height: 1.5),
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey[700],
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -918,8 +955,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                   label: '智谱AI开放平台',
                   icon: Icons.open_in_new,
                   color: Colors.orange,
-                  url:
-                      'https://www.bigmodel.cn/invite?icode=VCykXNmHhts4csYPy2wX3LC%2Fk7jQAKmT1mpEiZXXnFw%3D',
+                  url: 'https://www.bigmodel.cn/invite?icode=VCykXNmHhts4csYPy2wX3LC%2Fk7jQAKmT1mpEiZXXnFw%3D',
                 ),
                 _buildQuickLink(
                   label: '小米MiMo开放平台',
@@ -995,26 +1031,38 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name,
+                Text(
+                  name,
                     style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 15)),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(description,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                Text(
+                  description,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
                 const SizedBox(height: 6),
                 Wrap(
                   spacing: 6,
                   children: features
-                      .map((f) => Container(
+                      .map(
+                        (f) => Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                             decoration: BoxDecoration(
                               color: color.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: Text(f,
-                                style: TextStyle(fontSize: 11, color: color)),
-                          ))
+                          child: Text(
+                            f,
+                            style: TextStyle(fontSize: 11, color: color),
+                          ),
+                        ),
+                      )
                       .toList(),
                 ),
               ],
@@ -1082,8 +1130,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             color: Colors.orange,
             apiKey: _zhipuApiKey,
             onChanged: (val) => _zhipuApiKey = val,
-            url:
-                'https://www.bigmodel.cn/invite?icode=VCykXNmHhts4csYPy2wX3LC%2Fk7jQAKmT1mpEiZXXnFw%3D',
+            url: 'https://www.bigmodel.cn/invite?icode=VCykXNmHhts4csYPy2wX3LC%2Fk7jQAKmT1mpEiZXXnFw%3D',
             linkLabel: '→ 前往智谱AI开放平台申请',
           ),
           _buildProviderKeyField(
@@ -1126,8 +1173,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           children: [
             Text(
               '配置您需要使用的 API Key。文本模型和多模态模型可以来自不同服务商，请按需填写；填写后点击“下一步”选择模型。',
-              style:
-                  TextStyle(fontSize: 13, color: Colors.grey[600], height: 1.5),
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey[600],
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 16),
             Wrap(
@@ -1180,9 +1230,14 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(name,
+              Text(
+                name,
                   style: TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 14, color: color)),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  color: color,
+                ),
+              ),
               const Spacer(),
               Flexible(
                 child: Align(
@@ -1190,8 +1245,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                   child: InkWell(
                     onTap: () async {
                       try {
-                        await launchUrl(Uri.parse(url),
-                            mode: LaunchMode.platformDefault);
+                        await launchUrl(
+                          Uri.parse(url),
+                          mode: LaunchMode.platformDefault,
+                        );
                       } catch (e) {
                         if (!mounted) return;
                         AppSnackBars.showSnackBar(
@@ -1224,8 +1281,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
               isDense: true,
               prefixIcon: const Icon(Icons.key, size: 18),
             ),
@@ -1263,9 +1322,14 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                 ),
               ),
               const SizedBox(width: 8),
-              Text('NVIDIA NIM',
+              Text(
+                'NVIDIA NIM',
                   style: TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 14, color: color)),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  color: color,
+                ),
+              ),
               const Spacer(),
               Flexible(
                 child: Align(
@@ -1273,8 +1337,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                   child: InkWell(
                     onTap: () async {
                       try {
-                        await launchUrl(Uri.parse('https://build.nvidia.com'),
-                            mode: LaunchMode.platformDefault);
+                        await launchUrl(
+                          Uri.parse('https://build.nvidia.com'),
+                          mode: LaunchMode.platformDefault,
+                        );
                       } catch (e) {
                         if (!mounted) return;
                         AppSnackBars.showSnackBar(
@@ -1300,16 +1366,19 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           const SizedBox(height: 10),
           TextField(
             controller: TextEditingController(text: _nvidiaNimApiKey)
-              ..selection =
-                  TextSelection.collapsed(offset: _nvidiaNimApiKey.length),
+              ..selection = TextSelection.collapsed(
+                offset: _nvidiaNimApiKey.length,
+              ),
             obscureText: true,
             decoration: InputDecoration(
               hintText: '输入 NVIDIA NIM API Key（nvapi-...）',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
               isDense: true,
               prefixIcon: const Icon(Icons.key, size: 18),
             ),
@@ -1359,8 +1428,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           .where((m) => m.provider == provider)
           .map((m) => m.id)
           .toSet();
-      final newModels =
-          models.where((id) => !existingIds.contains(id)).toList();
+      final newModels = models
+          .where((id) => !existingIds.contains(id))
+          .toList();
       _setFetchedProviderModels(provider, models);
       await LLMService.saveProviderModels(provider, models);
       if (!mounted) return;
@@ -1406,7 +1476,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             height: 300,
             child: ListView(
               children: models
-                  .map((id) => ListTile(
+                  .map(
+                    (id) => ListTile(
                         dense: true,
                         title: Text(id, style: const TextStyle(fontSize: 13)),
                         trailing: TextButton(
@@ -1424,7 +1495,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                           },
                           child: const Text('选用'),
                         ),
-                      ))
+                    ),
+                  )
                   .toList(),
             ),
           ),
@@ -1476,8 +1548,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             });
           },
           customModels: _customTextModels,
-          selectedIsCustom:
-              _customTextModels.any((m) => m.id == _selectedTextModel),
+          selectedIsCustom: _customTextModels.any(
+            (m) => m.id == _selectedTextModel,
+          ),
           onCustomTap: (m) => setState(() => _selectedTextModel = m.id),
           onCustomEdit: _showEditCustomTextModelDialog,
           onCustomDelete: _deleteCustomTextModel,
@@ -1504,8 +1577,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             setState(() => _selectedVisionModel = val);
           },
           customModels: _customVisionModels,
-          selectedIsCustom:
-              _customVisionModels.any((m) => m.id == _selectedVisionModel),
+          selectedIsCustom: _customVisionModels.any(
+            (m) => m.id == _selectedVisionModel,
+          ),
           onCustomTap: (m) => setState(() => _selectedVisionModel = m.id),
           onCustomEdit: _showEditCustomVisionModelDialog,
           onCustomDelete: _deleteCustomVisionModel,
@@ -1518,8 +1592,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           children: [
             Text(
               '分别选择对话文本模型和图片/音频/视频输入使用的多模态模型，支持混搭。',
-              style:
-                  TextStyle(fontSize: 13, color: Colors.grey[600], height: 1.5),
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey[600],
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 20),
             if (wide)
@@ -1579,8 +1656,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     );
 
     return ExpansionTile(
-      title: Text('识别服务高级配置（不影响对话助手）',
-          style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+      title: Text(
+        '识别服务高级配置（不影响对话助手）',
+        style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+      ),
       tilePadding: EdgeInsets.zero,
       childrenPadding: const EdgeInsets.only(bottom: 8),
       children: [
@@ -1659,37 +1738,37 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         'key': 'zhipu',
         'name': '智谱AI',
         'color': Colors.orange,
-        'icon': Icons.auto_awesome
+        'icon': Icons.auto_awesome,
       },
       {
         'key': 'mimo',
         'name': '小米MiMo',
         'color': Colors.blue,
-        'icon': Icons.smart_toy
+        'icon': Icons.smart_toy,
       },
       {
         'key': AiChatService.mimoTokenPlanProvider,
         'name': 'MiMo Token Plan',
         'color': Colors.indigo,
-        'icon': Icons.token_outlined
+        'icon': Icons.token_outlined,
       },
       {
         'key': 'deepseek',
         'name': 'DeepSeek',
         'color': Colors.green,
-        'icon': Icons.psychology
+        'icon': Icons.psychology,
       },
       {
         'key': 'nvidia_nim',
         'name': 'NVIDIA NIM',
         'color': Colors.cyan,
-        'icon': Icons.workspace_premium
+        'icon': Icons.workspace_premium,
       },
       {
         'key': 'custom',
         'name': '自定义',
         'color': Colors.grey,
-        'icon': Icons.settings
+        'icon': Icons.settings,
       },
     ];
 
@@ -1697,11 +1776,14 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 标题
-        Text(title,
+        Text(
+          title,
             style: TextStyle(
                 fontWeight: FontWeight.w600,
                 fontSize: 14,
-                color: Colors.grey[800])),
+            color: Colors.grey[800],
+          ),
+        ),
         const SizedBox(height: 10),
 
         // 服务商选择
@@ -1731,16 +1813,22 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                 ),
                 child: Column(
                   children: [
-                    Icon(icon,
-                        color: isSelected ? color : Colors.grey[500], size: 28),
+                    Icon(
+                      icon,
+                      color: isSelected ? color : Colors.grey[500],
+                      size: 28,
+                    ),
                     const SizedBox(height: 6),
-                    Text(name,
+                    Text(
+                      name,
                         style: TextStyle(
                             fontSize: 12,
                             fontWeight: isSelected
                                 ? FontWeight.bold
                                 : FontWeight.normal,
-                            color: isSelected ? color : Colors.grey[700])),
+                        color: isSelected ? color : Colors.grey[700],
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1776,13 +1864,15 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                 if (value == null) {
                   return;
                 }
-                final selected =
-                    customModels.firstWhere((model) => model.id == value);
+                final selected = customModels.firstWhere(
+                  (model) => model.id == value,
+                );
                 onCustomTap(selected);
               },
               child: Column(
                 children: customModels
-                    .map<Widget>((m) => _buildCustomModelChip(
+                    .map<Widget>(
+                      (m) => _buildCustomModelChip(
                           value: m.id,
                           name: m.name,
                           modelId: m.modelId,
@@ -1790,7 +1880,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                           onTap: () => onCustomTap(m),
                           onEdit: () => onCustomEdit(m),
                           onDelete: () => onCustomDelete(m),
-                        ))
+                      ),
+                    )
                     .toList(),
               ),
             ),
@@ -1814,7 +1905,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
               underline: const SizedBox(),
               hint: Text('选择$title', style: const TextStyle(fontSize: 13)),
               items: models
-                  .map((m) => DropdownMenuItem<String>(
+                  .map(
+                    (m) => DropdownMenuItem<String>(
                         value: m.id,
                         child: Row(
                           children: [
@@ -1829,20 +1921,26 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                               const SizedBox(width: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 4, vertical: 1),
+                                horizontal: 4,
+                                vertical: 1,
+                              ),
                                 decoration: BoxDecoration(
                                   color: Colors.orange[100],
                                   borderRadius: BorderRadius.circular(3),
                                 ),
-                                child: Text('付费',
+                              child: Text(
+                                '付费',
                                     style: TextStyle(
                                         fontSize: 9,
-                                        color: Colors.orange[800])),
+                                  color: Colors.orange[800],
+                                ),
+                              ),
                               ),
                             ],
                           ],
                         ),
-                      ))
+                    ),
+                  )
                   .toList(),
               onChanged: onModelChanged,
             ),
@@ -1850,17 +1948,21 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           if (models.any((m) => m.id == selectedModelId)) ...[
             const SizedBox(height: 6),
             () {
-              final selected =
-                  models.firstWhere((m) => m.id == selectedModelId);
+              final selected = models.firstWhere(
+                (m) => m.id == selectedModelId,
+              );
               return _buildModelInfo(
                   selected.description,
                   selected.context ?? selected.context,
-                  selected.maxOutput ?? selected.maxOutput);
+                selected.maxOutput ?? selected.maxOutput,
+              );
             }(),
           ],
         ] else ...[
-          Text('该服务商暂无$title',
-              style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+          Text(
+            '该服务商暂无$title',
+            style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+          ),
         ],
       ],
     );
@@ -1877,8 +1979,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(description,
-              style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+          Text(
+            description,
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+          ),
           const SizedBox(height: 6),
           Wrap(
             spacing: 8,
@@ -1926,14 +2030,21 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name,
+                  Text(
+                    name,
                       style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 13)),
-                  Text(modelId,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  Text(
+                    modelId,
                       style: TextStyle(
                           fontSize: 11,
                           color: Colors.grey[500],
-                          fontFamily: 'monospace')),
+                      fontFamily: 'monospace',
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1945,8 +2056,11 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             ),
             const SizedBox(width: 4),
             IconButton(
-              icon:
-                  Icon(Icons.delete_outline, size: 16, color: Colors.red[400]),
+              icon: Icon(
+                Icons.delete_outline,
+                size: 16,
+                color: Colors.red[400],
+              ),
               onPressed: onDelete,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
@@ -2018,8 +2132,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                                   if (_currentStep < 2)
                                     FilledButton.icon(
                                       onPressed: details.onStepContinue,
-                                      icon: const Icon(Icons.arrow_forward,
-                                          size: 18),
+                                  icon: const Icon(
+                                    Icons.arrow_forward,
+                                    size: 18,
+                                  ),
                                       label: const Text('下一步'),
                                     )
                                   else
@@ -2034,8 +2150,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                                     const SizedBox(width: 12),
                                     OutlinedButton.icon(
                                       onPressed: details.onStepCancel,
-                                      icon: const Icon(Icons.arrow_back,
-                                          size: 18),
+                                  icon: const Icon(Icons.arrow_back, size: 18),
                                       label: const Text('上一步'),
                                     ),
                                   ],
@@ -2158,8 +2273,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     );
   }
 
-  Future<void> _showAddCustomTextModelDialog(
-      {CustomTextModel? existing}) async {
+  Future<void> _showAddCustomTextModelDialog({
+    CustomTextModel? existing,
+  }) async {
     if (!await _ensureLlmConfigurationAllowed() || !mounted) return;
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
     final modelIdCtrl = TextEditingController(text: existing?.modelId ?? '');
@@ -2243,8 +2359,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                 if (!mounted || !ctx.mounted) return;
                 setState(() {
                   if (existing != null) {
-                    final idx = _customTextModels
-                        .indexWhere((m) => m.id == existing.id);
+                    final idx = _customTextModels.indexWhere(
+                      (m) => m.id == existing.id,
+                    );
                     if (idx >= 0) _customTextModels[idx] = model;
                   } else {
                     _customTextModels.add(model);
@@ -2279,9 +2396,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('删除'),
           ),
         ],
@@ -2300,18 +2415,16 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     }
   }
 
-  Future<void> _showAddCustomVisionModelDialog(
-      {CustomVisionModel? existing}) async {
+  Future<void> _showAddCustomVisionModelDialog({
+    CustomVisionModel? existing,
+  }) async {
     if (!await _ensureLlmConfigurationAllowed() || !mounted) return;
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
     final modelIdCtrl = TextEditingController(text: existing?.modelId ?? '');
     final apiUrlCtrl = TextEditingController(text: existing?.apiUrl ?? '');
     final apiKeyCtrl = TextEditingController(text: existing?.apiKey ?? '');
     final formKey = GlobalKey<FormState>();
-    final selectedModalities = <String>{
-      'image',
-      ...?existing?.modalities,
-    };
+    final selectedModalities = <String>{'image', ...?existing?.modalities};
 
     await showAppDialog(
       context: context,
@@ -2379,7 +2492,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                   Wrap(
                     spacing: 8,
                     runSpacing: 6,
-                    children: const {
+                    children:
+                        const {
                       'image': '图片',
                       'audio': '音频',
                       'video': '视频',
@@ -2431,8 +2545,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                   if (!mounted || !ctx.mounted) return;
                   setState(() {
                     if (existing != null) {
-                      final idx = _customVisionModels
-                          .indexWhere((m) => m.id == existing.id);
+                      final idx = _customVisionModels.indexWhere(
+                        (m) => m.id == existing.id,
+                      );
                       if (idx >= 0) _customVisionModels[idx] = model;
                     } else {
                       _customVisionModels.add(model);
@@ -2467,9 +2582,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('删除'),
           ),
         ],

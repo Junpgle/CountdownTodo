@@ -7,12 +7,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+
 import '../models.dart';
 import '../models/ai_todo_action.dart';
 import '../services/suggestion_feedback_service.dart';
 import '../models/chat_message.dart';
 import '../services/ai_action_parser.dart';
 import '../services/ai_chat_service.dart';
+import '../services/ai_native_tool_call_parser.dart';
+import '../services/ai_native_tool_definition_builder.dart';
 import '../services/ai_multimodal_message_builder.dart';
 import '../services/ai_todo_context_builder.dart';
 import '../services/ai_todo_action_executor.dart';
@@ -46,6 +49,9 @@ import '../features/finance/services/finance_repository.dart';
 import '../features/finance/services/finance_ai_context_service.dart';
 import '../features/finance/services/finance_text_parser.dart';
 import '../features/finance/services/ai_usage_cost_service.dart';
+import '../features/habits/models/habit_goal.dart';
+import '../features/habits/repositories/habit_repository.dart';
+import '../features/habits/services/habit_ai_context_service.dart';
 import '../utils/app_dialogs.dart';
 
 part 'todo_chat_screen_contract.dart';
@@ -73,7 +79,7 @@ class TodoChatScreen extends StatefulWidget {
   final Function(List<TodoItem>)? onTodosBatchInserted;
   final Function(List<TodoItem>)? onTodosUpdated;
   final Function(List<TodoItem> inserted, List<TodoItem> updated)?
-      onTodosBatchAction;
+  onTodosBatchAction;
   final Function(List<TodoGroup> groups)? onTodoGroupsChanged;
   final Function(List<FixedScheduleItem> schedules)? onFixedSchedulesChanged;
 

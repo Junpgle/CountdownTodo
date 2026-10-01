@@ -1,4 +1,5 @@
 part of 'todo_chat_screen.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _TodoChatMessages on _TodoChatScreenStateBase {
@@ -13,8 +14,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
       child: Row(
-        mainAxisAlignment:
-            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isUser
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isUser) ...[
@@ -36,8 +38,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: maxBubbleWidth),
               child: Column(
-                crossAxisAlignment:
-                    isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                crossAxisAlignment: isUser
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
                 children: [
                   if (!isUser && msg.reasoningContent.isNotEmpty)
                     _buildCollapsibleReasoning(
@@ -54,8 +57,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                       color: isUser
                           ? colorScheme.primary
                           : isDark
-                              ? colorScheme.surfaceContainerHighest
-                                  .withValues(alpha: 0.55)
+                          ? colorScheme.surfaceContainerHighest.withValues(
+                              alpha: 0.55,
+                            )
                               : colorScheme.surface,
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(16),
@@ -73,8 +77,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                       border: isUser
                           ? null
                           : Border.all(
-                              color: colorScheme.outlineVariant
-                                  .withValues(alpha: 0.55),
+                              color: colorScheme.outlineVariant.withValues(
+                                alpha: 0.55,
+                              ),
                               width: 0.5,
                             ),
                     ),
@@ -169,8 +174,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w300,
-                            color: colorScheme.onSurfaceVariant
-                                .withValues(alpha: 0.75),
+                            color: colorScheme.onSurfaceVariant.withValues(
+                              alpha: 0.75,
+                            ),
                           ),
                         ),
                         if (!isUser) ...[
@@ -189,8 +195,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                                   Icon(
                                     Icons.data_object_rounded,
                                     size: 12,
-                                    color: colorScheme.primary
-                                        .withValues(alpha: 0.82),
+                                    color: colorScheme.primary.withValues(
+                                      alpha: 0.82,
+                                    ),
                                   ),
                                   const SizedBox(width: 3),
                                   Text(
@@ -198,8 +205,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w500,
-                                      color: colorScheme.primary
-                                          .withValues(alpha: 0.88),
+                                      color: colorScheme.primary.withValues(
+                                        alpha: 0.88,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -279,8 +287,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                     ),
                     decoration: BoxDecoration(
                       color: isDark
-                          ? colorScheme.surfaceContainerHighest
-                              .withValues(alpha: 0.4)
+                          ? colorScheme.surfaceContainerHighest.withValues(
+                              alpha: 0.4,
+                            )
                           : Colors.white,
                       borderRadius: const BorderRadius.only(
                         topLeft: Radius.circular(20),
@@ -296,8 +305,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                         ),
                       ],
                       border: Border.all(
-                        color:
-                            colorScheme.outlineVariant.withValues(alpha: 0.5),
+                        color: colorScheme.outlineVariant.withValues(
+                          alpha: 0.5,
+                        ),
                         width: 0.5,
                       ),
                     ),
@@ -406,9 +416,10 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                     ),
                   ),
                   Text(
-                    [attachment.typeLabel, sizeLabel]
-                        .where((item) => item.isNotEmpty)
-                        .join(' · '),
+                    [
+                      attachment.typeLabel,
+                      sizeLabel,
+                    ].where((item) => item.isNotEmpty).join(' · '),
                     style: TextStyle(
                       color: scheme.onSurfaceVariant,
                       fontSize: 10,
@@ -423,10 +434,7 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
     }
     return Padding(
       padding: const EdgeInsets.only(bottom: 7),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: preview,
-      ),
+      child: ClipRRect(borderRadius: BorderRadius.circular(10), child: preview),
     );
   }
 
@@ -449,9 +457,7 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
       padding: const EdgeInsets.only(top: 7),
       decoration: BoxDecoration(
         border: Border(
-          top: BorderSide(
-            color: scheme.outlineVariant.withValues(alpha: 0.55),
-          ),
+          top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.55)),
         ),
       ),
       child: Row(
@@ -533,11 +539,7 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
           MarkdownBody(
             data: msg.content,
             styleSheet: MarkdownStyleSheet(
-              p: TextStyle(
-                color: scheme.onSurface,
-                fontSize: 15,
-                height: 1.45,
-              ),
+              p: TextStyle(color: scheme.onSurface, fontSize: 15, height: 1.45),
               strong: TextStyle(
                 color: scheme.primary,
                 fontWeight: FontWeight.bold,
@@ -714,8 +716,10 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
               const SizedBox(height: 8),
               Container(
                 width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: isDark
                       ? Colors.white.withValues(alpha: 0.04)
@@ -753,13 +757,16 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                               }
                               _liveSmartContextPreview =
                                   _buildSmartContextPreview(
-                                      _inputCtrl.text.trim());
+                                    _inputCtrl.text.trim(),
+                                  );
                               _liveActionProtocolPreview =
                                   _buildActionProtocolPreview(
-                                      _inputCtrl.text.trim());
+                                    _inputCtrl.text.trim(),
+                                  );
                               _liveEstimatedTokens =
                                   _estimateTokensForPendingInput(
-                                      _inputCtrl.text.trim());
+                                    _inputCtrl.text.trim(),
+                                  );
                             });
                           },
                           style: TextButton.styleFrom(
@@ -769,7 +776,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             visualDensity: VisualDensity.compact,
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
                           ),
                           child: Text(
                             _injectMoreContext ? '注入更多: 开' : '注入更多',
@@ -789,7 +798,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             visualDensity: VisualDensity.compact,
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
                           ),
                           child: Text(
                             _useCustomInjectRange ? '自定义注入: 开' : '自定义注入',
@@ -825,7 +836,6 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                       if (_liveSmartContextPreview.isNotEmpty)
                         SelectableText(
                           _liveSmartContextPreview,
-                          maxLines: 2,
                           style: TextStyle(
                             fontSize: 12,
                             height: 1.35,
@@ -933,8 +943,9 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                         : Icon(
                             Icons.attach_file_rounded,
                             size: 18,
-                            color: colorScheme.onSurfaceVariant
-                                .withValues(alpha: 0.65),
+                            color: colorScheme.onSurfaceVariant.withValues(
+                              alpha: 0.65,
+                            ),
                           ),
                     tooltip: '添加图片、音频、视频或文件',
                     visualDensity: VisualDensity.compact,
@@ -958,12 +969,14 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                     onTap: (val) async {
                       setState(() {
                         _smartContext = val;
-                        _liveSmartContextPreview =
-                            _buildSmartContextPreview(_inputCtrl.text.trim());
+                        _liveSmartContextPreview = _buildSmartContextPreview(
+                          _inputCtrl.text.trim(),
+                        );
                         _liveActionProtocolPreview =
                             _buildActionProtocolPreview(_inputCtrl.text.trim());
                         _liveEstimatedTokens = _estimateTokensForPendingInput(
-                            _inputCtrl.text.trim());
+                          _inputCtrl.text.trim(),
+                        );
                       });
                       await ChatStorageService.setSmartContextEnabled(val);
                     },
@@ -1019,10 +1032,7 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                       switchOutCurve: Curves.easeInCubic,
                       transitionBuilder: (child, animation) => ScaleTransition(
                         scale: animation,
-                        child: FadeTransition(
-                          opacity: animation,
-                          child: child,
-                        ),
+                        child: FadeTransition(opacity: animation, child: child),
                       ),
                       child: _isLoading
                           ? const Icon(
@@ -1038,18 +1048,18 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                     ),
                     onPressed: _isLoading ? _stopGeneration : _sendMessage,
                     style: floatingGlassPlainIconButtonStyle().copyWith(
-                      backgroundColor:
-                          WidgetStatePropertyAll(colorScheme.primary),
-                      foregroundColor:
-                          WidgetStatePropertyAll(colorScheme.onPrimary),
+                      backgroundColor: WidgetStatePropertyAll(
+                        colorScheme.primary,
+                      ),
+                      foregroundColor: WidgetStatePropertyAll(
+                        colorScheme.onPrimary,
+                      ),
                       shape: WidgetStatePropertyAll(
                         RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
                         ),
                       ),
-                      padding: const WidgetStatePropertyAll(
-                        EdgeInsets.all(8),
-                      ),
+                      padding: const WidgetStatePropertyAll(EdgeInsets.all(8)),
                     ),
                   ),
                 ],

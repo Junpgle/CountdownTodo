@@ -34,10 +34,12 @@ class AiTokenUsage {
   static AiTokenUsage? fromJson(Object? raw) {
     if (raw is! Map) return null;
     final json = Map<String, dynamic>.from(raw);
-    final promptTokens =
-        _readInt(json['prompt_tokens'] ?? json['input_tokens']);
-    final completionTokens =
-        _readInt(json['completion_tokens'] ?? json['output_tokens']);
+    final promptTokens = _readInt(
+      json['prompt_tokens'] ?? json['input_tokens'],
+    );
+    final completionTokens = _readInt(
+      json['completion_tokens'] ?? json['output_tokens'],
+    );
     final totalTokens = _readInt(json['total_tokens']);
     final promptDetails = _asMap(
       json['prompt_tokens_details'] ?? json['input_tokens_details'],
@@ -67,10 +69,12 @@ class AiTokenUsage {
     return AiTokenUsage(
       promptTokens: promptTokens,
       completionTokens: completionTokens,
-      totalTokens:
-          totalTokens == 0 ? promptTokens + completionTokens : totalTokens,
-      cachedPromptTokens:
-          cachedPromptTokens > promptTokens ? promptTokens : cachedPromptTokens,
+      totalTokens: totalTokens == 0
+          ? promptTokens + completionTokens
+          : totalTokens,
+      cachedPromptTokens: cachedPromptTokens > promptTokens
+          ? promptTokens
+          : cachedPromptTokens,
       imageTokens: imageTokens,
       audioTokens: audioTokens,
       videoTokens: videoTokens,
@@ -96,14 +100,28 @@ class AiChatStreamChunk {
   const AiChatStreamChunk({
     this.content = '',
     this.reasoningContent = '',
+    this.toolCalls = const [],
     this.usage,
     this.usageSummary,
   });
 
   final String content;
   final String reasoningContent;
+  final List<AiChatFunctionCall> toolCalls;
   final AiTokenUsage? usage;
   final ChatUsageSummary? usageSummary;
+}
+
+class AiChatFunctionCall {
+  const AiChatFunctionCall({
+    required this.id,
+    required this.name,
+    required this.arguments,
+  });
+
+  final String id;
+  final String name;
+  final String arguments;
 }
 
 class AiChatService {
@@ -151,11 +169,57 @@ class AiChatService {
     return effective == 'mimo' || effective == mimoTokenPlanProvider;
   }
 
+  /// Function calling is enabled only for supported first-party endpoints.
+  /// Custom and model-aggregator endpoints keep the existing text protocol.
+  static bool supportsFunctionTools({
+    required String provider,
+    required String apiUrl,
+    required String model,
+  }) {
+    final effective = effectiveProvider(provider, apiUrl);
+    final normalizedModel = model.trim().toLowerCase();
+    final host = Uri.tryParse(apiUrl)?.host.toLowerCase() ?? '';
+    return switch (effective) {
+      'zhipu' =>
+        host == 'open.bigmodel.cn' &&
+            const {
+              'glm-4.7',
+              'glm-4.7-flash',
+              'glm-4.7-flashx',
+              'glm-4.6',
+              'glm-5',
+              'glm-5.1',
+              'glm-5.2',
+              'glm-5.3',
+            }.contains(normalizedModel),
+      'deepseek' =>
+        host == 'api.deepseek.com' &&
+            const {
+              'deepseek-flash',
+              'deepseek-v4-flash',
+              'deepseek-v4-pro',
+            }.contains(normalizedModel),
+      'mimo' =>
+        host == 'api.xiaomimimo.com' &&
+            const {
+              'mimo-v2.6-flash',
+              'mimo-v2.6-pro',
+              'mimo-v2.6-pro-ultraspeed',
+              'mimo-v2.5',
+              'mimo-v2.5-pro',
+              'mimo-v2-flash',
+              'mimo-v2-omni',
+            }.contains(normalizedModel),
+      _ => false,
+    };
+  }
+
   static String resolveChatUrl(String provider, String apiUrl) {
     final effective = effectiveProvider(provider, apiUrl);
     if (effective == 'nvidia_nim' || effective == mimoTokenPlanProvider) {
-      final base =
-          trimSlash(apiUrl.isNotEmpty ? apiUrl : providerBaseUrls[effective]!);
+      final base = trimSlash(
+        apiUrl.isNotEmpty ? apiUrl : providerBaseUrls[effective]!,
+      );
       if (base.endsWith('/chat/completions')) return base;
       return '$base/chat/completions';
     }
@@ -223,10 +287,7 @@ class AiChatService {
     if (systemParts.isEmpty) return alternated;
 
     return [
-      {
-        'role': 'system',
-        'content': systemParts.join('\n\n---\n\n'),
-      },
+      {'role': 'system', 'content': systemParts.join('\n\n---\n\n')},
       ...alternated,
     ];
   }
@@ -275,6 +336,7 @@ class AiChatService {
     String provider = 'zhipu',
     double temperature = 0.7,
     int maxTokens = 2000,
+    List<Map<String, dynamic>>? tools,
   }) {
     final effective = effectiveProvider(provider, apiUrl);
     final bool isNvidiaNim = effective == 'nvidia_nim';
@@ -285,6 +347,13 @@ class AiChatService {
       'temperature': temperature,
       'stream': true,
     };
+    if (tools != null && tools.isNotEmpty) {
+      body['tools'] = tools;
+      body['tool_choice'] = 'auto';
+      if (effective == 'zhipu') {
+        body['tool_stream'] = true;
+      }
+    }
 
     if (isNvidiaNim) {
       body['max_tokens'] = maxTokens;
@@ -295,7 +364,11 @@ class AiChatService {
       body[isMimo ? 'max_completion_tokens' : 'max_tokens'] = maxTokens;
       body['stream_options'] = {'include_usage': true};
       body['thinking'] = {
-        'type': deepThinking ? 'enabled' : 'disabled',
+        'type': isMimo && tools != null && tools.isNotEmpty
+            ? 'disabled'
+            : deepThinking
+            ? 'enabled'
+            : 'disabled',
       };
     }
     return body;
@@ -314,6 +387,7 @@ class AiChatService {
     Completer<void>? cancelToken,
     String usageOperation = 'chat',
     int imageCount = 0,
+    List<Map<String, dynamic>>? tools,
   }) async* {
     await _ensureAiInteractionAllowed();
     final client = http.Client();
@@ -322,17 +396,21 @@ class AiChatService {
     var lastError = '';
     var cancelled = false;
     AiTokenUsage? streamUsage;
+    final toolCallBuffers = <int, _AiChatFunctionCallBuffer>{};
+    var lastToolCallIndex = 0;
 
     try {
       if (cancelToken?.isCompleted == true) return;
       if (cancelToken != null) {
-        unawaited(cancelToken.future.then((_) {
+        unawaited(
+          cancelToken.future.then((_) {
           cancelled = true;
           // Closing the client also aborts a request that is still waiting for
           // response headers, which a stream-level cancellation check cannot
           // reach.
           client.close();
-        }));
+          }),
+        );
       }
       final resolvedUrl = resolveChatUrl(provider, apiUrl);
       final request = http.Request('POST', Uri.parse(resolvedUrl));
@@ -347,6 +425,7 @@ class AiChatService {
         provider: provider,
         temperature: temperature,
         maxTokens: maxTokens,
+        tools: tools,
       );
 
       request.body = jsonEncode(body);
@@ -426,6 +505,29 @@ class AiChatService {
             final content = delta['content'] as String? ?? '';
             final reasoningContent =
                 delta['reasoning_content'] as String? ?? '';
+            final toolCallDeltas = delta['tool_calls'];
+            if (toolCallDeltas is List) {
+              for (final rawToolCall in toolCallDeltas.whereType<Map>()) {
+                final toolCall = Map<String, dynamic>.from(rawToolCall);
+                final index =
+                    int.tryParse(toolCall['index']?.toString() ?? '') ??
+                    lastToolCallIndex;
+                lastToolCallIndex = index;
+                final callBuffer = toolCallBuffers.putIfAbsent(
+                  index,
+                  _AiChatFunctionCallBuffer.new,
+                );
+                final id = toolCall['id']?.toString();
+                if (id != null && id.isNotEmpty) callBuffer.id = id;
+                final function = toolCall['function'];
+                if (function is Map) {
+                  final functionMap = Map<String, dynamic>.from(function);
+                  callBuffer.name += functionMap['name']?.toString() ?? '';
+                  callBuffer.arguments +=
+                      functionMap['arguments']?.toString() ?? '';
+                }
+              }
+            }
             final hasReasoningContent = reasoningContent.isNotEmpty;
             final hasContent = content.isNotEmpty;
 
@@ -442,6 +544,19 @@ class AiChatService {
           } catch (e) {
             lastError = '$e';
           }
+        }
+      }
+
+      if (!cancelled && toolCallBuffers.isNotEmpty) {
+        final completedCalls = toolCallBuffers.entries.toList()
+          ..sort((a, b) => a.key.compareTo(b.key));
+        final toolCalls = completedCalls
+            .map((entry) => entry.value.toFunctionCall())
+            .whereType<AiChatFunctionCall>()
+            .toList(growable: false);
+        if (toolCalls.isNotEmpty) {
+          emittedCount++;
+          yield AiChatStreamChunk(toolCalls: toolCalls);
         }
       }
 
@@ -472,9 +587,7 @@ class AiChatService {
         }
       }
       if (!cancelled && (chunkCount == 0 || emittedCount == 0)) {
-        throw Exception(
-          '未收到有效回复${lastError.isNotEmpty ? ': $lastError' : ''}',
-        );
+        throw Exception('未收到有效回复${lastError.isNotEmpty ? ': $lastError' : ''}');
       }
     } finally {
       client.close();
@@ -506,7 +619,8 @@ class AiChatService {
     }
     body[usesMimoChatProtocol(provider, apiUrl)
         ? 'max_completion_tokens'
-        : 'max_tokens'] = maxTokens;
+            : 'max_tokens'] =
+        maxTokens;
 
     final response = await http
         .post(
@@ -601,9 +715,7 @@ class AiChatService {
         .timeout(const Duration(seconds: 20));
 
     if (response.statusCode != 200) {
-      throw Exception(
-        '拉取模型失败: ${response.statusCode} ${response.body}',
-      );
+      throw Exception('拉取模型失败: ${response.statusCode} ${response.body}');
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -627,5 +739,16 @@ class AiChatService {
     if (!allowed) {
       throw const MinorModeAccessException('当前未成年人模式年龄段暂不允许使用高级 AI 功能');
     }
+  }
+}
+
+class _AiChatFunctionCallBuffer {
+  String id = '';
+  String name = '';
+  String arguments = '';
+
+  AiChatFunctionCall? toFunctionCall() {
+    if (name.isEmpty || arguments.isEmpty) return null;
+    return AiChatFunctionCall(id: id, name: name, arguments: arguments);
   }
 }

@@ -1,4 +1,5 @@
 part of 'todo_chat_screen.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
@@ -13,6 +14,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     _loadDeepThinking();
     _loadCategoryDefaults();
     _loadPlanBlocks();
+    _loadHabitGoals();
     _fixedSchedules = List<FixedScheduleItem>.from(widget.fixedSchedules);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -55,8 +57,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         CoachMarkStep(
           targetKey: _inputKey,
           title: '智能输入区',
-          description:
-              '你可以用自然语言输入需求（比如“明天上午9点有个组会”），AI 助手会自动判断它应是习惯、日程、待办还是规划块；周期性事项类型不明确时会先询问。',
+          description: '你可以用自然语言输入需求（比如“明天上午9点有个组会”），AI 助手会自动判断它应是习惯、日程、待办还是规划块；周期性事项类型不明确时会先询问。',
         ),
       ],
       onFinish: () {
@@ -96,11 +97,23 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     });
   }
 
+  Future<void> _loadHabitGoals() async {
+    try {
+      final goals = await HabitRepository.getActiveGoals();
+      if (!mounted) return;
+      setState(() => _habitGoals = goals);
+      _handleInputChanged();
+    } catch (_) {
+      // Habit context is optional; keep chat usable if local storage is busy.
+    }
+  }
+
   @override
   void dispose() {
     _inputCtrl.removeListener(_handleInputChanged);
-    AiRecognitionChatBridge.changes
-        .removeListener(_handleRecognitionChatChanged);
+    AiRecognitionChatBridge.changes.removeListener(
+      _handleRecognitionChatChanged,
+    );
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -134,22 +147,57 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   String _buildSmartContextPreview(String userText) {
     if (!_smartContext || userText.isEmpty) return '';
     final contextQueryText = _buildContextQueryText(userText);
-    return AiTodoContextBuilder.buildContextInjectionSummary(
-          userMessage: contextQueryText,
-          courses: widget.courses,
-          timeLogs: widget.timeLogs,
-          todoGroups: widget.todoGroups,
-          pomodoroRecords: widget.pomodoroRecords,
-          planBlocks: _planBlocks,
-          todos: widget.todos,
-          countdowns: widget.countdowns,
-          pomodoroTags: widget.pomodoroTags,
-          fixedSchedules: _fixedSchedules,
-          conflicts: widget.conflicts,
-          teams: widget.teams,
-          now: DateTime.now(),
-        ) ??
-        '';
+    final now = DateTime.now();
+    final conversationContext = _recentConversationTextForContext();
+    final summaries =
+        [
+              AiTodoContextBuilder.buildContextInjectionSummary(
+                userMessage: contextQueryText,
+                courses: widget.courses,
+                timeLogs: widget.timeLogs,
+                todoGroups: widget.todoGroups,
+                pomodoroRecords: widget.pomodoroRecords,
+                planBlocks: _planBlocks,
+                todos: widget.todos,
+                countdowns: widget.countdowns,
+                pomodoroTags: widget.pomodoroTags,
+                fixedSchedules: _fixedSchedules,
+                conflicts: widget.conflicts,
+                teams: widget.teams,
+                now: now,
+              ),
+              FinanceAiContextService.buildContextInjectionSummary(
+                userMessage: contextQueryText,
+                conversationContext: conversationContext,
+                now: now,
+              ),
+              HabitAiContextService.buildContextInjectionSummary(
+                userMessage: contextQueryText,
+                conversationContext: conversationContext,
+                goals: _habitGoals,
+                now: now,
+              ),
+            ]
+            .whereType<String>()
+            .map((summary) {
+              return summary.replaceFirst(RegExp(r'^将注入：'), '');
+            })
+            .where((summary) => summary.isNotEmpty)
+            .toList();
+    if (summaries.isEmpty) return '';
+    return '将注入：${summaries.join('、')}';
+  }
+
+  String _recentConversationTextForContext({String? excludingMessageId}) {
+    return _messages.reversed
+        .where(
+          (message) =>
+              message.id != excludingMessageId &&
+              message.content.trim().isNotEmpty,
+        )
+        .take(6)
+        .map((message) => message.content.trim())
+        .join('\n');
   }
 
   String _buildContextQueryText(String userText) {
@@ -254,12 +302,15 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       _customInjectStart = DateTime(start.year, start.month, start.day);
       _customInjectEnd = DateTime(end.year, end.month, end.day);
       _injectMoreContext = false;
-      _liveSmartContextPreview =
-          _buildSmartContextPreview(_inputCtrl.text.trim());
-      _liveActionProtocolPreview =
-          _buildActionProtocolPreview(_inputCtrl.text.trim());
-      _liveEstimatedTokens =
-          _estimateTokensForPendingInput(_inputCtrl.text.trim());
+      _liveSmartContextPreview = _buildSmartContextPreview(
+        _inputCtrl.text.trim(),
+      );
+      _liveActionProtocolPreview = _buildActionProtocolPreview(
+        _inputCtrl.text.trim(),
+      );
+      _liveEstimatedTokens = _estimateTokensForPendingInput(
+        _inputCtrl.text.trim(),
+      );
     });
   }
 
@@ -396,19 +447,24 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     }
     _classificationSuggestionInjected = true;
     final actions = widget.initialCategorizationActions;
-    final lines = actions.map((action) {
-      final groupName = action.metadata['groupName']?.toString() ??
-          _getGroupName(action.groupId);
-      final priority = action.metadata['priorityLabel']?.toString();
-      final tags = action.metadata['tags'] is List
-          ? (action.metadata['tags'] as List).map((e) => e.toString()).toList()
-          : const <String>[];
-      final extra = [
-        if (priority != null && priority.isNotEmpty) priority,
-        if (tags.isNotEmpty) tags.join('、'),
-      ].join(' · ');
-      return '- ${action.title ?? '未命名待办'} -> $groupName${extra.isEmpty ? '' : ' ($extra)'}';
-    }).join('\n');
+    final lines = actions
+        .map((action) {
+          final groupName =
+              action.metadata['groupName']?.toString() ??
+              _getGroupName(action.groupId);
+          final priority = action.metadata['priorityLabel']?.toString();
+          final tags = action.metadata['tags'] is List
+              ? (action.metadata['tags'] as List)
+                    .map((e) => e.toString())
+                    .toList()
+              : const <String>[];
+          final extra = [
+            if (priority != null && priority.isNotEmpty) priority,
+            if (tags.isNotEmpty) tags.join('、'),
+          ].join(' · ');
+          return '- ${action.title ?? '未命名待办'} -> $groupName${extra.isEmpty ? '' : ' ($extra)'}';
+        })
+        .join('\n');
 
     _messages.add(
       ChatMessage(
@@ -487,10 +543,11 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     });
   }
 
-  String _buildSystemPrompt() {
+  String _buildSystemPrompt({bool nativeToolCalls = false}) {
     return AiTodoContextBuilder.buildLeanSystemPrompt(
       customPrompt: _customPrompt,
       promptEnabled: _promptEnabled,
+      nativeToolCalls: nativeToolCalls,
     );
   }
 
@@ -500,14 +557,20 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     String? pendingUserText,
     bool trackSmartContext = true,
     String financeContext = '',
+    String habitContext = '',
+    bool nativeToolCalls = false,
+    bool includeReasoningContent = false,
   }) {
     final List<Map<String, dynamic>> apiMessages = [
-      {'role': 'system', 'content': _buildSystemPrompt()},
+      {
+        'role': 'system',
+        'content': _buildSystemPrompt(nativeToolCalls: nativeToolCalls),
+      },
     ];
     final protocolSourceText = pendingUserText?.trim().isNotEmpty == true
         ? pendingUserText!.trim()
         : _latestUserTextFromHistory();
-    if (protocolSourceText.isNotEmpty) {
+    if (protocolSourceText.isNotEmpty && !nativeToolCalls) {
       apiMessages.add({
         'role': 'system',
         'content': AiTodoContextBuilder.buildActionProtocolPrompt(
@@ -524,11 +587,17 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
 
     if (sourceMessages.length <= _maxContextMessages) {
       for (final msg in sourceMessages) {
-        apiMessages.add({
+        final message = <String, dynamic>{
           'role': msg.role == ChatRole.user ? 'user' : 'assistant',
           'content': msg.toLLMMessage(),
           '_messageId': msg.id,
-        });
+        };
+        if (includeReasoningContent &&
+            msg.role == ChatRole.assistant &&
+            msg.reasoningContent.trim().isNotEmpty) {
+          message['reasoning_content'] = msg.reasoningContent;
+        }
+        apiMessages.add(message);
       }
     } else {
       final firstUserMsg = sourceMessages.firstWhere(
@@ -543,29 +612,37 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
 
       final summaryMsg = _buildContextSummary();
       if (summaryMsg.isNotEmpty) {
-        apiMessages.add({
-          'role': 'assistant',
-          'content': summaryMsg,
-        });
+        apiMessages.add({'role': 'assistant', 'content': summaryMsg});
       }
 
       final recentCount = _maxContextMessages - 2;
       final startIndex = sourceMessages.length - recentCount;
-      final recentMessages =
-          sourceMessages.sublist(startIndex > 0 ? startIndex : 0);
+      final recentMessages = sourceMessages.sublist(
+        startIndex > 0 ? startIndex : 0,
+      );
       for (final msg in recentMessages) {
         if (msg.content == firstUserMsg.content) continue;
-        apiMessages.add({
+        final message = <String, dynamic>{
           'role': msg.role == ChatRole.user ? 'user' : 'assistant',
           'content': msg.toLLMMessage(),
           '_messageId': msg.id,
-        });
+        };
+        if (includeReasoningContent &&
+            msg.role == ChatRole.assistant &&
+            msg.reasoningContent.trim().isNotEmpty) {
+          message['reasoning_content'] = msg.reasoningContent;
+        }
+        apiMessages.add(message);
       }
     }
 
     final smartContext = _injectContext(apiMessages);
+    final additionalContexts = [
+      financeContext,
+      habitContext,
+    ].map((item) => item.trim()).where((item) => item.isNotEmpty).toList();
     var combinedContext = smartContext;
-    if (financeContext.trim().isNotEmpty) {
+    if (additionalContexts.isNotEmpty) {
       int lastUserIndex = -1;
       for (int i = apiMessages.length - 1; i >= 0; i--) {
         if (apiMessages[i]['role'] == 'user') {
@@ -578,11 +655,12 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         apiMessages[lastUserIndex] = {
           ...apiMessages[lastUserIndex],
           'role': 'user',
-          'content': '${financeContext.trim()}\n\n$currentUserContent',
+          'content':
+              '${additionalContexts.join('\n\n')}\n\n$currentUserContent',
         };
         combinedContext = [
           smartContext,
-          financeContext.trim(),
+          ...additionalContexts,
         ].where((item) => item.isNotEmpty).join('\n\n');
       }
     }

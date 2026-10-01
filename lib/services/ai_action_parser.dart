@@ -3,7 +3,8 @@ import 'dart:convert';
 import '../models/ai_todo_action.dart';
 
 class AiActionParser {
-  static const String _actionTypes = 'create_todo|update_todo|complete_todo|'
+  static const String _actionTypes =
+      'create_todo|update_todo|complete_todo|'
       'create_habit|create_habit_goal|habit_create|'
       'delete_todo|reschedule_todo|bulk_reschedule|bulk_reschedule_todo|'
       'create_schedule|update_schedule|cancel_schedule|delete_schedule|'
@@ -21,7 +22,8 @@ class AiActionParser {
       'create_category|update_category|delete_category|'
       'create_folder|update_folder|delete_folder|'
       'create_pomodoro_tag|update_pomodoro_tag|delete_pomodoro_tag';
-  static const String _legacyActionMarkers = 'PLAN_TODOS|CREATE_TODO|'
+  static const String _legacyActionMarkers =
+      'PLAN_TODOS|CREATE_TODO|'
       'UPDATE_TODO|COMPLETE_TODO|DELETE_TODO|RESCHEDULE_TODO|'
       'CREATE_TIME_LOG|UPDATE_TIME_LOG|DELETE_TIME_LOG|'
       'CREATE_COUNTDOWN|UPDATE_COUNTDOWN|DELETE_COUNTDOWN';
@@ -46,30 +48,36 @@ class AiActionParser {
               (data['version'] == 2 ||
                   data['protocol']?.toString() == 'cdt.actions')) {
             for (final item in envelopeActions.whereType<Map>()) {
-              actions.addAll(_processActionMap(
-                Map<String, dynamic>.from(item),
+              actions.addAll(
+                _processActionMap(
+                  Map<String, dynamic>.from(item),
+                  existingTodoTitles,
+                  existingScheduleTitles,
+                  planningIntent: planningIntent,
+                ),
+              );
+            }
+          } else {
+            actions.addAll(
+              _processActionMap(
+                data,
                 existingTodoTitles,
                 existingScheduleTitles,
                 planningIntent: planningIntent,
-              ));
-            }
-          } else {
-            actions.addAll(_processActionMap(
-              data,
-              existingTodoTitles,
-              existingScheduleTitles,
-              planningIntent: planningIntent,
-            ));
+              ),
+            );
           }
         } else if (data is List) {
           for (final item in data) {
             if (item is Map<String, dynamic>) {
-              actions.addAll(_processActionMap(
-                item,
-                existingTodoTitles,
-                existingScheduleTitles,
-                planningIntent: planningIntent,
-              ));
+              actions.addAll(
+                _processActionMap(
+                  item,
+                  existingTodoTitles,
+                  existingScheduleTitles,
+                  planningIntent: planningIntent,
+                ),
+              );
             }
           }
         }
@@ -90,8 +98,9 @@ class AiActionParser {
     } else {
       final startIndex = content.indexOf('[ACTION_START]');
       if (startIndex != -1) {
-        final remaining =
-            content.substring(startIndex + '[ACTION_START]'.length);
+        final remaining = content.substring(
+          startIndex + '[ACTION_START]'.length,
+        );
         final suggestIndex = remaining.indexOf('[SUGGEST_START]');
         parseAndProcess(
           suggestIndex != -1 ? remaining.substring(0, suggestIndex) : remaining,
@@ -160,10 +169,11 @@ class AiActionParser {
   }
 
   static List<AiTodoAction> _processActionMap(
-      Map<String, dynamic> data,
-      Map<String, String> existingTodoTitles,
-      Map<String, String> existingScheduleTitles,
-      {bool planningIntent = false}) {
+    Map<String, dynamic> data,
+    Map<String, String> existingTodoTitles,
+    Map<String, String> existingScheduleTitles, {
+    bool planningIntent = false,
+  }) {
     final actionData = _withInferredAction(
       data,
       planningIntent: planningIntent,
@@ -199,8 +209,10 @@ class AiActionParser {
         // creation, because planning must never duplicate an existing item.
         return _listFromOrSelf(actionData, actionData['todos'])
             .map((todo) {
-              final existingTodoId =
-                  _existingTodoIdForPlan(todo, existingTodoTitles);
+              final existingTodoId = _existingTodoIdForPlan(
+                todo,
+                existingTodoTitles,
+              );
               if (existingTodoId == null) return null;
               return AiTodoAction.fromJson({
                 ...todo,
@@ -228,11 +240,13 @@ class AiActionParser {
       case 'cancel_fixed_schedule':
       case 'delete_schedule':
       case 'delete_fixed_schedule':
-        return _listFromOrSelf(actionData, actionData['updates'])
-            .map((schedule) {
+        return _listFromOrSelf(actionData, actionData['updates']).map((
+          schedule,
+        ) {
           final action = AiTodoAction.fromJson({
             ...schedule,
-            'scheduleId': schedule['scheduleId'] ??
+            'scheduleId':
+                schedule['scheduleId'] ??
                 schedule['fixedScheduleId'] ??
                 schedule['id'],
             'action': actionData['action'],
@@ -247,9 +261,11 @@ class AiActionParser {
       case 'create_todo_plan_block':
       case 'schedule_todo_block':
         return _listFromOrSelf(
-          actionData,
-          actionData['blocks'] ?? actionData['plans'] ?? actionData['todos'],
-        )
+              actionData,
+              actionData['blocks'] ??
+                  actionData['plans'] ??
+                  actionData['todos'],
+            )
             .map((block) {
               final inferredTodoId = _existingTodoIdForPlan(
                 block,
@@ -257,7 +273,8 @@ class AiActionParser {
               );
               return AiTodoAction.fromJson({
                 ...block,
-                'todoId': block['todoId'] ??
+                'todoId':
+                    block['todoId'] ??
                     block['todo_id'] ??
                     block['todoUuid'] ??
                     inferredTodoId,
@@ -279,7 +296,8 @@ class AiActionParser {
         ).map((block) {
           return AiTodoAction.fromJson({
             ...block,
-            'planBlockId': block['planBlockId'] ??
+            'planBlockId':
+                block['planBlockId'] ??
                 block['plan_block_id'] ??
                 block['blockId'] ??
                 block['id'],
@@ -288,13 +306,34 @@ class AiActionParser {
             'action': actionData['action'],
           });
         }).toList();
+      case 'categorize_todo':
+        return _listFromOrSelf(actionData, actionData['updates'])
+            .map((update) {
+              final todoId = _resolveExistingTodoId(update, existingTodoTitles);
+              final action = AiTodoAction.fromJson({
+                ...update,
+                'todoId': todoId,
+                'title': update['title'] ?? update['titleSnapshot'],
+                'action': actionData['action'],
+              });
+              if ((action.title == null || action.title!.isEmpty) &&
+                  action.todoId != null) {
+                action.title = existingTodoTitles[action.todoId!];
+              }
+              return action;
+            })
+            .where(
+              (action) =>
+                  action.todoId?.trim().isNotEmpty == true &&
+                  existingTodoTitles.containsKey(action.todoId),
+            )
+            .toList();
       case 'update_todo':
       case 'complete_todo':
       case 'delete_todo':
       case 'reschedule_todo':
       case 'bulk_reschedule':
       case 'bulk_reschedule_todo':
-      case 'categorize_todo':
         return _listFromOrSelf(actionData, actionData['updates']).map((update) {
           final action = AiTodoAction.fromJson({
             ...update,
@@ -335,8 +374,9 @@ class AiActionParser {
           }),
         ];
       case 'create_countdown':
-        return _listFromOrSelf(actionData, actionData['countdowns'])
-            .map((countdown) {
+        return _listFromOrSelf(actionData, actionData['countdowns']).map((
+          countdown,
+        ) {
           return AiTodoAction.fromJson({
             ...countdown,
             'action': actionData['action'],
@@ -357,11 +397,11 @@ class AiActionParser {
       case 'create_category':
       case 'create_folder':
         return _listFromOrSelf(
-                actionData,
-                actionData['groups'] ??
-                    actionData['categories'] ??
-                    actionData['folders'])
-            .map((group) {
+          actionData,
+          actionData['groups'] ??
+              actionData['categories'] ??
+              actionData['folders'],
+        ).map((group) {
           return AiTodoAction.fromJson({
             ...group,
             'title': group['title'] ?? group['name'],
@@ -379,7 +419,8 @@ class AiActionParser {
         return _listFromOrSelf(actionData, actionData['updates']).map((update) {
           return AiTodoAction.fromJson({
             ...update,
-            'todoId': update['todoId'] ??
+            'todoId':
+                update['todoId'] ??
                 update['groupId'] ??
                 update['categoryId'] ??
                 update['folderId'] ??
@@ -415,7 +456,8 @@ class AiActionParser {
     Map<String, dynamic> data,
     Map<String, String> existingTodoTitles,
   ) {
-    final sourceTodoId = data['sourceTodoId']?.toString() ??
+    final sourceTodoId =
+        data['sourceTodoId']?.toString() ??
         data['todoId']?.toString() ??
         data['source_id']?.toString();
     final actions = _listFrom(data['todos']).map((todo) {
@@ -488,11 +530,13 @@ class AiActionParser {
     if (data['action'] != null) return data;
     if (data['todos'] is List) {
       final todoList = data['todos'] as List;
-      final hasExistingRef = todoList.any((t) =>
-          t is Map &&
-          (t.containsKey('todoId') ||
-              t.containsKey('todo_id') ||
-              t.containsKey('todoUuid')));
+      final hasExistingRef = todoList.any(
+        (t) =>
+            t is Map &&
+            (t.containsKey('todoId') ||
+                t.containsKey('todo_id') ||
+                t.containsKey('todoUuid')),
+      );
       return {
         ...data,
         // An actionless todos payload in a planning request is a legacy
@@ -536,6 +580,37 @@ class AiActionParser {
     ).hasMatch(text);
   }
 
+  static String? _resolveExistingTodoId(
+    Map<String, dynamic> todo,
+    Map<String, String> existingTodoTitles,
+  ) {
+    // Providers sometimes return a generic `id` instead of `todoId`. Accept
+    // any explicit alias only when it resolves to a real local todo.
+    for (final value in [
+      todo['todoId'],
+      todo['todo_id'],
+      todo['todoUuid'],
+      todo['id'],
+    ]) {
+      final candidate = value?.toString().trim() ?? '';
+      if (candidate.isNotEmpty && existingTodoTitles.containsKey(candidate)) {
+        return candidate;
+      }
+    }
+
+    final title = (todo['title'] ?? todo['titleSnapshot'] ?? todo['name'])
+        ?.toString()
+        .trim();
+    if (title == null || title.isEmpty) return null;
+    final normalizedTitle = _normalizeTitle(title);
+    final matches = existingTodoTitles.entries
+        .where((entry) => _normalizeTitle(entry.value) == normalizedTitle)
+        .toList();
+    // Only infer by title when it is unambiguous. An ambiguous title is safer
+    // to discard than to attach a plan block to the wrong occurrence.
+    return matches.length == 1 ? matches.single.key : null;
+  }
+
   static String? _existingTodoIdForPlan(
     Map<String, dynamic> todo,
     Map<String, String> existingTodoTitles,
@@ -545,7 +620,6 @@ class AiActionParser {
       return explicitId.toString().trim();
     }
 
-    // Some old responses used the generic `id` field for a todo reference.
     final legacyId = todo['id']?.toString().trim();
     if (legacyId != null &&
         legacyId.isNotEmpty &&
@@ -559,8 +633,6 @@ class AiActionParser {
     final matches = existingTodoTitles.entries
         .where((entry) => _normalizeTitle(entry.value) == normalizedTitle)
         .toList();
-    // Only infer by title when it is unambiguous. An ambiguous title is safer
-    // to discard than to attach a plan block to the wrong occurrence.
     return matches.length == 1 ? matches.single.key : null;
   }
 
@@ -627,11 +699,11 @@ class AiActionParser {
       if (end == -1) continue;
 
       final candidate = content.substring(i, end + 1).trim();
-      final hasKnownAction =
-          RegExp('"action"\\s*:\\s*"(?:$_actionTypes)"').hasMatch(candidate);
-      final hasLegacyContainer = RegExp(
-              '"(?:todos|habits|goals|schedules|fixedSchedules|blocks|plans|countdowns|logs|groups|categories|folders|tags)"\\s*:')
+      final hasKnownAction = RegExp('"action"\\s*:\\s*"(?:$_actionTypes)"')
           .hasMatch(candidate);
+      final hasLegacyContainer = RegExp(
+        '"(?:todos|habits|goals|schedules|fixedSchedules|blocks|plans|countdowns|logs|groups|categories|folders|tags)"\\s*:',
+      ).hasMatch(candidate);
       if (!hasKnownAction && !hasLegacyContainer) {
         continue;
       }

@@ -1,4 +1,5 @@
 part of 'todo_chat_screen.dart';
+
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _TodoChatSend on _TodoChatScreenStateBase {
@@ -31,9 +32,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('未配置大模型'),
-            content: const Text(
-              '可以先配置API地址和密钥，也可以复制完整提示词到外部AI，稍后把回复粘贴回来识别。',
-            ),
+            content: const Text('可以先配置API地址和密钥，也可以复制完整提示词到外部AI，稍后把回复粘贴回来识别。'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
@@ -184,16 +183,52 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     _cancelGeneration = Completer<void>();
 
     try {
-      final financeContext = await FinanceAiContextService.buildContext(
-        userMessage: requestText,
+      final conversationContext = _recentConversationTextForContext(
+        excludingMessageId: userMsg.id,
       );
+      final financeContext = _smartContext
+          ? await FinanceAiContextService.buildContext(
+              userMessage: requestText,
+              conversationContext: conversationContext,
+            )
+          : '';
+      final habitContext = _smartContext
+          ? await HabitAiContextService.buildContext(
+              userMessage: requestText,
+              conversationContext: conversationContext,
+              goals: _habitGoals,
+            )
+          : '';
+      final nativeToolMode = AiChatService.supportsFunctionTools(
+        provider: provider,
+        apiUrl: apiUrl,
+        model: model,
+      );
+      final nativeTools = nativeToolMode
+          ? AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+              requestText,
+            )
+          : null;
+      final allowedNativeToolNames =
+          AiNativeToolDefinitionBuilder.allowedToolNames(nativeTools);
+      final allowedNativeCdtActions =
+          AiNativeToolDefinitionBuilder.allowedCdtActionNames(nativeTools);
+      final allowedNativeFinanceActions =
+          AiNativeToolDefinitionBuilder.allowedFinanceActionNames(nativeTools);
+      final includeReasoningContent =
+          nativeToolMode &&
+          AiChatService.effectiveProvider(provider, apiUrl) == 'deepseek';
       final List<Map<String, dynamic>> apiMessages =
           await _buildApiMessagesForRequest(
-        financeContext: financeContext,
-        provider: provider,
-      );
+            financeContext: financeContext,
+            habitContext: habitContext ?? '',
+            provider: provider,
+            nativeToolCalls: nativeToolMode,
+            includeReasoningContent: includeReasoningContent,
+          );
       String fullContent = '';
       String reasoningContent = '';
+      final nativeToolCalls = <AiChatFunctionCall>[];
       ChatUsageSummary? usageSummary;
 
       await for (final chunk in AiChatService.streamChat(
@@ -205,6 +240,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         provider: provider,
         cancelToken: _cancelGeneration,
         imageCount: attachment?.kind == ChatAttachmentKind.image ? 1 : 0,
+        tools: nativeTools,
       )) {
         if (chunk.usageSummary != null) {
           usageSummary = chunk.usageSummary;
@@ -218,6 +254,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             _scrollToBottom();
           }
         }
+        if (chunk.toolCalls.isNotEmpty) {
+          nativeToolCalls.addAll(chunk.toolCalls);
+        }
         if (chunk.content.isNotEmpty) {
           fullContent += chunk.content;
           if (mounted) {
@@ -229,9 +268,23 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         }
       }
 
+      final actionContent = AiNativeToolCallParser.appendToAssistantText(
+        fullContent,
+        nativeToolCalls,
+        allowedToolNames: allowedNativeToolNames,
+        allowedCdtActionNames: allowedNativeCdtActions,
+        allowedFinanceActionNames: allowedNativeFinanceActions,
+      );
+      final rawModelReply = AiNativeToolCallParser.formatRawReply(
+        fullContent,
+        nativeToolCalls,
+      );
+
       // 用户主动打断：保存已有内容为部分回复
       if (_cancelGeneration?.isCompleted == true) {
-        if (fullContent.isNotEmpty || reasoningContent.isNotEmpty) {
+        if (fullContent.isNotEmpty ||
+            reasoningContent.isNotEmpty ||
+            nativeToolCalls.isNotEmpty) {
           final existingTodoTitles = {
             for (final todo in widget.todos)
               if (todo['id'] != null)
@@ -241,26 +294,38 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             for (final schedule in _fixedSchedules) schedule.id: schedule.title,
           };
           final todoActions = AiActionParser.extractTodoActions(
-            fullContent,
+            actionContent,
             originalText: requestText,
             existingTodoTitles: existingTodoTitles,
             existingScheduleTitles: existingScheduleTitles,
           );
           final financeDrafts = FinanceTextParser.extractAssistantDrafts(
-            fullContent,
+            actionContent,
           );
           final financeActions = FinanceTextParser.extractAssistantActions(
-            fullContent,
+            actionContent,
           );
           final cleanContent = FinanceTextParser.cleanAssistantContent(
-            AiActionParser.cleanActionContent(fullContent),
+            AiActionParser.cleanActionContent(actionContent),
           );
+          final interruptedContent =
+              cleanContent.isEmpty &&
+                  (todoActions.isNotEmpty ||
+                      financeDrafts.isNotEmpty ||
+                      financeActions.isNotEmpty)
+              ? todoActions.isNotEmpty
+                    ? '已生成待确认操作草案，请核对后添加。'
+                    : financeDrafts.isNotEmpty
+                    ? '已生成记账草案，请核对后编辑并保存。'
+                    : '已生成账单操作草案，请在确认卡中核对。'
+              : cleanContent.isEmpty && nativeToolCalls.isNotEmpty
+              ? 'AI返回了操作调用，但没有匹配到有效的本地记录；未生成可执行草案。请确认待办名称后重试。'
+              : cleanContent;
           setState(() {
             final assistantMsg = ChatMessage(
               role: ChatRole.assistant,
-              content:
-                  '${cleanContent.isEmpty && (financeDrafts.isNotEmpty || financeActions.isNotEmpty) ? financeDrafts.isNotEmpty ? '已生成记账草案，请核对后编辑并保存。' : '已生成账单操作草案，请在确认卡中核对。' : cleanContent}\n\n*(已中断)*',
-              rawContent: fullContent,
+              content: '$interruptedContent\n\n*(已中断)*',
+              rawContent: rawModelReply,
               reasoningContent: reasoningContent,
               smartContext: _lastRequestSmartContext,
               usageSummary: usageSummary,
@@ -287,7 +352,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         return;
       }
 
-      if (fullContent.isEmpty && reasoningContent.isEmpty) {
+      if (actionContent.isEmpty && reasoningContent.isEmpty) {
         throw Exception('未收到有效回复');
       }
 
@@ -300,32 +365,40 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         for (final schedule in _fixedSchedules) schedule.id: schedule.title,
       };
       final todoActions = AiActionParser.extractTodoActions(
-        fullContent,
+        actionContent,
         originalText: requestText,
         existingTodoTitles: existingTodoTitles,
         existingScheduleTitles: existingScheduleTitles,
       );
-      final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
+      final inlineSuggestions = AiActionParser.extractSuggestions(
+        actionContent,
+      );
       final financeDrafts = FinanceTextParser.extractAssistantDrafts(
-        fullContent,
+        actionContent,
       );
       final financeActions = FinanceTextParser.extractAssistantActions(
-        fullContent,
+        actionContent,
       );
       final cleanContent = FinanceTextParser.cleanAssistantContent(
-        AiActionParser.cleanActionContent(fullContent),
+        AiActionParser.cleanActionContent(actionContent),
       );
+      final assistantContent = cleanContent.isNotEmpty
+          ? cleanContent
+          : todoActions.isNotEmpty
+          ? '已生成待确认操作草案，请核对后添加。'
+          : financeDrafts.isNotEmpty
+          ? '已生成记账草案，请核对后编辑并保存。'
+          : financeActions.isNotEmpty
+          ? '已生成账单操作草案，请在确认卡中核对。'
+          : nativeToolCalls.isNotEmpty
+          ? 'AI返回了操作调用，但没有匹配到有效的本地记录；未生成可执行草案。请确认待办名称后重试。'
+          : cleanContent;
 
       setState(() {
         final assistantMsg = ChatMessage(
           role: ChatRole.assistant,
-          content: cleanContent.isEmpty &&
-                  (financeDrafts.isNotEmpty || financeActions.isNotEmpty)
-              ? financeDrafts.isNotEmpty
-                  ? '已生成记账草案，请核对后编辑并保存。'
-                  : '已生成账单操作草案，请在确认卡中核对。'
-              : cleanContent,
-          rawContent: fullContent,
+          content: assistantContent,
+          rawContent: rawModelReply,
           reasoningContent: reasoningContent,
           smartContext: _lastRequestSmartContext,
           usageSummary: usageSummary,
@@ -455,18 +528,26 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
 
   Future<List<Map<String, dynamic>>> _buildApiMessagesForRequest({
     required String financeContext,
+    required String habitContext,
     required String provider,
+    bool nativeToolCalls = false,
+    bool includeReasoningContent = false,
   }) async {
-    final baseMessages = _buildApiMessages(financeContext: financeContext);
+    final baseMessages = _buildApiMessages(
+      financeContext: financeContext,
+      habitContext: habitContext,
+      nativeToolCalls: nativeToolCalls,
+      includeReasoningContent: includeReasoningContent,
+    );
     final prepared = <Map<String, dynamic>>[];
     for (final baseMessage in baseMessages) {
       final messageId = baseMessage['_messageId']?.toString();
       final sourceMessage = messageId == null
           ? null
           : _messages.cast<ChatMessage?>().firstWhere(
-                (message) => message?.id == messageId,
-                orElse: () => null,
-              );
+              (message) => message?.id == messageId,
+              orElse: () => null,
+            );
       final message = Map<String, dynamic>.from(baseMessage)
         ..remove('_messageId');
       final attachment = sourceMessage?.attachment;
@@ -482,8 +563,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                   displayName: attachment.name,
                 )
               : await readImageInput(attachment.path);
-          final maxBytes =
-              AiMultimodalMessageBuilder.maxBytesFor(attachment.kind);
+          final maxBytes = AiMultimodalMessageBuilder.maxBytesFor(
+            attachment.kind,
+          );
           if (imageInput.length > maxBytes) {
             throw Exception(
               '${attachment.typeLabel}过大，请选择 '
@@ -513,9 +595,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   }
 
   Future<bool> _tryHandleExplicitFinanceText(String text) async {
-    final hasPickupClue = RegExp(
-      r'取餐|取件|取货|餐号|取单号|取餐码|取件码|外卖|快递',
-    ).hasMatch(text);
+    final hasPickupClue = RegExp(r'取餐|取件|取货|餐号|取单号|取餐码|取件码|外卖|快递')
+        .hasMatch(text);
     if (hasPickupClue || !FinanceTextParser.looksLikeFinanceFormat(text)) {
       return false;
     }
@@ -552,15 +633,27 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty) return;
 
-    final financeContext = await FinanceAiContextService.buildContext(
-      userMessage: text,
-    );
+    final financeContext = _smartContext
+        ? await FinanceAiContextService.buildContext(
+            userMessage: text,
+            conversationContext: _recentConversationTextForContext(),
+          )
+        : '';
+    final habitContext = _smartContext
+        ? await HabitAiContextService.buildContext(
+            userMessage: text,
+            conversationContext: _recentConversationTextForContext(),
+            goals: _habitGoals,
+          )
+        : null;
     final apiMessages = _buildApiMessages(
       pendingUserText: text,
       financeContext: financeContext,
+      habitContext: habitContext ?? '',
     );
-    final manualPrompt =
-        AiTodoContextBuilder.buildManualCopyPrompt(apiMessages);
+    final manualPrompt = AiTodoContextBuilder.buildManualCopyPrompt(
+      apiMessages,
+    );
     _pendingManualOriginalText = text;
     _pendingManualSmartContext = _lastRequestSmartContext;
     await Clipboard.setData(ClipboardData(text: manualPrompt));
@@ -618,8 +711,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     final originalText = _pendingManualOriginalText.isNotEmpty
         ? _pendingManualOriginalText
         : (_inputCtrl.text.trim().isNotEmpty
-            ? _inputCtrl.text.trim()
-            : _lastUserContent());
+              ? _inputCtrl.text.trim()
+              : _lastUserContent());
     final smartContext = _pendingManualSmartContext;
     final existingTodoTitles = {
       for (final todo in widget.todos)
@@ -636,8 +729,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     );
     final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
     final financeDrafts = FinanceTextParser.extractAssistantDrafts(fullContent);
-    final financeActions =
-        FinanceTextParser.extractAssistantActions(fullContent);
+    final financeActions = FinanceTextParser.extractAssistantActions(
+      fullContent,
+    );
     final cleanContent = FinanceTextParser.cleanAssistantContent(
       AiActionParser.cleanActionContent(fullContent),
     );
@@ -650,10 +744,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       role: ChatRole.assistant,
       content: cleanContent.isEmpty
           ? financeDrafts.isNotEmpty
-              ? '已生成记账草案，请核对后编辑并保存。'
-              : financeActions.isNotEmpty
-                  ? '已生成账单操作草案，请在确认卡中核对。'
-                  : fullContent
+                ? '已生成记账草案，请核对后编辑并保存。'
+                : financeActions.isNotEmpty
+                ? '已生成账单操作草案，请在确认卡中核对。'
+                : fullContent
           : cleanContent,
       rawContent: fullContent,
       smartContext: smartContext,
@@ -760,10 +854,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
             'role': 'system',
             'content': '请根据用户的第一个问题生成一个简短的对话标题，不超过10个字，只返回标题文本，不要任何其他内容。',
           },
-          {
-            'role': 'user',
-            'content': firstUserMsg.content,
-          },
+          {'role': 'user', 'content': firstUserMsg.content},
         ],
         provider: provider,
       );
@@ -839,12 +930,15 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         _showInjectedContextPreview = showContextPreview;
         _injectMoreContext = injectMoreContext;
         _deepThinking = deepThinking;
-        _liveSmartContextPreview =
-            _buildSmartContextPreview(_inputCtrl.text.trim());
-        _liveActionProtocolPreview =
-            _buildActionProtocolPreview(_inputCtrl.text.trim());
-        _liveEstimatedTokens =
-            _estimateTokensForPendingInput(_inputCtrl.text.trim());
+        _liveSmartContextPreview = _buildSmartContextPreview(
+          _inputCtrl.text.trim(),
+        );
+        _liveActionProtocolPreview = _buildActionProtocolPreview(
+          _inputCtrl.text.trim(),
+        );
+        _liveEstimatedTokens = _estimateTokensForPendingInput(
+          _inputCtrl.text.trim(),
+        );
       });
     }
 
@@ -876,7 +970,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                   LiquidGlassSwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('智能上下文'),
-                    subtitle: const Text('按当前问题注入待办、日程、规划、账单等只读数据'),
+                    subtitle: const Text('按当前问题注入待办、课程、日程、专注、账单、习惯等只读数据'),
                     value: smartContext,
                     onChanged: (value) =>
                         setDialogState(() => smartContext = value),
@@ -887,9 +981,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                     subtitle: const Text('关闭只会隐藏 UI 详情，不会停止上下文注入'),
                     value: showContextPreview,
                     onChanged: smartContext
-                        ? (value) => setDialogState(
-                              () => showContextPreview = value,
-                            )
+                        ? (value) =>
+                              setDialogState(() => showContextPreview = value)
                         : null,
                   ),
                   LiquidGlassSwitchListTile(
@@ -898,9 +991,8 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                     subtitle: const Text('相关日期问题默认查看未来 30 天'),
                     value: injectMoreContext,
                     onChanged: smartContext
-                        ? (value) => setDialogState(
-                              () => injectMoreContext = value,
-                            )
+                        ? (value) =>
+                              setDialogState(() => injectMoreContext = value)
                         : null,
                   ),
                   LiquidGlassSwitchListTile(
@@ -955,8 +1047,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                     minLines: 6,
                     enabled: enabled,
                     decoration: InputDecoration(
-                      hintText:
-                          '输入自定义提示词...\n\n可用变量：\n{now} - 当前时间\n{todos} - 待办清单\n固定日程、规划块等上下文会按当前问题自动注入',
+                      hintText: '输入自定义提示词...\n\n可用变量：\n{now} - 当前时间\n{todos} - 待办清单\n固定日程、规划块等上下文会按当前问题自动注入',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -977,10 +1068,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
                       const Spacer(),
                       TextButton.icon(
                         onPressed: () {
-                          _showPromptPreview(
-                            promptCtrl.text,
-                            enabled,
-                          );
+                          _showPromptPreview(promptCtrl.text, enabled);
                         },
                         icon: const Icon(Icons.visibility_outlined),
                         label: const Text('预览'),

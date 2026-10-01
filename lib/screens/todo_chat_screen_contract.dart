@@ -1,4 +1,5 @@
 part of 'todo_chat_screen.dart';
+
 // ignore_for_file: unused_element, unused_element_parameter, annotate_overrides
 
 abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
@@ -44,6 +45,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   bool _showCoachMarks = false;
 
   List<TodoPlanBlock> _planBlocks = [];
+  List<HabitGoal> _habitGoals = [];
   List<FixedScheduleItem> _fixedSchedules = [];
   Completer<void>? _cancelGeneration;
   bool _classificationSuggestionInjected = false;
@@ -54,14 +56,14 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   bool get _isWide => MediaQuery.of(context).size.width >= 900;
   bool get _hasPendingActionMessages => _pendingActionMessages.isNotEmpty;
   int get _pendingActionCount => _pendingActionMessages.fold<int>(
-        0,
-        (sum, msg) =>
-            sum +
-            (msg.todoActions
-                    ?.where((action) => !action.isAdded && !action.isIgnored)
-                    .length ??
-                0),
-      );
+    0,
+    (sum, msg) =>
+        sum +
+        (msg.todoActions
+                ?.where((action) => !action.isAdded && !action.isIgnored)
+                .length ??
+            0),
+  );
   bool get _hasActionRailSpace {
     final width = MediaQuery.of(context).size.width;
     const actionRailWidth = 344.0;
@@ -76,9 +78,11 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   void _checkCoachMarks();
   Future<void> _loadCategoryDefaults();
   Future<void> _loadPlanBlocks();
+  Future<void> _loadHabitGoals();
   void dispose();
   void _handleInputChanged();
   String _buildSmartContextPreview(String userText);
+  String _recentConversationTextForContext({String? excludingMessageId});
   String _buildContextQueryText(String userText);
   String _buildActionProtocolPreview(String userText);
   Future<void> _pickCustomInjectRange();
@@ -96,11 +100,14 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   Future<void> _loadDeepThinking();
   Future<void> _openTutorialPage();
   void _scrollToBottom();
-  String _buildSystemPrompt();
+  String _buildSystemPrompt({bool nativeToolCalls = false});
   List<Map<String, dynamic>> _buildApiMessages({
     String? pendingUserText,
     bool trackSmartContext = true,
     String financeContext = '',
+    String habitContext = '',
+    bool nativeToolCalls = false,
+    bool includeReasoningContent = false,
   });
   String _latestUserTextFromHistory();
   String _injectContext(List<Map<String, dynamic>> apiMessages);
@@ -109,7 +116,10 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   Future<void> _pickChatAttachment();
   Future<List<Map<String, dynamic>>> _buildApiMessagesForRequest({
     required String financeContext,
+    required String habitContext,
     required String provider,
+    bool nativeToolCalls = false,
+    bool includeReasoningContent = false,
   });
   Future<void> _copyManualPromptFromInput();
   Future<void> _pasteManualReplyFromClipboard();
@@ -123,11 +133,10 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   void _showPromptPreview(String prompt, bool enabled);
   Widget build(BuildContext context);
   PreferredSizeWidget _buildResponsiveAppBar(
-      bool isDark, ColorScheme colorScheme);
-  Widget _buildWideLayout(
     bool isDark,
     ColorScheme colorScheme,
   );
+  Widget _buildWideLayout(bool isDark, ColorScheme colorScheme);
   List<ChatMessage> get _pendingActionMessages;
   Widget _buildActionRail(bool isDark, ColorScheme colorScheme);
   Widget _buildCollapsedActionRailHandle(ColorScheme colorScheme);
@@ -138,8 +147,10 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   Widget _buildSuggestionsArea(ColorScheme colorScheme);
   String _getCurrentSessionTitle();
   void _showHistorySidebar();
-  Widget _buildHistorySidebarContent(BuildContext context,
-      {required bool isWideMode});
+  Widget _buildHistorySidebarContent(
+    BuildContext context, {
+    required bool isWideMode,
+  });
   Future<void> _deleteAllSessions(BuildContext sidebarCtx);
   Widget _buildModelSelector();
   Future<void> _useGlobalModel();

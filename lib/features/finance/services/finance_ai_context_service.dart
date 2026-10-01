@@ -65,6 +65,45 @@ abstract final class FinanceAiContextService {
     '预算',
   ];
 
+  static const _financeFollowUpWords = [
+    '情况',
+    '数据',
+    '怎么样',
+    '如何',
+    '分析',
+    '总结',
+    '概况',
+    '趋势',
+    '表现',
+    '报告',
+    '呢',
+  ];
+
+  static const _otherContextDomains = [
+    '待办',
+    '任务',
+    '课程',
+    '课表',
+    '上课',
+    '日程',
+    '日历',
+    '规划',
+    '时间块',
+    '专注',
+    '番茄',
+    '倒计时',
+    '习惯',
+    '团队',
+    '成员',
+  ];
+
+  static final RegExp _chineseMonthPattern = RegExp(
+    r'(?:(\d{4})\s*年\s*)?(十一|十二|十|[一二三四五六七八九]|\d{1,2})\s*月(?:份)?',
+  );
+  static final RegExp _numericYearMonthPattern = RegExp(
+    r'(?:^|[^\d])(\d{4})[-/.](0?[1-9]|1[0-2])(?![-/.]\d)',
+  );
+
   static const _periodWords = [
     '本月',
     '这个月',
@@ -101,15 +140,45 @@ abstract final class FinanceAiContextService {
     '改成',
     '改为',
     '删除',
+    '删除掉',
     '删掉',
+    '删掉了',
+    '删了',
     '移除',
+    '去掉',
+    '清除',
   ];
 
-  static bool shouldInjectFor(String userMessage) {
+  static bool shouldInjectFor(
+    String userMessage, {
+    String conversationContext = '',
+  }) {
     final text = userMessage.trim();
-    if (text.isEmpty || !_containsAny(text, _financeNouns)) return false;
-    final asksForData = _containsAny(text, _queryWords) ||
-        (_containsAny(text, _periodWords) && _containsAny(text, _summaryNouns));
+    if (text.isEmpty) return false;
+    final hasFinanceNoun = _containsAny(text, _financeNouns);
+    final hasExplicitMonth = _hasExplicitMonth(text);
+    final hasPeriod = _containsAny(text, _periodWords) || hasExplicitMonth;
+    final followsFinanceConversation =
+        !hasFinanceNoun &&
+        hasPeriod &&
+        _containsAny(text, _financeFollowUpWords) &&
+        !_containsAny(text, _otherContextDomains) &&
+        _containsAny(conversationContext, _financeNouns);
+    final asksAboutBareMonth =
+        !hasFinanceNoun &&
+        hasExplicitMonth &&
+        _containsAny(text, _financeFollowUpWords) &&
+        !_containsAny(text, _otherContextDomains) &&
+        !_containsAny(conversationContext, _otherContextDomains);
+    if (!hasFinanceNoun) {
+      return followsFinanceConversation || asksAboutBareMonth;
+    }
+
+    final asksForData =
+        _containsAny(text, _queryWords) ||
+        (hasPeriod &&
+            (_containsAny(text, _summaryNouns) ||
+                _containsAny(text, _financeFollowUpWords)));
     return asksForData || _containsAny(text, _mutationWords);
   }
 
@@ -117,12 +186,16 @@ abstract final class FinanceAiContextService {
   /// exposing the user's existing ledger.  This covers new-entry requests
   /// such as "今天午餐花了 28 元", which are not ledger queries but still
   /// need the app's real category and payment-method IDs.
-  static bool shouldInjectCatalogFor(String userMessage) {
+  static bool shouldInjectCatalogFor(
+    String userMessage, {
+    String conversationContext = '',
+  }) {
     final text = userMessage.trim();
     return text.isNotEmpty &&
         (_containsAny(text, _catalogKeywords) ||
             RegExp(r'\d+(?:\.\d+)?\s*(?:元|块(?:钱)?|人民币|¥|￥)').hasMatch(text) ||
-            (shouldInjectFor(text) && _containsAny(text, _mutationWords)));
+            (shouldInjectFor(text, conversationContext: conversationContext) &&
+                _containsAny(text, _mutationWords)));
   }
 
   /// Loads only the active local options that a new finance draft may use.
@@ -139,10 +212,17 @@ abstract final class FinanceAiContextService {
 
   static Future<String> buildContext({
     required String userMessage,
+    String conversationContext = '',
     DateTime? now,
   }) async {
-    final needsLedger = shouldInjectFor(userMessage);
-    final needsCatalog = shouldInjectCatalogFor(userMessage);
+    final needsLedger = shouldInjectFor(
+      userMessage,
+      conversationContext: conversationContext,
+    );
+    final needsCatalog = shouldInjectCatalogFor(
+      userMessage,
+      conversationContext: conversationContext,
+    );
     if (!needsLedger && !needsCatalog) return '';
 
     final catalogData = await _loadCatalog();
@@ -160,33 +240,35 @@ abstract final class FinanceAiContextService {
     final monthTo = DateTime(lastDay.year, lastDay.month + 1);
     try {
       final values = await Future.wait<dynamic>([
-        FinanceRepository.getTransactions(
-          from: monthFrom,
-          to: monthTo,
-        ),
+        FinanceRepository.getTransactions(from: monthFrom, to: monthTo),
         FinanceRepository.getBudgets(),
       ]);
       final monthTransactions = values[0] as List<FinanceTransaction>;
       final fromKey = dateKey(range.from);
       final toKey = dateKey(range.to);
       final transactions = monthTransactions
-          .where((item) =>
-              item.transactionDate.compareTo(fromKey) >= 0 &&
-              item.transactionDate.compareTo(toKey) < 0)
+          .where(
+            (item) =>
+                item.transactionDate.compareTo(fromKey) >= 0 &&
+                item.transactionDate.compareTo(toKey) < 0,
+          )
           .toList(growable: false);
       final budgets = (values[1] as List<FinanceBudget>)
-          .where((budget) =>
-              !budget.isPaymentMethod &&
-              budget.monthKey.compareTo(financeMonthKey(monthFrom)) >= 0 &&
-              budget.monthKey.compareTo(financeMonthKey(monthTo)) < 0)
+          .where(
+            (budget) =>
+                !budget.isPaymentMethod &&
+                budget.monthKey.compareTo(financeMonthKey(monthFrom)) >= 0 &&
+                budget.monthKey.compareTo(financeMonthKey(monthTo)) < 0,
+          )
           .toList(growable: false);
       // Budget limits belong to full calendar months even when the ledger
       // question covers only one day/week or spans several different months.
       final budgetSummaries = {
         for (final month in budgets.map((item) => item.monthKey).toSet())
           month: FinanceRepository.summarizeTransactions(
-            monthTransactions.where((item) =>
-                item.transactionDate.startsWith('$month-')),
+            monthTransactions.where(
+              (item) => item.transactionDate.startsWith('$month-'),
+            ),
           ),
       };
       final ledger = _formatContext(
@@ -209,11 +291,36 @@ abstract final class FinanceAiContextService {
     }
   }
 
+  /// Describes finance context included in the live smart-context preview.
+  /// This is synchronous and does not load or expose any ledger data.
+  static String? buildContextInjectionSummary({
+    required String userMessage,
+    String conversationContext = '',
+    DateTime? now,
+  }) {
+    final parts = <String>[];
+    if (shouldInjectFor(
+      userMessage,
+      conversationContext: conversationContext,
+    )) {
+      parts.add('记账明细 ${resolveDateRange(userMessage, now: now).label}');
+    }
+    if (shouldInjectCatalogFor(
+      userMessage,
+      conversationContext: conversationContext,
+    )) {
+      parts.add('记账分类与付款方式');
+    }
+    return parts.isEmpty ? null : parts.join('、');
+  }
+
   static Future<
-      ({
-        List<FinanceCategory> categories,
-        List<FinancePaymentMethod> paymentMethods,
-      })?> _loadCatalog() async {
+    ({
+      List<FinanceCategory> categories,
+      List<FinancePaymentMethod> paymentMethods,
+    })?
+  >
+  _loadCatalog() async {
     try {
       final values = await Future.wait<dynamic>([
         FinanceRepository.getCategories(includeArchived: true),
@@ -254,6 +361,8 @@ abstract final class FinanceAiContextService {
       final from = _mondayOf(current);
       return FinanceDateRange(from, from.add(const Duration(days: 7)));
     }
+    final explicitMonth = _resolveExplicitMonthRange(text, current);
+    if (explicitMonth != null) return explicitMonth;
     if (text.contains('上月') || text.contains('上个月')) {
       final from = DateTime(current.year, current.month - 1);
       return FinanceDateRange(from, DateTime(current.year, current.month));
@@ -336,8 +445,9 @@ abstract final class FinanceAiContextService {
           displayedMonth = budget.monthKey;
           lines.add('预算（${budget.monthKey}，整月）:');
         }
-        final used = (budgetSummaries[budget.monthKey] ?? const FinanceSummary())
-            .spendingForBudget(budget, categories);
+        final used =
+            (budgetSummaries[budget.monthKey] ?? const FinanceSummary())
+                .spendingForBudget(budget, categories);
         final remaining = budget.amountMinor - used;
         final scope = budget.categoryUuid == null
             ? '整体'
@@ -355,7 +465,8 @@ abstract final class FinanceAiContextService {
       lines.add('- 当前范围没有账单');
     } else {
       for (final transaction in transactions.take(60)) {
-        final signed = transaction.type.signedPrefix +
+        final signed =
+            transaction.type.signedPrefix +
             formatFinanceAmount(transaction.amountMinor);
         final merchant = transaction.merchant?.trim().isNotEmpty == true
             ? ' | 商家: ${transaction.merchant}'
@@ -391,13 +502,14 @@ abstract final class FinanceAiContextService {
             final order = a.sortOrder.compareTo(b.sortOrder);
             return order == 0 ? a.name.compareTo(b.name) : order;
           });
-    final visiblePaymentMethods = paymentMethods
-        .where((item) => !item.isArchived && !item.isDeleted)
-        .toList()
-      ..sort((a, b) {
-        final order = a.sortOrder.compareTo(b.sortOrder);
-        return order == 0 ? a.name.compareTo(b.name) : order;
-      });
+    final visiblePaymentMethods =
+        paymentMethods
+            .where((item) => !item.isArchived && !item.isDeleted)
+            .toList()
+          ..sort((a, b) {
+            final order = a.sortOrder.compareTo(b.sortOrder);
+            return order == 0 ? a.name.compareTo(b.name) : order;
+          });
 
     if (visibleCategories.isEmpty && visiblePaymentMethods.isEmpty) return '';
 
@@ -432,6 +544,55 @@ abstract final class FinanceAiContextService {
 
   static bool _containsAny(String text, List<String> words) =>
       words.any(text.contains);
+
+  static bool _hasExplicitMonth(String text) =>
+      _chineseMonthPattern.hasMatch(text) ||
+      _numericYearMonthPattern.hasMatch(text);
+
+  static FinanceDateRange? _resolveExplicitMonthRange(
+    String text,
+    DateTime current,
+  ) {
+    final numericYearMonth = _numericYearMonthPattern.firstMatch(text);
+    int? year;
+    int? month;
+    if (numericYearMonth != null) {
+      year = int.tryParse(numericYearMonth.group(1)!);
+      month = int.tryParse(numericYearMonth.group(2)!);
+    } else {
+      final chineseMonth = _chineseMonthPattern.firstMatch(text);
+      if (chineseMonth == null) return null;
+      year = int.tryParse(chineseMonth.group(1) ?? '');
+      month = _parseMonthNumber(chineseMonth.group(2)!);
+    }
+    if (month == null || month < 1 || month > 12) return null;
+    year ??= text.contains('前年')
+        ? current.year - 2
+        : text.contains('去年') || text.contains('上一年')
+        ? current.year - 1
+        : current.year;
+    final from = DateTime(year, month);
+    return FinanceDateRange(from, DateTime(year, month + 1));
+  }
+
+  static int? _parseMonthNumber(String value) {
+    final numeric = int.tryParse(value);
+    if (numeric != null) return numeric;
+    return const {
+      '一': 1,
+      '二': 2,
+      '三': 3,
+      '四': 4,
+      '五': 5,
+      '六': 6,
+      '七': 7,
+      '八': 8,
+      '九': 9,
+      '十': 10,
+      '十一': 11,
+      '十二': 12,
+    }[value];
+  }
 
   static DateTime _day(DateTime value) =>
       DateTime(value.year, value.month, value.day);

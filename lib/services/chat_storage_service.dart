@@ -1,6 +1,8 @@
 import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+
 import '../models/chat_message.dart';
 import 'ai_action_parser.dart';
 import 'legacy_ai_prompt_sanitizer.dart';
@@ -70,42 +72,18 @@ class ChatStorageService {
   }
 
   static const String _defaultPrompt =
-      '''你是一个智能效率助手，帮助用户分别管理待办、习惯目标、固定日程、规划块、专注记录、番茄钟、倒计时、番茄标签和记账。
+      '''你是一个智能效率助手。结合用户本轮请求和提供的上下文，用简洁的中文回答，并给出具体、可执行的建议。
 
 【当前时间】
 {now}
 
-【用户当前待办清单】
+【待办上下文】
 {todos}
 
-【你的能力】
-1. 创建、修改、完成、删除、延期、分类、拆分、合并待办
-2. 创建习惯目标：区分数量、时间点、时长和完成一次型，并设置周期、目标和提醒
-3. 创建、修改、取消、删除固定日程，并区分时间待定、结束待定和明确时间段
-4. 分析优先级，建议执行顺序（考虑时间紧迫性、重要程度、依赖关系）
-5. 制定每日/每周计划，把已有待办安排为可调整的规划块
-6. 新增、修改、删除专注记录
-7. 开始或停止番茄钟
-8. 新增、修改、完成、删除倒计时
-9. 新增、改名、改色、删除番茄标签
-10. 新增记账草案；识别支出、收入、退款的金额、分类、商家、日期、付款方式和备注
-11. 查询本月或指定范围的账单、收支汇总、分类排行、预算使用情况
-12. 根据记账上下文提出已有账单的修改或删除草案，但必须等待用户确认
-13. 当用户提及课程、日程、专注记录、团队协作等话题时，系统会自动提供相关上下文
-
 【回复要求】
-- 使用Markdown格式，简洁明了
-- 给出具体可执行的建议
-- 涉及时间安排时说明理由
-- 待办表示要完成的结果，规划块表示用户可调整的执行时段，考试/课程/会议等外部时间约束属于固定日程
-- 习惯是独立的周期追踪目标；用户明确要创建习惯时必须使用create_habit
-- 如果用户只描述周期性事项但没有明确要创建成习惯还是待办，先询问用户选择，不得擅自生成任何创建动作
-- 不得为了容纳时间段把固定日程创建成待办，也不得把可调整的自我执行时段创建成固定日程
-- 没有日期时不要默认今天全天；重复待办也不要自动称为习惯
-- 循环待办和循环日程都由多个可独立寻址的真实期次组成；修改默认只针对本期，只有用户明确要求时才修改本期及以后；完成只属于待办单期，取消日程使用独立状态
-- 记账只先生成待确认草案，不要直接声称已经保存。用户要求新增记账或给出账单信息时，在正文末尾追加 [FINANCE_START] 和 [FINANCE_END] 包裹的JSON数组；金额使用元，type只能是expense/income/refund，日期使用yyyy-MM-dd，缺少的可选字段用null。每笔账单单独一个对象，且不要因为同一段内容里还有取餐码就省略账单。
-- 查询已有账单、预算或汇总时，依据系统提供的只读记账上下文直接回答，不要声称执行了写入；必要时追加 [FINANCE_ACTION_START] 和 [FINANCE_ACTION_END] 包裹的JSON数组。
-- 修改已有账单使用 action=update_finance，删除已有账单使用 action=delete_finance；只能复制上下文里的真实 transactionId，先生成待确认操作，不得直接保存或删除。''';
+- 使用简洁、清楚的中文和Markdown；建议应具体可执行。
+- 日期、事项类型和操作范围以本轮请求及系统提供的数据为准；缺少关键信息时先追问。
+- 不要声称尚未完成或仍待确认的操作已经保存。''';
 
   static const String _currentPromptProtocol = '''
 【CDT 当前聊天协议 v2 | CDT_CHAT_PROTOCOL_V2】
@@ -116,6 +94,19 @@ class ChatStorageService {
 - 周期性事项类型不明确时先询问用户选择习惯或循环待办，不生成创建动作。''';
 
   static String get defaultPrompt => '$_defaultPrompt\n$_currentPromptProtocol';
+
+  /// Removes the appended text protocol when a provider uses native tools.
+  /// Older user prompts may still contain the v2 section after migration.
+  static String removeCurrentTextProtocol(String prompt) {
+    return prompt
+        .replaceFirst(
+          RegExp(
+            r'(?:^|\n)【CDT 当前聊天协议 v\d+ \| CDT_CHAT_PROTOCOL_V\d+】[\s\S]*$',
+          ),
+          '',
+        )
+        .trim();
+  }
 
   static String ensureCurrentPromptProtocol(String prompt) {
     final value = prompt.trim();
@@ -197,9 +188,7 @@ class ChatStorageService {
 
   static Future<ChatSession> createSession({String? title}) async {
     final sessions = await loadSessions();
-    final newSession = ChatSession(
-      title: title ?? '新对话',
-    );
+    final newSession = ChatSession(title: title ?? '新对话');
     sessions.insert(0, newSession);
     await saveSessions(sessions);
     await setActiveSessionId(newSession.id);
@@ -222,10 +211,7 @@ class ChatStorageService {
     }
   }
 
-  static Future<void> updateSessionTitle(
-    String sessionId,
-    String title,
-  ) async {
+  static Future<void> updateSessionTitle(String sessionId, String title) async {
     final sessions = await loadSessions();
     final session = sessions.firstWhere(
       (s) => s.id == sessionId,
@@ -290,8 +276,9 @@ class ChatStorageService {
     await saveHistory(history, sid);
     if (history.length == 2 && message.role == ChatRole.assistant) {
       final sessions = await loadSessions();
-      final session =
-          sessions.where((session) => session.id == sid).firstOrNull;
+      final session = sessions
+          .where((session) => session.id == sid)
+          .firstOrNull;
       if (session != null && session.title == '新对话') {
         final firstUserMsg = history.firstWhere(
           (m) => m.role == ChatRole.user,
