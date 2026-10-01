@@ -35,7 +35,7 @@ void main() {
       final original = FinanceBudget(
         uuid: 'budget-concurrent-edit',
         monthKey: '2026-10',
-        categoryUuid: 'food',
+        categoryUuid: 'finance-system-category-food',
         amountMinor: 10000,
         note: '旧备注',
       );

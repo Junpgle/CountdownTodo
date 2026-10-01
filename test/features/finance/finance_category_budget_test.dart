@@ -221,6 +221,7 @@ void main() {
           categoryUuid: 'finance-system-category-food',
           amountMinor: 1000,
           transactionDate: '2026-09-02',
+          occurredAt: DateTime(2026, 9, 2, 12).millisecondsSinceEpoch,
         ),
       );
       await FinanceStorage.saveTransaction(
@@ -229,6 +230,7 @@ void main() {
           categoryUuid: 'finance-system-category-food-takeout',
           amountMinor: 9000,
           transactionDate: '2026-09-03',
+          occurredAt: DateTime(2026, 9, 3, 12).millisecondsSinceEpoch,
         ),
       );
     });
