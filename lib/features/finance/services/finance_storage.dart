@@ -3014,6 +3014,8 @@ abstract final class FinanceStorage {
     final loanInstallmentMaps = loanInstallmentInput.maps
       ..sort(_compareRawLoanInstallmentMaps);
     final seenActiveLoanInstallments = <String>{};
+    final loanScheduleCache =
+        <String, List<FinanceLoanScheduleAllocation>>{};
     for (final map in loanInstallmentMaps) {
       if (!_hasRawFinanceUuid(map) ||
           !_hasSafeRawLoanInstallmentAmounts(map) ||
@@ -3043,7 +3045,12 @@ abstract final class FinanceStorage {
           : FinanceLoan.fromMap(parentLoan);
       if (loan == null ||
           (loan.isDeleted && !item.isDeleted) ||
-          (!item.isDeleted && item.installmentIndex > loan.termMonths)) {
+          (!item.isDeleted &&
+              !_matchesLoanInstallmentSchedule(
+                loan,
+                item,
+                loanScheduleCache,
+              ))) {
         skipped++;
         continue;
       }
@@ -3766,6 +3773,8 @@ abstract final class FinanceStorage {
     Set<String> forceRemoteKeys = const {},
   }) async {
     var changed = 0;
+    final loanScheduleCache =
+        <String, List<FinanceLoanScheduleAllocation>>{};
     for (final item in items) {
       final parentLoan = await _findByUuid(db, 'finance_loans', item.loanUuid);
       final loan = parentLoan == null
@@ -3773,7 +3782,12 @@ abstract final class FinanceStorage {
           : FinanceLoan.fromMap(parentLoan);
       if (loan == null ||
           (loan.isDeleted && !item.isDeleted) ||
-          (!item.isDeleted && item.installmentIndex > loan.termMonths)) {
+          (!item.isDeleted &&
+              !_matchesLoanInstallmentSchedule(
+                loan,
+                item,
+                loanScheduleCache,
+              ))) {
         continue;
       }
       if (!item.isDeleted) {
@@ -4555,6 +4569,33 @@ abstract final class FinanceStorage {
       left.principalMinor == right.principalMinor &&
       left.interestMinor == right.interestMinor &&
       left.remainingPrincipalMinor == right.remainingPrincipalMinor;
+
+  static bool _matchesLoanInstallmentSchedule(
+    FinanceLoan loan,
+    FinanceLoanInstallment installment,
+    Map<String, List<FinanceLoanScheduleAllocation>> scheduleCache,
+  ) {
+    final index = installment.installmentIndex;
+    if (index < 1 || index > loan.termMonths) return false;
+    final schedule = scheduleCache.putIfAbsent(
+      loan.uuid,
+      () => FinanceLoanCalculator.generate(
+        principalMinor: loan.principalMinor,
+        annualInterestRateBps: loan.annualInterestRateBps,
+        termMonths: loan.termMonths,
+        startDate: dateFromKey(loan.startDate),
+        repaymentDay: loan.repaymentDay,
+        repaymentMethod: loan.repaymentMethod,
+      ),
+    );
+    final expected = schedule[index - 1];
+    return installment.dueDate == expected.dueDate &&
+        installment.paymentMinor == expected.paymentMinor &&
+        installment.principalMinor == expected.principalMinor &&
+        installment.interestMinor == expected.interestMinor &&
+        installment.remainingPrincipalMinor ==
+            expected.remainingPrincipalMinor;
+  }
 
   static bool _loanTermsDiffer(FinanceLoan left, FinanceLoan right) {
     return left.principalMinor != right.principalMinor ||

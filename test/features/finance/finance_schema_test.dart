@@ -796,6 +796,46 @@ void main() {
         );
       });
 
+      test('$source 拒绝与贷款计划不一致的还款期次', () async {
+        final loan = FinanceLoan(
+          uuid: 'mismatched-schedule-loan-$source',
+          name: '还款计划一致性贷款',
+          principalMinor: 1000,
+          termMonths: 1,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        final installment = FinanceLoanInstallment(
+          uuid: 'mismatched-schedule-installment-$source',
+          loanUuid: loan.uuid,
+          installmentIndex: 1,
+          dueDate: '2026-10-01',
+          paymentMinor: 800,
+          principalMinor: 800,
+          interestMinor: 0,
+          remainingPrincipalMinor: 200,
+        );
+        final bundle = {
+          'loans': [loan.toMap()],
+          'loan_installments': [installment.toMap()],
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['imported'], 1);
+          expect(result['skipped'], 1);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 1);
+        }
+        expect(
+          await FinanceStorage.getLoanInstallments(
+            loan.uuid,
+            includeDeleted: true,
+          ),
+          isEmpty,
+        );
+      });
+
       test('$source 拒绝超过贷款期限的还款计划', () async {
         final loan = FinanceLoan(
           uuid: 'short-loan-$source',
