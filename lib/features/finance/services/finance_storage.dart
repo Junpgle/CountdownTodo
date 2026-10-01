@@ -2818,11 +2818,16 @@ abstract final class FinanceStorage {
 
     final importedBudgets = <FinanceBudget>[];
     for (final map in _listOfMaps(bundle['budgets'])) {
+      if (!_isSafeRawFinanceAmount(
+        map['amount_minor'] ?? map['amountMinor'],
+      )) {
+        skipped++;
+        continue;
+      }
       final item = FinanceBudget.fromMap(map);
       item.uuid = remap(item.uuid);
       item.categoryUuid = _remapNullable(item.categoryUuid, remap);
       item.paymentMethodUuid = _remapNullable(item.paymentMethodUuid, remap);
-      item.amountMinor = item.amountMinor.abs();
       if (!_isValidBudget(item)) {
         skipped++;
         continue;
@@ -2993,6 +2998,11 @@ abstract final class FinanceStorage {
         .toList(growable: false);
     final budgets = _latestBudgetsByScope(
       _listOfMaps(bundle['budgets'])
+          .where(
+            (map) => _isSafeRawFinanceAmount(
+              map['amount_minor'] ?? map['amountMinor'],
+            ),
+          )
           .map(FinanceBudget.fromMap)
           .where(_isValidBudget)
           .toList(growable: false),

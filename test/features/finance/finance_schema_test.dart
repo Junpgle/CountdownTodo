@@ -120,6 +120,44 @@ void main() {
       );
     });
 
+    for (final source in ['backup', 'remote']) {
+      test('$source 拒绝负数预算和余额快照', () async {
+        final snapshotAt = DateTime(2026, 10, 1).millisecondsSinceEpoch;
+        final budgets = [
+          FinanceBudget(
+            uuid: 'negative-$source-category-budget',
+            monthKey: '2026-10',
+            categoryUuid: 'expense-category',
+            amountMinor: -1200,
+          ).toMap(),
+          FinanceBudget(
+            uuid: 'negative-$source-balance-snapshot',
+            monthKey: '2026-10',
+            paymentMethodUuid: 'payment-card',
+            amountMinor: -5000,
+            balanceSnapshotAt: snapshotAt,
+          ).toMap(),
+        ];
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'budgets': budgets,
+          });
+          expect(result['skipped'], 2);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({'budgets': budgets}),
+            0,
+          );
+        }
+
+        expect(
+          await FinanceStorage.getBudgets(includeDeleted: true),
+          isEmpty,
+        );
+      });
+    }
+
     test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {
       final unsafeTransaction = FinanceTransaction(
         uuid: 'unsafe-large-transaction',
