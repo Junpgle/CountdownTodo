@@ -1762,11 +1762,15 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       return const SizedBox.shrink();
     }
     final hasPlan = _installmentEnabled;
+    final now = DateTime.now();
+    final selectedMonthLabel = _date.year == now.year && _date.month == now.month
+        ? '当前月份'
+        : '${_date.year}年${_date.month}月';
     final subtitle = _isEditingInstallment
         ? '修改表单内容时，会同步更新全部分期'
         : hasPlan
         ? '从 ${dateKey(_date)} 开始，每月记入一期账单'
-        : '将整笔金额一次性计入当前月份';
+        : '将整笔金额一次性计入$selectedMonthLabel';
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow.withValues(alpha: 0.52),

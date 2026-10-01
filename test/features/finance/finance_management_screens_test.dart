@@ -495,6 +495,30 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('一次性入账说明跟随所选历史月份', (tester) async {
+    await _seed(tester);
+    final now = DateTime.now();
+    final selectedMonth = DateTime(now.year, now.month - 1);
+    final monthLabel = '${selectedMonth.year}年${selectedMonth.month}月';
+    final expectedDescription = '将整笔金额一次性计入$monthLabel';
+    await _pump(
+      tester,
+      FinanceEntryScreen(
+        initialDraft: FinanceEntryDraft(
+          amountMinor: 1200,
+          transactionDate: dateKey(
+            DateTime(selectedMonth.year, selectedMonth.month, 5),
+          ),
+        ),
+      ),
+      size: const Size(1100, 2400),
+    );
+
+    expect(find.text(expectedDescription), findsOneWidget);
+    expect(find.text('将整笔金额一次性计入当前月份'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('编辑旧账单时保留未记录的发生时刻', (tester) async {
     final db = await _seed(tester);
     final legacyDate = DateTime(2026, 9, 10);
