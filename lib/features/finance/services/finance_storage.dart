@@ -1710,6 +1710,13 @@ abstract final class FinanceStorage {
     await ensureReady();
     final db = await _database;
     await db.transaction((txn) async {
+      if (!await _hasValidBudgetScope(txn, budget)) {
+        throw ArgumentError.value(
+          budget,
+          'budget',
+          '预算必须关联有效的支出分类或付款方式',
+        );
+      }
       final existingByUuid = await _findByUuid(
         txn,
         'finance_budgets',
@@ -2836,7 +2843,7 @@ abstract final class FinanceStorage {
       item.uuid = remap(item.uuid);
       item.categoryUuid = _remapNullable(item.categoryUuid, remap);
       item.paymentMethodUuid = _remapNullable(item.paymentMethodUuid, remap);
-      if (!_isValidBudget(item)) {
+      if (!_isValidBudget(item) || !await _hasValidBudgetScope(db, item)) {
         skipped++;
         continue;
       }
@@ -3641,6 +3648,7 @@ abstract final class FinanceStorage {
   }) async {
     var changed = 0;
     for (final item in items) {
+      if (!await _hasValidBudgetScope(db, item)) continue;
       final scopeRows = await _findAllBudgetsByScope(db, item);
       if (scopeRows.isEmpty) {
         await db.insert('finance_budgets', _remoteValues(item.toMap()));
@@ -4103,6 +4111,28 @@ abstract final class FinanceStorage {
         isSafeFinanceAmountMinor(item.amountMinor) &&
         (item.isPaymentMethod ? item.amountMinor >= 0 : item.amountMinor > 0) &&
         RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(item.monthKey);
+  }
+
+  static Future<bool> _hasValidBudgetScope(
+    DatabaseExecutor db,
+    FinanceBudget budget,
+  ) async {
+    final categoryUuid = budget.categoryUuid;
+    if (categoryUuid != null) {
+      final row = await _findByUuid(db, 'finance_categories', categoryUuid);
+      return row != null &&
+          FinanceCategory.fromMap(row).type == FinanceCategoryType.expense;
+    }
+    final paymentMethodUuid = budget.paymentMethodUuid;
+    if (paymentMethodUuid != null) {
+      return await _findByUuid(
+            db,
+            'finance_payment_methods',
+            paymentMethodUuid,
+          ) !=
+          null;
+    }
+    return true;
   }
 
   static bool _isValidRecurringRule(FinanceRecurringRule item) {

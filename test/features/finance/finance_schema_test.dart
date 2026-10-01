@@ -230,6 +230,101 @@ void main() {
       });
     }
 
+    test('本地预算拒绝收入分类和不存在的关联项', () async {
+      await db.insert(
+        'finance_categories',
+        FinanceCategory(
+          uuid: 'income-budget-category',
+          name: '工资',
+          type: FinanceCategoryType.income,
+        ).toMap(),
+      );
+
+      await expectLater(
+        FinanceStorage.saveBudget(
+          FinanceBudget(
+            uuid: 'income-category-budget',
+            monthKey: '2026-10',
+            categoryUuid: 'income-budget-category',
+            amountMinor: 1000,
+          ),
+        ),
+        throwsArgumentError,
+      );
+      await expectLater(
+        FinanceStorage.saveBudget(
+          FinanceBudget(
+            uuid: 'missing-category-budget',
+            monthKey: '2026-10',
+            categoryUuid: 'missing-expense-category',
+            amountMinor: 1000,
+          ),
+        ),
+        throwsArgumentError,
+      );
+      await expectLater(
+        FinanceStorage.saveBudget(
+          FinanceBudget(
+            uuid: 'missing-method-budget',
+            monthKey: '2026-10',
+            paymentMethodUuid: 'missing-payment-method',
+            amountMinor: 1000,
+          ),
+        ),
+        throwsArgumentError,
+      );
+      expect(await FinanceStorage.getBudgets(includeDeleted: true), isEmpty);
+    });
+
+    for (final source in ['backup', 'remote']) {
+      test('$source 拒绝错误分类类型和孤立预算', () async {
+        await db.insert(
+          'finance_categories',
+          FinanceCategory(
+            uuid: 'income-$source-budget-category',
+            name: '工资',
+            type: FinanceCategoryType.income,
+          ).toMap(),
+        );
+        final budgets = [
+          FinanceBudget(
+            uuid: 'income-$source-category-budget',
+            monthKey: '2026-10',
+            categoryUuid: 'income-$source-budget-category',
+            amountMinor: 1000,
+          ).toMap(),
+          FinanceBudget(
+            uuid: 'orphan-$source-category-budget',
+            monthKey: '2026-10',
+            categoryUuid: 'missing-$source-category',
+            amountMinor: 2000,
+          ).toMap(),
+          FinanceBudget(
+            uuid: 'orphan-$source-payment-budget',
+            monthKey: '2026-10',
+            paymentMethodUuid: 'missing-$source-payment-method',
+            amountMinor: 3000,
+          ).toMap(),
+        ];
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'budgets': budgets,
+          });
+          expect(result['skipped'], 3);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({'budgets': budgets}),
+            0,
+          );
+        }
+        expect(
+          await FinanceStorage.getBudgets(includeDeleted: true),
+          isEmpty,
+        );
+      });
+    }
+
     test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {
       final unsafeTransaction = FinanceTransaction(
         uuid: 'unsafe-large-transaction',
@@ -961,6 +1056,10 @@ void main() {
     });
     await DatabaseHelper.ensureFinanceSchema(db);
     FinanceStorage.databaseOverride = db;
+    await db.insert(
+      'finance_payment_methods',
+      FinancePaymentMethod(uuid: 'card', name: '测试银行卡').toMap(),
+    );
 
     final balance = FinanceBudget(
       monthKey: '2026-09',
@@ -1082,6 +1181,13 @@ void main() {
     });
     await DatabaseHelper.ensureFinanceSchema(db);
     FinanceStorage.databaseOverride = db;
+    await db.insert(
+      'finance_payment_methods',
+      FinancePaymentMethod(
+        uuid: 'historical-card',
+        name: '历史银行卡',
+      ).toMap(),
+    );
 
     final now = DateTime.now();
     final pastMonth = DateTime(now.year, now.month - 1);
@@ -1526,6 +1632,10 @@ void main() {
     });
     await DatabaseHelper.ensureFinanceSchema(db);
     FinanceStorage.databaseOverride = db;
+    await db.insert(
+      'finance_categories',
+      FinanceCategory(uuid: 'category-food', name: '餐饮').toMap(),
+    );
 
     final local = FinanceBudget(
       monthKey: '2026-09',
@@ -1576,6 +1686,12 @@ void main() {
     });
     await DatabaseHelper.ensureFinanceSchema(db);
     FinanceStorage.databaseOverride = db;
+    for (final uuid in ['payment-card', 'payment-wallet']) {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: uuid, name: uuid).toMap(),
+      );
+    }
 
     final card = FinanceBudget(
       monthKey: '2026-09',
@@ -1655,6 +1771,10 @@ void main() {
     });
     await DatabaseHelper.ensureFinanceSchema(db);
     FinanceStorage.databaseOverride = db;
+    await db.insert(
+      'finance_categories',
+      FinanceCategory(uuid: 'category-food', name: '餐饮').toMap(),
+    );
 
     await FinanceStorage.mergeRemoteBundle({
       'budgets': [
@@ -2733,6 +2853,10 @@ void main() {
     });
     await DatabaseHelper.ensureFinanceSchema(db);
     FinanceStorage.databaseOverride = db;
+    await db.insert(
+      'finance_categories',
+      FinanceCategory(uuid: 'category-food', name: '餐饮').toMap(),
+    );
 
     final first = FinanceBudget(
       monthKey: '2026-09',
