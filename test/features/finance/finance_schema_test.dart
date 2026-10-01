@@ -10,8 +10,511 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+Map<String, dynamic> _balanceSyncResponse({bool supportsBalances = false}) => {
+      'sync_capabilities': {
+        'finance_v1': 1,
+        if (supportsBalances) 'finance_account_balances_v1': 1,
+      },
+      'server_finance_categories': <Map<String, dynamic>>[],
+      'server_finance_payment_methods': <Map<String, dynamic>>[],
+      'server_finance_transactions': <Map<String, dynamic>>[],
+      'server_finance_loans': <Map<String, dynamic>>[],
+      'server_finance_loan_installments': <Map<String, dynamic>>[],
+      'server_finance_budgets': <Map<String, dynamic>>[],
+      'server_finance_recurring_rules': <Map<String, dynamic>>[],
+      'server_finance_entry_templates': <Map<String, dynamic>>[],
+      'finance_acknowledged_changes': <Map<String, dynamic>>[],
+      'new_finance_sync_time': DateTime.now().millisecondsSinceEpoch,
+    };
+
 void main() {
   sqfliteFfiInit();
+
+  group('余额同步与还款账户', () {
+    late Database db;
+    const user = 'balance-sync-test';
+    const account = 'finance-system-payment-cash';
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({'current_login_user': user});
+      db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      FinanceStorage.databaseOverride = db;
+      await DatabaseHelper.ensureFinanceSchema(db);
+      await FinanceStorage.ensureReady();
+    });
+    tearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+
+    test('V56本地余额升级时只排队一次，保留零余额及快照时刻', () async {
+      final snapshotAt = DateTime(2026, 9, 20).millisecondsSinceEpoch;
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'legacy-balance',
+          monthKey: '2026-09',
+          amountMinor: 0,
+          paymentMethodUuid: account,
+          balanceSnapshotAt: snapshotAt,
+        ).toMap(),
+      );
+      await db.execute(
+        'ALTER TABLE finance_loan_installments DROP COLUMN payment_method_uuid',
+      );
+      await DatabaseHelper.ensureFinanceSchema(db);
+      final migrated = (await db.query('finance_budgets')).single;
+      expect(migrated['pending_sync'], 1);
+      expect(migrated['amount_minor'], 0);
+      expect(migrated['balance_snapshot_at'], snapshotAt);
+      await db.update('finance_budgets', {'pending_sync': 0});
+      await DatabaseHelper.ensureFinanceSchema(db);
+      expect((await db.query('finance_budgets')).single['pending_sync'], 0);
+    });
+
+    test('零余额使用专用同步字段，旧服务不确认，新服务明确确认后保留快照', () async {
+      final snapshotAt = DateTime(2026, 9, 20).millisecondsSinceEpoch;
+      await FinanceStorage.saveBudget(
+        FinanceBudget(
+          uuid: 'zero-balance',
+          monthKey: '2026-09',
+          amountMinor: 0,
+          paymentMethodUuid: account,
+          balanceSnapshotAt: snapshotAt,
+        ),
+        balanceSnapshotAt: snapshotAt,
+      );
+      final first = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      expect(first.payload['finance_budgets_changes'], isEmpty);
+      expect(
+        (first.payload['finance_balance_snapshots_changes'] as List)
+            .single['uuid'],
+        FinanceBudget.stableUuid('2026-09', null, paymentMethodUuid: account),
+      );
+      await FinanceSyncService.finish(
+        request: first,
+        response: _balanceSyncResponse(),
+        supported: true,
+      );
+      expect((await db.query('finance_budgets')).single['pending_sync'], 1);
+      expect(await FinanceSyncService.balanceSyncSupport(), false);
+
+      final second = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      final pending =
+          (second.payload['finance_balance_snapshots_changes'] as List).single
+              as Map;
+      final ackAt = (pending['updated_at'] as int) + 100;
+      final response = _balanceSyncResponse(supportsBalances: true);
+      response['finance_acknowledged_changes'] = [
+        {
+          'table': 'budgets',
+          'uuid': pending['uuid'],
+          'version': pending['version'],
+          'updated_at': ackAt,
+        },
+      ];
+      final result = await FinanceSyncService.finish(
+        request: second,
+        response: response,
+        supported: true,
+      );
+      expect(result.acknowledgedChangeCount, 1);
+      final acknowledged = (await db.query('finance_budgets')).single;
+      expect(acknowledged['pending_sync'], 0);
+      expect(acknowledged['updated_at'], ackAt);
+      expect(acknowledged['balance_snapshot_at'], snapshotAt);
+      expect(await FinanceSyncService.balanceSyncSupport(), true);
+
+      // Capability discovery requests a full pull, including older balances
+      // whose timestamps are already below the ordinary finance cursor.
+      final bootstrap = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      expect(bootstrap.fullSync, true);
+      await FinanceSyncService.finish(
+        request: bootstrap,
+        response: _balanceSyncResponse(supportsBalances: true),
+        supported: true,
+      );
+      expect(
+        (await FinanceSyncService.prepare(
+          username: user,
+          forceFullSync: false,
+        )).fullSync,
+        false,
+      );
+
+      final other = await databaseFactoryFfi.openDatabase(
+        inMemoryDatabasePath,
+        options: OpenDatabaseOptions(singleInstance: false),
+      );
+      try {
+        await DatabaseHelper.ensureFinanceSchema(other);
+        FinanceStorage.databaseOverride = other;
+        expect(
+          await FinanceStorage.mergeRemoteBundle({
+            'budgets': [acknowledged],
+          }),
+          1,
+        );
+        final downloaded = (await other.query('finance_budgets')).single;
+        expect(downloaded['amount_minor'], 0);
+        expect(downloaded['payment_method_uuid'], account);
+        expect(downloaded['balance_snapshot_at'], snapshotAt);
+        expect(downloaded['pending_sync'], 0);
+      } finally {
+        FinanceStorage.databaseOverride = db;
+        await other.close();
+      }
+    });
+
+    test('无息还款记录账户，删除保留已发生扣款、撤销才移除', () async {
+      final loan = FinanceLoan(
+        uuid: 'zero-interest-loan',
+        name: '无息借款',
+        principalMinor: 10000,
+        annualInterestRateBps: 0,
+        termMonths: 2,
+        startDate: '2026-09-01',
+        repaymentDay: 1,
+      );
+      await FinanceStorage.saveLoan(loan);
+      final installment = (await FinanceStorage.getLoanInstallments(loan.uuid))
+          .first;
+      final paidAt = DateTime.now().subtract(const Duration(hours: 1));
+      await FinanceStorage.setLoanInstallmentPaid(
+        installment.uuid,
+        true,
+        paymentMethodUuid: account,
+        paidAt: paidAt,
+      );
+      expect(
+        (await FinanceStorage.getPaidLoanInstallments()).single.paymentMinor,
+        5000,
+      );
+      expect(await db.query('finance_transactions'), isEmpty);
+      final request = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      expect(
+        (request.payload['finance_loan_account_changes'] as List)
+            .single['uuid'],
+        installment.uuid,
+      );
+      final local = (await FinanceStorage.getLoanInstallment(
+        installment.uuid,
+      ))!;
+      final response = _balanceSyncResponse();
+      final legacy = local.toMap()..remove('payment_method_uuid');
+      legacy['version'] = local.version + 10;
+      legacy['updated_at'] = local.updatedAt + 100;
+      response['server_finance_loan_installments'] = [legacy];
+      await FinanceSyncService.finish(
+        request: request,
+        response: response,
+        supported: true,
+      );
+      expect(
+        (await FinanceStorage.getLoanInstallment(installment.uuid))!
+            .paymentMethodUuid,
+        account,
+      );
+      expect(
+        (await db.query(
+          'finance_loan_installments',
+          where: 'uuid = ?',
+          whereArgs: [installment.uuid],
+        )).single['pending_sync'],
+        1,
+      );
+      await FinanceStorage.deleteLoan(loan.uuid);
+      expect(
+        (await FinanceStorage.getPaidLoanInstallments()).single.paymentMinor,
+        5000,
+      );
+      final deletedBundle = await FinanceStorage.getExportBundle();
+      for (final restoreFromCloud in [true, false]) {
+        final other = await databaseFactoryFfi.openDatabase(
+          inMemoryDatabasePath,
+          options: OpenDatabaseOptions(singleInstance: false),
+        );
+        try {
+          await DatabaseHelper.ensureFinanceSchema(other);
+          FinanceStorage.databaseOverride = other;
+          if (restoreFromCloud) {
+            await FinanceStorage.mergeRemoteBundle(deletedBundle);
+          } else {
+            await FinanceStorage.importBundle(deletedBundle);
+          }
+          expect(
+            (await FinanceStorage.getPaidLoanInstallments())
+                .single
+                .paymentMinor,
+            5000,
+            reason: restoreFromCloud ? '云端恢复已删除贷款的扣款' : '备份恢复已删除贷款的扣款',
+          );
+          expect(
+            (await FinanceStorage.getLoan(
+              loan.uuid,
+              includeDeleted: true,
+            ))!.isDeleted,
+            true,
+          );
+        } finally {
+          FinanceStorage.databaseOverride = db;
+          await other.close();
+        }
+      }
+      await FinanceStorage.restoreLoan(loan.uuid);
+      expect(
+        (await FinanceStorage.getPaidLoanInstallments()).single.paidAt,
+        paidAt.millisecondsSinceEpoch,
+      );
+      await FinanceStorage.setLoanInstallmentPaid(installment.uuid, false);
+      expect(await FinanceStorage.getPaidLoanInstallments(), isEmpty);
+      final undone = (await FinanceStorage.getLoanInstallment(
+        installment.uuid,
+      ))!;
+      expect(undone.paymentMethodUuid, isNull);
+      expect(undone.paidAt, isNull);
+    });
+
+    test('利息已有退款时撤销还款回滚，先删除退款后可正常撤销', () async {
+      final loan = FinanceLoan(
+        uuid: 'refunded-interest-loan',
+        name: '带息借款',
+        principalMinor: 10000,
+        annualInterestRateBps: 1200,
+        termMonths: 1,
+        startDate: '2026-08-01',
+        repaymentDay: 1,
+      );
+      await FinanceStorage.saveLoan(loan);
+      final installment = (await FinanceStorage.getLoanInstallments(loan.uuid))
+          .single;
+      await FinanceStorage.setLoanInstallmentPaid(
+        installment.uuid,
+        true,
+        paymentMethodUuid: account,
+        paidAt: DateTime.now().subtract(const Duration(hours: 1)),
+      );
+      final paid = (await FinanceStorage.getLoanInstallment(installment.uuid))!;
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'refunded-interest',
+          type: FinanceTransactionType.refund,
+          amountMinor: paid.interestMinor,
+          paymentMethodUuid: account,
+          transactionDate: dateKey(DateTime.now()),
+          relatedTransactionUuid: paid.interestTransactionUuid,
+        ),
+      );
+      await expectLater(
+        FinanceStorage.setLoanInstallmentPaid(paid.uuid, false),
+        throwsA(isA<StateError>()),
+      );
+      final preserved = (await FinanceStorage.getLoanInstallment(paid.uuid))!;
+      expect(preserved.toMap(), paid.toMap());
+      expect(
+        (await FinanceStorage.getTransaction(paid.interestTransactionUuid!))!
+            .isDeleted,
+        false,
+      );
+      expect(
+        (await FinanceStorage.getTransaction('refunded-interest'))!.isDeleted,
+        false,
+      );
+      await FinanceStorage.deleteTransaction('refunded-interest');
+      await FinanceStorage.setLoanInstallmentPaid(paid.uuid, false);
+      expect(
+        (await FinanceStorage.getLoanInstallment(paid.uuid))!.isPaid,
+        false,
+      );
+      expect(
+        (await FinanceStorage.getTransaction(paid.interestTransactionUuid!))!
+            .isDeleted,
+        true,
+      );
+      expect(await FinanceStorage.getPaidLoanInstallments(), isEmpty);
+    });
+
+    test('同步同批原单和退款墓碑完整应用，两种返回顺序都不漏删除', () async {
+      for (final reverse in [false, true]) {
+        final suffix = reverse ? 'reversed' : 'ordered';
+        final original = FinanceTransaction(
+          uuid: 'deleted-original-$suffix',
+          amountMinor: 10000,
+          transactionDate: '2026-09-01',
+          createdAt: 10,
+          updatedAt: 10,
+        );
+        final refund = FinanceTransaction(
+          uuid: 'deleted-refund-$suffix',
+          type: FinanceTransactionType.refund,
+          amountMinor: 1000,
+          transactionDate: '2026-09-02',
+          relatedTransactionUuid: original.uuid,
+          createdAt: 20,
+          updatedAt: 20,
+        );
+        await db.insert('finance_transactions', original.toMap());
+        await db.insert('finance_transactions', refund.toMap());
+        final request = await FinanceSyncService.prepare(
+          username: user,
+          forceFullSync: false,
+        );
+        final records = [
+          {
+            ...original.toMap(),
+            'is_deleted': 1,
+            'updated_at': 200,
+            'version': 2,
+          },
+          {...refund.toMap(), 'is_deleted': 1, 'updated_at': 199, 'version': 2},
+        ];
+        final response = _balanceSyncResponse(supportsBalances: true);
+        response['server_finance_transactions'] = reverse
+            ? records.reversed.toList()
+            : records;
+        final result = await FinanceSyncService.finish(
+          request: request,
+          response: response,
+          supported: true,
+        );
+        expect(
+          (await FinanceStorage.getTransaction(original.uuid))!.isDeleted,
+          true,
+        );
+        expect(
+          (await FinanceStorage.getTransaction(refund.uuid))!.isDeleted,
+          true,
+        );
+        expect(result.remoteChangeCount, 2);
+        expect(result.remoteChangesDeferred, false);
+        expect(result.cursorAdvanced, true);
+      }
+    });
+
+    test('旧版本已经推进游标后，升级仍会全量补回遗漏的原单删除', () async {
+      final prefs = await SharedPreferences.getInstance();
+      final initial = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      await prefs.setBool(
+        initial.bootstrapKey.replaceFirst('finance_sync_v2_', 'finance_sync_v1_'),
+        true,
+      );
+      await prefs.setBool(initial.balanceCapabilityKey, true);
+      await prefs.setBool(initial.balanceBootstrapKey, true);
+      await prefs.setInt(initial.cursorKey, 500);
+      final original = FinanceTransaction(
+        uuid: 'previously-skipped-original',
+        amountMinor: 10000,
+        transactionDate: '2026-09-01',
+        createdAt: 10,
+        updatedAt: 10,
+      );
+      await db.insert('finance_transactions', original.toMap());
+      final request = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      expect(request.fullSync, true);
+      final response = _balanceSyncResponse(supportsBalances: true);
+      response['server_finance_transactions'] = [
+        {...original.toMap(), 'is_deleted': 1, 'updated_at': 200, 'version': 2},
+      ];
+      await FinanceSyncService.finish(
+        request: request,
+        response: response,
+        supported: true,
+      );
+      expect(
+        (await FinanceStorage.getTransaction(original.uuid))!.isDeleted,
+        true,
+      );
+      expect(
+        (await FinanceSyncService.prepare(
+          username: user,
+          forceFullSync: false,
+        )).fullSync,
+        false,
+      );
+    });
+
+    test('缺少退款原单时保留同步游标，下一轮全量补齐关联后再前移', () async {
+      final prefs = await SharedPreferences.getInstance();
+      final initial = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      await prefs.setBool(initial.bootstrapKey, true);
+      await prefs.setBool(initial.balanceCapabilityKey, true);
+      await prefs.setBool(initial.balanceBootstrapKey, true);
+      await prefs.setInt(initial.cursorKey, 100);
+      final original = FinanceTransaction(
+        uuid: 'deferred-original',
+        amountMinor: 10000,
+        transactionDate: '2026-09-01',
+        createdAt: 10,
+        updatedAt: 99,
+      );
+      final refund = FinanceTransaction(
+        uuid: 'deferred-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 1000,
+        transactionDate: '2026-09-02',
+        relatedTransactionUuid: original.uuid,
+        createdAt: 20,
+        updatedAt: 200,
+      );
+      final request = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      expect(request.fullSync, false);
+      final response = _balanceSyncResponse(supportsBalances: true);
+      response['server_finance_transactions'] = [refund.toMap()];
+      final result = await FinanceSyncService.finish(
+        request: request,
+        response: response,
+        supported: true,
+      );
+      expect(result.remoteChangesDeferred, true);
+      expect(result.cursorAdvanced, false);
+      expect(prefs.getInt(initial.cursorKey), 100);
+      final retry = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      expect(retry.fullSync, true);
+      response['server_finance_transactions'] = [
+        refund.toMap(),
+        original.toMap(),
+      ];
+      final retried = await FinanceSyncService.finish(
+        request: retry,
+        response: response,
+        supported: true,
+      );
+      expect(retried.remoteChangesDeferred, false);
+      expect(retried.cursorAdvanced, true);
+      expect(
+        (await FinanceStorage.getTransaction(refund.uuid))!
+            .relatedTransactionUuid,
+        original.uuid,
+      );
+    });
+  });
 
   FinanceTransaction refundTestExpense({
     String uuid = 'original-expense',
@@ -818,7 +1321,7 @@ void main() {
     expect(budgets.single.amountMinor, 50000);
   });
 
-  test('付款方式额度按月和付款方式独立保存且不进入云同步', () async {
+  test('付款方式余额按月和账户独立保存并进入独立同步字段', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'payment-budget-scope-test',
     });
@@ -852,8 +1355,8 @@ void main() {
       ),
     );
     expect(wallet.uuid, isNot(card.uuid));
-    expect((await FinanceStorage.getBudget(card.uuid))!.pendingSync, isFalse);
-    expect((await FinanceStorage.getBudget(wallet.uuid))!.pendingSync, isFalse);
+    expect((await FinanceStorage.getBudget(card.uuid))!.pendingSync, isTrue);
+    expect((await FinanceStorage.getBudget(wallet.uuid))!.pendingSync, isTrue);
 
     await FinanceStorage.mergeRemoteBundle({
       'budgets': [
@@ -892,8 +1395,9 @@ void main() {
     );
     expect(
       syncChanges['budgets']!.map((item) => item['uuid']),
-      ['overall-budget'],
+      unorderedEquals(['overall-budget', card.uuid]),
     );
+    expect(syncChanges['balance_snapshots']!.single['uuid'], card.uuid);
   });
 
   test('远端较新预算墓碑会压住同范围的历史活动副本', () async {

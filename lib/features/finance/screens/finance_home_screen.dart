@@ -418,12 +418,25 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
             ),
           );
     if (deleteMode == null) return;
-    if (deleteMode == 'group' && transaction.installmentGroupUuid != null) {
-      await FinanceRepository.deleteInstallmentGroup(
-        transaction.installmentGroupUuid!,
+    try {
+      if (deleteMode == 'group' && transaction.installmentGroupUuid != null) {
+        await FinanceRepository.deleteInstallmentGroup(
+          transaction.installmentGroupUuid!,
+        );
+      } else {
+        await FinanceRepository.deleteTransaction(transaction.uuid);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(
+          content: Text(
+            error is StateError ? error.message.toString() : '删除账单失败：$error',
+          ),
+        ),
       );
-    } else {
-      await FinanceRepository.deleteTransaction(transaction.uuid);
+      return;
     }
     if (mounted) {
       AppSnackBars.showSnackBar(

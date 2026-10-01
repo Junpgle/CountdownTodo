@@ -6,10 +6,12 @@ import 'package:countdown_todo/features/finance/screens/finance_automation_scree
 import 'package:countdown_todo/features/finance/screens/finance_budget_entry_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_budget_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_entry_screen.dart';
+import 'package:countdown_todo/features/finance/screens/finance_home_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_loan_entry_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_loan_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_trash_screen.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
+import 'package:countdown_todo/features/finance/services/finance_repository.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_catalog_editor.dart';
 import 'package:countdown_todo/services/database_helper.dart';
 import 'package:countdown_todo/widgets/floating_glass_control.dart';
@@ -861,11 +863,7 @@ void main() {
     expect(tester.takeException(), isNull);
 
     final card = _key(
-      'finance-budget-card-${FinanceBudget.stableUuid(
-        financeMonthKey(pastMonth),
-        null,
-        paymentMethodUuid: 'past-card',
-      )}',
+      'finance-budget-card-${FinanceBudget.stableUuid(financeMonthKey(pastMonth), null, paymentMethodUuid: 'past-card')}',
     );
     await tester.scrollUntilVisible(
       card,
@@ -940,6 +938,304 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('删除已关联退款的原单会提示原因并保留原单', (tester) async {
+    final db = await _seed(tester);
+    final original = FinanceTransaction(
+      uuid: 'ui-refund-original',
+      amountMinor: 10000,
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '退款原单测试',
+    );
+    await tester.runAsync(() async {
+      await FinanceStorage.saveTransaction(original);
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-refund',
+          type: FinanceTransactionType.refund,
+          amountMinor: 1000,
+          transactionDate: original.transactionDate,
+          merchant: '原单退款记录',
+          relatedTransactionUuid: original.uuid,
+        ),
+      );
+    });
+    await _pump(
+      tester,
+      const FinanceHomeScreen(username: 'default'),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(of: find.text('退款原单测试'), matching: find.byType(ListTile))
+        .first;
+    await _tap(
+      tester,
+      find.descendant(of: row, matching: find.byType(PopupMenuButton<String>)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    await _waitFor(
+      tester,
+      () => find.text('该账单已关联退款，请先处理退款记录').evaluate().isNotEmpty,
+    );
+    expect(tester.takeException(), isNull);
+    final rows = (await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'uuid = ?',
+        whereArgs: [original.uuid],
+      ),
+    ))!;
+    expect(rows.single['is_deleted'], 0);
+  });
+
+  testWidgets('跨时区账单显示记录时刻且编辑保存保留原始时间戳', (tester) async {
+    final db = await _seed(tester);
+    final transaction = FinanceTransaction(
+      uuid: 'timezone-entry',
+      amountMinor: 2000,
+      transactionDate: '2026-10-02',
+      occurredAt: DateTime.utc(2026, 10, 1, 10, 30).millisecondsSinceEpoch,
+      timezoneOffsetMinutes: 840,
+    );
+    await tester.runAsync(() => FinanceStorage.saveTransaction(transaction));
+    await _pump(
+      tester,
+      Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => FinanceEntryScreen(transaction: transaction),
+              ),
+            ),
+            child: const Text('打开跨时区账单'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开跨时区账单'));
+    await _waitFor(tester, () => find.text('00:30').evaluate().isNotEmpty);
+    expect(find.text('00:30'), findsOneWidget);
+    expect(find.text('按记录时区 UTC+14:00 显示'), findsOneWidget);
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+    final row = (await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'uuid = ?',
+        whereArgs: [transaction.uuid],
+      ),
+    ))!
+        .single;
+    expect(row['occurred_at'], transaction.occurredAt);
+    expect(row['timezone_offset_minutes'], 840);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('还款扣减本金及利息一次，撤销后恢复账户余额', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final snapshotAt = now
+        .subtract(const Duration(hours: 2))
+        .millisecondsSinceEpoch;
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'loan-balance',
+          monthKey: financeMonthKey(now),
+          paymentMethodUuid: 'finance-system-payment-cash',
+          amountMinor: 100000,
+          balanceSnapshotAt: snapshotAt,
+        ).toMap(),
+      );
+      await FinanceStorage.setLoanInstallmentPaid(
+        'test-installment-2',
+        true,
+        paymentMethodUuid: 'finance-system-payment-cash',
+        paidAt: now.subtract(const Duration(hours: 1)),
+      );
+    });
+    final repayment = (await tester.runAsync(
+      () => FinanceStorage.getLoanInstallment('test-installment-2'),
+    ))!;
+    final interest = (await tester.runAsync(
+      () => FinanceStorage.getTransaction(repayment.interestTransactionUuid!),
+    ))!;
+    expect(interest.transactionDate, dateKey(now));
+    expect(interest.paymentMethodUuid, 'finance-system-payment-cash');
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: now),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-loan-balance');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(
+        of: card,
+        matching: find.text(
+          '当前余额 ${formatFinanceAmount(100000 - repayment.paymentMinor)}',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: card,
+        matching: find.text(formatFinanceAmount(repayment.paymentMinor)),
+      ),
+      findsOneWidget,
+    );
+    // Reopen the page after each operation so a stale rendered balance cannot
+    // hide a lost cash movement while the revision listener is reloading.
+    for (final deleted in [true, false]) {
+      await tester.runAsync(
+        () => deleted
+            ? FinanceStorage.deleteLoan('test-loan')
+            : FinanceStorage.restoreLoan('test-loan'),
+      );
+      await _pump(
+        tester,
+        FinanceBudgetScreen(initialMonth: now),
+        size: const Size(1100, 1000),
+      );
+      await tester.scrollUntilVisible(
+        card,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.descendant(
+          of: card,
+          matching: find.text(
+            '当前余额 ${formatFinanceAmount(100000 - repayment.paymentMinor)}',
+          ),
+        ),
+        findsOneWidget,
+        reason: deleted ? '删除贷款保留已还本金扣款' : '恢复贷款不重复扣款',
+      );
+    }
+    await tester.runAsync(
+      () => FinanceStorage.setLoanInstallmentPaid(repayment.uuid, false),
+    );
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('当前余额 ¥1,000.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('利息已退款时撤销还款显示原因且保留已还记录', (tester) async {
+    await _seed(tester);
+    final paid = (await tester.runAsync(() async {
+      await FinanceStorage.setLoanInstallmentPaid(
+        'test-installment-2',
+        true,
+        paymentMethodUuid: 'finance-system-payment-cash',
+        paidAt: DateTime.now().subtract(const Duration(hours: 1)),
+      );
+      final installment = (await FinanceStorage.getLoanInstallment(
+        'test-installment-2',
+      ))!;
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-loan-interest-refund',
+          type: FinanceTransactionType.refund,
+          amountMinor: installment.interestMinor,
+          paymentMethodUuid: installment.paymentMethodUuid,
+          transactionDate: dateKey(DateTime.now()),
+          relatedTransactionUuid: installment.interestTransactionUuid,
+        ),
+      );
+      return installment;
+    }))!;
+    await _pump(tester, FinanceLoanDetailScreen(loan: _loan()));
+    await _tap(tester, _key('finance-loan-filter-paid'));
+    await tester.pumpAndSettle();
+    await _tap(tester, _key('finance-loan-paid-test-installment-2'));
+    await _waitFor(
+      tester,
+      () => find.textContaining('该账单已关联退款，请先处理退款记录').evaluate().isNotEmpty,
+    );
+    final preserved = (await tester.runAsync(
+      () => FinanceStorage.getLoanInstallment(paid.uuid),
+    ))!;
+    expect(preserved.isPaid, true);
+    expect(preserved.paymentMethodUuid, paid.paymentMethodUuid);
+    expect(
+      (await tester.runAsync(
+        () => FinanceStorage.getTransaction(paid.interestTransactionUuid!),
+      ))!.isDeleted,
+      false,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('跨时区分期按实际发生时刻扣减而非创建日期或本机日历日期', (tester) async {
+    final db = await _seed(tester);
+    final clock = DateTime.utc(2026, 10, 1, 12).toLocal();
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'timezone-balance',
+          monthKey: '2026-10',
+          paymentMethodUuid: 'finance-system-payment-cash',
+          amountMinor: 10000,
+          balanceSnapshotAt: DateTime.utc(
+            2026,
+            10,
+            1,
+            9,
+          ).millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'timezone-installment',
+          amountMinor: 2000,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: '2026-10-02',
+          timezoneOffsetMinutes: 840,
+          occurredAt: DateTime.utc(2026, 10, 1, 10, 30).millisecondsSinceEpoch,
+          createdAt: DateTime.utc(2026, 9, 15).millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: clock, clock: () => clock),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-timezone-balance');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥80.00')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('还款分组与标记操作保留利息账单的生成及撤销语义', (tester) async {
     final db = await _seed(tester);
     await _pump(tester, FinanceLoanDetailScreen(loan: _loan()));
@@ -947,10 +1243,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(_key('finance-loan-installment-test-installment-1'), findsNothing);
     await _tap(tester, _key('finance-loan-paid-test-installment-2'));
+    await tester.pumpAndSettle();
+    await tester.tap(_key('finance-loan-payment-save'));
+    await tester.pump();
+    expect(find.text('请选择还款账户或不关联账户'), findsOneWidget);
+    await tester.tap(_key('finance-loan-payment-method'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('现金').last);
+    await tester.pumpAndSettle();
+    await tester.tap(_key('finance-loan-payment-save'));
     await _waitFor(tester, () => find.text('已还 2').evaluate().isNotEmpty);
     final paid = (await tester.runAsync(
         () => FinanceStorage.getLoanInstallment('test-installment-2')))!;
     expect(paid.isPaid, isTrue);
+    expect(paid.paymentMethodUuid, 'finance-system-payment-cash');
     expect(paid.interestTransactionUuid, isNotNull);
     final interest = (await tester.runAsync(() => db.query(
         'finance_transactions',
@@ -961,6 +1267,24 @@ void main() {
     await _top(tester);
     await _tap(tester, _key('finance-loan-filter-paid'));
     await tester.pumpAndSettle();
+    await _tap(tester, _key('finance-loan-payment-edit-test-installment-2'));
+    await tester.pumpAndSettle();
+    expect(find.text('修改还款记录'), findsOneWidget);
+    await tester.tap(_key('finance-loan-payment-method'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('微信').last);
+    await tester.pumpAndSettle();
+    await tester.tap(_key('finance-loan-payment-save'));
+    await _waitFor(tester, () => find.byKey(const ValueKey('finance-loan-payment-save')).evaluate().isEmpty);
+    final edited = (await tester.runAsync(
+        () => FinanceStorage.getLoanInstallment('test-installment-2')))!;
+    expect(edited.paymentMethodUuid, 'finance-system-payment-wechat');
+    expect(edited.paidAt, paid.paidAt);
+    expect(edited.interestTransactionUuid, paid.interestTransactionUuid);
+    final editedInterest = (await tester.runAsync(() => db.query(
+        'finance_transactions', where: 'uuid = ?',
+        whereArgs: [paid.interestTransactionUuid])))!;
+    expect(editedInterest.single['payment_method_uuid'], edited.paymentMethodUuid);
     await _tap(tester, _key('finance-loan-paid-test-installment-2'));
     await _waitFor(tester, () => find.text('已还 1').evaluate().isNotEmpty);
     final unpaid = (await tester.runAsync(

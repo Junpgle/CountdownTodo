@@ -365,6 +365,7 @@ class FinanceLoanInstallment {
   int remainingPrincipalMinor;
   bool isPaid;
   int? paidAt;
+  String? paymentMethodUuid;
   String? interestTransactionUuid;
   bool isDeleted;
   int version;
@@ -384,6 +385,7 @@ class FinanceLoanInstallment {
     required this.remainingPrincipalMinor,
     this.isPaid = false,
     this.paidAt,
+    this.paymentMethodUuid,
     this.interestTransactionUuid,
     this.isDeleted = false,
     this.version = 1,
@@ -420,6 +422,7 @@ class FinanceLoanInstallment {
     'remaining_principal_minor': remainingPrincipalMinor,
     'is_paid': isPaid ? 1 : 0,
     'paid_at': paidAt,
+    'payment_method_uuid': paymentMethodUuid,
     'interest_transaction_uuid': interestTransactionUuid,
     'is_deleted': isDeleted ? 1 : 0,
     'version': version,
@@ -450,6 +453,9 @@ class FinanceLoanInstallment {
       ).abs(),
       isPaid: _bool(map['is_paid'] ?? map['isPaid']),
       paidAt: _nullableInt(map['paid_at'] ?? map['paidAt']),
+      paymentMethodUuid: _nullableString(
+        map['payment_method_uuid'] ?? map['paymentMethodUuid'],
+      ),
       interestTransactionUuid: _nullableString(
         map['interest_transaction_uuid'] ?? map['interestTransactionUuid'],
       ),
@@ -1474,6 +1480,38 @@ class FinanceTransaction {
   String? get installmentLabel =>
       isInstallment ? '${installmentIndex!}/${installmentCount!} 期' : null;
 
+  /// Wall-clock time in the timezone saved with the transaction. Using the
+  /// viewing device's timezone would make a valid occurrence look unrelated
+  /// to its ledger date after travel or a sync to another timezone.
+  DateTime? get occurrenceLocalTime {
+    final timestamp = occurredAt;
+    if (timestamp == null || timestamp <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(
+      timestamp,
+      isUtc: true,
+    ).add(Duration(minutes: timezoneOffsetMinutes));
+  }
+
+  int balanceEventAt({int? snapshotAt}) {
+    final timestamp = occurredAt;
+    final occurred = occurrenceLocalTime;
+    if (timestamp == null ||
+        occurred == null ||
+        dateKey(occurred) != transactionDate) {
+      // Legacy rows without a reliable time use their entry time, while a
+      // future ledger date must still wait until that date begins.
+      final dateStartAt = dateFromKey(transactionDate).millisecondsSinceEpoch;
+      return createdAt > dateStartAt ? createdAt : dateStartAt;
+    }
+    if (snapshotAt != null &&
+        timestamp <= snapshotAt &&
+        timestamp ~/ 60000 == snapshotAt ~/ 60000 &&
+        createdAt > snapshotAt) {
+      return createdAt;
+    }
+    return timestamp;
+  }
+
   void markAsChanged() {
     version++;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -2145,6 +2183,11 @@ String dateKey(DateTime date) =>
 String financeMonthKey(DateTime date) =>
     '${date.year.toString().padLeft(4, '0')}-'
     '${date.month.toString().padLeft(2, '0')}';
+
+String financeTimezoneLabel(int offsetMinutes) =>
+    'UTC${offsetMinutes < 0 ? '-' : '+'}'
+    '${(offsetMinutes.abs() ~/ 60).toString().padLeft(2, '0')}:'
+    '${(offsetMinutes.abs() % 60).toString().padLeft(2, '0')}';
 
 DateTime dateFromKey(String value) {
   final parsed = DateTime.tryParse(value);

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../widgets/finance_management_widgets.dart';
+import '../widgets/finance_loan_payment_dialog.dart';
 import 'finance_loan_entry_screen.dart';
 import '../../../utils/app_dialogs.dart';
 
@@ -83,7 +85,10 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除贷款？'),
-        content: const Text('贷款和还款计划会进入记账回收站，已经记录的利息账单不会被删除。'),
+        content: const Text(
+          '贷款和还款计划会进入记账回收站，已发生的还款扣款和利息账单会保留。'
+          '如需恢复余额，请先撤销对应还款。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -363,6 +368,7 @@ class FinanceLoanDetailScreen extends StatefulWidget {
 class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
   FinanceLoan? _loan;
   List<FinanceLoanInstallment> _installments = const [];
+  List<FinancePaymentMethod> _paymentMethods = const [];
   bool? _paidFilter;
   final _updating = <String>{};
   bool _isLoading = true;
@@ -388,10 +394,14 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
       if (loan == null) throw StateError('贷款不存在或已删除');
       final installments =
           await FinanceRepository.getLoanInstallments(loan.uuid);
+      final paymentMethods = await FinanceRepository.getPaymentMethods(
+        includeArchived: true,
+      );
       if (!mounted) return;
       setState(() {
         _loan = loan;
         _installments = installments;
+        _paymentMethods = paymentMethods;
         _isLoading = false;
       });
     } catch (error) {
@@ -412,17 +422,42 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
     if (result != null && mounted) await _load();
   }
 
-  Future<void> _togglePaid(FinanceLoanInstallment installment) async {
+  Future<void> _togglePaid(
+    FinanceLoanInstallment installment, {
+    bool edit = false,
+  }) async {
     if (!_updating.add(installment.uuid)) return;
     setState(() {});
     try {
-      await FinanceRepository.setLoanInstallmentPaid(
-          installment.uuid, !installment.isPaid);
+      if (installment.isPaid && !edit) {
+        await FinanceRepository.setLoanInstallmentPaid(installment.uuid, false);
+      } else {
+        final selection = await showAppDialog<FinanceLoanPaymentSelection>(
+          context: context,
+          builder: (_) => FinanceLoanPaymentDialog(
+            installment: installment,
+            paymentMethods: _paymentMethods,
+          ),
+        );
+        if (selection == null || !mounted) return;
+        await FinanceRepository.setLoanInstallmentPaid(
+          installment.uuid,
+          true,
+          paymentMethodUuid: selection.paymentMethodUuid,
+          paidAt: selection.paidAt,
+        );
+      }
       await _load();
     } catch (error) {
       if (!mounted) return;
-      AppSnackBars.showSnackBar(context,
-          SnackBar(content: Text('更新还款状态失败：$error')));
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(
+          content: Text(
+            '更新还款状态失败：${error is StateError ? error.message : error}',
+          ),
+        ),
+      );
     } finally {
       _updating.remove(installment.uuid);
       if (mounted) setState(() {});
@@ -527,6 +562,26 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: colors.onSurfaceVariant)),
         const SizedBox(height: 14),
+        if (installment.isPaid) ...[
+          Text(
+            installment.paymentMethodUuid == null
+                ? '未关联还款账户'
+                : '还款账户：${_paymentMethods.where((item) => item.uuid == installment.paymentMethodUuid).firstOrNull?.name ?? '未知账户'}',
+          ),
+          if (installment.paidAt != null)
+            Text(
+              '实际还款：${DateFormat('yyyy年M月d日 HH:mm').format(DateTime.fromMillisecondsSinceEpoch(installment.paidAt!))}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          TextButton(
+            key: ValueKey('finance-loan-payment-edit-${installment.uuid}'),
+            onPressed:
+                updating ? null : () => _togglePaid(installment, edit: true),
+            child: const Text('修改还款账户或时间'),
+          ),
+        ],
         Align(
           alignment: Alignment.centerRight,
           child: FilledButton.tonalIcon(

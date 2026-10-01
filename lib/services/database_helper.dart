@@ -747,6 +747,7 @@ class DatabaseHelper {
         remaining_principal_minor INTEGER NOT NULL DEFAULT 0,
         is_paid INTEGER NOT NULL DEFAULT 0,
         paid_at INTEGER,
+        payment_method_uuid TEXT,
         interest_transaction_uuid TEXT,
         is_deleted INTEGER NOT NULL DEFAULT 0,
         version INTEGER NOT NULL DEFAULT 1,
@@ -795,6 +796,17 @@ class DatabaseHelper {
       await db.execute(
         'UPDATE finance_budgets SET balance_snapshot_at = updated_at '
         'WHERE payment_method_uuid IS NOT NULL',
+      );
+    }
+    final loanInstallmentColumns = await db.rawQuery(
+      'PRAGMA table_info(finance_loan_installments)',
+    );
+    final addedLoanPaymentMethod = !loanInstallmentColumns.any(
+      (row) => row['name'] == 'payment_method_uuid',
+    );
+    if (addedLoanPaymentMethod) {
+      await db.execute(
+        'ALTER TABLE finance_loan_installments ADD COLUMN payment_method_uuid TEXT',
       );
     }
     for (final table in financeTables) {
@@ -858,6 +870,12 @@ class DatabaseHelper {
       'CREATE INDEX IF NOT EXISTS idx_finance_loans_active '
       'ON finance_loans(is_deleted, start_date, updated_at)',
     );
+    if (addedLoanPaymentMethod) {
+      await db.execute(
+        'UPDATE finance_budgets SET pending_sync = 1 '
+        'WHERE payment_method_uuid IS NOT NULL',
+      );
+    }
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_finance_loan_installments_loan '
       'ON finance_loan_installments(loan_uuid, is_deleted, installment_index)',

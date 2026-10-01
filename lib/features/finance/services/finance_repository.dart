@@ -215,9 +215,20 @@ abstract final class FinanceRepository {
 
   static Future<void> setLoanInstallmentPaid(
     String installmentUuid,
-    bool paid,
-  ) {
-    return FinanceStorage.setLoanInstallmentPaid(installmentUuid, paid);
+    bool paid, {
+    String? paymentMethodUuid,
+    DateTime? paidAt,
+  }) {
+    return FinanceStorage.setLoanInstallmentPaid(
+      installmentUuid,
+      paid,
+      paymentMethodUuid: paymentMethodUuid,
+      paidAt: paidAt,
+    );
+  }
+
+  static Future<List<FinanceLoanInstallment>> getPaidLoanInstallments() {
+    return FinanceStorage.getPaidLoanInstallments();
   }
 
   static Future<void> deleteLoan(String uuid) {

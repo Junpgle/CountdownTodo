@@ -46,6 +46,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   FinanceTransactionType _type = FinanceTransactionType.expense;
   DateTime _date = DateTime.now();
   DateTime? _occurredAt;
+  late int _timezoneOffsetMinutes;
   List<FinanceCategory> _categories = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
   List<FinanceEntryTemplate> _templates = const [];
@@ -73,6 +74,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   void initState() {
     super.initState();
     final transaction = widget.transaction;
+    _timezoneOffsetMinutes = transaction?.timezoneOffsetMinutes ??
+        DateTime.now().timeZoneOffset.inMinutes;
     final template = transaction == null ? widget.initialTemplate : null;
     final draft = transaction == null ? widget.initialDraft : null;
     _originalTransaction = widget.originalTransaction;
@@ -103,10 +106,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         now.minute,
       );
     } else {
-      final occurredAt = transaction.occurredAt;
-      final occurred = occurredAt == null
-          ? null
-          : DateTime.fromMillisecondsSinceEpoch(occurredAt);
+      final occurred = transaction.occurrenceLocalTime;
       _occurredAt =
           occurred != null && dateKey(occurred) == transaction.transactionDate
           ? occurred
@@ -207,10 +207,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         _existingInstallments = installmentGroup;
         _type = first.type;
         _date = dateFromKey(first.transactionDate);
-        final firstOccurredAt = first.occurredAt;
-        final firstOccurred = firstOccurredAt == null
-            ? null
-            : DateTime.fromMillisecondsSinceEpoch(firstOccurredAt);
+        _timezoneOffsetMinutes = first.timezoneOffsetMinutes;
+        final firstOccurred = first.occurrenceLocalTime;
         _occurredAt =
             firstOccurred != null &&
                 dateKey(firstOccurred) == first.transactionDate
@@ -577,6 +575,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _type = draft.type;
       _date = dateFromKey(draft.transactionDate);
       final now = DateTime.now();
+      _timezoneOffsetMinutes = now.timeZoneOffset.inMinutes;
       _occurredAt = DateTime(
         _date.year,
         _date.month,
@@ -807,9 +806,19 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       categoryUuid: _categoryUuid,
       paymentMethodUuid: _paymentMethodUuid,
       transactionDate: dateKey(_date),
-      occurredAt: _occurredAt?.millisecondsSinceEpoch ?? old?.occurredAt ?? now,
-      timezoneOffsetMinutes:
-          old?.timezoneOffsetMinutes ?? DateTime.now().timeZoneOffset.inMinutes,
+      occurredAt: _occurredAt == null
+          ? old?.occurredAt ?? now
+          : DateTime.utc(
+                _occurredAt!.year,
+                _occurredAt!.month,
+                _occurredAt!.day,
+                _occurredAt!.hour,
+                _occurredAt!.minute,
+                _occurredAt!.second,
+                _occurredAt!.millisecond,
+              ).millisecondsSinceEpoch -
+              _timezoneOffsetMinutes * 60000,
+      timezoneOffsetMinutes: _timezoneOffsetMinutes,
       merchant: _emptyToNull(_merchantController.text),
       note: _noteWithCalculation(),
       source:
@@ -1666,6 +1675,18 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
               style: Theme.of(context).textTheme.bodySmall
                   ?.copyWith(color: colorScheme.onSurfaceVariant),
             ),
+          ),
+        ],
+        if (occurredAt != null &&
+            _timezoneOffsetMinutes !=
+                DateTime.now().timeZoneOffset.inMinutes) ...[
+          const SizedBox(height: 6),
+          Text(
+            '按记录时区 ${financeTimezoneLabel(_timezoneOffsetMinutes)} 显示',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: colorScheme.onSurfaceVariant),
           ),
         ],
       ],

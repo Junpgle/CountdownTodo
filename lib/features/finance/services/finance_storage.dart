@@ -36,11 +36,6 @@ abstract final class FinanceStorage {
     'pending_sync': 0,
   };
 
-  static Map<String, dynamic> _budgetValues(
-    FinanceBudget budget, {
-    required bool sync,
-  }) => {...budget.toMap(), 'pending_sync': sync ? 1 : 0};
-
   static Future<void> ensureReady() async {
     final db = await _database;
     if (identical(_readyDatabase, db)) {
@@ -208,9 +203,15 @@ abstract final class FinanceStorage {
       'finance_transactions',
       where: 'is_deleted = 0 AND transaction_date < ? AND '
           '(transaction_date >= ? OR created_at > ?)',
+      // Stored ledger dates belong to their recorded timezone. The largest
+      // difference between two supported offsets is 28 hours; widen the date
+      // bounds and let balanceEventAt apply the exact instant cutoff.
       whereArgs: [
-        dateKey(before),
-        dateKey(DateTime.fromMillisecondsSinceEpoch(snapshotAt)),
+        dateKey(before.add(const Duration(days: 2))),
+        dateKey(
+          DateTime.fromMillisecondsSinceEpoch(snapshotAt)
+              .subtract(const Duration(days: 2)),
+        ),
         snapshotAt,
       ],
       orderBy: 'transaction_date DESC, occurred_at DESC, updated_at DESC',
@@ -353,19 +354,18 @@ abstract final class FinanceStorage {
     await db.transaction((txn) async {
       for (final allocation in allocations) {
         final old = existingByIndex[allocation.index];
-        final previousOccurrenceAt = old?.occurredAt ?? transaction.occurredAt;
-        final previousOccurrence = previousOccurrenceAt == null
-            ? null
-            : DateTime.fromMillisecondsSinceEpoch(previousOccurrenceAt);
+        final previousOccurrence =
+            old?.occurrenceLocalTime ?? transaction.occurrenceLocalTime;
         final occurrenceAt = previousOccurrence == null
             ? null
-            : DateTime(
+            : DateTime.utc(
                 allocation.date.year,
                 allocation.date.month,
                 allocation.date.day,
                 previousOccurrence.hour,
                 previousOccurrence.minute,
-              ).millisecondsSinceEpoch;
+              ).millisecondsSinceEpoch -
+                transaction.timezoneOffsetMinutes * 60000;
         final item = FinanceTransaction(
           uuid: old?.uuid ?? (allocation.index == 1 ? transaction.uuid : null),
           type: transaction.type,
@@ -629,6 +629,7 @@ abstract final class FinanceStorage {
           remainingPrincipalMinor: allocation.remainingPrincipalMinor,
           isPaid: old?.isPaid ?? false,
           paidAt: old?.paidAt,
+          paymentMethodUuid: old?.paymentMethodUuid,
           interestTransactionUuid: old?.interestTransactionUuid,
           isDeleted: false,
           version: old?.version ?? 1,
@@ -661,27 +662,84 @@ abstract final class FinanceStorage {
     _notifyChanged();
   }
 
-  /// 标记一期已还或撤销已还。标记已还时只把利息写入支出账单，
-  /// 本金通过贷款剩余本金体现，不重复计入消费统计。
+  /// Cash movements are stored on repayment records, separately from interest
+  /// expenses, so even a zero-interest repayment changes the account balance.
+  /// Recycling a loan or its plan does not undo an actual payment.
+  static Future<List<FinanceLoanInstallment>> getPaidLoanInstallments() async {
+    await ensureReady();
+    final db = await _database;
+    final rows = await db.rawQuery('''
+      SELECT installment.* FROM finance_loan_installments AS installment
+      JOIN finance_loans AS loan ON loan.uuid = installment.loan_uuid
+      WHERE installment.is_paid = 1 AND installment.paid_at > 0
+        AND installment.payment_method_uuid IS NOT NULL
+    ''');
+    return rows.map(FinanceLoanInstallment.fromMap).toList();
+  }
+
+  /// Only interest enters consumption statistics. The full repayment amount
+  /// reduces the selected account at paidAt through getPaidLoanInstallments.
   static Future<void> setLoanInstallmentPaid(
     String installmentUuid,
-    bool paid,
-  ) async {
-    final installment = await getLoanInstallment(installmentUuid);
-    if (installment == null || installment.isDeleted) return;
-    final loan = await getLoan(installment.loanUuid);
-    if (loan == null) throw StateError('关联的贷款不存在或已删除');
-    if (installment.isPaid == paid) return;
-
+    bool paid, {
+    String? paymentMethodUuid,
+    DateTime? paidAt,
+  }) async {
+    await ensureReady();
     final db = await _database;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    await db.transaction((txn) async {
+    final changed = await db.transaction<bool>((txn) async {
+      final row = await _findByUuid(
+        txn,
+        'finance_loan_installments',
+        installmentUuid,
+      );
+      if (row == null) return false;
+      final installment = FinanceLoanInstallment.fromMap(row);
+      if (installment.isDeleted) return false;
+      final loanRow = await _findByUuid(
+        txn,
+        'finance_loans',
+        installment.loanUuid,
+      );
+      if (loanRow == null || FinanceLoan.fromMap(loanRow).isDeleted) {
+        throw StateError('关联的贷款不存在或已删除');
+      }
+      final loan = FinanceLoan.fromMap(loanRow);
+      if (installment.isPaid == paid &&
+          paymentMethodUuid == null &&
+          paidAt == null) {
+        return false;
+      }
       if (paid) {
+        final paymentDate = paidAt ?? DateTime.now();
+        if (paymentDate.isAfter(DateTime.now()) || paymentDate.year < 2000) {
+          throw ArgumentError('还款时间必须在 2000 年之后且不晚于现在');
+        }
+        final methodUuid = paymentMethodUuid?.trim();
+        if (methodUuid != null && methodUuid.isNotEmpty) {
+          final method = await _findByUuid(
+            txn,
+            'finance_payment_methods',
+            methodUuid,
+          );
+          if (method == null ||
+              FinancePaymentMethod.fromMap(method).isDeleted) {
+            throw StateError('还款账户不存在或已删除');
+          }
+          if (FinancePaymentMethod.fromMap(method).isArchived &&
+              methodUuid != installment.paymentMethodUuid) {
+            throw StateError('请选择未归档的还款账户');
+          }
+        }
         installment.isPaid = true;
-        installment.paidAt = now;
-        if (installment.interestMinor > 0 &&
-            installment.interestTransactionUuid == null) {
-          final stableUuid = _loanInterestTransactionUuid(installment.uuid);
+        installment.paidAt = paymentDate.millisecondsSinceEpoch;
+        installment.paymentMethodUuid = methodUuid?.isNotEmpty == true
+            ? methodUuid
+            : null;
+        if (installment.interestMinor > 0) {
+          final stableUuid =
+              installment.interestTransactionUuid ??
+              _loanInterestTransactionUuid(installment.uuid);
           final existingRow = await _findByUuid(
             txn,
             'finance_transactions',
@@ -694,10 +752,10 @@ abstract final class FinanceStorage {
                   amountMinor: installment.interestMinor,
                   currencyCode: loan.currencyCode,
                   categoryUuid: 'finance-system-category-loan-interest',
-                  transactionDate: installment.dueDate,
-                  occurredAt: now,
-                  timezoneOffsetMinutes:
-                      DateTime.now().timeZoneOffset.inMinutes,
+                  paymentMethodUuid: installment.paymentMethodUuid,
+                  transactionDate: dateKey(paymentDate),
+                  occurredAt: installment.paidAt,
+                  timezoneOffsetMinutes: paymentDate.timeZoneOffset.inMinutes,
                   merchant: '贷款利息 · ${loan.name}',
                   note:
                       '第 ${installment.installmentIndex}/${loan.termMonths} 期利息；同步归还本金',
@@ -713,7 +771,10 @@ abstract final class FinanceStorage {
               ..amountMinor = installment.interestMinor
               ..currencyCode = loan.currencyCode
               ..categoryUuid = 'finance-system-category-loan-interest'
-              ..transactionDate = installment.dueDate
+              ..paymentMethodUuid = installment.paymentMethodUuid
+              ..transactionDate = dateKey(paymentDate)
+              ..occurredAt = installment.paidAt
+              ..timezoneOffsetMinutes = paymentDate.timeZoneOffset.inMinutes
               ..merchant = '贷款利息 · ${loan.name}'
               ..note =
                   '第 ${installment.installmentIndex}/${loan.termMonths} 期利息；同步归还本金'
@@ -723,6 +784,7 @@ abstract final class FinanceStorage {
               ..markAsChanged();
           }
           installment.interestTransactionUuid = interestTransaction.uuid;
+          await _validateTransactionRefundState(txn, interestTransaction);
           await txn.insert(
             'finance_transactions',
             _localValues(interestTransaction.toMap()),
@@ -739,8 +801,10 @@ abstract final class FinanceStorage {
           );
           if (row != null) {
             final interestTransaction = FinanceTransaction.fromMap(row);
-            if (!interestTransaction.isDeleted) {
-              interestTransaction.isDeleted = true;
+            final wasDeleted = interestTransaction.isDeleted;
+            interestTransaction.isDeleted = true;
+            await _validateTransactionRefundState(txn, interestTransaction);
+            if (!wasDeleted) {
               interestTransaction.markAsChanged();
               await txn.update(
                 'finance_transactions',
@@ -753,6 +817,7 @@ abstract final class FinanceStorage {
         }
         installment.isPaid = false;
         installment.paidAt = null;
+        installment.paymentMethodUuid = null;
         installment.interestTransactionUuid = null;
       }
       installment.markAsChanged();
@@ -762,8 +827,9 @@ abstract final class FinanceStorage {
         where: 'uuid = ?',
         whereArgs: [installment.uuid],
       );
+      return true;
     });
-    _notifyChanged();
+    if (changed) _notifyChanged();
   }
 
   static String _loanInterestTransactionUuid(String installmentUuid) {
@@ -1208,7 +1274,6 @@ abstract final class FinanceStorage {
     }
     await ensureReady();
     final db = await _database;
-    var requestSync = !budget.isPaymentMethod;
     await db.transaction((txn) async {
       final existingByUuid = await _findByUuid(
         txn,
@@ -1241,11 +1306,10 @@ abstract final class FinanceStorage {
           ..markAsChanged();
         await txn.update(
           'finance_budgets',
-          _budgetValues(current, sync: !current.isPaymentMethod),
+          _localValues(current.toMap()),
           where: 'uuid = ?',
           whereArgs: [current.uuid],
         );
-        requestSync = requestSync || !current.isPaymentMethod;
 
         final now = DateTime.now().millisecondsSinceEpoch;
         budget
@@ -1310,16 +1374,14 @@ abstract final class FinanceStorage {
       if (duplicates.isNotEmpty) {
         throw StateError('该月份的预算范围已经存在');
       }
-      // Payment-method monthly limits are local-only until the server budget
-      // contract includes payment_method_uuid.
-      budget.pendingSync = !budget.isPaymentMethod;
+      budget.pendingSync = true;
       await txn.insert(
         'finance_budgets',
-        _budgetValues(budget, sync: !budget.isPaymentMethod),
+        _localValues(budget.toMap()),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     });
-    _notifyChanged(requestSync: requestSync);
+    _notifyChanged();
   }
 
   static Future<void> deleteBudget(String uuid) async {
@@ -2032,7 +2094,7 @@ abstract final class FinanceStorage {
         item.uuid = current.uuid;
         await db.update(
           'finance_budgets',
-          _budgetValues(item, sync: !item.isPaymentMethod),
+          _localValues(item.toMap()),
           where: 'uuid = ?',
           whereArgs: [current.uuid],
         );
@@ -2040,13 +2102,13 @@ abstract final class FinanceStorage {
       } else if (existing == null) {
         await db.insert(
           'finance_budgets',
-          _budgetValues(item, sync: !item.isPaymentMethod),
+          _localValues(item.toMap()),
         );
         imported++;
       } else if (item.updatedAt > FinanceBudget.fromMap(existing).updatedAt) {
         await db.update(
           'finance_budgets',
-          _budgetValues(item, sync: !item.isPaymentMethod),
+          _localValues(item.toMap()),
           where: 'uuid = ?',
           whereArgs: [item.uuid],
         );
@@ -2090,12 +2152,17 @@ abstract final class FinanceStorage {
         item.interestTransactionUuid,
         remap,
       );
+      item.paymentMethodUuid = _remapNullable(
+        item.paymentMethodUuid,
+        remap,
+      );
       if (!_isValidLoanInstallment(item)) {
         skipped++;
         continue;
       }
       final parentLoan = await _findByUuid(db, 'finance_loans', item.loanUuid);
-      if (parentLoan == null || FinanceLoan.fromMap(parentLoan).isDeleted) {
+      if (parentLoan == null ||
+          (FinanceLoan.fromMap(parentLoan).isDeleted && !item.isDeleted)) {
         skipped++;
         continue;
       }
@@ -2135,6 +2202,7 @@ abstract final class FinanceStorage {
   static Future<int> mergeRemoteBundle(
     Map<String, dynamic> bundle, {
     Set<String> forceRemoteKeys = const {},
+    Set<String>? deferredTransactionUuids,
   }) async {
     await ensureReady();
     final categories = _listOfMaps(bundle['categories'])
@@ -2202,6 +2270,7 @@ abstract final class FinanceStorage {
         txn,
         transactions,
         forceRemoteKeys: forceRemoteKeys,
+        deferredTransactionUuids: deferredTransactionUuids,
       );
       changed += await _mergeLoans(
         txn,
@@ -2252,25 +2321,33 @@ abstract final class FinanceStorage {
       'recurring_rules': 'finance_recurring_rules',
       'templates': 'finance_entry_templates',
     };
-    const sectionByTableKey = <String, String>{
-      'categories': 'finance_categories_changes',
-      'payment_methods': 'finance_payment_methods_changes',
-      'transactions': 'finance_transactions_changes',
-      'loans': 'finance_loans_changes',
-      'loan_installments': 'finance_loan_installments_changes',
-      'budgets': 'finance_budgets_changes',
-      'recurring_rules': 'finance_recurring_rules_changes',
-      'templates': 'finance_entry_templates_changes',
+    const sectionsByTableKey = <String, List<String>>{
+      'categories': ['finance_categories_changes'],
+      'payment_methods': ['finance_payment_methods_changes'],
+      'transactions': ['finance_transactions_changes'],
+      'loans': ['finance_loans_changes'],
+      'loan_installments': [
+        'finance_loan_installments_changes',
+        'finance_loan_account_changes',
+      ],
+      'budgets': [
+        'finance_budgets_changes',
+        'finance_balance_snapshots_changes',
+      ],
+      'recurring_rules': ['finance_recurring_rules_changes'],
+      'templates': ['finance_entry_templates_changes'],
     };
     final requestedByKey = <String, Map<String, dynamic>>{};
-    for (final entry in sectionByTableKey.entries) {
-      final raw = requestPayload[entry.value];
-      if (raw is! List) continue;
-      for (final value in raw.whereType<Map>()) {
-        final item = Map<String, dynamic>.from(value);
-        final uuid = item['uuid']?.toString() ?? item['id']?.toString() ?? '';
-        if (uuid.isNotEmpty) {
-          requestedByKey['${entry.value}:$uuid'] = item;
+    for (final entry in sectionsByTableKey.entries) {
+      for (final section in entry.value) {
+        final raw = requestPayload[section];
+        if (raw is! List) continue;
+        for (final value in raw.whereType<Map>()) {
+          final item = Map<String, dynamic>.from(value);
+          final uuid = item['uuid']?.toString() ?? item['id']?.toString() ?? '';
+          if (uuid.isNotEmpty) {
+            requestedByKey['${entry.key}:$uuid'] = item;
+          }
         }
       }
     }
@@ -2281,11 +2358,10 @@ abstract final class FinanceStorage {
       for (final value in acknowledgements.whereType<Map>()) {
         final tableKey = value['table']?.toString() ?? '';
         final table = tableByKey[tableKey];
-        final section = sectionByTableKey[tableKey];
-        if (table == null || section == null) continue;
+        if (table == null) continue;
         final uuid = value['uuid']?.toString() ?? value['id']?.toString() ?? '';
         if (uuid.isEmpty) continue;
-        final requested = requestedByKey['$section:$uuid'];
+        final requested = requestedByKey['$tableKey:$uuid'];
         if (requested == null) continue;
         final requestedUpdatedAt = _asInt(
           requested['updated_at'] ?? requested['updatedAt'],
@@ -2427,13 +2503,15 @@ abstract final class FinanceStorage {
     DatabaseExecutor db,
     List<FinanceTransaction> items, {
     Set<String> forceRemoteKeys = const {},
+    Set<String>? deferredTransactionUuids,
   }) async {
     var changed = 0;
     final orderedItems = [...items]
       ..sort((left, right) {
-        final leftRefund = left.type == FinanceTransactionType.refund ? 1 : 0;
-        final rightRefund = right.type == FinanceTransactionType.refund ? 1 : 0;
-        return leftRefund.compareTo(rightRefund);
+        // Create/restore originals before active refunds, but remove refunds
+        // before deleting or changing the type of their originals.
+        return _transactionMergePriority(left)
+            .compareTo(_transactionMergePriority(right));
       });
     for (final item in orderedItems) {
       final existing = await _findByUuid(db, 'finance_transactions', item.uuid);
@@ -2441,6 +2519,7 @@ abstract final class FinanceStorage {
         try {
           await _validateTransactionRefundState(db, item);
         } on StateError {
+          deferredTransactionUuids?.add(item.uuid);
           continue;
         }
         await db.insert('finance_transactions', _remoteValues(item.toMap()));
@@ -2460,6 +2539,7 @@ abstract final class FinanceStorage {
       try {
         await _validateTransactionRefundState(db, item);
       } on StateError {
+        deferredTransactionUuids?.add(item.uuid);
         continue;
       }
       await db.update(
@@ -2471,6 +2551,16 @@ abstract final class FinanceStorage {
       changed++;
     }
     return changed;
+  }
+
+  static int _transactionMergePriority(FinanceTransaction item) {
+    if (item.type == FinanceTransactionType.expense && !item.isDeleted) {
+      return 0;
+    }
+    if (item.type == FinanceTransactionType.refund) {
+      return item.isDeleted ? 1 : 2;
+    }
+    return 3;
   }
 
   static Future<int> _mergeLoans(
@@ -2515,7 +2605,8 @@ abstract final class FinanceStorage {
     var changed = 0;
     for (final item in items) {
       final parentLoan = await _findByUuid(db, 'finance_loans', item.loanUuid);
-      if (parentLoan == null || FinanceLoan.fromMap(parentLoan).isDeleted) {
+      if (parentLoan == null ||
+          (FinanceLoan.fromMap(parentLoan).isDeleted && !item.isDeleted)) {
         continue;
       }
       final existing = await _findByUuid(
@@ -2864,7 +2955,9 @@ abstract final class FinanceStorage {
         item.principalMinor > 0 &&
         item.interestMinor >= 0 &&
         item.paymentMinor == item.principalMinor + item.interestMinor &&
-        item.remainingPrincipalMinor >= 0;
+        item.remainingPrincipalMinor >= 0 &&
+        (item.paymentMethodUuid == null ||
+            (item.isPaid && (item.paidAt ?? 0) > 0));
   }
 
   static bool _loanTermsDiffer(FinanceLoan left, FinanceLoan right) {

@@ -23,6 +23,9 @@ class FinanceSyncRequest {
     required this.fingerprint,
     this.categoryNamesCapabilityKey = '',
     this.supportsCategoryNames = false,
+    this.balanceCapabilityKey = '',
+    this.balanceBootstrapKey = '',
+    this.supportsBalances = false,
   });
 
   final String username;
@@ -34,6 +37,16 @@ class FinanceSyncRequest {
   final Map<String, String> fingerprint;
   final String categoryNamesCapabilityKey;
   final bool supportsCategoryNames;
+  final String balanceCapabilityKey;
+  final String balanceBootstrapKey;
+  final bool supportsBalances;
+
+  static bool _hasPaymentMethod(Map<String, dynamic> item) =>
+      (item['payment_method_uuid'] ?? item['paymentMethodUuid'])
+          ?.toString()
+          .trim()
+          .isNotEmpty ==
+      true;
 
   List<Map<String, dynamic>> _changes(
     String key, {
@@ -60,12 +73,6 @@ class FinanceSyncRequest {
         if (nameCustomized && !supportsCategoryNames) return false;
         if (!iconCustomized && !nameCustomized) return false;
       }
-      // Payment-method monthly amounts are intentionally local-only until the
-      // server budget contract supports their additional scope column.
-      if (key == 'budgets' &&
-          (item['payment_method_uuid'] ?? item['paymentMethodUuid']) != null) {
-        return false;
-      }
       if (fullSync) return true;
       // After schema V48 the marker is authoritative. This prevents a
       // downloaded row with a future device timestamp from being uploaded
@@ -85,8 +92,19 @@ class FinanceSyncRequest {
         ),
         'finance_transactions_changes': _changes('transactions'),
         'finance_loans_changes': _changes('loans'),
-        'finance_loan_installments_changes': _changes('loan_installments'),
-        'finance_budgets_changes': _changes('budgets'),
+        'finance_loan_installments_changes': _changes('loan_installments')
+            .where((item) => !_hasPaymentMethod(item))
+            .toList(),
+        // Dedicated fields are ignored by older servers. A cached capability
+        // must never let an old server turn a balance into an overall budget
+        // or acknowledge a repayment after discarding its account.
+        'finance_loan_account_changes':
+            _changes('loan_installments').where(_hasPaymentMethod).toList(),
+        'finance_budgets_changes': _changes('budgets')
+            .where((item) => !_hasPaymentMethod(item))
+            .toList(),
+        'finance_balance_snapshots_changes':
+            _changes('budgets').where(_hasPaymentMethod).toList(),
         'finance_recurring_rules_changes': _changes('recurring_rules'),
         'finance_entry_templates_changes': _changes('templates'),
         'finance_full_sync': fullSync,
@@ -104,6 +122,7 @@ class FinanceSyncResult {
     required this.hasChanges,
     required this.localChangesDuringRequest,
     required this.cursorAdvanced,
+    this.remoteChangesDeferred = false,
     this.remoteChangeCount = 0,
     this.acknowledgedChangeCount = 0,
     this.rejectedChanges = const [],
@@ -113,6 +132,7 @@ class FinanceSyncResult {
   final bool hasChanges;
   final bool localChangesDuringRequest;
   final bool cursorAdvanced;
+  final bool remoteChangesDeferred;
   final int remoteChangeCount;
   final int acknowledgedChangeCount;
   final List<dynamic> rejectedChanges;
@@ -125,7 +145,18 @@ class FinanceSyncResult {
 /// transaction, which keeps rate limiting and old-server compatibility in one
 /// place.
 abstract final class FinanceSyncService {
-  static const String _scopePrefix = 'finance_sync_v1_';
+  // Pull once in full after adopting dependency-safe refund merges, including
+  // deletions that an older client skipped before advancing its cursor.
+  static const String _scopePrefix = 'finance_sync_v2_';
+
+  static String _balanceCapabilityKey(String username) =>
+      'finance_account_balances_v1_${_serverScope(ApiService.effectiveBaseUrl)}_$username';
+
+  static Future<bool?> balanceSyncSupport() async {
+    final prefs = await SharedPreferences.getInstance();
+    final username = prefs.getString('current_login_user') ?? 'default';
+    return prefs.getBool(_balanceCapabilityKey(username));
+  }
 
   static Future<FinanceSyncRequest> prepare({
     required String username,
@@ -140,6 +171,9 @@ abstract final class FinanceSyncService {
     final cursorKey =
         'finance_last_sync_time_${ApiService.syncServerKey}_$username';
     final initialized = prefs.getBool(bootstrapKey) == true;
+    final balanceCapabilityKey = _balanceCapabilityKey(username);
+    final balanceBootstrapKey = '${balanceCapabilityKey}_initialized';
+    final supportsBalances = prefs.getBool(balanceCapabilityKey) == true;
     final cursor = forceFullSync ? 0 : (prefs.getInt(cursorKey) ?? 0);
     final bundle = await FinanceStorage.getExportBundle();
 
@@ -148,11 +182,16 @@ abstract final class FinanceSyncService {
       cursorKey: cursorKey,
       bootstrapKey: bootstrapKey,
       cursor: cursor,
-      fullSync: forceFullSync || !initialized,
+      fullSync: forceFullSync ||
+          !initialized ||
+          (supportsBalances && prefs.getBool(balanceBootstrapKey) != true),
       bundle: bundle,
       fingerprint: _fingerprint(bundle),
       categoryNamesCapabilityKey: categoryNamesCapabilityKey,
       supportsCategoryNames: prefs.getBool(categoryNamesCapabilityKey) ?? false,
+      balanceCapabilityKey: balanceCapabilityKey,
+      balanceBootstrapKey: balanceBootstrapKey,
+      supportsBalances: supportsBalances,
     );
   }
 
@@ -165,6 +204,20 @@ abstract final class FinanceSyncService {
     // so an intermediary or partially deployed old server cannot make the
     // client acknowledge a payload it did not actually return.
     final hasProtocolPayload = _hasProtocolPayload(response);
+    final supportsBalances = supported &&
+        hasProtocolPayload &&
+        SyncCapabilityService.supportsFinanceAccountBalances(
+          response['sync_capabilities'],
+        );
+    if (request.balanceCapabilityKey.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      final previous = prefs.getBool(request.balanceCapabilityKey);
+      await prefs.setBool(request.balanceCapabilityKey, supportsBalances);
+      if (!supportsBalances && request.balanceBootstrapKey.isNotEmpty) {
+        await prefs.remove(request.balanceBootstrapKey);
+      }
+      if (previous != supportsBalances) FinanceStorage.revision.value++;
+    }
     if (!supported || !hasProtocolPayload) {
       return FinanceSyncResult(
         supported: false,
@@ -200,6 +253,22 @@ abstract final class FinanceSyncService {
       'recurring_rules': response['server_finance_recurring_rules'] ?? const [],
       'templates': response['server_finance_entry_templates'] ?? const [],
     };
+    if (!supportsBalances) {
+      final localAccountRepayments =
+          (currentBundle['loan_installments'] as List? ?? [])
+              .whereType<Map>()
+              .where((item) => item['payment_method_uuid'] != null)
+              .map((item) => item['uuid']?.toString())
+              .toSet();
+      remoteBundle['loan_installments'] =
+          (remoteBundle['loan_installments'] as List)
+              .whereType<Map>()
+              .where(
+                (item) =>
+                    !localAccountRepayments.contains(item['uuid']?.toString()),
+              )
+              .toList(growable: false);
+    }
     if (!request.supportsCategoryNames) {
       final localNameOverrides = (currentBundle['categories'] as List? ?? [])
           .whereType<Map>()
@@ -219,6 +288,7 @@ abstract final class FinanceSyncService {
       }
     }
     final conflictKeys = _conflictKeys(response['finance_conflicts']);
+    final deferredTransactionUuids = <String>{};
     // If a local write happened while the request was in flight, defer the
     // whole remote snapshot to the next round. Otherwise a newer server clock
     // could make an unrelated response win over the just-created local row
@@ -229,6 +299,7 @@ abstract final class FinanceSyncService {
         ? await FinanceStorage.mergeRemoteBundle(
             remoteBundle,
             forceRemoteKeys: conflictKeys,
+            deferredTransactionUuids: deferredTransactionUuids,
           )
         : 0;
 
@@ -244,12 +315,25 @@ abstract final class FinanceSyncService {
     final rawCursor = response['new_finance_sync_time'];
     final serverCursor = _asInt(rawCursor);
     var cursorAdvanced = false;
-    if (!localChanged && serverCursor > 0) {
+    final remoteChangesDeferred = deferredTransactionUuids.isNotEmpty;
+    if (remoteChangesDeferred) {
+      // A missing original or a still-active local refund can temporarily
+      // block a valid remote row. Pull its dependencies in full next round,
+      // keeping the cursor behind the row until it can actually be applied.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(request.bootstrapKey);
+    }
+    if (!localChanged && !remoteChangesDeferred && serverCursor > 0) {
       final prefs = await SharedPreferences.getInstance();
       final nextCursor =
           serverCursor > request.cursor ? serverCursor : request.cursor;
       await prefs.setInt(request.cursorKey, nextCursor);
       await prefs.setBool(request.bootstrapKey, true);
+      if (supportsBalances &&
+          request.fullSync &&
+          request.balanceBootstrapKey.isNotEmpty) {
+        await prefs.setBool(request.balanceBootstrapKey, true);
+      }
       cursorAdvanced = true;
     }
 
@@ -258,6 +342,7 @@ abstract final class FinanceSyncService {
       hasChanges: remoteChangeCount > 0,
       localChangesDuringRequest: localChanged,
       cursorAdvanced: cursorAdvanced,
+      remoteChangesDeferred: remoteChangesDeferred,
       remoteChangeCount: remoteChangeCount,
       acknowledgedChangeCount: acknowledgedChangeCount,
       rejectedChanges: response['finance_conflicts'] is List
@@ -308,11 +393,17 @@ abstract final class FinanceSyncService {
       'loans': List<Map<String, dynamic>>.from(
         payload['finance_loans_changes'],
       ),
-      'loan_installments': List<Map<String, dynamic>>.from(
-        payload['finance_loan_installments_changes'],
+      'loan_installments': List<Map<String, dynamic>>.from([
+        ...payload['finance_loan_installments_changes'],
+        ...payload['finance_loan_account_changes'],
+      ]),
+      'budgets': List<Map<String, dynamic>>.from([
+        ...payload['finance_budgets_changes'],
+        ...payload['finance_balance_snapshots_changes'],
+      ]),
+      'balance_snapshots': List<Map<String, dynamic>>.from(
+        payload['finance_balance_snapshots_changes'],
       ),
-      'budgets':
-          List<Map<String, dynamic>>.from(payload['finance_budgets_changes']),
       'recurring_rules': List<Map<String, dynamic>>.from(
         payload['finance_recurring_rules_changes'],
       ),

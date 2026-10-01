@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../services/finance_storage.dart';
+import '../services/finance_sync_service.dart';
 import '../widgets/finance_management_widgets.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'finance_budget_entry_screen.dart';
@@ -34,6 +35,9 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   List<FinancePaymentMethod> _paymentMethods = const [];
   List<FinanceTransaction> _transactions = const [];
   List<FinanceTransaction> _balanceTransactions = const [];
+  List<FinanceLoanInstallment> _loanRepayments = const [];
+  Set<String> _loanInterestTransactionUuids = const {};
+  bool? _balanceSyncSupported;
   FinanceSummary _summary = const FinanceSummary();
   bool _isLoading = true;
   String? _loadError;
@@ -151,6 +155,8 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         ),
         FinanceRepository.getPaymentMethods(includeArchived: true),
         FinanceRepository.getTransactions(from: from, to: to),
+        FinanceRepository.getPaidLoanInstallments(),
+        FinanceSyncService.balanceSyncSupport(),
       ]);
       final allBudgets = values[0] as List<FinanceBudget>;
       final balanceSnapshots = allBudgets
@@ -183,6 +189,12 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         _paymentMethods = values[2] as List<FinancePaymentMethod>;
         _transactions = values[3] as List<FinanceTransaction>;
         _balanceTransactions = balanceTransactions;
+        _loanRepayments = values[4] as List<FinanceLoanInstallment>;
+        _loanInterestTransactionUuids = _loanRepayments
+            .map((item) => item.interestTransactionUuid)
+            .whereType<String>()
+            .toSet();
+        _balanceSyncSupported = values[5] as bool?;
         _summary = FinanceRepository.summarizeTransactions(_transactions);
         _isLoading = false;
         _loadError = null;
@@ -218,16 +230,26 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       if (paymentMethodUuid == null || snapshotAt == null) continue;
       final eventAt = _balanceEventTime(transaction);
       if (eventAt <= snapshotAt) continue;
-      final dateStartAt = dateFromKey(
-        transaction.transactionDate,
-      ).millisecondsSinceEpoch;
-      final eligibleAt = math.max(eventAt, dateStartAt).toInt();
+      final eligibleAt = eventAt;
       if (eligibleAt <= now ||
           eligibleAt > monthEndAt ||
           (nextEventAt != null && eligibleAt >= nextEventAt)) {
         continue;
       }
       nextEventAt = eligibleAt;
+    }
+    for (final repayment in _loanRepayments) {
+      final snapshotAt = snapshotsByMethod[repayment.paymentMethodUuid];
+      final paidAt = repayment.paidAt;
+      if (snapshotAt == null ||
+          paidAt == null ||
+          paidAt <= snapshotAt ||
+          paidAt <= now ||
+          paidAt > monthEndAt ||
+          (nextEventAt != null && paidAt >= nextEventAt)) {
+        continue;
+      }
+      nextEventAt = paidAt;
     }
     if (nextEventAt == null) return;
 
@@ -380,11 +402,10 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       final paymentMethodUuid = budget.paymentMethodUuid!;
       final snapshotAt = budget.effectiveBalanceSnapshotAt;
       final asOfAt = _balanceAsOfAt;
-      final asOfDate = dateKey(DateTime.fromMillisecondsSinceEpoch(asOfAt));
       final transactionsAfterSnapshot = _balanceTransactions.where(
         (transaction) {
           if (transaction.paymentMethodUuid != paymentMethodUuid ||
-              transaction.transactionDate.compareTo(asOfDate) > 0) {
+              _loanInterestTransactionUuids.contains(transaction.uuid)) {
             return false;
           }
           final eventAt = _balanceEventTime(
@@ -398,7 +419,15 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
           FinanceRepository.summarizePaymentMethodBalanceChanges(
             transactionsAfterSnapshot,
           )[paymentMethodUuid];
-      return -(balanceChange ?? 0);
+      final repayments = _loanRepayments
+          .where(
+            (item) =>
+                item.paymentMethodUuid == paymentMethodUuid &&
+                item.paidAt! > snapshotAt &&
+                item.paidAt! <= asOfAt,
+          )
+          .fold<int>(0, (sum, item) => sum + item.paymentMinor);
+      return -(balanceChange ?? 0) + repayments;
     }
     if (budget.isOverall) {
       return math.max(0, _summary.netExpenseMinor);
@@ -410,30 +439,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     FinanceTransaction transaction, {
     int? snapshotAt,
   }) {
-    final occurredAt = transaction.occurredAt;
-    if (occurredAt == null || occurredAt <= 0) return transaction.createdAt;
-    final occurred = DateTime.fromMillisecondsSinceEpoch(occurredAt);
-    if (dateKey(occurred) != transaction.transactionDate) {
-      return transaction.createdAt;
-    }
-    if (snapshotAt != null &&
-        occurredAt <= snapshotAt &&
-        _minuteStartAt(occurredAt) == _minuteStartAt(snapshotAt) &&
-        transaction.createdAt > snapshotAt) {
-      return transaction.createdAt;
-    }
-    return occurredAt;
-  }
-
-  int _minuteStartAt(int timestamp) {
-    final dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    return DateTime(
-      dateTime.year,
-      dateTime.month,
-      dateTime.day,
-      dateTime.hour,
-      dateTime.minute,
-    ).millisecondsSinceEpoch;
+    return transaction.balanceEventAt(snapshotAt: snapshotAt);
   }
 
   String _budgetTitle(FinanceBudget budget) {
@@ -546,6 +552,16 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
+                    if (_balanceSyncSupported == false) ...[
+                      Text(
+                        '当前服务暂不支持余额云同步，余额和还款账户保存在本机。',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: colorScheme.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     if (_paymentBudgets.isEmpty)
                       _buildPaymentEmptyState(colorScheme)
                     else

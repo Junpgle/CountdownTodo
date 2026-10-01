@@ -5,6 +5,38 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('分期发生时刻使用记录时区，跨日期后仍按实际时刻扣减', () {
+    final eventAt = DateTime.utc(2026, 10, 1, 10, 30).millisecondsSinceEpoch;
+    final transaction = FinanceTransaction(
+      amountMinor: 2000,
+      transactionDate: '2026-10-02',
+      occurredAt: eventAt,
+      timezoneOffsetMinutes: 840,
+      createdAt: DateTime.utc(2026, 9, 15).millisecondsSinceEpoch,
+    );
+    expect(dateKey(transaction.occurrenceLocalTime!), '2026-10-02');
+    expect(transaction.occurrenceLocalTime!.hour, 0);
+    expect(
+      transaction.balanceEventAt(
+        snapshotAt: DateTime.utc(2026, 9, 30).millisecondsSinceEpoch,
+      ),
+      eventAt,
+    );
+    expect(
+      FinanceTransaction.fromMap(transaction.toMap()).balanceEventAt(),
+      eventAt,
+    );
+  });
+
+  test('历史账单缺少发生时间时未来日期不会提前扣减', () {
+    final future = DateTime(2027, 1, 2);
+    final transaction = FinanceTransaction.fromMap({
+      'amount_minor': 100,
+      'transaction_date': dateKey(future),
+      'created_at': DateTime(2026, 10, 1).millisecondsSinceEpoch,
+    });
+    expect(transaction.balanceEventAt(), future.millisecondsSinceEpoch);
+  });
   group('记账金额解析', () {
     test('支持整数和两位小数，并转换为分', () {
       expect(parseFinanceAmount('12'), 1200);

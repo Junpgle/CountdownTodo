@@ -52,10 +52,13 @@ class FinanceTransactionDetailScreen extends StatelessWidget {
   }
 
   String _occurredAtLabel() {
-    final occurredAt = transaction.occurredAt;
-    if (occurredAt == null || occurredAt <= 0) return '未记录';
-    return DateFormat('yyyy年M月d日 HH:mm')
-        .format(DateTime.fromMillisecondsSinceEpoch(occurredAt));
+    final occurred = transaction.occurrenceLocalTime;
+    if (occurred == null) return '未记录';
+    final time = DateFormat('yyyy年M月d日 HH:mm').format(occurred);
+    return transaction.timezoneOffsetMinutes ==
+            DateTime.now().timeZoneOffset.inMinutes
+        ? time
+        : '$time（${financeTimezoneLabel(transaction.timezoneOffsetMinutes)}）';
   }
 
   Future<void> _openEditor(BuildContext context) async {
