@@ -132,7 +132,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('记账概览支持月、周、日三种时间视图', (tester) async {
+  testWidgets('概览支持月周日视图并禁用超出选中月的导航', (tester) async {
     final transaction = FinanceTransaction(
       uuid: 'overview-transaction',
       amountMinor: 1200,
@@ -181,11 +181,45 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('周一至周日'), findsOneWidget);
     expect(find.text('8月31日 - 9月6日每日净支出'), findsOneWidget);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const ValueKey('finance-overview-period-previous')),
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('finance-overview-period-next')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('9月7日 - 13日每日净支出'), findsOneWidget);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const ValueKey('finance-overview-period-previous')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('finance-overview-period-previous')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('8月31日 - 9月6日每日净支出'), findsOneWidget);
 
     await tester.tap(find.text('日视图'));
     await tester.pumpAndSettle();
     expect(find.text('选择具体日期'), findsOneWidget);
     expect(find.text('9月1日 周二时段净支出'), findsOneWidget);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const ValueKey('finance-overview-period-previous')),
+          )
+          .onPressed,
+      isNull,
+    );
     expect(tester.takeException(), isNull);
   });
 

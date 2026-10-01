@@ -307,6 +307,24 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     final colorScheme = Theme.of(context).colorScheme;
     final period = _periodRange;
     final isMonthView = _view == _FinanceOverviewView.month;
+    final canShiftPrevious = _canShiftFocusedPeriod(-1);
+    final canShiftNext = _canShiftFocusedPeriod(1);
+    final VoidCallback? previousAction;
+    if (isMonthView) {
+      previousAction = () => _shiftMonth(-1);
+    } else if (canShiftPrevious) {
+      previousAction = () => _shiftFocusedPeriod(-1);
+    } else {
+      previousAction = null;
+    }
+    final VoidCallback? nextAction;
+    if (isMonthView) {
+      nextAction = () => _shiftMonth(1);
+    } else if (canShiftNext) {
+      nextAction = () => _shiftFocusedPeriod(1);
+    } else {
+      nextAction = null;
+    }
     final title = switch (_view) {
       _FinanceOverviewView.month => '${month.year}年${month.month}月',
       _FinanceOverviewView.week =>
@@ -333,9 +351,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                 : _view == _FinanceOverviewView.week
                     ? '上一周'
                     : '前一天',
-            onPressed: isMonthView
-                ? () => _shiftMonth(-1)
-                : () => _shiftFocusedPeriod(-1),
+            onPressed: previousAction,
             icon: const Icon(Icons.chevron_left),
           ),
           Expanded(
@@ -371,9 +387,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                 : _view == _FinanceOverviewView.week
                     ? '下一周'
                     : '后一天',
-            onPressed: isMonthView
-                ? () => _shiftMonth(1)
-                : () => _shiftFocusedPeriod(1),
+            onPressed: nextAction,
             icon: const Icon(Icons.chevron_right),
           ),
         ],
@@ -421,9 +435,25 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   }
 
   DateTime _clampToSelectedMonth(DateTime value) {
-    final lastDay = DateTime(month.year, month.month + 1, 0).day;
-    final day = value.day.clamp(1, lastDay).toInt();
-    return DateTime(month.year, month.month, day);
+    final firstDay = DateTime(month.year, month.month);
+    final nextMonth = DateTime(month.year, month.month + 1);
+    if (value.isBefore(firstDay)) return firstDay;
+    if (!value.isBefore(nextMonth)) {
+      return DateTime(month.year, month.month + 1, 0);
+    }
+    return DateTime(value.year, value.month, value.day);
+  }
+
+  bool _canShiftFocusedPeriod(int delta) {
+    if (_view == _FinanceOverviewView.month) return true;
+    final days = _view == _FinanceOverviewView.week ? delta * 7 : delta;
+    final next = _clampToSelectedMonth(
+      _focusedDate.add(Duration(days: days)),
+    );
+    if (_view == _FinanceOverviewView.week) {
+      return dateKey(_startOfWeek(next)) != dateKey(_startOfWeek(_focusedDate));
+    }
+    return dateKey(next) != dateKey(_focusedDate);
   }
 
   Widget _buildSummaryCard(
