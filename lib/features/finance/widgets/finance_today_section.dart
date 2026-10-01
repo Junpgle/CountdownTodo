@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../widgets/optional_liquid_glass_surface.dart';
@@ -31,6 +33,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
   bool _isLoading = true;
   bool _hasError = false;
   int _loadGeneration = 0;
+  Timer? _upcomingTransactionTimer;
 
   @override
   void initState() {
@@ -48,6 +51,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
   @override
   void dispose() {
     FinanceStorage.revision.removeListener(_onFinanceChanged);
+    _upcomingTransactionTimer?.cancel();
     super.dispose();
   }
 
@@ -57,6 +61,8 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
 
   Future<void> _loadData() async {
     if (!mounted) return;
+    _upcomingTransactionTimer?.cancel();
+    _upcomingTransactionTimer = null;
     final generation = ++_loadGeneration;
     setState(() {
       _isLoading = true;
@@ -67,22 +73,27 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
     final monthStart = DateTime(now.year, now.month);
     final nextMonth = DateTime(now.year, now.month + 1);
     try {
-      final results = await Future.wait<dynamic>([
-        FinanceRepository.getSummary(from: monthStart, to: nextMonth),
-        FinanceRepository.getTransactions(
-          from: monthStart,
-          to: nextMonth,
-          limit: 1,
-        ),
-      ]);
+      final transactions = await FinanceRepository.getTransactions(
+        from: monthStart,
+        to: nextMonth,
+      );
       if (!mounted || generation != _loadGeneration) return;
-      final transactions = results[1] as List<FinanceTransaction>;
+      final asOfAt = DateTime.now().millisecondsSinceEpoch;
+      final occurredTransactions = transactions
+          .where((transaction) => transaction.balanceEventAt() <= asOfAt)
+          .toList(growable: false);
       setState(() {
-        _summary = results[0] as FinanceSummary;
-        _latestTransaction = transactions.isEmpty ? null : transactions.first;
+        _summary = FinanceSummary.fromTransactions(
+          transactions,
+          asOfAt: asOfAt,
+        );
+        _latestTransaction = occurredTransactions.isEmpty
+            ? null
+            : occurredTransactions.first;
         _isLoading = false;
         _hasError = false;
       });
+      _scheduleUpcomingTransactionRefresh(transactions, asOfAt);
     } catch (_) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -90,6 +101,30 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
         _hasError = true;
       });
     }
+  }
+
+  void _scheduleUpcomingTransactionRefresh(
+    Iterable<FinanceTransaction> transactions,
+    int asOfAt,
+  ) {
+    _upcomingTransactionTimer?.cancel();
+    _upcomingTransactionTimer = null;
+    int? nextEventAt;
+    for (final transaction in transactions) {
+      final eventAt = transaction.balanceEventAt();
+      if (eventAt > asOfAt &&
+          (nextEventAt == null || eventAt < nextEventAt)) {
+        nextEventAt = eventAt;
+      }
+    }
+    if (nextEventAt == null) return;
+    final delayMs = (nextEventAt - asOfAt + 1)
+        .clamp(1, const Duration(days: 24).inMilliseconds)
+        .toInt();
+    _upcomingTransactionTimer = Timer(
+      Duration(milliseconds: delayMs),
+      _loadData,
+    );
   }
 
   @override

@@ -76,6 +76,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   int _loadGeneration = 0;
   bool _maintenanceScheduled = false;
   Future<void>? _maintenanceFuture;
+  Timer? _upcomingTransactionTimer;
   final GlobalKey _overviewAddActionKey = GlobalKey();
   final GlobalKey _bottomAddActionKey = GlobalKey();
 
@@ -156,7 +157,15 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _upcomingTransactionTimer?.cancel();
+    super.dispose();
+  }
+
   Future<void> _load({bool showLoading = true}) async {
+    _upcomingTransactionTimer?.cancel();
+    _upcomingTransactionTimer = null;
     final generation = ++_loadGeneration;
     if (mounted && showLoading) {
       setState(() {
@@ -175,6 +184,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         _overviewTransactions = data.overviewTransactions;
         _isLoading = false;
       });
+      _scheduleUpcomingTransactionRefresh();
       if (!_isCategoryLedgerRoute) _startBackgroundMaintenance(generation);
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
@@ -207,12 +217,47 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
             transaction.transactionDate.compareTo(fromKey) >= 0 &&
             transaction.transactionDate.compareTo(toKey) < 0)
         .toList(growable: false);
+    final now = DateTime.now();
+    final isCurrentMonth =
+        from.year == now.year && from.month == now.month;
     return (
       transactions: transactions,
-      summary: FinanceRepository.summarizeTransactions(transactions),
+      summary: FinanceSummary.fromTransactions(
+        transactions,
+        asOfAt: isCurrentMonth ? now.millisecondsSinceEpoch : null,
+      ),
       categories: values[1] as List<FinanceCategory>,
       paymentMethods: values[2] as List<FinancePaymentMethod>,
       overviewTransactions: overviewTransactions,
+    );
+  }
+
+  void _scheduleUpcomingTransactionRefresh() {
+    _upcomingTransactionTimer?.cancel();
+    _upcomingTransactionTimer = null;
+    final currentDate = DateTime.now();
+    final now = currentDate.millisecondsSinceEpoch;
+    if (_month.year != currentDate.year || _month.month != currentDate.month) {
+      return;
+    }
+
+    int? nextEventAt;
+    for (final transaction in _overviewTransactions) {
+      final eventAt = transaction.balanceEventAt();
+      if (eventAt > now && (nextEventAt == null || eventAt < nextEventAt)) {
+        nextEventAt = eventAt;
+      }
+    }
+    if (nextEventAt == null) return;
+    final delayMs = (nextEventAt - now + 1)
+        .clamp(1, const Duration(days: 24).inMilliseconds)
+        .toInt();
+    _upcomingTransactionTimer = Timer(
+      Duration(milliseconds: delayMs),
+      () {
+        _upcomingTransactionTimer = null;
+        if (mounted) unawaited(_load(showLoading: false));
+      },
     );
   }
 

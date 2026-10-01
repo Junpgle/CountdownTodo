@@ -13,6 +13,7 @@ import 'package:countdown_todo/features/finance/screens/finance_trash_screen.dar
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/features/finance/services/finance_repository.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_catalog_editor.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_today_section.dart';
 import 'package:countdown_todo/services/database_helper.dart';
 import 'package:countdown_todo/widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
@@ -610,6 +611,104 @@ void main() {
       find.descendant(of: card, matching: find.text('超支 ¥900.00')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('记账概览不提前统计本月未来发生的账单', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final pastAt = DateTime(now.year, now.month, now.day);
+    final futureAt = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      23,
+      59,
+      59,
+    );
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'overview-past-expense',
+          amountMinor: 4000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(pastAt),
+          occurredAt: pastAt.millisecondsSinceEpoch,
+          createdAt: pastAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'overview-future-expense',
+          amountMinor: 9000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(futureAt),
+          occurredAt: futureAt.millisecondsSinceEpoch,
+          createdAt: now.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(tester, const FinanceHomeScreen(username: 'default'));
+
+    expect(find.text('¥130.00'), findsNothing);
+    expect(find.text('¥40.00'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('首页记账摘要不提前计入未来账单且最近一笔显示已发生记录',
+      (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final pastAt = DateTime(now.year, now.month, now.day);
+    final futureAt = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      23,
+      59,
+      59,
+    );
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'today-section-past-expense',
+          amountMinor: 4000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(pastAt),
+          occurredAt: pastAt.millisecondsSinceEpoch,
+          createdAt: pastAt.millisecondsSinceEpoch,
+          merchant: '过去支出',
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'today-section-future-expense',
+          amountMinor: 9000,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(futureAt),
+          occurredAt: futureAt.millisecondsSinceEpoch,
+          createdAt: now.millisecondsSinceEpoch,
+          merchant: '未来支出',
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      const Scaffold(
+        body: FinanceTodaySection(username: 'default'),
+      ),
+    );
+
+    expect(find.text('1 笔'), findsOneWidget);
+    expect(find.text('¥130.00'), findsNothing);
+    expect(find.text('过去支出'), findsOneWidget);
+    expect(find.text('未来支出'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('预算卡片直接编辑并保存，范围和备注保持不变', (tester) async {

@@ -172,8 +172,18 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
 
   _FinanceOverviewPeriod get _currentPeriod {
     final range = _periodRange;
-    final periodTransactions = _transactionsInRange(range);
-    final periodSummary = _view == _FinanceOverviewView.month
+    final transactionsInRange = _transactionsInRange(range);
+    final now = DateTime.now();
+    final includesNow = !now.isBefore(range.from) && now.isBefore(range.to);
+    final periodTransactions = includesNow
+        ? transactionsInRange
+              .where(
+                (transaction) =>
+                    transaction.balanceEventAt() <= now.millisecondsSinceEpoch,
+              )
+              .toList(growable: false)
+        : transactionsInRange;
+    final periodSummary = _view == _FinanceOverviewView.month && !includesNow
         ? summary
         : FinanceRepository.summarizeTransactions(periodTransactions);
     final title = switch (_view) {
