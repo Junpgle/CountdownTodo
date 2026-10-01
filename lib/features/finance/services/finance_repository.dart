@@ -209,8 +209,11 @@ abstract final class FinanceRepository {
     );
   }
 
-  static Future<void> saveLoan(FinanceLoan loan) {
-    return FinanceStorage.saveLoan(loan);
+  static Future<void> saveLoan(
+    FinanceLoan loan, {
+    FinanceLoan? original,
+  }) {
+    return FinanceStorage.saveLoan(loan, original: original);
   }
 
   static Future<void> setLoanInstallmentPaid(

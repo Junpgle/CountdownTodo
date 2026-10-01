@@ -578,23 +578,38 @@ abstract final class FinanceStorage {
   }
 
   /// 保存贷款并在同一事务中生成或重算整套还款计划。
-  static Future<void> saveLoan(FinanceLoan loan) async {
+  static Future<void> saveLoan(
+    FinanceLoan loan, {
+    FinanceLoan? original,
+  }) async {
     _validateLoan(loan);
+    if (original != null && original.uuid != loan.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '贷款标识不匹配');
+    }
     await ensureReady();
     final db = await _database;
-    final allocations = FinanceLoanCalculator.generate(
-      principalMinor: loan.principalMinor,
-      annualInterestRateBps: loan.annualInterestRateBps,
-      termMonths: loan.termMonths,
-      startDate: dateFromKey(loan.startDate),
-      repaymentDay: loan.repaymentDay,
-      repaymentMethod: loan.repaymentMethod,
-    );
     await db.transaction((txn) async {
       final existingRow = await _findByUuid(txn, 'finance_loans', loan.uuid);
       final existing = existingRow == null
           ? null
           : FinanceLoan.fromMap(existingRow);
+      if (existing != null) {
+        if (original != null &&
+            (existing.version != original.version ||
+                existing.updatedAt != original.updatedAt)) {
+          _mergeLoanEdits(existing, original, loan);
+          _validateLoan(loan);
+        } else if (original == null &&
+            (existing.version > loan.version ||
+                existing.updatedAt > loan.updatedAt)) {
+          throw StateError('贷款已更新，请重新加载后再保存');
+        }
+        if (existing.isDeleted) {
+          throw StateError('贷款已删除，请先恢复后再编辑');
+        }
+      } else if (original != null) {
+        throw StateError('贷款已不存在，请重新加载后再保存');
+      }
       final existingInstallments = existing == null
           ? <FinanceLoanInstallment>[]
           : await _loanInstallmentsInTransaction(txn, loan.uuid);
@@ -604,6 +619,14 @@ abstract final class FinanceStorage {
           _loanTermsDiffer(existing, loan)) {
         throw StateError('已有还款记录后不能修改本金、利率、期限或还款方式');
       }
+      final allocations = FinanceLoanCalculator.generate(
+        principalMinor: loan.principalMinor,
+        annualInterestRateBps: loan.annualInterestRateBps,
+        termMonths: loan.termMonths,
+        startDate: dateFromKey(loan.startDate),
+        repaymentDay: loan.repaymentDay,
+        repaymentMethod: loan.repaymentMethod,
+      );
       final existingByIndex = <int, FinanceLoanInstallment>{};
       for (final item in existingInstallments) {
         if (item.installmentIndex > 0) {
@@ -615,6 +638,7 @@ abstract final class FinanceStorage {
         loan.version = existing.version;
         loan.createdAt = existing.createdAt;
         loan.updatedAt = existing.updatedAt;
+        loan.deviceId = existing.deviceId;
         loan.markAsChanged();
       } else {
         loan.pendingSync = true;
@@ -3596,6 +3620,40 @@ abstract final class FinanceStorage {
         left.startDate != right.startDate ||
         left.repaymentDay != right.repaymentDay ||
         left.repaymentMethod != right.repaymentMethod;
+  }
+
+  static void _mergeLoanEdits(
+    FinanceLoan current,
+    FinanceLoan original,
+    FinanceLoan incoming,
+  ) {
+    if (incoming.name == original.name) incoming.name = current.name;
+    if (incoming.lender == original.lender) incoming.lender = current.lender;
+    if (incoming.principalMinor == original.principalMinor) {
+      incoming.principalMinor = current.principalMinor;
+    }
+    if (incoming.currencyCode == original.currencyCode) {
+      incoming.currencyCode = current.currencyCode;
+    }
+    if (incoming.annualInterestRateBps == original.annualInterestRateBps) {
+      incoming.annualInterestRateBps = current.annualInterestRateBps;
+    }
+    if (incoming.termMonths == original.termMonths) {
+      incoming.termMonths = current.termMonths;
+    }
+    if (incoming.startDate == original.startDate) {
+      incoming.startDate = current.startDate;
+    }
+    if (incoming.repaymentDay == original.repaymentDay) {
+      incoming.repaymentDay = current.repaymentDay;
+    }
+    if (incoming.repaymentMethod == original.repaymentMethod) {
+      incoming.repaymentMethod = current.repaymentMethod;
+    }
+    if (incoming.note == original.note) incoming.note = current.note;
+    if (incoming.isDeleted == original.isDeleted) {
+      incoming.isDeleted = current.isDeleted;
+    }
   }
 
   static bool _isValidBudget(FinanceBudget item) {
