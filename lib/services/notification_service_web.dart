@@ -164,13 +164,13 @@ class NotificationService {
     await _showNormalNotification(title, body);
   }
 
-  static Future<void> showFinanceBudgetAlert({
+  static Future<bool> showFinanceBudgetAlert({
     required String title,
     required String body,
     required String alertKey,
   }) async {
-    if (!await AppSettingsStorage.isFinanceBudgetAlertEnabled()) return;
-    await _showNormalNotification(title, body, tag: alertKey);
+    if (!await AppSettingsStorage.isFinanceBudgetAlertEnabled()) return false;
+    return _showNormalNotification(title, body, tag: alertKey);
   }
 
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {}

@@ -7,7 +7,9 @@ import 'package:countdown_todo/features/finance/services/finance_repository.dart
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_automation_editor.dart';
 import 'package:countdown_todo/services/database_helper.dart';
+import 'package:countdown_todo/services/focus_do_not_disturb_service.dart';
 import 'package:countdown_todo/services/storage/app_settings_storage.dart';
+import 'package:countdown_todo/storage_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -745,5 +747,50 @@ void main() {
     expect(reminders.single['triggerAtMs'], triggerAt.millisecondsSinceEpoch);
     expect(reminders.single['financeDueAtMs'], due.millisecondsSinceEpoch);
     expect(reminders.single['withinWindow'], true);
+  });
+
+  test('免打扰拦截时不消耗预算提醒去重标记', () async {
+    const accountKey = 'finance-budget-alert-test-user';
+    final db = await openDatabase();
+    addTearDown(() async {
+      await FocusDoNotDisturbService.setActive(false, force: true);
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(StorageService.keyCurrentUser, accountKey);
+    await AppSettingsStorage.setFinanceBudgetAlertEnabled(true);
+    await AppSettingsStorage.setNormalNotificationEnabled(true);
+    await FocusDoNotDisturbService.setActive(false, force: true);
+
+    final now = DateTime(2026, 10, 2, 12);
+    final monthKey = financeMonthKey(now);
+    await FinanceStorage.saveBudget(
+      FinanceBudget(
+        uuid: 'dnd-budget-alert',
+        monthKey: monthKey,
+        amountMinor: 10000,
+      ),
+    );
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'dnd-budget-alert-expense',
+        amountMinor: 8000,
+        transactionDate: dateKey(now),
+        occurredAt: now.millisecondsSinceEpoch,
+      ),
+    );
+
+    await FocusDoNotDisturbService.setActive(true);
+    expect(FocusDoNotDisturbService.isActive, isTrue);
+
+    await FinanceAutomationService.checkBudgetAlerts(now: now);
+
+    final savedBudget =
+        (await FinanceStorage.getBudgets(monthKey: monthKey)).single;
+    final alertKey =
+        'finance-budget-v1-$accountKey-${savedBudget.uuid}-'
+        '${savedBudget.monthKey}-${savedBudget.version}-80';
+    expect(prefs.getBool(alertKey), isNull);
   });
 }

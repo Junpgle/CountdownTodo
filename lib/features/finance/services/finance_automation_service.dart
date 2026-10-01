@@ -364,12 +364,12 @@ abstract final class FinanceAutomationService {
       final body = '$scope ${_formatAmount(used)} / '
           '${_formatAmount(budget.amountMinor)}';
       try {
-        await NotificationService.showFinanceBudgetAlert(
+        final delivered = await NotificationService.showFinanceBudgetAlert(
           title: title,
           body: body,
           alertKey: alertKey,
         );
-        await prefs.setBool(alertKey, true);
+        if (delivered) await prefs.setBool(alertKey, true);
       } catch (_) {
         // 系统通知不可用时保留下一次重试机会，但不影响记账流程。
       }

@@ -293,15 +293,17 @@ class NotificationService {
     );
   }
 
-  static Future<void> showFinanceBudgetAlert({
+  static Future<bool> showFinanceBudgetAlert({
     required String title,
     required String body,
     required String alertKey,
   }) async {
-    if (FocusDoNotDisturbService.isActive) return;
-    if (!await AppSettingsStorage.isFinanceBudgetAlertEnabled()) return;
-    if (!await AppSettingsStorage.isNormalNotificationEnabled()) return;
-    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    if (FocusDoNotDisturbService.isActive) return false;
+    if (!await AppSettingsStorage.isFinanceBudgetAlertEnabled()) return false;
+    if (!await AppSettingsStorage.isNormalNotificationEnabled()) return false;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) {
+      return false;
+    }
     await ensureInitialized();
     final id = _stableNotificationId(alertKey, base: 52000, range: 9000);
 
@@ -312,7 +314,7 @@ class NotificationService {
         body: body,
         notificationDetails: _desktopNotificationDetails,
       );
-      return;
+      return true;
     }
 
     if (Platform.isAndroid) {
@@ -331,6 +333,7 @@ class NotificationService {
         body: body,
         notificationDetails: details,
       );
+      return true;
     } else if (Platform.isIOS) {
       const details = NotificationDetails(
         iOS: DarwinNotificationDetails(),
@@ -341,7 +344,9 @@ class NotificationService {
         body: body,
         notificationDetails: details,
       );
+      return true;
     }
+    return false;
   }
 
   static int _stableNotificationId(
