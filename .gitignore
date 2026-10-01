@@ -199,6 +199,7 @@ todo.md
 !/test/features/finance/finance_recurring_regression_test.dart
 !/test/features/finance/finance_category_budget_test.dart
 !/test/features/finance/finance_ai_budget_period_test.dart
+!/test/features/finance/finance_category_hierarchy_test.dart
 !/test/features/finance/finance_refund_classification_test.dart
 !/test/features/finance/finance_refund_batch_test.dart
 !/test/features/finance/finance_loan_sync_ui_test.dart

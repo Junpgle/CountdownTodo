@@ -1038,81 +1038,100 @@ abstract final class FinanceStorage {
         : parentUuid;
     await ensureReady();
     final db = await _database;
-    final existingRows = await db.query(
-      'finance_categories',
-      where: 'uuid = ?',
-      whereArgs: [category.uuid],
-      limit: 1,
-    );
-    if (existingRows.isNotEmpty) {
-      final existing = FinanceCategory.fromMap(existingRows.first);
-      if (existing.isSystem) {
-        // System categories keep their built-in identity and hierarchy while
-        // name and icon overrides remain user-owned fields.
-        final defaults = FinanceDefaults.categories.firstWhere(
-          (item) => item['uuid'] == existing.uuid,
-          orElse: () => const <String, dynamic>{},
-        );
-        category
-          ..isSystem = true
-          ..type = existing.type
-          ..colorValue = existing.colorValue
-          ..parentUuid = existing.parentUuid
-          ..sortOrder = existing.sortOrder
-          ..isArchived = false
-          ..isDeleted = false
-          ..nameCustomized = defaults.isEmpty
-              ? category.name != existing.name || existing.nameCustomized
-              : category.name != defaults['name'] || existing.nameCustomized
-          ..iconCustomized = defaults.isEmpty
-              ? category.icon != existing.icon || existing.iconCustomized
-              : category.icon != defaults['icon'] || existing.iconCustomized;
-        if (category.version <= existing.version ||
-            category.updatedAt <= existing.updatedAt) {
-          category
-            ..uuid = existing.uuid
-            ..createdAt = existing.createdAt
-            ..version = existing.version
-            ..updatedAt = existing.updatedAt
-            ..markAsChanged();
-        }
-      }
-    } else if (category.isSystem || _isSystemUuid(category.uuid)) {
-      throw ArgumentError.value(category.uuid, 'uuid', '系统分类只能使用内置分类标识');
-    }
-    if (category.parentUuid != null) {
-      if (category.parentUuid == category.uuid) {
-        throw ArgumentError.value(
-          category.parentUuid,
-          'parentUuid',
-          '分类不能将自己设置为上级大类',
-        );
-      }
-      final parentRows = await db.query(
+    await db.transaction((txn) async {
+      final existingRows = await txn.query(
         'finance_categories',
-        where: 'uuid = ? AND is_deleted = 0',
-        whereArgs: [category.parentUuid],
+        where: 'uuid = ?',
+        whereArgs: [category.uuid],
         limit: 1,
       );
-      if (parentRows.isEmpty) {
-        throw ArgumentError.value(category.parentUuid, 'parentUuid', '上级大类不存在');
+      if (existingRows.isNotEmpty) {
+        final existing = FinanceCategory.fromMap(existingRows.first);
+        if (existing.isSystem) {
+          // System categories keep their built-in identity and hierarchy while
+          // name and icon overrides remain user-owned fields.
+          final defaults = FinanceDefaults.categories.firstWhere(
+            (item) => item['uuid'] == existing.uuid,
+            orElse: () => const <String, dynamic>{},
+          );
+          category
+            ..isSystem = true
+            ..type = existing.type
+            ..colorValue = existing.colorValue
+            ..parentUuid = existing.parentUuid
+            ..sortOrder = existing.sortOrder
+            ..isArchived = false
+            ..isDeleted = false
+            ..nameCustomized = defaults.isEmpty
+                ? category.name != existing.name || existing.nameCustomized
+                : category.name != defaults['name'] || existing.nameCustomized
+            ..iconCustomized = defaults.isEmpty
+                ? category.icon != existing.icon || existing.iconCustomized
+                : category.icon != defaults['icon'] || existing.iconCustomized;
+          if (category.version <= existing.version ||
+              category.updatedAt <= existing.updatedAt) {
+            category
+              ..uuid = existing.uuid
+              ..createdAt = existing.createdAt
+              ..version = existing.version
+              ..updatedAt = existing.updatedAt
+              ..markAsChanged();
+          }
+        }
+      } else if (category.isSystem || _isSystemUuid(category.uuid)) {
+        throw ArgumentError.value(category.uuid, 'uuid', '系统分类只能使用内置分类标识');
       }
-      final parent = FinanceCategory.fromMap(parentRows.first);
-      if (parent.type != category.type ||
-          parent.parentUuid?.trim().isNotEmpty == true) {
-        throw ArgumentError.value(
-          category.parentUuid,
-          'parentUuid',
-          '上级分类必须是同一收支类型的一级分类',
+      if (category.parentUuid != null) {
+        if (category.parentUuid == category.uuid) {
+          throw ArgumentError.value(
+            category.parentUuid,
+            'parentUuid',
+            '分类不能将自己设置为上级大类',
+          );
+        }
+        final parentRows = await txn.query(
+          'finance_categories',
+          where: 'uuid = ? AND is_deleted = 0',
+          whereArgs: [category.parentUuid],
+          limit: 1,
         );
+        if (parentRows.isEmpty) {
+          throw ArgumentError.value(category.parentUuid, 'parentUuid', '上级大类不存在');
+        }
+        final parent = FinanceCategory.fromMap(parentRows.first);
+        if (parent.type != category.type ||
+            parent.parentUuid?.trim().isNotEmpty == true) {
+          throw ArgumentError.value(
+            category.parentUuid,
+            'parentUuid',
+            '上级分类必须是同一收支类型的一级分类',
+          );
+        }
       }
-    }
-    category.pendingSync = true;
-    await db.insert(
-      'finance_categories',
-      _localValues(category.toMap()),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+      if (category.parentUuid != null) {
+        final children = await txn.query(
+          'finance_categories',
+          columns: ['uuid'],
+          where: 'parent_uuid = ? AND is_deleted = 0',
+          whereArgs: [category.uuid],
+          limit: 1,
+        );
+        if (children.isNotEmpty) {
+          throw ArgumentError.value(
+            category.parentUuid,
+            'parentUuid',
+            '已有二级分类，请先移动二级分类后再调整上级',
+          );
+        }
+      }
+      category.pendingSync = true;
+      await txn.insert(
+        'finance_categories',
+        _localValues(category.toMap()),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+    });
     _notifyChanged();
   }
 

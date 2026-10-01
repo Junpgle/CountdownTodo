@@ -73,6 +73,11 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
       ? (_isPayment ? '💼' : '📦')
       : _iconController.text.trim();
 
+  bool get _hasChildren => widget.editingCategoryUuid != null &&
+      widget.availableParents.any((category) =>
+          category.parentUuid == widget.editingCategoryUuid &&
+          !category.isDeleted);
+
   List<FinanceCategory> get _parentCandidates {
     if (_isPayment || _type == null) return const [];
     return widget.availableParents.where((category) {
@@ -329,9 +334,12 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                     isExpanded: true,
                     decoration: InputDecoration(
                       labelText: '上级大类（可选）',
-                      helperText: widget.lockParent && _selectedParent != null
-                          ? '已选择“${_selectedParent!.name}”，这是该大类下的细分类'
-                          : '不选择上级时，会创建为一级分类',
+                      helperText: _hasChildren
+                          ? '已有二级分类，请先移动二级分类后再调整上级'
+                          : widget.lockParent && _selectedParent != null
+                              ? '已选择“${_selectedParent!.name}”，这是该大类下的细分类'
+                              : '不选择上级时，会创建为一级分类',
+                      helperMaxLines: 2,
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14)),
                     ),
@@ -346,7 +354,7 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                           child: Text('${parent.icon} ${parent.name}'),
                         ),
                     ],
-                    onChanged: _isSaving || widget.lockParent
+                    onChanged: _isSaving || widget.lockParent || _hasChildren
                         ? null
                         : (value) => setState(() {
                               _parentUuid =
