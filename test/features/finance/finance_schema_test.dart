@@ -625,6 +625,35 @@ void main() {
         );
         expect(await FinanceStorage.getLoans(includeDeleted: true), isEmpty);
       });
+
+      test('$source 拒绝会导致周期游标计算溢出的时间戳', () async {
+        final rule = FinanceRecurringRule(
+          uuid: 'out-of-range-$source-recurring-timestamp',
+          name: '异常周期时间',
+          amountMinor: 100,
+          startDate: '2026-09-01',
+          updatedAt: 9000000000000000,
+          lastGeneratedPeriod: 'invalid-period',
+        );
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'recurring_rules': [rule.toMap()],
+          });
+          expect(result['skipped'], 1);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({
+              'recurring_rules': [rule.toMap()],
+            }),
+            0,
+          );
+        }
+        expect(
+          await FinanceStorage.getRecurringRules(includeDeleted: true),
+          isEmpty,
+        );
+      });
     }
 
     test('本地保存、服务端合并和备份导入拒绝不安全的大额账单', () async {

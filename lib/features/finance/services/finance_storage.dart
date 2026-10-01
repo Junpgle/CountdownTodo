@@ -2677,7 +2677,8 @@ abstract final class FinanceStorage {
       if (!_hasRawFinanceUuid(map) ||
           !_hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') ||
           !_hasValidRawOptionalTransactionType(map) ||
-          !_hasValidRawRecurringFrequency(map)) {
+          !_hasValidRawRecurringFrequency(map) ||
+          !_hasSafeRawFinanceTimestamps(map)) {
         skipped++;
         continue;
       }
@@ -3061,7 +3062,7 @@ abstract final class FinanceStorage {
           (map) =>
               _hasRawFinanceUuid(map) &&
               _isValidRawTransactionType(map) &&
-              _hasSafeRawTransactionTimestamps(map) &&
+              _hasSafeRawFinanceTimestamps(map) &&
               _isSafeRawFinanceAmount(
                 map['amount_minor'] ?? map['amountMinor'],
               ),
@@ -3088,7 +3089,8 @@ abstract final class FinanceStorage {
           (map) => _hasRawFinanceUuid(map) &&
               _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') &&
               _hasValidRawOptionalTransactionType(map) &&
-              _hasValidRawRecurringFrequency(map),
+              _hasValidRawRecurringFrequency(map) &&
+              _hasSafeRawFinanceTimestamps(map),
         )
         .map(FinanceRecurringRule.fromMap)
         .where(_isValidRecurringRule)
@@ -3997,7 +3999,7 @@ abstract final class FinanceStorage {
         _isSafeRawFinanceAmount(rawAmount) &&
         _asInt(rawAmount) > 0 &&
         _isValidRawTransactionType(raw) &&
-        _hasSafeRawTransactionTimestamps(raw) &&
+        _hasSafeRawFinanceTimestamps(raw) &&
         _isValidTransaction(item);
   }
 
@@ -4048,7 +4050,7 @@ abstract final class FinanceStorage {
     return value is String && names.contains(value);
   }
 
-  static bool _hasSafeRawTransactionTimestamps(Map<String, dynamic> raw) {
+  static bool _hasSafeRawFinanceTimestamps(Map<String, dynamic> raw) {
     final createdAtRaw = raw['created_at'] ?? raw['createdAt'];
     final updatedAtRaw = raw['updated_at'] ?? raw['updatedAt'];
     final occurredAtRaw = raw['occurred_at'] ?? raw['occurredAt'];
