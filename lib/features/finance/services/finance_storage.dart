@@ -1483,47 +1483,55 @@ abstract final class FinanceStorage {
   static Future<void> archivePaymentMethod(String uuid) async {
     await ensureReady();
     final db = await _database;
-    final existing = await db.query(
-      'finance_payment_methods',
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-      limit: 1,
-    );
-    if (existing.isEmpty) return;
-    final method = FinancePaymentMethod.fromMap(existing.first);
-    if (method.isSystem || method.isArchived) return;
-    method.isArchived = true;
-    method.markAsChanged();
-    await db.update(
-      'finance_payment_methods',
-      _localValues(method.toMap()),
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-    );
-    _notifyChanged();
+    final changed = await db.transaction<bool>((txn) async {
+      final existing = await txn.query(
+        'finance_payment_methods',
+        where: 'uuid = ? AND is_deleted = 0',
+        whereArgs: [uuid],
+        limit: 1,
+      );
+      if (existing.isEmpty) return false;
+      final method = FinancePaymentMethod.fromMap(existing.first);
+      if (method.isSystem || method.isArchived) return false;
+      method
+        ..isArchived = true
+        ..markAsChanged();
+      await txn.update(
+        'finance_payment_methods',
+        _localValues(method.toMap()),
+        where: 'uuid = ?',
+        whereArgs: [uuid],
+      );
+      return true;
+    });
+    if (changed) _notifyChanged();
   }
 
   static Future<void> unarchivePaymentMethod(String uuid) async {
     await ensureReady();
     final db = await _database;
-    final existing = await db.query(
-      'finance_payment_methods',
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-      limit: 1,
-    );
-    if (existing.isEmpty) return;
-    final method = FinancePaymentMethod.fromMap(existing.first);
-    if (!method.isArchived) return;
-    method.isArchived = false;
-    method.markAsChanged();
-    await db.update(
-      'finance_payment_methods',
-      _localValues(method.toMap()),
-      where: 'uuid = ?',
-      whereArgs: [uuid],
-    );
-    _notifyChanged();
+    final changed = await db.transaction<bool>((txn) async {
+      final existing = await txn.query(
+        'finance_payment_methods',
+        where: 'uuid = ? AND is_deleted = 0',
+        whereArgs: [uuid],
+        limit: 1,
+      );
+      if (existing.isEmpty) return false;
+      final method = FinancePaymentMethod.fromMap(existing.first);
+      if (method.isSystem || !method.isArchived) return false;
+      method
+        ..isArchived = false
+        ..markAsChanged();
+      await txn.update(
+        'finance_payment_methods',
+        _localValues(method.toMap()),
+        where: 'uuid = ?',
+        whereArgs: [uuid],
+      );
+      return true;
+    });
+    if (changed) _notifyChanged();
   }
 
   static Future<List<FinanceBudget>> getBudgets({
