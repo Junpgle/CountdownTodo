@@ -14,4 +14,13 @@ void main() {
       ['微信', '支付宝'],
     );
   });
+
+  test('结构化账单中的无效日期不会被解析成另一个日期', () {
+    final drafts = FinanceTextParser.parse(
+      '类型: 支出\n金额: 12\n日期: 2026-02-31',
+      now: DateTime(2026, 10, 1),
+    );
+
+    expect(drafts, isEmpty);
+  });
 }

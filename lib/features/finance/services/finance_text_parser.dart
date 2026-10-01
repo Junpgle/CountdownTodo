@@ -699,6 +699,7 @@ abstract final class FinanceTextParser {
     final type = _parseType(typeText ?? block);
     final dateText = _first(fields, const ['日期', 'date', '账单日期', '时间']);
     final date = _parseDate(dateText, now ?? DateTime.now());
+    if (date == null) return null;
     final merchant = _first(fields, const [
       '商家',
       '商户',
@@ -985,7 +986,7 @@ abstract final class FinanceTextParser {
 
   static DateTime _parseSentenceDate(String text, DateTime now) {
     final relative = RegExp(r'今天|昨天|前天|明天').firstMatch(text)?.group(0);
-    if (relative != null) return _parseDate(relative, now);
+    if (relative != null) return _parseDate(relative, now) ?? _day(now);
 
     final full = RegExp(
       r'(?<!\d)(\d{4})\s*(?:年|[-/.])\s*(\d{1,2})\s*'
@@ -1055,7 +1056,7 @@ abstract final class FinanceTextParser {
     return FinanceTransactionType.expense;
   }
 
-  static DateTime _parseDate(String? raw, DateTime now) {
+  static DateTime? _parseDate(String? raw, DateTime now) {
     if (raw == null || raw.trim().isEmpty) return _day(now);
     final value = raw.trim().toLowerCase();
     if (value.contains('今天') || value == 'today') return _day(now);
@@ -1077,13 +1078,15 @@ abstract final class FinanceTextParser {
         .replaceAll('.', '-');
     final match =
         RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})').firstMatch(normalized);
-    if (match != null) {
-      final parsed = DateTime.tryParse(
-        '${match.group(1)}-${match.group(2)!.padLeft(2, '0')}-${match.group(3)!.padLeft(2, '0')}',
-      );
-      if (parsed != null) return _day(parsed);
+    if (match == null) return null;
+    final year = int.parse(match.group(1)!);
+    final month = int.parse(match.group(2)!);
+    final day = int.parse(match.group(3)!);
+    final parsed = DateTime(year, month, day);
+    if (parsed.year != year || parsed.month != month || parsed.day != day) {
+      return null;
     }
-    return _day(now);
+    return _day(parsed);
   }
 
   static DateTime _day(DateTime value) =>
