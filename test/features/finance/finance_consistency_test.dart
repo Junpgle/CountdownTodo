@@ -805,6 +805,48 @@ void main() {
     expect(find.text('当前余额 ¥500.00'), findsOneWidget);
   });
 
+  testWidgets('回收站显示余额实际对应的年月日和时间，删除不改变新旧格式快照', (tester) async {
+    _configureView(tester);
+    final db = (await tester.runAsync(_openDatabase))!;
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await tester.runAsync(() async {
+      final snapshotAt = DateTime(2026, 9, 10, 12, 34).millisecondsSinceEpoch;
+      final legacyAt = DateTime(2026, 9, 11, 9, 5).millisecondsSinceEpoch;
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'explicit-trash-snapshot',
+          monthKey: '2026-09',
+          paymentMethodUuid: _cash,
+          amountMinor: 10000,
+          balanceSnapshotAt: snapshotAt,
+          createdAt: snapshotAt,
+          updatedAt: DateTime(2026, 9, 20).millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'legacy-trash-snapshot',
+          monthKey: '2026-09',
+          paymentMethodUuid: _wechat,
+          amountMinor: 20000,
+          createdAt: legacyAt,
+          updatedAt: legacyAt,
+        ).toMap(),
+      );
+      await FinanceStorage.deleteBudget('explicit-trash-snapshot');
+      await FinanceStorage.deleteBudget('legacy-trash-snapshot');
+    });
+    await _pumpScreen(tester, const FinanceTrashScreen());
+    expect(find.text('2026-09 · 余额对应时间 2026年9月10日 12:34'), findsOneWidget);
+    expect(find.text('2026-09 · 余额对应时间 2026年9月11日 09:05'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('利息编辑锁定金额和账户，保留备注并能打开还款记录', (tester) async {
     final db = (await tester.runAsync(_openDatabase))!;
     addTearDown(() async {

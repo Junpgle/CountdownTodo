@@ -1,5 +1,6 @@
 import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
@@ -216,7 +217,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
           details: [
             item.monthKey,
             if (item.isPaymentMethod)
-              '${DateTime.fromMillisecondsSinceEpoch(item.updatedAt).month}月${DateTime.fromMillisecondsSinceEpoch(item.updatedAt).day}日录入',
+              '余额对应时间 ${DateFormat('yyyy年M月d日 HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.effectiveBalanceSnapshotAt))}',
             if (item.note?.isNotEmpty == true) item.note!
           ].join(' · '),
           amountLabel: item.isPaymentMethod ? '录入时余额' : '预算额度',
