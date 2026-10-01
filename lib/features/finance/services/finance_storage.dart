@@ -2705,6 +2705,7 @@ abstract final class FinanceStorage {
           !_hasValidRawFinanceName(map) ||
           !_hasValidRawOptionalTransactionType(map) ||
           !_hasValidRawRecurringFrequency(map) ||
+          !_hasValidRawFinanceDateKey(map, 'start_date', 'startDate') ||
           !_hasSafeRawFinanceTimestamps(map)) {
         skipped++;
         continue;
@@ -2893,6 +2894,7 @@ abstract final class FinanceStorage {
     for (final map in budgetInput.maps) {
       if (!_hasRawFinanceUuid(map) ||
           !_isSafeRawFinanceAmount(map['amount_minor'] ?? map['amountMinor']) ||
+          !_hasValidRawFinanceMonthKey(map) ||
           !_hasValidRawBalanceSnapshot(map)) {
         skipped++;
         continue;
@@ -2960,7 +2962,16 @@ abstract final class FinanceStorage {
           ) ||
           !_hasSafeRawLoanInterestRate(map) ||
           !_hasValidRawLoanRepaymentMethod(map) ||
-          !_hasValidRawFinanceName(map)) {
+          !_hasValidRawFinanceName(map) ||
+          !_hasValidRawFinanceDateKey(map, 'start_date', 'startDate') ||
+          !_hasSafeRawIntegerRange(
+            map,
+            'term_months',
+            'termMonths',
+            FinanceLoanCalculator.minTermMonths,
+            FinanceLoanCalculator.maxTermMonths,
+          ) ||
+          !_hasSafeRawIntegerRange(map, 'repayment_day', 'repaymentDay', 1, 31)) {
         skipped++;
         continue;
       }
@@ -2996,6 +3007,7 @@ abstract final class FinanceStorage {
     for (final map in loanInstallmentMaps) {
       if (!_hasRawFinanceUuid(map) ||
           !_hasSafeRawLoanInstallmentAmounts(map) ||
+          !_hasValidRawLoanInstallmentScheduleFields(map) ||
           !_hasSafeRawFinanceTimestamps(map)) {
         skipped++;
         continue;
@@ -3099,6 +3111,11 @@ abstract final class FinanceStorage {
           (map) =>
               _hasRawFinanceUuid(map) &&
               _isValidRawTransactionType(map) &&
+              _hasValidRawFinanceDateKey(
+                map,
+                'transaction_date',
+                'transactionDate',
+              ) &&
               _hasSafeRawFinanceTimestamps(map) &&
               _isSafeRawFinanceAmount(
                 map['amount_minor'] ?? map['amountMinor'],
@@ -3115,6 +3132,7 @@ abstract final class FinanceStorage {
                 _isSafeRawFinanceAmount(
                   map['amount_minor'] ?? map['amountMinor'],
                 ) &&
+                _hasValidRawFinanceMonthKey(map) &&
                 _hasValidRawBalanceSnapshot(map),
           )
           .map(FinanceBudget.fromMap)
@@ -3128,6 +3146,7 @@ abstract final class FinanceStorage {
               _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') &&
               _hasValidRawOptionalTransactionType(map) &&
               _hasValidRawRecurringFrequency(map) &&
+              _hasValidRawFinanceDateKey(map, 'start_date', 'startDate') &&
               _hasSafeRawFinanceTimestamps(map),
         )
         .map(FinanceRecurringRule.fromMap)
@@ -3155,7 +3174,16 @@ abstract final class FinanceStorage {
                 'principalMinor',
               ) &&
               _hasSafeRawLoanInterestRate(map) &&
-              _hasValidRawLoanRepaymentMethod(map),
+              _hasValidRawLoanRepaymentMethod(map) &&
+              _hasValidRawFinanceDateKey(map, 'start_date', 'startDate') &&
+              _hasSafeRawIntegerRange(
+                map,
+                'term_months',
+                'termMonths',
+                FinanceLoanCalculator.minTermMonths,
+                FinanceLoanCalculator.maxTermMonths,
+              ) &&
+              _hasSafeRawIntegerRange(map, 'repayment_day', 'repaymentDay', 1, 31),
         )
         .map(FinanceLoan.fromMap)
         .where(_isValidLoan)
@@ -3163,6 +3191,7 @@ abstract final class FinanceStorage {
     final loanInstallments = _listOfMaps(bundle['loan_installments'])
         .where(_hasRawFinanceUuid)
         .where(_hasSafeRawLoanInstallmentAmounts)
+        .where(_hasValidRawLoanInstallmentScheduleFields)
         .where(_hasSafeRawFinanceTimestamps)
         .map(FinanceLoanInstallment.fromMap)
         .where(_isValidLoanInstallment)
@@ -4220,6 +4249,45 @@ abstract final class FinanceStorage {
     }
     return false;
   }
+
+  static bool _hasValidRawFinanceDateKey(
+    Map<String, dynamic> map,
+    String snakeCaseKey,
+    String camelCaseKey,
+  ) {
+    final value = map[snakeCaseKey] ?? map[camelCaseKey];
+    return value is String && _isDateKey(value);
+  }
+
+  static bool _hasValidRawFinanceMonthKey(Map<String, dynamic> map) {
+    final value = map['month_key'] ?? map['monthKey'];
+    return value is String &&
+        RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(value);
+  }
+
+  static bool _hasSafeRawIntegerRange(
+    Map<String, dynamic> map,
+    String snakeCaseKey,
+    String camelCaseKey,
+    int minimum,
+    int maximum,
+  ) {
+    final value = map[snakeCaseKey] ?? map[camelCaseKey];
+    final parsed = _rawFinanceInteger(value);
+    return parsed != null && parsed >= minimum && parsed <= maximum;
+  }
+
+  static bool _hasValidRawLoanInstallmentScheduleFields(
+    Map<String, dynamic> map,
+  ) =>
+      _hasValidRawFinanceDateKey(map, 'due_date', 'dueDate') &&
+      _hasSafeRawIntegerRange(
+        map,
+        'installment_index',
+        'installmentIndex',
+        1,
+        FinanceLoanCalculator.maxTermMonths,
+      );
 
   static bool _hasSafeRawTemplateUseCount(Map<String, dynamic> map) =>
       _isSafeRawFinanceCount(

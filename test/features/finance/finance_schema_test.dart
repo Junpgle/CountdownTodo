@@ -738,6 +738,118 @@ void main() {
         );
       });
 
+      test('$source 拒绝缺少账期和还款期次的记录', () async {
+        final transaction = FinanceTransaction(
+          uuid: 'missing-transaction-date-$source',
+          amountMinor: 100,
+          transactionDate: '2026-09-01',
+        ).toMap()
+          ..remove('transaction_date');
+        final budget = FinanceBudget(
+          uuid: 'missing-budget-month-$source',
+          monthKey: '2026-09',
+          amountMinor: 500,
+        ).toMap()
+          ..remove('month_key');
+        final recurringRule = FinanceRecurringRule(
+          uuid: 'missing-recurring-start-$source',
+          name: '缺少开始日的周期规则',
+          amountMinor: 100,
+          startDate: '2026-09-01',
+        ).toMap()
+          ..remove('start_date');
+        final loans = [
+          FinanceLoan(
+            uuid: 'missing-loan-start-$source',
+            name: '缺少开始日贷款',
+            principalMinor: 1000,
+            termMonths: 1,
+            startDate: '2026-09-01',
+            repaymentDay: 1,
+          ).toMap()
+            ..remove('start_date'),
+          FinanceLoan(
+            uuid: 'missing-loan-term-$source',
+            name: '缺少期限贷款',
+            principalMinor: 1000,
+            termMonths: 2,
+            startDate: '2026-09-01',
+            repaymentDay: 1,
+          ).toMap()
+            ..remove('term_months'),
+          FinanceLoan(
+            uuid: 'missing-loan-repayment-day-$source',
+            name: '缺少还款日贷款',
+            principalMinor: 1000,
+            termMonths: 2,
+            startDate: '2026-09-01',
+            repaymentDay: 1,
+          ).toMap()
+            ..remove('repayment_day'),
+        ];
+        final parentLoan = FinanceLoan(
+          uuid: 'valid-parent-loan-$source',
+          name: '有效父贷款',
+          principalMinor: 1000,
+          termMonths: 2,
+          startDate: '2026-09-01',
+          repaymentDay: 1,
+        );
+        final installments = [
+          FinanceLoanInstallment(
+            uuid: 'missing-installment-date-$source',
+            loanUuid: parentLoan.uuid,
+            installmentIndex: 1,
+            dueDate: '2026-10-01',
+            paymentMinor: 1000,
+            principalMinor: 1000,
+            interestMinor: 0,
+            remainingPrincipalMinor: 0,
+          ).toMap()
+            ..remove('due_date'),
+          FinanceLoanInstallment(
+            uuid: 'missing-installment-index-$source',
+            loanUuid: parentLoan.uuid,
+            installmentIndex: 2,
+            dueDate: '2026-11-01',
+            paymentMinor: 500,
+            principalMinor: 500,
+            interestMinor: 0,
+            remainingPrincipalMinor: 500,
+          ).toMap()
+            ..remove('installment_index'),
+        ];
+        final bundle = {
+          'transactions': [transaction],
+          'budgets': [budget],
+          'recurring_rules': [recurringRule],
+          'loans': [...loans, parentLoan.toMap()],
+          'loan_installments': installments,
+        };
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle(bundle);
+          expect(result['imported'], 1);
+          expect(result['skipped'], 8);
+        } else {
+          expect(await FinanceStorage.mergeRemoteBundle(bundle), 1);
+        }
+        expect(await FinanceStorage.getTransactions(), isEmpty);
+        expect(await FinanceStorage.getBudgets(includeDeleted: true), isEmpty);
+        expect(await FinanceStorage.getRecurringRules(includeDeleted: true), isEmpty);
+        expect(
+          await FinanceStorage.getLoans(includeDeleted: true),
+          hasLength(1),
+        );
+        expect(
+          await FinanceStorage.getLoanInstallments(
+            parentLoan.uuid,
+            includeDeleted: true,
+          ),
+          isEmpty,
+        );
+      });
+
       test('$source 拒绝缺少名称的记账记录', () async {
         final category = FinanceCategory(
           uuid: 'missing-name-category-$source',
