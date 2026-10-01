@@ -208,12 +208,13 @@ abstract final class FinanceAutomationService {
     final reminders = <Map<String, dynamic>>[];
     for (final rule in rules) {
       if (rule.reminderMinutes <= 0) continue;
-      final lead = Duration(minutes: rule.reminderMinutes);
-      // A reminder can fire inside the window even if its bill falls later.
+      final calendarLeadDays = (rule.reminderMinutes + 1439) ~/ 1440;
+      // The due time is later than its reminder trigger. Scan the current
+      // window plus the lead, then filter by the exact trigger below.
       final dues = upcoming(
         rules: [rule],
-        now: current.add(lead),
-        limit: end.add(lead),
+        now: current,
+        limit: _calendarDateTimeOffset(end, calendarLeadDays + 1),
       );
       for (final due in dues) {
         final reminder = _buildReminder(due, current: current, limit: end);
@@ -258,8 +259,17 @@ abstract final class FinanceAutomationService {
     required DateTime current,
     required DateTime limit,
   }) {
-    final triggerAt = due.dueAt.subtract(
-      Duration(minutes: due.rule.reminderMinutes),
+    final usesCalendarDays = due.rule.reminderMinutes % 1440 == 0;
+    final calendarLeadDays =
+        usesCalendarDays ? due.rule.reminderMinutes ~/ 1440 : 0;
+    final remainingLeadMinutes =
+        usesCalendarDays ? 0 : due.rule.reminderMinutes;
+    final localTriggerAt = _calendarDateTimeOffset(
+      due.dueAt,
+      -calendarLeadDays,
+    );
+    final triggerAt = localTriggerAt.subtract(
+      Duration(minutes: remainingLeadMinutes),
     );
     return {
       'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
@@ -275,6 +285,31 @@ abstract final class FinanceAutomationService {
       'financeDueAtMs': due.dueAt.toUtc().millisecondsSinceEpoch,
       'withinWindow': triggerAt.isAfter(current) && triggerAt.isBefore(limit),
     };
+  }
+
+  static DateTime _calendarDateTimeOffset(DateTime value, int days) {
+    if (value.isUtc) {
+      return DateTime.utc(
+        value.year,
+        value.month,
+        value.day + days,
+        value.hour,
+        value.minute,
+        value.second,
+        value.millisecond,
+        value.microsecond,
+      );
+    }
+    return DateTime(
+      value.year,
+      value.month,
+      value.day + days,
+      value.hour,
+      value.minute,
+      value.second,
+      value.millisecond,
+      value.microsecond,
+    );
   }
 
   /// 检查本月预算的 80% 和 100% 阈值，并按预算版本去重通知。

@@ -114,6 +114,40 @@ void main() {
       );
     });
 
+    test('跨夏令时的一天或一周提前提醒保持设定的本地时刻', () async {
+      for (final reminder in [
+        (uuid: 'dst-one-day-reminder', minutes: 1440),
+        (uuid: 'dst-one-week-reminder', minutes: 10080),
+      ]) {
+        await FinanceStorage.saveRecurringRule(
+          FinanceRecurringRule(
+            uuid: reminder.uuid,
+            name: reminder.uuid,
+            amountMinor: 10000,
+            dayOfMonth: 1,
+            startDate: '2026-01-01',
+            reminderMinutes: reminder.minutes,
+            autoGenerate: false,
+          ),
+        );
+      }
+
+      final reminders = await FinanceAutomationService.buildRecurringReminders(
+        now: DateTime(2026, 10, 24, 9),
+        limit: DateTime(2026, 11, 2),
+      );
+      final triggerTimes = {
+        for (final reminder in reminders)
+          reminder['financeRuleUuid'] as String:
+              DateTime.fromMillisecondsSinceEpoch(
+            reminder['triggerAtMs'] as int,
+          ),
+      };
+
+      expect(triggerTimes['dst-one-day-reminder'], DateTime(2026, 10, 31, 9));
+      expect(triggerTimes['dst-one-week-reminder'], DateTime(2026, 10, 25, 9));
+    });
+
     test('发现已有周期账单后回填进度仍触发刷新和同步', () async {
       final rule = FinanceRecurringRule(
         uuid: 'repair-recurring-generation-marker',
