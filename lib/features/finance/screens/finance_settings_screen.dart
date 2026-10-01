@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../services/storage/app_settings_storage.dart';
 import '../../../storage_service.dart';
+import '../../../services/reminder_schedule_service.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
@@ -27,6 +28,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
   List<FinanceCategory> _categories = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
   bool _budgetAlertsEnabled = true;
+  bool _recurringRemindersEnabled = true;
   bool _cloudSyncEnabled = false;
   bool _isLoading = true;
   String? _loadError;
@@ -44,6 +46,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
         FinanceRepository.getCategories(includeArchived: true),
         FinanceRepository.getPaymentMethods(includeArchived: true),
         AppSettingsStorage.isFinanceBudgetAlertEnabled(),
+        AppSettingsStorage.isFinanceRecurringReminderEnabled(),
         AppSettingsStorage.isFinanceCloudSyncEnabled(widget.username),
       ]);
       if (!mounted) return;
@@ -51,7 +54,8 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
         _categories = values[0] as List<FinanceCategory>;
         _paymentMethods = values[1] as List<FinancePaymentMethod>;
         _budgetAlertsEnabled = values[2] as bool;
-        _cloudSyncEnabled = values[3] as bool;
+        _recurringRemindersEnabled = values[3] as bool;
+        _cloudSyncEnabled = values[4] as bool;
         _isLoading = false;
         _loadError = null;
       });
@@ -461,6 +465,22 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
                 title: const Text('预算提醒'),
                 subtitle: const Text('达到 80% 或超支时发送系统通知'),
                 secondary: const Icon(Icons.notifications_active_outlined),
+              ),
+              const Divider(height: 1, indent: 20, endIndent: 20),
+              LiquidGlassSwitchListTile(
+                value: _recurringRemindersEnabled,
+                onChanged: (value) async {
+                  setState(() => _recurringRemindersEnabled = value);
+                  await AppSettingsStorage.setFinanceRecurringReminderEnabled(
+                    value,
+                  );
+                  await ReminderScheduleService.scheduleCurrentUser(
+                    force: true,
+                  );
+                },
+                title: const Text('周期账单提醒'),
+                subtitle: const Text('在周期账单到期前发送系统通知'),
+                secondary: const Icon(Icons.event_repeat_outlined),
               ),
               const Divider(height: 1, indent: 20, endIndent: 20),
               ListTile(

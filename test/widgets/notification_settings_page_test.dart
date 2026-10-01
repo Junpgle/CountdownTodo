@@ -1,4 +1,5 @@
 import 'package:countdown_todo/screens/settings/notification_settings_page.dart';
+import 'package:countdown_todo/services/storage/app_settings_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -45,6 +46,58 @@ void main() {
     );
     expect(childCard, findsOneWidget);
     expect(tester.getSize(childCard).height, lessThan(150));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('预算提醒与周期账单提醒可以分别关闭和开启', (tester) async {
+    tester.view.physicalSize = const Size(1100, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({
+      'notify_finance_budget_enabled': false,
+    });
+    await tester.pumpWidget(
+      const MaterialApp(home: NotificationSettingsPage()),
+    );
+    await tester.pumpAndSettle();
+
+    expect(await AppSettingsStorage.isFinanceBudgetAlertEnabled(), isFalse);
+    expect(
+      await AppSettingsStorage.isFinanceRecurringReminderEnabled(),
+      isFalse,
+      reason: '老版本只保存预算提醒偏好时，周期提醒先沿用该偏好',
+    );
+
+    final budgetLabel = find.text('预算提醒');
+    await tester.tap(budgetLabel);
+    await tester.pumpAndSettle();
+
+    expect(await AppSettingsStorage.isFinanceBudgetAlertEnabled(), isTrue);
+    expect(
+      await AppSettingsStorage.isFinanceRecurringReminderEnabled(),
+      isFalse,
+      reason: '修改预算提醒不能改变周期账单提醒',
+    );
+
+    final recurringLabel = find.text('周期账单提醒');
+    await tester.tap(recurringLabel);
+    await tester.pumpAndSettle();
+
+    expect(await AppSettingsStorage.isFinanceBudgetAlertEnabled(), isTrue);
+    expect(
+      await AppSettingsStorage.isFinanceRecurringReminderEnabled(),
+      isTrue,
+    );
+
+    await tester.tap(budgetLabel);
+    await tester.pumpAndSettle();
+    expect(await AppSettingsStorage.isFinanceBudgetAlertEnabled(), isFalse);
+    expect(
+      await AppSettingsStorage.isFinanceRecurringReminderEnabled(),
+      isTrue,
+      reason: '关闭预算提醒不能关闭周期账单提醒',
+    );
     expect(tester.takeException(), isNull);
   });
 }

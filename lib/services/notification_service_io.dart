@@ -806,7 +806,7 @@ class NotificationService {
     final specialTodoEnabled =
         await AppSettingsStorage.isSpecialTodoNotificationEnabled();
     final financeEnabled =
-        await AppSettingsStorage.isFinanceBudgetAlertEnabled();
+        await AppSettingsStorage.isFinanceRecurringReminderEnabled();
     final pomodoroEndEnabled =
         await AppSettingsStorage.isPomodoroEndNotificationEnabled();
 
