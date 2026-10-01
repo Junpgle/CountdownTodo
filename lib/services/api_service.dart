@@ -53,6 +53,12 @@ class ApiService {
 
   static int currentUserId = 0;
 
+  /// Atomically switches the in-memory identity used by authenticated syncs.
+  static void setSession({required String token, required int userId}) {
+    _authToken = token;
+    currentUserId = userId;
+  }
+
   // 🚀 公开获取 token 的方法（供 WebSocket 等服务使用）
   static String? getToken() => _authToken;
 

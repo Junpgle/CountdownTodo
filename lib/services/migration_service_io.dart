@@ -162,7 +162,7 @@ class MigrationService {
         await prefs.setString(StorageService.keyAuthToken, newToken);
       }
       await prefs.setInt('current_user_id', newUserId);
-      ApiService.setToken(newToken);
+      ApiService.setSession(token: newToken, userId: newUserId);
 
       // ==========================================
       // ⚠️ 关键步骤：数据归属权转换 (UserId 映射)

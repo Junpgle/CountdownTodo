@@ -7,6 +7,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('切换活动会话时同时更新认证令牌和用户 ID', () {
+    final previousToken = ApiService.getToken();
+    final previousUserId = ApiService.currentUserId;
+    addTearDown(() {
+      ApiService.setToken(previousToken ?? '');
+      ApiService.currentUserId = previousUserId;
+    });
+
+    ApiService.currentUserId = 15;
+    ApiService.setToken('old-server-token');
+    ApiService.setSession(token: 'new-server-token', userId: 42);
+
+    expect(ApiService.getToken(), 'new-server-token');
+    expect(ApiService.currentUserId, 42);
+  });
+
   test('restores the authenticated user id after a cold start', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'alice',
