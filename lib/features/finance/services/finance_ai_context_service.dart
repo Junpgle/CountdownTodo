@@ -20,6 +20,7 @@ class FinanceDateRange {
 /// asking about existing bills, budgets, or a bill mutation.  Mutations still
 /// require a confirmation card in the chat UI.
 abstract final class FinanceAiContextService {
+  static const _maxContextCategorySummaries = 12;
   static const _maxContextBudgetDetails = 20;
   static const _maxContextTransactionDetails = 60;
 
@@ -510,16 +511,30 @@ abstract final class FinanceAiContextService {
     ]..sort((a, b) => b.value.compareTo(a.value));
     if (categoryTotals.isNotEmpty) {
       lines.add(
-        '支出分类汇总: ${categoryTotals.take(12).map((entry) => '${categoryName(entry.key)} ${formatFinanceAmount(entry.value)}').join('、')}',
+        '支出分类汇总（共${categoryTotals.length}类）: '
+        '${categoryTotals.take(_maxContextCategorySummaries).map((entry) => '${categoryName(entry.key)} ${formatFinanceAmount(entry.value)}').join('、')}',
       );
+      if (categoryTotals.length > _maxContextCategorySummaries) {
+        lines.add(
+          '支出分类仅列出金额最高的$_maxContextCategorySummaries类，'
+          '另有${categoryTotals.length - _maxContextCategorySummaries}类未列出。',
+        );
+      }
     }
     final incomeTotals = <MapEntry<String, int>>[
       ...summary.incomeByCategory.entries,
     ]..sort((a, b) => b.value.compareTo(a.value));
     if (incomeTotals.isNotEmpty) {
       lines.add(
-        '收入分类汇总: ${incomeTotals.take(12).map((entry) => '${categoryName(entry.key)} ${formatFinanceAmount(entry.value)}').join('、')}',
+        '收入分类汇总（共${incomeTotals.length}类）: '
+        '${incomeTotals.take(_maxContextCategorySummaries).map((entry) => '${categoryName(entry.key)} ${formatFinanceAmount(entry.value)}').join('、')}',
       );
+      if (incomeTotals.length > _maxContextCategorySummaries) {
+        lines.add(
+          '收入分类仅列出金额最高的$_maxContextCategorySummaries类，'
+          '另有${incomeTotals.length - _maxContextCategorySummaries}类未列出。',
+        );
+      }
     }
 
     if (budgets.isNotEmpty) {

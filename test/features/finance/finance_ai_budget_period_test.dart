@@ -117,6 +117,7 @@ void main() {
         FinanceTransaction(
           uuid: 'context-transaction-$index',
           amountMinor: 100,
+          categoryUuid: 'context-category-${index % 13}',
           transactionDate: dateKey(DateTime(2026, 9, index % 30 + 1)),
           occurredAt: DateTime(
             2026,
@@ -137,6 +138,8 @@ void main() {
       asOfAt: DateTime(2026, 10).millisecondsSinceEpoch,
     );
 
+    expect(context, contains('支出分类汇总（共13类）'));
+    expect(context, contains('支出分类仅列出金额最高的12类，另有1类未列出'));
     expect(context, contains('预算条目共21项，当前仅列出前20项，另有1项未展开'));
     expect(context, contains('账单明细共61笔，当前仅列出前60笔'));
     expect(context, contains('其余1笔没有逐笔列出'));
