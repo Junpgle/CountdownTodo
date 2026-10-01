@@ -256,20 +256,8 @@ class TimelineService {
       final financeCategoryMap = {
         for (final category in financeCategories) category.uuid: category,
       };
-      final financeFallbackTime = DateTime(
-        date.year,
-        date.month,
-        date.day,
-        12,
-      );
       for (final transaction in financeTransactions) {
-        final occurredAt = transaction.occurredAt;
-        var timestamp = occurredAt == null
-            ? financeFallbackTime
-            : DateTime.fromMillisecondsSinceEpoch(occurredAt);
-        if (timestamp.isBefore(startOfDay) || !timestamp.isBefore(endOfDay)) {
-          timestamp = financeFallbackTime;
-        }
+        final timestamp = financeTransactionTimestampForDay(transaction, date);
         final category = financeCategoryMap[transaction.categoryUuid];
         final merchant = transaction.merchant?.trim();
         final note = transaction.note?.trim();
@@ -298,6 +286,32 @@ class TimelineService {
 
     events.sort((a, b) => a.timestamp.compareTo(b.timestamp));
     return events;
+  }
+
+  @visibleForTesting
+  static DateTime financeTransactionTimestampForDay(
+    FinanceTransaction transaction,
+    DateTime date,
+  ) {
+    final startOfDay = DateTime(date.year, date.month, date.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+    final fallbackTime = startOfDay.add(const Duration(hours: 12));
+    final occurred = transaction.occurrenceLocalTime;
+    if (occurred == null) return fallbackTime;
+    var timestamp = DateTime(
+      occurred.year,
+      occurred.month,
+      occurred.day,
+      occurred.hour,
+      occurred.minute,
+      occurred.second,
+      occurred.millisecond,
+      occurred.microsecond,
+    );
+    if (timestamp.isBefore(startOfDay) || !timestamp.isBefore(endOfDay)) {
+      timestamp = fallbackTime;
+    }
+    return timestamp;
   }
 
   String _planStatusLabel(TodoPlanStatus status) {
