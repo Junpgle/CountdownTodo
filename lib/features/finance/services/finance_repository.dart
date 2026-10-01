@@ -131,8 +131,11 @@ abstract final class FinanceRepository {
     return changes;
   }
 
-  static Future<void> saveTransaction(FinanceTransaction transaction) async {
-    await FinanceStorage.saveTransaction(transaction);
+  static Future<void> saveTransaction(
+    FinanceTransaction transaction, {
+    FinanceTransaction? original,
+  }) async {
+    await FinanceStorage.saveTransaction(transaction, original: original);
     try {
       await FinanceAutomationService.checkBudgetAlerts(
         now: dateFromKey(transaction.transactionDate),

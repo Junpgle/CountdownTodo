@@ -911,7 +911,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
               : [old],
         );
       } else {
-        await FinanceRepository.saveTransaction(transaction);
+        await FinanceRepository.saveTransaction(transaction, original: old);
         saved = [transaction];
       }
       if (_selectedTemplateUuid != null) {

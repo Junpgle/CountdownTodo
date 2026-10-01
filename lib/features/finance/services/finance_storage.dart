@@ -287,7 +287,10 @@ abstract final class FinanceStorage {
     return rows.map(FinanceTransaction.fromMap).toList();
   }
 
-  static Future<void> saveTransaction(FinanceTransaction transaction) async {
+  static Future<void> saveTransaction(
+    FinanceTransaction transaction, {
+    FinanceTransaction? original,
+  }) async {
     if (transaction.amountMinor <= 0) {
       throw ArgumentError.value(
         transaction.amountMinor,
@@ -295,10 +298,41 @@ abstract final class FinanceStorage {
         '金额必须大于 0',
       );
     }
+    if (original != null && original.uuid != transaction.uuid) {
+      throw ArgumentError.value(original.uuid, 'original', '账单标识不匹配');
+    }
     transaction.pendingSync = true;
     await ensureReady();
     final db = await _database;
     await db.transaction((txn) async {
+      final existingRow = await _findByUuid(
+        txn,
+        'finance_transactions',
+        transaction.uuid,
+      );
+      if (existingRow != null) {
+        final existing = FinanceTransaction.fromMap(existingRow);
+        if (original != null &&
+            (existing.version != original.version ||
+                existing.updatedAt != original.updatedAt)) {
+          throw StateError('账单已同步更新，请重新打开后再保存');
+        }
+        if (original == null &&
+            (existing.version > transaction.version ||
+                existing.updatedAt > transaction.updatedAt)) {
+          throw StateError('账单已更新，请重新加载后再保存');
+        }
+        final changesDeletedState =
+            original != null && transaction.isDeleted != original.isDeleted;
+        if (existing.isDeleted && !changesDeletedState) {
+          throw StateError('账单已删除，请重新加载后再编辑');
+        }
+        transaction
+          ..createdAt = existing.createdAt
+          ..deviceId = existing.deviceId;
+      } else if (original != null) {
+        throw StateError('账单已不存在，请重新加载后再保存');
+      }
       await _validateLoanInterestEdit(txn, transaction);
       await _validateTransactionRefundState(txn, transaction);
       await txn.insert(
@@ -1011,17 +1045,19 @@ abstract final class FinanceStorage {
   static Future<void> deleteTransaction(String uuid) async {
     final transaction = await getTransaction(uuid);
     if (transaction == null || transaction.isDeleted) return;
+    final original = FinanceTransaction.fromMap(transaction.toMap());
     transaction.isDeleted = true;
     transaction.markAsChanged();
-    await saveTransaction(transaction);
+    await saveTransaction(transaction, original: original);
   }
 
   static Future<void> restoreTransaction(String uuid) async {
     final transaction = await getTransaction(uuid);
     if (transaction == null || !transaction.isDeleted) return;
+    final original = FinanceTransaction.fromMap(transaction.toMap());
     transaction.isDeleted = false;
     transaction.markAsChanged();
-    await saveTransaction(transaction);
+    await saveTransaction(transaction, original: original);
   }
 
   static Future<List<FinanceCategory>> getCategories({
