@@ -271,7 +271,7 @@ class TimelineService {
           id: 'finance_${transaction.uuid}',
           timestamp: timestamp,
           type: TimelineEventType.financeTransaction,
-          title: '记账 · ${transaction.type.label}',
+          title: financeTransactionTitle(transaction),
           subtitle: detail,
           extraData: {
             'transaction_uuid': transaction.uuid,
@@ -312,6 +312,15 @@ class TimelineService {
       timestamp = fallbackTime;
     }
     return timestamp;
+  }
+
+  static String financeTransactionTitle(
+    FinanceTransaction transaction, {
+    DateTime? now,
+  }) {
+    final asOfAt = (now ?? DateTime.now()).millisecondsSinceEpoch;
+    final prefix = transaction.balanceEventAt() > asOfAt ? '待发生' : '记账';
+    return '$prefix · ${transaction.type.label}';
   }
 
   static List<FinanceTransaction> financeTransactionsThroughNow({

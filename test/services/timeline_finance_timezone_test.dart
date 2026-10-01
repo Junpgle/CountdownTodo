@@ -22,6 +22,33 @@ void main() {
     );
   });
 
+  test('时间轴将尚未发生的账单标记为待发生', () {
+    final now = DateTime(2026, 10, 2, 12);
+    final upcoming = FinanceTransaction(
+      uuid: 'timeline-upcoming-bill',
+      amountMinor: 3000,
+      transactionDate: dateKey(now),
+      occurredAt: now.add(const Duration(hours: 2)).millisecondsSinceEpoch,
+      createdAt: now.millisecondsSinceEpoch,
+    );
+    final completed = FinanceTransaction(
+      uuid: 'timeline-completed-bill',
+      amountMinor: 2000,
+      transactionDate: dateKey(now),
+      occurredAt: now.subtract(const Duration(hours: 1)).millisecondsSinceEpoch,
+      createdAt: now.subtract(const Duration(hours: 1)).millisecondsSinceEpoch,
+    );
+
+    expect(
+      TimelineService.financeTransactionTitle(upcoming, now: now),
+      '待发生 · 支出',
+    );
+    expect(
+      TimelineService.financeTransactionTitle(completed, now: now),
+      '记账 · 支出',
+    );
+  });
+
   test('时间轴对缺失或与账单日期不匹配的发生时间使用中午占位', () {
     final ledgerDate = DateTime(2026, 10, 2);
     final missingTime = FinanceTransaction.fromMap({
