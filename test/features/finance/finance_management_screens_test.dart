@@ -14,6 +14,7 @@ import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/features/finance/services/finance_repository.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_catalog_editor.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_today_section.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_widgets.dart';
 import 'package:countdown_todo/services/database_helper.dart';
 import 'package:countdown_todo/widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
@@ -708,6 +709,52 @@ void main() {
     expect(find.text('¥130.00'), findsNothing);
     expect(find.text('过去支出'), findsOneWidget);
     expect(find.text('未来支出'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('日视图小时分布使用账单记录时区', (tester) async {
+    final now = DateTime.now();
+    final transaction = FinanceTransaction(
+      uuid: 'daily-chart-timezone-entry',
+      amountMinor: 2000,
+      categoryUuid: 'test-food',
+      transactionDate: dateKey(now),
+      occurredAt: DateTime.utc(
+            now.year,
+            now.month,
+            now.day,
+            0,
+            30,
+          ).millisecondsSinceEpoch -
+          14 * 60 * 60 * 1000,
+      timezoneOffsetMinutes: 14 * 60,
+      createdAt: DateTime.now().subtract(const Duration(hours: 1))
+          .millisecondsSinceEpoch,
+    );
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: DateTime(now.year, now.month),
+          summary: FinanceSummary.fromTransactions([transaction]),
+          transactions: [transaction],
+          categories: {
+            'test-food': FinanceCategory(
+              uuid: 'test-food',
+              name: '日常餐饮',
+              icon: '🍜',
+            ),
+          },
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+    await _tap(tester, find.text('日视图'));
+
+    expect(find.byTooltip('0时 · 净支出 ¥20.00'), findsOneWidget);
+    expect(find.byTooltip('12时 · 净支出 ¥0.00'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

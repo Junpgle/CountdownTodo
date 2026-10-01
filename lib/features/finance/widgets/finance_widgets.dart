@@ -697,9 +697,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   }
 
   int _financeTransactionHour(FinanceTransaction transaction) {
-    final occurredAt = transaction.occurredAt;
-    if (occurredAt == null) return 12;
-    final occurred = DateTime.fromMillisecondsSinceEpoch(occurredAt);
+    final occurred = transaction.occurrenceLocalTime;
+    if (occurred == null) return 12;
     return dateKey(occurred) == transaction.transactionDate
         ? occurred.hour
         : 12;
