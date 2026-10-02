@@ -110,6 +110,53 @@ void main() {
     expect(followUp, '记账明细 2026-08-27 至 2026-09-02');
   });
 
+  test('本季度和上季度查询分别使用完整自然季度', () async {
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'last-quarter',
+        amountMinor: 4500,
+        transactionDate: '2026-06-30',
+        occurredAt: DateTime(2026, 6, 30, 12).millisecondsSinceEpoch,
+      ),
+    );
+    final now = DateTime(2026, 9, 2, 23, 59);
+    final previousRange = FinanceAiContextService.resolveDateRange(
+      '上季度支出',
+      now: now,
+    );
+    final previousContext = await FinanceAiContextService.buildContext(
+      userMessage: '上季度支出多少',
+      now: now,
+    );
+    final currentRange = FinanceAiContextService.resolveDateRange(
+      '本季度支出',
+      now: now,
+    );
+    final currentContext = await FinanceAiContextService.buildContext(
+      userMessage: '本季度支出多少',
+      now: now,
+    );
+
+    expect(dateKey(previousRange.from), '2026-04-01');
+    expect(dateKey(previousRange.to), '2026-07-01');
+    expect(previousContext, contains('[transactionId: last-quarter]'));
+    expect(previousContext, isNot(contains('[transactionId: today]')));
+    expect(previousContext, contains('净支出 ¥45.00'));
+    expect(dateKey(currentRange.from), '2026-07-01');
+    expect(dateKey(currentRange.to), '2026-10-01');
+    expect(currentContext, contains('[transactionId: today]'));
+    expect(currentContext, isNot(contains('[transactionId: last-quarter]')));
+    expect(currentContext, contains('净支出 ¥60.00'));
+
+    final followUp = FinanceAiContextService.buildContextInjectionSummary(
+      userMessage: '上季度呢',
+      conversationContext: '查看记账支出情况',
+      previousUserMessage: '本月支出多少',
+      now: now,
+    );
+    expect(followUp, '记账明细 2026-04-01 至 2026-06-30');
+  });
+
   test('夏令时回拨日按自然日计算 AI 账单范围和标签', () {
     final today = FinanceAiContextService.resolveDateRange(
       '今天支出',
