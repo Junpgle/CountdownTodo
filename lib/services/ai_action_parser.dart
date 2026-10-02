@@ -659,33 +659,40 @@ class AiActionParser {
   }
 
   static String _repairJson(String jsonStr) {
-    var formattedJson = jsonStr;
-    var openBraces = 0;
-    var closeBraces = 0;
-    var openBrackets = 0;
-    var closeBrackets = 0;
+    final expectedClosers = <String>[];
+    var inString = false;
+    var escaped = false;
 
-    for (var i = 0; i < formattedJson.length; i++) {
-      if (formattedJson[i] == '{') {
-        openBraces++;
-      } else if (formattedJson[i] == '}') {
-        closeBraces++;
-      } else if (formattedJson[i] == '[') {
-        openBrackets++;
-      } else if (formattedJson[i] == ']') {
-        closeBrackets++;
+    for (var i = 0; i < jsonStr.length; i++) {
+      final char = jsonStr[i];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char == r'\') {
+          escaped = true;
+        } else if (char == '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char == '"') {
+        inString = true;
+      } else if (char == '{') {
+        expectedClosers.add('}');
+      } else if (char == '[') {
+        expectedClosers.add(']');
+      } else if (char == '}' || char == ']') {
+        if (expectedClosers.isEmpty || expectedClosers.last != char) {
+          return jsonStr;
+        }
+        expectedClosers.removeLast();
       }
     }
 
-    while (closeBrackets < openBrackets) {
-      formattedJson += ']';
-      closeBrackets++;
-    }
-    while (closeBraces < openBraces) {
-      formattedJson += '}';
-      closeBraces++;
-    }
-    return formattedJson;
+    if (inString) return jsonStr;
+    return '$jsonStr${expectedClosers.reversed.join()}';
   }
 
   static List<String> _findLooseActionJsonBlocks(String content) {
