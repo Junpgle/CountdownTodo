@@ -1621,6 +1621,52 @@ void main() {
       }
     });
 
+    test('自定义注入范围覆盖原提示的相对日期区间', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final query = AiTodoContextBuilder.buildContextQueryText(
+        userMessage: '分析最近7天的效率',
+        customStart: DateTime(2026, 8, 1),
+        customEnd: DateTime(2026, 8, 31),
+        now: now,
+      );
+      final timeLogs = [
+        TimeLogItem(
+          id: 'selected-custom-range',
+          title: '自定义范围专注',
+          startTime: DateTime(2026, 8, 15, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 8, 15, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'original-relative-range',
+          title: '原提示相对范围专注',
+          startTime: DateTime(2026, 10, 1, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 1, 10).millisecondsSinceEpoch,
+        ),
+      ];
+
+      expect(query, isNot(contains('最近7天')));
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: query,
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      );
+      final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: query,
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      );
+
+      expect(context, contains('selected-custom-range'));
+      expect(context, isNot(contains('original-relative-range')));
+      expect(preview, contains('专注记录20260801-20260831'));
+    });
+
     test('效率分析按去年、今年和上一自然季度筛选记录', () {
       final now = DateTime(2026, 10, 2, 12);
       final timeLogs =

@@ -57,6 +57,9 @@ class AiTodoContextBuilder {
   static final RegExp _relativeSingleDayPeriodPattern = RegExp(
     r'大前天|大前日|前天|前日|昨天|昨日|今天|今日|明天|明日|大后天|大后日|后天|后日',
   );
+  static final RegExp _futureDaysRangePattern = RegExp(
+    r'(?:未来|接下来)\s*(?:\d{1,2}|[一二两三四五六七八九十]{1,3})\s*(?:天|日)',
+  );
 
   static AiContextDateRange? resolveCustomInjectionDateRange({
     DateTime? customStart,
@@ -119,6 +122,13 @@ class AiTodoContextBuilder {
           .replaceAll(_explicitChineseDatePattern, '')
           .replaceAll(_monthPeriodPattern, '')
           .replaceAll(_rollingMonthRangePattern, '')
+          .replaceAll(_relativeDayRangePattern, '')
+          .replaceAll(_relativeWeekPeriodPattern, '')
+          .replaceAll(_relativeQuarterPeriodPattern, '')
+          .replaceAll(_relativeYearQualifiedDatePattern, '')
+          .replaceAll(_relativeYearPeriodPattern, '')
+          .replaceAll(_relativeSingleDayPeriodPattern, '')
+          .replaceAll(_futureDaysRangePattern, '')
           .trim();
       final rangeInstruction = '使用自定义注入范围 $start 至 $end';
       return queryText.isEmpty
@@ -2864,6 +2874,10 @@ ${lines.isEmpty ? '暂无' : lines}''';
   }
 
   static bool _hasMultipleRecognizedDatePeriods(String text) {
+    final periodText = text.replaceAll(
+      RegExp(r'(?:并)?扩大到未来30天范围'),
+      '',
+    );
     final spans = <(int, int)>[];
     for (final pattern in [
       _explicitIsoDateRangePattern,
@@ -2878,9 +2892,10 @@ ${lines.isEmpty ? '暂无' : lines}''';
       _relativeYearPeriodPattern,
       _relativeYearQualifiedDatePattern,
       _relativeSingleDayPeriodPattern,
+      _futureDaysRangePattern,
     ]) {
       spans.addAll(
-        pattern.allMatches(text).map((match) => (match.start, match.end)),
+        pattern.allMatches(periodText).map((match) => (match.start, match.end)),
       );
     }
     spans.sort((first, second) {
