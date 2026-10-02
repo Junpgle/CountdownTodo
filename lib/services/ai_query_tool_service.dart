@@ -841,7 +841,7 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
     (DateTime, DateTime) range,
   ) {
     final value = switch (domain) {
-      'todos' => row['due_date'] ?? row['created_date'] ?? row['start_time'],
+      'todos' => row['due_date'] ?? row['dueDate'],
       'countdowns' => row['dueDate'] ?? row['due_date'] ?? row['target_time'],
       'time_logs' || 'pomodoro_records' => row['start_time'],
       _ => row['date'] ?? row['start_time'],

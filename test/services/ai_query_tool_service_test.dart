@@ -363,7 +363,12 @@ void main() {
         'due_date': '2026-10-03T00:00:00',
         'is_completed': false,
       },
-      {'id': 'unscheduled', 'title': '整理书架', 'is_completed': false},
+      {
+        'id': 'unscheduled',
+        'title': '整理书架',
+        'created_date': '2026-10-02T09:00:00',
+        'is_completed': false,
+      },
       {'id': 'deleted', 'title': '旧记录', 'is_deleted': true},
     ];
     final result = await service.execute(
