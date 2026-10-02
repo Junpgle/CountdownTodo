@@ -1403,7 +1403,9 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
           ),
           const SizedBox(height: 12),
           Text(
-            keyword.isEmpty && filterType == null && categoryUuid == null
+            keyword.trim().isEmpty &&
+                filterType == null &&
+                categoryUuid == null
                 ? '$monthLabel还没有账单'
                 : '没有匹配的账单',
             style: TextStyle(color: colorScheme.onSurfaceVariant),

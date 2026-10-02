@@ -2128,6 +2128,33 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('纯空格搜索不会把空账单提示成搜索无结果', (tester) async {
+    final selectedMonth = DateTime(2026, 9);
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          month: selectedMonth,
+          transactions: const [],
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '   ',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('2026年9月还没有账单'), findsOneWidget);
+    expect(find.text('没有匹配的账单'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('编辑缺少发生时刻的旧账单不会改变当天排序', (tester) async {
     final legacy = FinanceTransaction.fromMap({
       'uuid': 'ledger-edited-legacy-time',
