@@ -153,10 +153,12 @@ abstract final class FinanceAiContextService {
     r'\s*[日号]',
   );
   static final RegExp _rollingMonthPeriodPattern = RegExp(
-    r'(?:近|最近|过去)\s*(\d{1,2}|十一|十二|十|两|[二三四五六七八九])\s*个?月',
+    r'(?:近|最近|过去)\s*'
+    r'(\d+|[零〇○一二三四五六七八九十廿两百千]{1,4})\s*个?月',
   );
   static final RegExp _rollingYearPeriodPattern = RegExp(
-    r'(?:近|最近|过去)\s*(\d{1,2}|十一|十二|十|两|[一二三四五六七八九])\s*年',
+    r'(?:近|最近|过去)\s*'
+    r'(\d+|[零〇○一二三四五六七八九十廿两百千]{1,4})\s*年',
   );
   static final RegExp _numericYearMonthPattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](\d+)(?![-/.]\d)',
@@ -270,7 +272,7 @@ abstract final class FinanceAiContextService {
   }) {
     final text = userMessage.trim();
     if (text.isEmpty) return false;
-    if (_hasInvalidExplicitDate(text)) return false;
+    if (_hasInvalidExplicitDateOrPeriod(text)) return false;
     if (_isPaymentBalanceQuestion(text) &&
         !_containsAny(text, _otherContextDomains)) {
       return true;
@@ -653,7 +655,7 @@ abstract final class FinanceAiContextService {
     final rollingMonths = _rollingMonthPeriodPattern.firstMatch(text);
     if (rollingMonths != null) {
       final monthValue = rollingMonths.group(1) ?? '';
-      final monthCount = int.tryParse(monthValue) ?? _parseMonthNumber(monthValue);
+      final monthCount = _parseRollingPeriodCount(monthValue);
       if (monthCount != null && monthCount > 0 && monthCount <= 36) {
         return _rollingMonthRange(current, monthCount);
       }
@@ -661,7 +663,7 @@ abstract final class FinanceAiContextService {
     final rollingYears = _rollingYearPeriodPattern.firstMatch(text);
     if (rollingYears != null) {
       final yearValue = rollingYears.group(1) ?? '';
-      final yearCount = int.tryParse(yearValue) ?? _parseMonthNumber(yearValue);
+      final yearCount = _parseRollingPeriodCount(yearValue);
       if (yearCount != null && yearCount > 0 && yearCount <= 10) {
         return _rollingMonthRange(current, yearCount * 12);
       }
@@ -992,7 +994,7 @@ abstract final class FinanceAiContextService {
     return FinanceDateRange(from, financeCalendarDayOffset(current, 1));
   }
 
-  static bool _hasInvalidExplicitDate(String text) {
+  static bool _hasInvalidExplicitDateOrPeriod(String text) {
     final hasExplicitDate =
         _calendarDatePattern.hasMatch(text) ||
         _chineseCalendarDatePattern.hasMatch(text);
@@ -1007,6 +1009,15 @@ abstract final class FinanceAiContextService {
       }
     }
 
+    for (final rollingMonth in _rollingMonthPeriodPattern.allMatches(text)) {
+      final count = _parseRollingPeriodCount(rollingMonth.group(1)!);
+      if (count == null || count < 1 || count > 36) return true;
+    }
+    for (final rollingYear in _rollingYearPeriodPattern.allMatches(text)) {
+      final count = _parseRollingPeriodCount(rollingYear.group(1)!);
+      if (count == null || count < 1 || count > 10) return true;
+    }
+
     for (final chineseMonth in _chineseMonthPattern.allMatches(text)) {
       final month = _parseMonthNumber(chineseMonth.group(3)!);
       if (month != null && month >= 1 && month <= 12) continue;
@@ -1018,7 +1029,7 @@ abstract final class FinanceAiContextService {
           continue;
         }
         final rawCount = rollingMonth.group(1)!;
-        final count = int.tryParse(rawCount) ?? _parseMonthNumber(rawCount);
+        final count = _parseRollingPeriodCount(rawCount);
         isValidRollingPeriod = count != null && count > 0 && count <= 36;
         break;
       }
@@ -1152,6 +1163,9 @@ abstract final class FinanceAiContextService {
     }
     return _parseMonthNumber(value);
   }
+
+  static int? _parseRollingPeriodCount(String value) =>
+      int.tryParse(value) ?? _parseCalendarDayNumber(value);
 
   static DateTime _day(DateTime value) =>
       DateTime(value.year, value.month, value.day);

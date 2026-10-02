@@ -330,6 +330,8 @@ void main() {
       ('近3个月支出', '2026-07-02'),
       ('近13月支出', '2025-09-02'),
       ('近13个月支出', '2025-09-02'),
+      ('近十三个月支出', '2025-09-02'),
+      ('近三十六个月支出', '2023-10-02'),
       ('近一年支出', '2025-10-02'),
       ('过去两年支出', '2024-10-02'),
     ]) {
@@ -342,6 +344,31 @@ void main() {
       expect(
         FinanceAiContextService.shouldInjectFor(query),
         isTrue,
+        reason: query,
+      );
+    }
+
+    for (final query in [
+      '近37个月支出多少',
+      '近100个月支出多少',
+      '近三十七个月支出多少',
+      '近一百个月支出多少',
+      '近11年支出多少',
+      '近100年支出多少',
+      '近十一年支出多少',
+      '近一百年支出多少',
+    ]) {
+      expect(
+        FinanceAiContextService.shouldInjectFor(query),
+        isFalse,
+        reason: query,
+      );
+      expect(
+        await FinanceAiContextService.buildContext(
+          userMessage: query,
+          now: now,
+        ),
+        isEmpty,
         reason: query,
       );
     }
