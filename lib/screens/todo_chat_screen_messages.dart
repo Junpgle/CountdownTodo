@@ -708,9 +708,6 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                                   _injectMoreContext,
                                 ),
                               );
-                              if (_injectMoreContext) {
-                                _useCustomInjectRange = false;
-                              }
                               _liveSmartContextPreview =
                                   _buildSmartContextPreview(
                                     _inputCtrl.text.trim(),

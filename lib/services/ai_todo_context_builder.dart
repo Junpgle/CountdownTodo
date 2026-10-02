@@ -8,6 +8,67 @@ class AiTodoContextBuilder {
   static const int actionProtocolVersion = 2;
   static const int smartContextProtocolVersion = 2;
 
+  static AiContextDateRange? resolveCustomInjectionDateRange({
+    DateTime? customStart,
+    DateTime? customEnd,
+    bool injectMoreContext = false,
+    DateTime? now,
+  }) {
+    if (customStart == null || customEnd == null) return null;
+    final selectedStart = DateTime(
+      customStart.year,
+      customStart.month,
+      customStart.day,
+    );
+    final selectedEndExclusive = DateTime(
+      customEnd.year,
+      customEnd.month,
+      customEnd.day + 1,
+    );
+    if (!injectMoreContext) {
+      return AiContextDateRange(selectedStart, selectedEndExclusive);
+    }
+
+    final current = now ?? DateTime.now();
+    final today = DateTime(current.year, current.month, current.day);
+    final futureEndExclusive = DateTime(
+      today.year,
+      today.month,
+      today.day + 30,
+    );
+    return AiContextDateRange(
+      selectedStart.isBefore(today) ? selectedStart : today,
+      selectedEndExclusive.isAfter(futureEndExclusive)
+          ? selectedEndExclusive
+          : futureEndExclusive,
+    );
+  }
+
+  static String buildContextQueryText({
+    required String userMessage,
+    DateTime? customStart,
+    DateTime? customEnd,
+    bool injectMoreContext = false,
+    DateTime? now,
+  }) {
+    final customRange = resolveCustomInjectionDateRange(
+      customStart: customStart,
+      customEnd: customEnd,
+      injectMoreContext: injectMoreContext,
+      now: now,
+    );
+    if (customRange != null) {
+      final start = DateFormat('yyyy-MM-dd').format(customRange.start);
+      final end = DateFormat('yyyy-MM-dd').format(
+        customRange.endExclusive.subtract(const Duration(days: 1)),
+      );
+      return '$userMessage，并使用自定义注入范围 $start 至 $end';
+    }
+    if (!injectMoreContext) return userMessage;
+    if (userMessage.contains('未来30天')) return userMessage;
+    return '$userMessage，并扩大到未来30天范围';
+  }
+
   static String buildLeanSystemPrompt({
     required String customPrompt,
     required bool promptEnabled,
@@ -409,6 +470,7 @@ JSON操作块必须且只能使用以下协议：
     List<FixedScheduleItem> fixedSchedules = const [],
     required List<ConflictInfo> conflicts,
     required List<Team> teams,
+    bool expandFocusContext = false,
     DateTime? now,
   }) {
     final nowValue = now ?? DateTime.now();
@@ -534,7 +596,13 @@ JSON操作块必须且只能使用以下协议：
             pomodoroRecords.isNotEmpty ||
             planBlocks.isNotEmpty)) {
       sections.add(
-        _formatFocusRecords(timeLogs, pomodoroRecords, userMessage, nowValue),
+        _formatFocusRecords(
+          timeLogs,
+          pomodoroRecords,
+          userMessage,
+          nowValue,
+          recordLimit: expandFocusContext ? 60 : 30,
+        ),
       );
       if (planBlocks.isNotEmpty) {
         sections.add(
@@ -582,6 +650,7 @@ ${sections.join('\n')}
     List<FixedScheduleItem> fixedSchedules = const [],
     required List<ConflictInfo> conflicts,
     required List<Team> teams,
+    bool expandFocusContext = false,
     DateTime? now,
   }) {
     final nowValue = now ?? DateTime.now();
@@ -724,7 +793,7 @@ ${sections.join('\n')}
         );
         parts.add(start == end ? '专注记录$start' : '专注记录$start-$end');
       } else {
-        parts.add('专注记录最近30条');
+        parts.add('专注记录最近${expandFocusContext ? 60 : 30}条');
       }
       if (planBlocks.isNotEmpty) {
         parts.add('规划块');
@@ -1547,8 +1616,9 @@ ${sections.join('\n')}
     List<TimeLogItem> timeLogs,
     List<PomodoroRecord> pomodoroRecords,
     String userMessage,
-    DateTime now,
-  ) {
+    DateTime now, {
+    int recordLimit = 30,
+  }) {
     final activeLogs = timeLogs.where((t) => !t.isDeleted).toList();
     final activePomodoros = pomodoroRecords.where((p) => !p.isDeleted).toList();
     if (activeLogs.isEmpty && activePomodoros.isEmpty) return '专注记录: 暂无';
@@ -1558,7 +1628,7 @@ ${sections.join('\n')}
       ...activePomodoros.map(_FocusRecord.fromPomodoro),
     ]..sort((a, b) => b.startMs.compareTo(a.startMs));
     final scopedRecords = period == null
-        ? records.take(30).toList()
+        ? records.take(recordLimit).toList()
         : records.where((r) => _focusOverlapsPeriod(r, period)).toList();
 
     if (period != null) {
@@ -1574,7 +1644,7 @@ ${sections.join('\n')}
           .map((r) => _focusOverlapMinutes(r, period))
           .fold<int>(0, (sum, minutes) => sum + minutes);
       final lines = scopedRecords
-          .take(30)
+          .take(recordLimit)
           .map((r) {
             final start = _formatEpochMillis(r.startMs);
             final end = _formatEpochMillis(r.endMs);
@@ -1597,7 +1667,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
           return '- [${r.source} ID: ${r.id}] $start-$end ${r.title} | ${formatMinutesChinese(r.minutes)}${r.status != null ? ' | 状态: ${r.status}' : ''}';
         })
         .join('\n');
-    return '专注记录（最近30条，按开始时间倒序）:\n$lines';
+    return '专注记录（最近$recordLimit条，按开始时间倒序）:\n$lines';
   }
 
   static String _formatConflicts(List<ConflictInfo> conflicts) {
@@ -2185,6 +2255,13 @@ class _TimeLogPeriod {
   final String label;
   final DateTime start;
   final DateTime end;
+}
+
+class AiContextDateRange {
+  const AiContextDateRange(this.start, this.endExclusive);
+
+  final DateTime start;
+  final DateTime endExclusive;
 }
 
 class _FocusRecord {

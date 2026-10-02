@@ -42,6 +42,9 @@ abstract final class HabitAiContextService {
   static final RegExp _calendarDatePattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)',
   );
+  static final RegExp _calendarDateRangePattern = RegExp(
+    r'(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})\s*(?:至|到|-|~)\s*(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})',
+  );
   static final RegExp _yearMonthPattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](0?[1-9]|1[0-2])(?![-/.]\d)',
   );
@@ -274,6 +277,18 @@ abstract final class HabitAiContextService {
     String text,
     DateTime today,
   ) {
+    final explicitRange = _calendarDateRangePattern.firstMatch(text);
+    if (explicitRange != null) {
+      final from = _parseExplicitDate(explicitRange.group(1)!);
+      final to = _parseExplicitDate(explicitRange.group(2)!);
+      if (from != null && to != null && !to.isBefore(from)) {
+        return (
+          from: from,
+          to: to,
+          label: '${_dateKey(from)} 至 ${_dateKey(to)}',
+        );
+      }
+    }
     final explicitDate = _parseExplicitDate(text);
     if (explicitDate != null) {
       final dateKey = _dateKey(explicitDate);

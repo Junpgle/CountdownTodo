@@ -58,22 +58,13 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   bool _classificationSuggestionInjected = false;
 
   FinanceDateRange? _financeContextDateRangeOverride() {
-    if (!_useCustomInjectRange ||
-        _customInjectStart == null ||
-        _customInjectEnd == null) {
-      return null;
-    }
-    final start = DateTime(
-      _customInjectStart!.year,
-      _customInjectStart!.month,
-      _customInjectStart!.day,
+    final range = AiTodoContextBuilder.resolveCustomInjectionDateRange(
+      customStart: _useCustomInjectRange ? _customInjectStart : null,
+      customEnd: _useCustomInjectRange ? _customInjectEnd : null,
+      injectMoreContext: _injectMoreContext,
     );
-    final selectedEnd = DateTime(
-      _customInjectEnd!.year,
-      _customInjectEnd!.month,
-      _customInjectEnd!.day,
-    );
-    return FinanceDateRange(start, selectedEnd.add(const Duration(days: 1)));
+    if (range == null) return null;
+    return FinanceDateRange(range.start, range.endExclusive);
   }
 
   // 🚀 宽屏适配相关

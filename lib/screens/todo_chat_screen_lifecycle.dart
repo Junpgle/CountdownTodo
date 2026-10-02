@@ -166,6 +166,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
                 fixedSchedules: _fixedSchedules,
                 conflicts: widget.conflicts,
                 teams: widget.teams,
+                expandFocusContext: _injectMoreContext,
                 now: now,
               ),
               FinanceAiContextService.buildContextInjectionSummary(
@@ -206,16 +207,12 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   String _buildContextQueryText(String userText) {
-    if (_useCustomInjectRange &&
-        _customInjectStart != null &&
-        _customInjectEnd != null) {
-      final start = DateFormat('yyyy-MM-dd').format(_customInjectStart!);
-      final end = DateFormat('yyyy-MM-dd').format(_customInjectEnd!);
-      return '$userText，并使用自定义注入范围 $start 至 $end';
-    }
-    if (!_injectMoreContext) return userText;
-    if (userText.contains('未来30天')) return userText;
-    return '$userText，并扩大到未来30天范围';
+    return AiTodoContextBuilder.buildContextQueryText(
+      userMessage: userText,
+      customStart: _useCustomInjectRange ? _customInjectStart : null,
+      customEnd: _useCustomInjectRange ? _customInjectEnd : null,
+      injectMoreContext: _injectMoreContext,
+    );
   }
 
   String _buildActionProtocolPreview(String userText) {
@@ -309,7 +306,6 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       _useCustomInjectRange = true;
       _customInjectStart = DateTime(start.year, start.month, start.day);
       _customInjectEnd = DateTime(end.year, end.month, end.day);
-      _injectMoreContext = false;
       _liveSmartContextPreview = _buildSmartContextPreview(
         _inputCtrl.text.trim(),
       );
@@ -772,6 +768,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       fixedSchedules: _fixedSchedules,
       conflicts: widget.conflicts,
       teams: widget.teams,
+      expandFocusContext: _injectMoreContext,
       now: DateTime.now(),
     );
     if (injection != null) {

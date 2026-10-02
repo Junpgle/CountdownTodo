@@ -881,6 +881,85 @@ void main() {
       expect(context, isNot(contains('created-last-month-unscheduled')));
     });
 
+    test('注入更多扩展自定义范围而不丢失原范围', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final customStart = DateTime(2026, 8, 1);
+      final customEnd = DateTime(2026, 9, 30);
+      final regularRange = AiTodoContextBuilder.resolveCustomInjectionDateRange(
+        customStart: customStart,
+        customEnd: customEnd,
+        now: now,
+      )!;
+      final expandedRange = AiTodoContextBuilder.resolveCustomInjectionDateRange(
+        customStart: customStart,
+        customEnd: customEnd,
+        injectMoreContext: true,
+        now: now,
+      )!;
+
+      expect(regularRange.start, DateTime(2026, 8, 1));
+      expect(regularRange.endExclusive, DateTime(2026, 10, 1));
+      expect(expandedRange.start, regularRange.start);
+      expect(expandedRange.endExclusive, DateTime(2026, 11, 1));
+
+      final regularQuery = AiTodoContextBuilder.buildContextQueryText(
+        userMessage: '分析我上个月的效率',
+        customStart: customStart,
+        customEnd: customEnd,
+        now: now,
+      );
+      final expandedQuery = AiTodoContextBuilder.buildContextQueryText(
+        userMessage: '分析我上个月的效率',
+        customStart: customStart,
+        customEnd: customEnd,
+        injectMoreContext: true,
+        now: now,
+      );
+      expect(regularQuery, contains('2026-08-01 至 2026-09-30'));
+      expect(expandedQuery, contains('2026-08-01 至 2026-10-31'));
+
+      final timeLogs = [
+        TimeLogItem(
+          id: 'custom-range-log',
+          title: '自定义范围专注',
+          startTime: DateTime(2026, 8, 15, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 8, 15, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'previous-month-log',
+          title: '上个月专注',
+          startTime: DateTime(2026, 9, 15, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 15, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'future-log',
+          title: '未来专注',
+          startTime: DateTime(2026, 10, 15, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 15, 10).millisecondsSinceEpoch,
+        ),
+      ];
+
+      String contextFor(String userMessage) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: userMessage,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final regularContext = contextFor(regularQuery);
+      final expandedContext = contextFor(expandedQuery);
+      expect(regularContext, contains('custom-range-log'));
+      expect(regularContext, contains('previous-month-log'));
+      expect(regularContext, isNot(contains('future-log')));
+      expect(expandedContext, contains('custom-range-log'));
+      expect(expandedContext, contains('previous-month-log'));
+      expect(expandedContext, contains('future-log'));
+      expect(expandedContext.length, greaterThan(regularContext.length));
+    });
+
     test('上周效率只汇总上一自然周，不混入本周记录', () {
       final now = DateTime(2026, 10, 2, 12);
       final timeLogs = [

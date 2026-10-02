@@ -157,4 +157,139 @@ void main() {
       expect(currentContextPreview(), contextBefore);
     },
   );
+
+  testWidgets('expanding context preserves a selected custom range', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    await ChatStorageService.setSmartContextEnabled(true);
+    await ChatStorageService.setContextMode(
+      AiContextMode.smartContextInjection,
+    );
+    await ChatStorageService.setInjectMoreContext(false);
+    await ChatStorageService.setShowContextPreview(true);
+    await FeatureTipService.markTipShown('todo_chat_guide');
+
+    final now = DateTime.now();
+    final customStart = DateTime(now.year, now.month - 2, 1);
+    final customEnd = DateTime(now.year, now.month, 0);
+    final timeLogs = <TimeLogItem>[
+      for (
+        var day = 1;
+        day <= DateTime(customStart.year, customStart.month + 1, 0).day;
+        day++
+      )
+        TimeLogItem(
+          id: 'custom-$day',
+          title: '自定义范围专注记录第 $day 天，持续专注完成重要工作',
+          startTime: DateTime(
+            customStart.year,
+            customStart.month,
+            day,
+            9,
+          ).millisecondsSinceEpoch,
+          endTime: DateTime(
+            customStart.year,
+            customStart.month,
+            day,
+            10,
+          ).millisecondsSinceEpoch,
+        ),
+      for (var day in [1, 2])
+        TimeLogItem(
+          id: 'previous-$day',
+          title: '上个月专注记录第 $day 天',
+          startTime: DateTime(
+            customEnd.year,
+            customEnd.month,
+            day,
+            9,
+          ).millisecondsSinceEpoch,
+          endTime: DateTime(
+            customEnd.year,
+            customEnd.month,
+            day,
+            10,
+          ).millisecondsSinceEpoch,
+        ),
+      for (var offset in [5, 10, 15])
+        TimeLogItem(
+          id: 'future-$offset',
+          title: '未来专注记录第 $offset 天',
+          startTime: DateTime(
+            now.year,
+            now.month,
+            now.day + offset,
+            9,
+          ).millisecondsSinceEpoch,
+          endTime: DateTime(
+            now.year,
+            now.month,
+            now.day + offset,
+            10,
+          ).millisecondsSinceEpoch,
+        ),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TodoChatScreen(
+          username: 'custom-range-token-estimate-test',
+          todos: const [],
+          timeLogs: timeLogs,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.enterText(find.byType(TextField).first, '分析我上个月的效率');
+    await tester.pump(const Duration(milliseconds: 500));
+
+    int currentEstimate() {
+      final estimateLabel = find.byWidgetPredicate(
+        (widget) =>
+            widget is SelectableText &&
+            widget.data?.startsWith('预计Token：~') == true,
+      );
+      expect(estimateLabel, findsOneWidget);
+      return int.parse(
+        tester.widget<SelectableText>(estimateLabel).data!.split('~').last,
+      );
+    }
+
+    await tester.tap(find.text('自定义注入'));
+    await tester.pump(const Duration(milliseconds: 500));
+    Finder inputModeButton() =>
+        find.byIcon(Icons.edit_outlined).evaluate().isNotEmpty
+        ? find.byIcon(Icons.edit_outlined)
+        : find.byIcon(Icons.edit);
+
+    await tester.tap(inputModeButton().last);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.enterText(
+      find.byType(TextField).last,
+      '${customStart.month}/${customStart.day}/${customStart.year}',
+    );
+    await tester.pump();
+    await tester.tap(find.text('OK').last);
+    await tester.pump(const Duration(milliseconds: 500));
+
+    await tester.tap(inputModeButton().last);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.enterText(
+      find.byType(TextField).last,
+      '${customEnd.month}/${customEnd.day}/${customEnd.year}',
+    );
+    await tester.pump();
+    await tester.tap(find.text('OK').last);
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.text('自定义注入: 开'), findsOneWidget);
+    final before = currentEstimate();
+    await tester.tap(find.text('注入更多'));
+    await tester.pump();
+
+    expect(find.text('自定义注入: 开'), findsOneWidget);
+    expect(find.text('注入更多: 开'), findsOneWidget);
+    expect(currentEstimate(), greaterThan(before));
+  });
 }

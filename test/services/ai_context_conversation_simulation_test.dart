@@ -381,4 +381,13 @@ void main() {
     expect(finance, contains('2026-09-01 至 2026-09-30'));
   });
 
+  test('习惯上下文接受自定义日期范围而不是只取起始日', () {
+    final habit = HabitAiContextService.buildContextInjectionSummary(
+      userMessage: '分析习惯在自定义范围的完成率，2026-08-01 至 2026-10-31',
+      goals: const [],
+      now: now,
+    );
+
+    expect(habit, contains('2026-08-01 至 2026-10-31'));
+  });
 }
