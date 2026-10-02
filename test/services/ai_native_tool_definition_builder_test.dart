@@ -44,6 +44,38 @@ void main() {
       expect(FinanceAiContextService.shouldInjectFor(request), isTrue);
     });
 
+    test('offers finance updates for correction and adjustment wording', () {
+      for (final request in [
+        '把上周那笔账单更正为30元',
+        '把上周那笔账单金额调整为30元',
+      ]) {
+        final tools = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+          request,
+        );
+
+        expect(AiNativeToolDefinitionBuilder.allowedFinanceActionNames(tools), {
+          'update_finance',
+        }, reason: request);
+      }
+    });
+
+    test('keeps finance adjustment questions read-only', () {
+      for (final request in [
+        '查询上周账单调整情况',
+        '分析把上周账单调整为30元后的预算影响',
+      ]) {
+        final tools = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+          request,
+        );
+
+        expect(
+          AiNativeToolDefinitionBuilder.allowedToolNames(tools),
+          isEmpty,
+          reason: request,
+        );
+      }
+    });
+
     test('does not expose finance mutation tools for a read-only query', () {
       for (final request in ['查询上周账单明细', '哪些账单需要删除']) {
         final tools = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(

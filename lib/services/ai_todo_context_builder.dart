@@ -833,6 +833,7 @@ ${sections.join('\n')}
   }
 
   static bool _isReadOnlyRequest(String text) {
+    if (_hasExplicitFinanceUpdateIntent(text)) return false;
     final asksInformation =
         _matchesAny(text, _readOnlyRequestKeywords) ||
         _looksLikeInformationQuestion(text) ||
@@ -844,6 +845,27 @@ ${sections.join('\n')}
     return !_writeIntentKeywords.any(
       (trigger) => isExplicitlyRequested(text, trigger),
     );
+  }
+
+  static bool _hasExplicitFinanceUpdateIntent(String text) {
+    if (!_matchesAny(text, _financeKeywords)) return false;
+    final commandPrefix = RegExp(
+      r'^(?:(?:请|帮我|替我|给我)\s*)*(?:把|将)',
+    );
+    for (final clause in text.split(RegExp(r'[，。；！？,;]'))) {
+      final normalizedClause = clause.trim();
+      if (!commandPrefix.hasMatch(normalizedClause)) continue;
+      for (final verb in ['更正', '调整']) {
+        if (!isExplicitlyRequested(normalizedClause, verb)) continue;
+        final suffix = normalizedClause.substring(
+          normalizedClause.indexOf(verb) + verb.length,
+        );
+        if (RegExp(r'^\s*(?:为|成|到|至|一下|下|$)').hasMatch(suffix)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   static bool isExplicitlyRequested(String text, String trigger) {
