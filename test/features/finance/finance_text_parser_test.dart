@@ -357,6 +357,20 @@ void main() {
     expect(incomeDrafts.single.amountMinor, 98000);
   });
 
+  test('口语中的退回款项识别为退款而不是支出', () {
+    final drafts = FinanceTextParser.parseQuickEntries(
+      '今天买衣服 100 元，商家退了 20 元',
+      now: fixedNow,
+    );
+
+    expect(drafts, hasLength(2));
+    expect(
+      drafts.map((draft) => draft.type),
+      [FinanceTransactionType.expense, FinanceTransactionType.refund],
+    );
+    expect(drafts.map((draft) => draft.amountMinor), [10000, 2000]);
+  });
+
   test('逗号分隔字段时保留每笔账单的分类和付款方式', () {
     final drafts = FinanceTextParser.parseQuickEntries(
       '今天早餐，8元，微信；中午午餐，25元，支付宝',

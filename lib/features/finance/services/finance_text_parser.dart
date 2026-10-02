@@ -981,7 +981,7 @@ abstract final class FinanceTextParser {
         RegExp(
           r'记一笔|记账|记录|一共|合计|实付|金额|支出|收入|退款|消费|花(?:了|费)?|'
           r'用了?|支付了?|付款了?|付了|买了?|购买了?|收到|入账|进账|收款|赚到?|'
-          r'用于|在|于|给|为',
+          r'用于|在|于|给|退了?|退回|退还|返还|退钱|为',
         ),
         '',
       );
@@ -1114,7 +1114,13 @@ abstract final class FinanceTextParser {
 
   static FinanceTransactionType _parseType(String text) {
     final value = text.toLowerCase();
-    if (value.contains('退款') || value.contains('refund')) {
+    if (value.contains('退款') ||
+        value.contains('退了') ||
+        value.contains('退回') ||
+        value.contains('退还') ||
+        value.contains('返还') ||
+        value.contains('退钱') ||
+        value.contains('refund')) {
       return FinanceTransactionType.refund;
     }
     if (value.contains('收入') ||
