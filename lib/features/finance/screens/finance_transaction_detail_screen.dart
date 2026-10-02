@@ -43,6 +43,7 @@ class _FinanceTransactionDetailScreenState
   Timer? _financeChangeRefreshTimer;
   bool _refreshInProgress = false;
   bool _refreshPending = false;
+  bool _isUnavailable = false;
 
   @override
   void initState() {
@@ -59,6 +60,7 @@ class _FinanceTransactionDetailScreenState
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.transaction, widget.transaction)) {
       transaction = widget.transaction;
+      _isUnavailable = false;
     }
     if (!identical(oldWidget.category, widget.category)) {
       category = widget.category;
@@ -98,7 +100,11 @@ class _FinanceTransactionDetailScreenState
         final latestTransaction = await FinanceRepository.getTransaction(
           transaction.uuid,
         );
-        if (latestTransaction == null) return;
+        if (latestTransaction == null || latestTransaction.isDeleted) {
+          if (!mounted) return;
+          setState(() => _isUnavailable = true);
+          return;
+        }
         final categories = await FinanceRepository.getCategories(
           includeArchived: true,
         );
@@ -115,6 +121,7 @@ class _FinanceTransactionDetailScreenState
             .firstOrNull;
         setState(() {
           transaction = latestTransaction;
+          _isUnavailable = false;
           category = latestCategory;
           categoryDisplayName = latestCategory == null
               ? null
@@ -179,8 +186,38 @@ class _FinanceTransactionDetailScreenState
     }
   }
 
+  Widget _buildUnavailableScreen(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return AppDetailScreen(
+      appBarTitle: '账单详情',
+      icon: Icons.delete_outline_rounded,
+      title: '账单已删除',
+      headerSubtitle: '这笔记录已从账本中移除。',
+      color: colors.onSurfaceVariant,
+      iconSize: 64,
+      titleSize: 22,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      scrollPhysics: const BouncingScrollPhysics(),
+      appBarActions: const [],
+      sections: [
+        AppDetailSection(
+          title: '记录状态',
+          children: [
+            AppDetailWideCard(
+              icon: Icons.delete_outline_rounded,
+              title: '账单已删除',
+              value: '这笔记录已从账本中移除，无法继续编辑。',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isUnavailable) return _buildUnavailableScreen(context);
+
     final colorScheme = Theme.of(context).colorScheme;
     final amountColor = _amountColor(colorScheme);
     final subtitle = [

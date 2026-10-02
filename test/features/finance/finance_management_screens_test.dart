@@ -9,6 +9,7 @@ import 'package:countdown_todo/features/finance/screens/finance_entry_screen.dar
 import 'package:countdown_todo/features/finance/screens/finance_home_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_loan_entry_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_loan_screen.dart';
+import 'package:countdown_todo/features/finance/screens/finance_transaction_detail_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_trash_screen.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/features/finance/services/finance_repository.dart';
@@ -2000,6 +2001,63 @@ void main() {
     expect(find.text('净支出 ¥15.00'), findsOneWidget);
     expect(find.text('计划净支出 ¥30.00'), findsOneWidget);
     expect(find.text('计划收入 ¥72.00'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('账单被删除后打开的详情停止显示旧记录', (tester) async {
+    final db = await _seed(tester);
+    final transaction = FinanceTransaction(
+      uuid: 'deleted-open-detail',
+      amountMinor: 8500,
+      transactionDate: '2026-10-02',
+      merchant: '等待同步删除的账单',
+    );
+    await tester.runAsync(
+      () => db.insert('finance_transactions', transaction.toMap()),
+    );
+
+    await _pump(
+      tester,
+      Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () {
+              Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      FinanceTransactionDetailScreen(transaction: transaction),
+                ),
+              );
+            },
+            child: const Text('打开测试账单'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开测试账单'));
+    await tester.pumpAndSettle();
+    expect(find.text('等待同步删除的账单'), findsOneWidget);
+
+    await tester.runAsync(
+      () => FinanceStorage.deleteTransaction(transaction.uuid),
+    );
+    await _waitFor(tester, () => find.text('账单已删除').evaluate().isNotEmpty);
+
+    expect(find.text('等待同步删除的账单'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('finance-transaction-detail-edit')),
+      findsNothing,
+    );
+    expect(find.text('这笔记录已从账本中移除。'), findsOneWidget);
+
+    await tester.runAsync(
+      () => FinanceStorage.restoreTransaction(transaction.uuid),
+    );
+    await _waitFor(tester, () => find.text('等待同步删除的账单').evaluate().isNotEmpty);
+    expect(
+      find.byKey(const ValueKey('finance-transaction-detail-edit')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
