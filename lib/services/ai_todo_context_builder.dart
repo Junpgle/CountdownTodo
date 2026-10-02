@@ -1397,6 +1397,44 @@ ${lines.isEmpty ? '暂无' : lines}''';
       );
     }
     final todayStart = DateTime(now.year, now.month, now.day);
+    final explicitYearMonth = RegExp(
+      r'(?:^|[^\d])(\d{4})\s*年\s*(0?[1-9]|1[0-2])\s*月(?:份)?',
+    ).firstMatch(text);
+    if (explicitYearMonth != null) {
+      final year = int.parse(explicitYearMonth.group(1)!);
+      final month = int.parse(explicitYearMonth.group(2)!);
+      return _TimeLogPeriod(
+        label: '$year年$month月',
+        start: DateTime(year, month),
+        end: DateTime(year, month + 1),
+      );
+    }
+    final relativeYearMonth = RegExp(
+      r'(今年|去年)\s*(0?[1-9]|1[0-2])\s*月(?:份)?',
+    ).firstMatch(text);
+    if (relativeYearMonth != null) {
+      final year = relativeYearMonth.group(1) == '去年'
+          ? now.year - 1
+          : now.year;
+      final month = int.parse(relativeYearMonth.group(2)!);
+      return _TimeLogPeriod(
+        label: '$year年$month月',
+        start: DateTime(year, month),
+        end: DateTime(year, month + 1),
+      );
+    }
+    final monthOnly = RegExp(
+      r'(?:^|[^\d])(0?[1-9]|1[0-2])\s*月(?:份)?',
+    ).firstMatch(text);
+    if (monthOnly != null) {
+      final month = int.parse(monthOnly.group(1)!);
+      final year = month > now.month ? now.year - 1 : now.year;
+      return _TimeLogPeriod(
+        label: '$year年$month月',
+        start: DateTime(year, month),
+        end: DateTime(year, month + 1),
+      );
+    }
     final explicitYear = RegExp(
       r'(?:^|[^\d])(\d{4})\s*年(?:份)?(?!\s*(?:\d{1,2}\s*月|第?\s*[一二三四1-4]\s*季度))',
     ).firstMatch(text);

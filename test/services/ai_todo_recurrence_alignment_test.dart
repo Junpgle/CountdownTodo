@@ -1095,5 +1095,53 @@ void main() {
       expect(recentYear, isNot(contains('future')));
       expect(previewFor('分析最近一年的效率'), contains('专注记录20251002-20261002'));
     });
+
+    test('明确年月和去年某月效率查询不会回退到最近30条', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('before-month', DateTime(2025, 8, 31, 9)),
+        ('month-start', DateTime(2025, 9, 1, 9)),
+        ('month-end', DateTime(2025, 9, 30, 9)),
+        ('after-month', DateTime(2025, 10, 1, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final explicitMonth = contextFor('分析2025年9月效率');
+      expect(explicitMonth, contains('2025年9月合计'));
+      expect(explicitMonth, contains('month-start'));
+      expect(explicitMonth, contains('month-end'));
+      expect(explicitMonth, isNot(contains('before-month')));
+      expect(explicitMonth, isNot(contains('after-month')));
+      expect(previewFor('分析2025年9月效率'), contains('专注记录20250901-20250930'));
+
+      final relativeMonth = contextFor('分析去年9月效率');
+      expect(relativeMonth, contains('2025年9月合计'));
+      expect(relativeMonth, contains('month-start'));
+      expect(relativeMonth, isNot(contains('before-month')));
+      expect(relativeMonth, isNot(contains('after-month')));
+    });
   });
 }
