@@ -245,7 +245,10 @@ abstract final class HabitAiContextService {
           '今日',
           '昨天',
           '昨日',
+          '大前天',
+          '大前日',
           '前天',
+          '前日',
           ..._recent7DayTerms,
           ..._recent30DayTerms,
           '本周',
@@ -273,7 +276,10 @@ abstract final class HabitAiContextService {
           '今日',
           '昨天',
           '昨日',
+          '大前天',
+          '大前日',
           '前天',
+          '前日',
           ..._recent7DayTerms,
           ..._recent30DayTerms,
           '本周',
@@ -447,10 +453,15 @@ abstract final class HabitAiContextService {
     final day = _day(today);
     DateTime from = day;
     DateTime to = day;
-    if (text.contains('前天')) {
+    if (text.contains('大前天') || text.contains('大前日')) {
+      from = day.subtract(const Duration(days: 3));
+      to = from;
+    } else if (text.contains('前天') || text.contains('前日')) {
       from = day.subtract(const Duration(days: 2));
       to = from;
-    } else if (text.contains('昨天') || text.contains('yesterday')) {
+    } else if (text.contains('昨天') ||
+        text.contains('昨日') ||
+        text.contains('yesterday')) {
       from = day.subtract(const Duration(days: 1));
       to = from;
     } else if (text.contains('今天') || text.contains('今日')) {

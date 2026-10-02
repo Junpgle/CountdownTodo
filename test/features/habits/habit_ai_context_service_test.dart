@@ -28,6 +28,34 @@ void main() {
       expect(summary, isNot(contains('2026-10-01')));
     });
 
+    test('resolves older-day aliases and uses them in follow-ups', () {
+      final testNow = DateTime(2026, 10, 3, 12);
+      for (final (period, expectedDate) in [
+        ('大前天', '2026-09-30'),
+        ('大前日', '2026-09-30'),
+        ('前天', '2026-10-01'),
+        ('前日', '2026-10-01'),
+        ('昨天', '2026-10-02'),
+        ('昨日', '2026-10-02'),
+      ]) {
+        final direct = HabitAiContextService.buildContextInjectionSummary(
+          userMessage: '查看$period的习惯进度',
+          goals: const [],
+          now: testNow,
+        );
+        final followUp = HabitAiContextService.buildContextInjectionSummary(
+          userMessage: '那$period呢？',
+          previousUserMessage: '查看2026-06-01至2026-06-30的习惯进度',
+          conversationContext: '习惯进度',
+          goals: const [],
+          now: testNow,
+        );
+
+        expect(direct, contains(expectedDate), reason: period);
+        expect(followUp, contains(expectedDate), reason: period);
+      }
+    });
+
     test('resolves rolling month requests as a date range', () {
       for (final period in [
         '过去6个月',
