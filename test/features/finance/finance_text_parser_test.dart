@@ -334,6 +334,13 @@ void main() {
         expect(draft!.type, FinanceTransactionType.income);
         expect(draft.categoryName, entry.value, reason: entry.key);
       }
+
+      final employeePayroll = FinanceTextParser.parseOneSentence(
+        '今天给员工发工资 8000 元',
+        now: now,
+      );
+      expect(employeePayroll, isNotNull);
+      expect(employeePayroll!.type, FinanceTransactionType.expense);
     });
 
     test('饮品自然语言优先识别为餐饮下的细分类', () {

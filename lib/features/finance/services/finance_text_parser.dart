@@ -1306,6 +1306,7 @@ abstract final class FinanceTextParser {
       '交生活费',
       '给孩子',
       '给朋友',
+      '给员工',
       '给家里',
       '给父母',
       '转给',
