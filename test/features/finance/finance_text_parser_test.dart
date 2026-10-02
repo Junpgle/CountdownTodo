@@ -427,6 +427,13 @@ void main() {
       [FinanceTransactionType.expense, FinanceTransactionType.refund],
     );
     expect(drafts.map((draft) => draft.amountMinor), [10000, 2000]);
+
+    final returnedGoods = FinanceTextParser.parseOneSentence(
+      '今天收到退货款 20 元',
+      now: fixedNow,
+    );
+    expect(returnedGoods, isNotNull);
+    expect(returnedGoods!.type, FinanceTransactionType.refund);
   });
 
   test('逗号分隔字段时保留每笔账单的分类和付款方式', () {

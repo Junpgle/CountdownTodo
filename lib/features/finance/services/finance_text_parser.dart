@@ -1244,6 +1244,8 @@ abstract final class FinanceTextParser {
         value.contains('退还') ||
         value.contains('返还') ||
         value.contains('退钱') ||
+        value.contains('退货款') ||
+        value.contains('退货到账') ||
         value.contains('refund')) {
       return FinanceTransactionType.refund;
     }
