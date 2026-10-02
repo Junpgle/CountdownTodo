@@ -13,6 +13,7 @@ import 'package:countdown_todo/features/finance/screens/finance_trash_screen.dar
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/features/finance/services/finance_repository.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_catalog_editor.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_management_widgets.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_today_section.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_widgets.dart';
 import 'package:countdown_todo/services/database_helper.dart';
@@ -3277,6 +3278,51 @@ void main() {
       ),
     ))!;
     expect(deletedInterest.single['is_deleted'], 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('贷款和还款详情跨过还款日后自动更新逾期状态', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(
+      () => db.update(
+        'finance_loan_installments',
+        {'due_date': '2026-10-15'},
+        where: 'uuid = ?',
+        whereArgs: ['test-installment-2'],
+      ),
+    );
+    var now = DateTime(2026, 10, 15, 23, 59, 58);
+
+    await _pump(tester, FinanceLoanScreen(clock: () => now));
+    final loanCard = _key('finance-loan-card-test-loan');
+    final loanBadge = find.descendant(
+      of: loanCard,
+      matching: find.byType(FinanceStatusBadge),
+    );
+    await _waitFor(tester, () => loanBadge.evaluate().isNotEmpty);
+    expect(tester.widget<FinanceStatusBadge>(loanBadge).label, '还款中');
+
+    now = DateTime(2026, 10, 16, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 3));
+    expect(tester.widget<FinanceStatusBadge>(loanBadge).label, '有逾期待还');
+    expect(tester.takeException(), isNull);
+
+    now = DateTime(2026, 10, 15, 23, 59, 58);
+    await _pump(
+      tester,
+      FinanceLoanDetailScreen(loan: _loan(), clock: () => now),
+    );
+    final installment = _key('finance-loan-installment-test-installment-2');
+    final installmentBadge = find.descendant(
+      of: installment,
+      matching: find.byType(FinanceStatusBadge),
+    );
+    await _waitFor(tester, () => installmentBadge.evaluate().isNotEmpty);
+    expect(tester.widget<FinanceStatusBadge>(installmentBadge).label, '待还');
+
+    now = DateTime(2026, 10, 16, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 3));
+    expect(tester.widget<FinanceStatusBadge>(installmentBadge).label, '已逾期');
     expect(tester.takeException(), isNull);
   });
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -10,31 +12,83 @@ import '../widgets/finance_loan_payment_dialog.dart';
 import 'finance_loan_entry_screen.dart';
 import '../../../utils/app_dialogs.dart';
 
+const _maxOverdueRefreshDelay = Duration(days: 24);
+
+DateTime? _nextOverdueBoundary(
+  Iterable<FinanceLoanInstallment> installments,
+  DateTime now,
+) {
+  DateTime? nextBoundary;
+  for (final installment in installments) {
+    if (installment.isPaid) continue;
+    final dueDate = dateFromKey(installment.dueDate);
+    final boundary = DateTime(dueDate.year, dueDate.month, dueDate.day + 1);
+    if (boundary.isAfter(now) &&
+        (nextBoundary == null || boundary.isBefore(nextBoundary))) {
+      nextBoundary = boundary;
+    }
+  }
+  return nextBoundary;
+}
+
 class FinanceLoanScreen extends StatefulWidget {
-  const FinanceLoanScreen({super.key});
+  final DateTime Function() clock;
+
+  const FinanceLoanScreen({super.key, this.clock = DateTime.now});
 
   @override
   State<FinanceLoanScreen> createState() => _FinanceLoanScreenState();
 }
 
-class _FinanceLoanScreenState extends State<FinanceLoanScreen> {
+class _FinanceLoanScreenState extends State<FinanceLoanScreen>
+    with WidgetsBindingObserver {
   List<FinanceLoanOverview> _overviews = const [];
   bool? _paidOffFilter;
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
+  Timer? _overdueRefreshTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     FinanceStorage.revision.addListener(_onFinanceChanged);
     _load();
   }
 
   @override
   void dispose() {
+    _overdueRefreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     FinanceStorage.revision.removeListener(_onFinanceChanged);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    setState(() {});
+    _scheduleOverdueRefresh();
+  }
+
+  void _scheduleOverdueRefresh() {
+    _overdueRefreshTimer?.cancel();
+    final now = widget.clock();
+    final boundary = _nextOverdueBoundary(
+      _overviews.expand((overview) => overview.installments),
+      now,
+    );
+    if (boundary == null) return;
+    final remaining = boundary.difference(now);
+    final delay = remaining > _maxOverdueRefreshDelay
+        ? _maxOverdueRefreshDelay
+        : remaining;
+    _overdueRefreshTimer = Timer(delay, () {
+      if (!mounted) return;
+      setState(() {});
+      _scheduleOverdueRefresh();
+    });
   }
 
   void _onFinanceChanged() => _load(showLoading: false);
@@ -64,6 +118,7 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen> {
         _isLoading = false;
         _loadError = null;
       });
+      _scheduleOverdueRefresh();
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -83,7 +138,8 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen> {
   Future<void> _openDetail(FinanceLoanOverview overview) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => FinanceLoanDetailScreen(loan: overview.loan),
+        builder: (_) =>
+            FinanceLoanDetailScreen(loan: overview.loan, clock: widget.clock),
       ),
     );
     if (mounted) await _load();
@@ -134,6 +190,7 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen> {
     final colors = theme.colorScheme;
     final loan = overview.loan;
     final due = overview.nextInstallment;
+    final isOverdue = due?.isOverdueAt(widget.clock()) == true;
     final progress = overview.installments.isEmpty
         ? 0.0
         : overview.paidCount / overview.installments.length;
@@ -225,12 +282,12 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen> {
           FinanceStatusBadge(
             label: overview.isPaidOff
                 ? '已全部还清'
-                : (due?.isOverdue == true ? '有逾期待还' : '还款中'),
+                : (isOverdue ? '有逾期待还' : '还款中'),
             icon: overview.isPaidOff
                 ? Icons.check_circle_outline
                 : Icons.schedule_outlined,
             highlighted: overview.isPaidOff,
-            isError: due?.isOverdue == true,
+            isError: isOverdue,
           ),
           if (!overview.isPaidOff) ...[
             const SizedBox(height: 10),
@@ -414,15 +471,21 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen> {
 
 class FinanceLoanDetailScreen extends StatefulWidget {
   final FinanceLoan loan;
+  final DateTime Function() clock;
 
-  const FinanceLoanDetailScreen({super.key, required this.loan});
+  const FinanceLoanDetailScreen({
+    super.key,
+    required this.loan,
+    this.clock = DateTime.now,
+  });
 
   @override
   State<FinanceLoanDetailScreen> createState() =>
       _FinanceLoanDetailScreenState();
 }
 
-class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
+class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
+    with WidgetsBindingObserver {
   FinanceLoan? _loan;
   List<FinanceLoanInstallment> _installments = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
@@ -431,20 +494,47 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
+  Timer? _overdueRefreshTimer;
 
   FinanceLoan get _currentLoan => _loan ?? widget.loan;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     FinanceStorage.revision.addListener(_onFinanceChanged);
     _load();
   }
 
   @override
   void dispose() {
+    _overdueRefreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     FinanceStorage.revision.removeListener(_onFinanceChanged);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    setState(() {});
+    _scheduleOverdueRefresh();
+  }
+
+  void _scheduleOverdueRefresh() {
+    _overdueRefreshTimer?.cancel();
+    final now = widget.clock();
+    final boundary = _nextOverdueBoundary(_installments, now);
+    if (boundary == null) return;
+    final remaining = boundary.difference(now);
+    final delay = remaining > _maxOverdueRefreshDelay
+        ? _maxOverdueRefreshDelay
+        : remaining;
+    _overdueRefreshTimer = Timer(delay, () {
+      if (!mounted) return;
+      setState(() {});
+      _scheduleOverdueRefresh();
+    });
   }
 
   void _onFinanceChanged() => _load(showLoading: false);
@@ -474,6 +564,7 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
         _isLoading = false;
         _loadError = null;
       });
+      _scheduleOverdueRefresh();
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -628,6 +719,7 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final updating = _updating.contains(installment.uuid);
+    final isOverdue = installment.isOverdueAt(widget.clock());
     return FinanceSectionCard(
       key: ValueKey('finance-loan-installment-${installment.uuid}'),
       child: Column(
@@ -653,11 +745,11 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen> {
               FinanceStatusBadge(
                 label: installment.isPaid
                     ? '已还'
-                    : installment.isOverdue
+                    : isOverdue
                     ? '已逾期'
                     : '待还',
                 highlighted: installment.isPaid,
-                isError: !installment.isPaid && installment.isOverdue,
+                isError: !installment.isPaid && isOverdue,
               ),
             ],
           ),

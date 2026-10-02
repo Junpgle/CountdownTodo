@@ -453,11 +453,12 @@ class FinanceLoanInstallment {
        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
-  bool get isOverdue {
+  bool get isOverdue => isOverdueAt(DateTime.now());
+
+  bool isOverdueAt(DateTime now) {
     if (isPaid) return false;
-    final today = DateTime.now();
     return dateFromKey(dueDate)
-        .isBefore(DateTime(today.year, today.month, today.day));
+        .isBefore(DateTime(now.year, now.month, now.day));
   }
 
   void markAsChanged() {
