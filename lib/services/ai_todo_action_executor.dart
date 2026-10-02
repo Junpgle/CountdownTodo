@@ -1041,25 +1041,34 @@ class AiTodoActionExecutor {
         if (action.title?.trim().isNotEmpty == true) {
           updated.titleSnapshot = action.title!.trim();
         }
+        final originalStart = DateTime.fromMillisecondsSinceEpoch(
+          updated.startTime,
+        );
+        final originalEnd = DateTime.fromMillisecondsSinceEpoch(updated.endTime);
         final start = action.startTime != null
             ? DateTime.tryParse(action.startTime!)
             : null;
-        final end = action.dueDate != null
+        if (action.startTime != null && start == null) return null;
+        final nextStart = start ?? originalStart;
+        final suppliedEnd = action.dueDate != null
             ? DateTime.tryParse(action.dueDate!)
-            : (start != null && action.durationMinutes != null
-                ? start.add(Duration(minutes: action.durationMinutes!))
-                : null);
+            : null;
+        if (action.dueDate != null && suppliedEnd == null) return null;
+        final end = suppliedEnd ??
+            (action.durationMinutes != null
+                ? nextStart.add(Duration(minutes: action.durationMinutes!))
+                : start != null
+                    ? nextStart.add(originalEnd.difference(originalStart))
+                    : null);
+        if (end != null && !end.isAfter(nextStart)) return null;
         if (start != null) updated.startTime = start.millisecondsSinceEpoch;
-        if (end != null &&
-            end.isAfter(
-                DateTime.fromMillisecondsSinceEpoch(updated.startTime))) {
-          updated.endTime = end.millisecondsSinceEpoch;
-        }
+        if (end != null) updated.endTime = end.millisecondsSinceEpoch;
         updated.plannedMinutes = max(
           1,
           DateTime.fromMillisecondsSinceEpoch(updated.endTime)
               .difference(
-                  DateTime.fromMillisecondsSinceEpoch(updated.startTime))
+                DateTime.fromMillisecondsSinceEpoch(updated.startTime),
+              )
               .inMinutes,
         );
         if (action.remark != null) updated.remark = action.remark;
