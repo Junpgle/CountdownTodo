@@ -73,6 +73,40 @@ void main() {
     expect(jsonEncode(model).length, lessThanOrEqualTo(8000));
   });
 
+  test('单条记录仍超出预算时保留可分页的记录ID', () {
+    final source = {
+      'ok': true,
+      'total_count': 1,
+      'offset': 40,
+      'items': [
+        {
+          'id': 'todo-large-detail',
+          'title': '标题' * 3000,
+          'remark': '备注' * 3000,
+          'note': '说明' * 3000,
+          'recurrence': '循环规则' * 3000,
+        },
+      ],
+      'has_more': true,
+      'next_offset': 41,
+    };
+
+    final model = AiToolResultContext.forModel(source);
+    final item = (model['items'] as List).single as Map;
+
+    expect(item['id'], 'todo-large-detail');
+    expect(item.length, lessThan(5));
+    expect(model['context_truncated'], true);
+    expect(
+      (model['omitted_fields'] as List).any(
+        (path) => path.toString().startsWith('items[0].'),
+      ),
+      true,
+    );
+    expect(model['next_offset'], 41);
+    expect(jsonEncode(model).length, lessThanOrEqualTo(8000));
+  });
+
   test('预算内的单笔详情备注完整保留', () {
     final model = AiToolResultContext.forModel({
       'ok': true,

@@ -50,8 +50,39 @@ abstract final class AiToolResultContext {
     final payloadLimit = maxChars - 350;
     while (jsonEncode(output).length > payloadLimit &&
         items is List &&
-        items.isNotEmpty) {
+        items.length > 1) {
       items.removeLast();
+    }
+    if (jsonEncode(output).length > payloadLimit && items is List) {
+      for (var index = 0; index < items.length; index++) {
+        final item = items[index];
+        if (item is! Map) continue;
+        const identityKeys = {
+          'id',
+          'uuid',
+          'todoId',
+          'todo_id',
+          'todoUuid',
+          'transaction_id',
+          'habit_id',
+        };
+        final removableKeys =
+            item.keys
+                .where((key) => !identityKeys.contains(key.toString()))
+                .toList()
+              ..sort(
+                (left, right) =>
+                    jsonEncode(item[right]).length
+                        .compareTo(jsonEncode(item[left]).length),
+              );
+        for (final key in removableKeys) {
+          if (jsonEncode(output).length <= payloadLimit) break;
+          item.remove(key);
+          omittedPaths.add('items[$index].$key');
+          shortened = true;
+        }
+        if (jsonEncode(output).length <= payloadLimit) break;
+      }
     }
     if (jsonEncode(output).length > payloadLimit) {
       // Large category breakdowns or detail objects can exceed a page budget.
@@ -60,8 +91,15 @@ abstract final class AiToolResultContext {
         for (final key in map.keys.toList()) {
           final value = map[key];
           if (value is List && value.isNotEmpty) {
-            map.remove(key);
-            omittedPaths.add('$path$key');
+            if (path.isEmpty && key == 'items') {
+              for (var index = 0; index < value.length; index++) {
+                final item = value[index];
+                if (item is Map) omitCollections(item, 'items[$index].');
+              }
+            } else {
+              map.remove(key);
+              omittedPaths.add('$path$key');
+            }
           } else if (value is Map) {
             omitCollections(value, '$path$key.');
           }
