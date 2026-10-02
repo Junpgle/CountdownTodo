@@ -42,6 +42,33 @@ abstract final class FinanceAiContextService {
     '那笔',
   ];
 
+  static const _paymentAccountWords = [
+    '银行卡',
+    '借记卡',
+    '信用卡',
+    '账户',
+    '卡里',
+    '卡上',
+    '现金',
+    '微信',
+    '支付宝',
+    '花呗',
+    '云闪付',
+    '付款方式',
+  ];
+
+  static const _paymentBalancePhrases = [
+    '还剩',
+    '剩下',
+    '剩余',
+    '还有多少钱',
+    '还有多少',
+    '有多少钱',
+    '可用余额',
+    '可用额度',
+    '还能用多少',
+  ];
+
   static const _catalogKeywords = [
     '记账',
     '消费了',
@@ -200,6 +227,10 @@ abstract final class FinanceAiContextService {
     final text = userMessage.trim();
     if (text.isEmpty) return false;
     if (_hasInvalidExplicitDate(text)) return false;
+    if (_isPaymentBalanceQuestion(text) &&
+        !_containsAny(text, _otherContextDomains)) {
+      return true;
+    }
     final hasFinanceNoun = _containsAny(text, _financeNouns);
     final hasExplicitMonth = _hasExplicitMonth(text);
     final hasPeriod = _containsAny(text, _periodWords) || hasExplicitMonth;
@@ -234,15 +265,20 @@ abstract final class FinanceAiContextService {
     required String conversationContext,
     required String previousUserMessage,
   }) {
-    if (_containsAny(userMessage, ['余额'])) return true;
+    if (_isPaymentBalanceQuestion(userMessage)) return true;
     if (_containsAny(userMessage, _otherContextDomains)) return false;
     final earlierBalanceQuestion =
-        _containsAny(conversationContext, ['余额']) ||
-        _containsAny(previousUserMessage, ['余额']);
+        _isPaymentBalanceQuestion(conversationContext) ||
+        _isPaymentBalanceQuestion(previousUserMessage);
     return earlierBalanceQuestion &&
         (_containsAny(userMessage, _queryWords) ||
             _containsAny(userMessage, _financeFollowUpWords));
   }
+
+  static bool _isPaymentBalanceQuestion(String text) =>
+      _containsAny(text, ['余额']) ||
+      (_containsAny(text, _paymentAccountWords) &&
+          _containsAny(text, _paymentBalancePhrases));
 
   /// Returns whether the model needs the local finance catalog without
   /// exposing the user's existing ledger.  This covers new-entry requests

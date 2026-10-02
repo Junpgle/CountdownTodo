@@ -294,6 +294,19 @@ void main() {
     expect(context, contains('- AI银行卡: ¥135.00'));
     expect(context, contains('- 备用银行卡: 未录入余额快照，无法确定实际余额'));
     expect(context, contains('本期结余不代表付款方式实际余额'));
+
+    final colloquialContext = await FinanceAiContextService.buildContext(
+      userMessage: '银行卡还有多少钱',
+      now: DateTime(2026, 9, 2, 23, 59),
+    );
+    expect(colloquialContext, contains('- AI银行卡: ¥135.00'));
+    expect(
+      FinanceAiContextService.buildContextInjectionSummary(
+        userMessage: '银行卡还有多少钱',
+        now: DateTime(2026, 9, 2),
+      ),
+      contains('付款方式实际余额'),
+    );
   });
 
   test('AI 财务上下文会说明账单和预算明细被截断', () {
