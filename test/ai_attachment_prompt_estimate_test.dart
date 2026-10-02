@@ -137,6 +137,7 @@ void main() {
       }
 
       final before = currentEstimate();
+      expect(before, greaterThan(0));
       await tester.tap(find.text('注入更多'));
       await tester.pump();
       expect(find.text('注入更多: 开'), findsOneWidget);
