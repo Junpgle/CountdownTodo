@@ -245,6 +245,14 @@ void main() {
       isEmpty,
     );
     expect(
+      FinanceTextParser.parseQuickEntries('十三月二日 午餐20元', now: now),
+      isEmpty,
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('九月二百日 午餐20元', now: now),
+      isEmpty,
+    );
+    expect(
       FinanceTextParser.parseQuickEntries(
         '2026年9月230日 午餐20元',
         now: now,
