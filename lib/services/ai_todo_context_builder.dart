@@ -1396,6 +1396,23 @@ ${lines.isEmpty ? '暂无' : lines}''';
         end: explicit.end,
       );
     }
+    final dateMatches = RegExp(
+      r'(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)',
+    ).allMatches(text).toList();
+    if (dateMatches.length == 1) {
+      final match = dateMatches.single;
+      final year = int.parse(match.group(1)!);
+      final month = int.parse(match.group(2)!);
+      final day = int.parse(match.group(3)!);
+      final start = DateTime(year, month, day);
+      if (start.year == year && start.month == month && start.day == day) {
+        return _TimeLogPeriod(
+          label: match.group(0)!,
+          start: start,
+          end: start.add(const Duration(days: 1)),
+        );
+      }
+    }
     final todayStart = DateTime(now.year, now.month, now.day);
     final explicitYearMonth = RegExp(
       r'(?:^|[^\d])(\d{4})\s*年\s*(0?[1-9]|1[0-2])\s*月(?:份)?',

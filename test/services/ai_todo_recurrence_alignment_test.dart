@@ -1195,5 +1195,44 @@ void main() {
       expect(relativeQuarter, isNot(contains('2026-q4')));
       expect(previewFor('分析第三季度效率'), contains('专注记录20260701-20260930'));
     });
+
+    test('显式单日效率查询只汇总指定日期', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('previous-day', DateTime(2026, 9, 30, 9)),
+        ('selected-day', DateTime(2026, 10, 1, 9)),
+        ('today', DateTime(2026, 10, 2, 9)),
+        ('future-day', DateTime(2026, 10, 3, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析2026-10-01的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析2026-10-01的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(context, contains('2026-10-01合计'));
+      expect(context, contains('selected-day'));
+      expect(context, isNot(contains('previous-day')));
+      expect(context, isNot(contains('today')));
+      expect(context, isNot(contains('future-day')));
+      expect(preview, contains('专注记录20261001'));
+    });
   });
 }
