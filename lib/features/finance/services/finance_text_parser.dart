@@ -1275,6 +1275,10 @@ abstract final class FinanceTextParser {
       '津贴',
       '补贴',
       '报销',
+      '生活费',
+      '零花钱',
+      '家里给',
+      '父母给',
     ].any((term) => value.contains(term));
     final hasExpenseAction = const [
       '花了',
@@ -1288,6 +1292,11 @@ abstract final class FinanceTextParser {
       '购买',
       '交费',
       '缴费',
+      '交生活费',
+      '给孩子',
+      '给朋友',
+      '给家里',
+      '给父母',
       '转给',
       '给了',
     ].any((term) => value.contains(term));
