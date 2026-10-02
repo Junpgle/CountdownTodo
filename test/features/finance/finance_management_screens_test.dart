@@ -1507,6 +1507,39 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('预算页跨月后更新本月统计标签', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 10, 31, 23, 59, 58);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'budget-month-rollover',
+          monthKey: '2026-10',
+          amountMinor: 10000,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    expect(find.text('本月总预算'), findsOneWidget);
+
+    clockNow = DateTime(2026, 11, 1, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 3));
+    await _waitFor(
+      tester,
+      () => find.text('2026年10月总预算').evaluate().isNotEmpty,
+    );
+
+    expect(find.text('本月总预算'), findsNothing);
+    expect(find.text('2026年10月总预算'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('历史月份的小结和分类空状态显示所选月份', (tester) async {
     final now = DateTime.now();
     final selectedMonth = DateTime(now.year, now.month - 1);

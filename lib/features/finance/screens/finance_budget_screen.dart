@@ -213,9 +213,14 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     };
 
     final now = widget.clock().millisecondsSinceEpoch;
-    final monthEndAt =
-        DateTime(_month.year, _month.month + 1).millisecondsSinceEpoch - 1;
-    int? nextEventAt;
+    final nextMonthAt = DateTime(
+      _month.year,
+      _month.month + 1,
+    ).millisecondsSinceEpoch;
+    final monthEndAt = nextMonthAt - 1;
+    // Keep the selected month view in sync when the calendar month rolls over,
+    // even if there are no scheduled finance events to trigger a refresh.
+    int? nextEventAt = nextMonthAt;
     for (final transaction in _transactions) {
       final eventAt = _balanceEventTime(transaction);
       if (eventAt <= now ||
@@ -255,7 +260,10 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     if (nextEventAt == null) return;
 
     final delay = Duration(
-      milliseconds: math.max(1, nextEventAt - now + 1).toInt(),
+      milliseconds: math
+          .max(1, nextEventAt - now + 1)
+          .clamp(1, const Duration(days: 24).inMilliseconds)
+          .toInt(),
     );
     _balanceRefreshTimer = Timer(delay, () {
       if (!mounted) return;
