@@ -759,7 +759,11 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     final usageLabel = _isFutureMonth
         ? '计划使用'
         : budget.isPaymentMethod
-        ? (used < 0 ? '录入后净增加' : '录入后净扣减')
+        ? (used < 0
+            ? '录入后净增加'
+            : used > 0
+                ? '录入后净扣减'
+                : '录入后余额不变')
         : '已使用';
     final snapshotAt = DateTime.fromMillisecondsSinceEpoch(
       budget.effectiveBalanceSnapshotAt,

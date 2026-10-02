@@ -1552,6 +1552,51 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('银行卡余额快照后没有收支时显示余额不变', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final snapshotAt = now.subtract(const Duration(minutes: 5));
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'unchanged-card', name: '未变银行卡').toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'unchanged-card-snapshot',
+          monthKey: financeMonthKey(now),
+          paymentMethodUuid: 'unchanged-card',
+          amountMinor: 10000,
+          balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+          createdAt: snapshotAt.millisecondsSinceEpoch,
+          updatedAt: snapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: now),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-unchanged-card-snapshot');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('录入后余额不变')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥100.00')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('银行卡余额计入录入后的收入、退款和支出', (tester) async {
     final db = await _seed(tester);
     final now = DateTime.now();
