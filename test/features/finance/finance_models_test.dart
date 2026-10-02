@@ -522,7 +522,7 @@ void main() {
 
   test('贷款计算器在最大安全金额附近按精确分数计算利息', () {
     final schedule = FinanceLoanCalculator.generate(
-      principalMinor: 9007199202179999,
+      principalMinor: 9007111393859999,
       annualInterestRateBps: 1,
       termMonths: 1,
       startDate: DateTime(2026, 1, 1),
@@ -530,7 +530,32 @@ void main() {
       repaymentMethod: FinanceLoanRepaymentMethod.equalPrincipal,
     );
 
-    expect(schedule.single.interestMinor, 75059993351);
+    expect(schedule.single.interestMinor, 75059261615);
+  });
+
+  test('等额本息月供使用精确整数公式', () {
+    final schedule = FinanceLoanCalculator.generate(
+      principalMinor: 1000000000000,
+      annualInterestRateBps: 1,
+      termMonths: 2,
+      startDate: DateTime(2026, 1, 1),
+      repaymentDay: 1,
+    );
+
+    expect(schedule.first.paymentMinor, 500006250009);
+  });
+
+  test('无法安全保存的贷款月供会被拒绝', () {
+    expect(
+      () => FinanceLoanCalculator.generate(
+        principalMinor: maxFinanceAmountMinor,
+        annualInterestRateBps: FinanceLoanCalculator.maxAnnualInterestRateBps,
+        termMonths: 1,
+        startDate: DateTime(2026, 1, 1),
+        repaymentDay: 1,
+      ),
+      throwsArgumentError,
+    );
   });
 
   test('预算模型可以在 SQLite/JSON 字段之间往返', () {

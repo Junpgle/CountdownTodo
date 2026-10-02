@@ -198,7 +198,7 @@ abstract final class FinanceLoanCalculator {
             monthlyRate > 0
         ? _annuityPayment(
             principalMinor: principalMinor,
-            monthlyRate: monthlyRate,
+            annualInterestRateBps: annualInterestRateBps,
             termMonths: termMonths,
           )
         : 0;
@@ -221,6 +221,13 @@ abstract final class FinanceLoanCalculator {
             equalPrincipal + (index < principalRemainder ? 1 : 0);
       }
       if (principalPayment > remaining) principalPayment = remaining;
+      if (principalPayment > maxFinanceAmountMinor - interest) {
+        throw ArgumentError.value(
+          principalPayment,
+          'paymentMinor',
+          '每期还款金额超出可保存范围',
+        );
+      }
       final payment = principalPayment + interest;
       remaining -= principalPayment;
       return FinanceLoanScheduleAllocation(
@@ -236,12 +243,26 @@ abstract final class FinanceLoanCalculator {
 
   static int _annuityPayment({
     required int principalMinor,
-    required double monthlyRate,
+    required int annualInterestRateBps,
     required int termMonths,
   }) {
-    final factor = math.pow(1 + monthlyRate, termMonths).toDouble();
-    final payment = principalMinor * monthlyRate * factor / (factor - 1);
-    return payment.round().clamp(1, maxFinanceAmountMinor).toInt();
+    const monthlyRateDenominator = 120000;
+    final denominatorBase = BigInt.from(monthlyRateDenominator);
+    final rateNumerator = BigInt.from(annualInterestRateBps);
+    final growth = (denominatorBase + rateNumerator).pow(termMonths);
+    final baseGrowth = denominatorBase.pow(termMonths);
+    final payment = _roundPositiveFractionHalfUp(
+      BigInt.from(principalMinor) * rateNumerator * growth,
+      denominatorBase * (growth - baseGrowth),
+    );
+    if (payment > BigInt.from(maxFinanceAmountMinor)) {
+      throw ArgumentError.value(
+        principalMinor,
+        'principalMinor',
+        '每期还款金额超出可保存范围',
+      );
+    }
+    return payment.toInt();
   }
 
   /// Round monthly interest in integer minor units. Multiplying large balances
@@ -249,14 +270,23 @@ abstract final class FinanceLoanCalculator {
   static int _monthlyInterestMinor(int principalMinor, int annualRateBps) {
     final numerator =
         BigInt.from(principalMinor) * BigInt.from(annualRateBps);
-    const denominator = 120000;
-    final quotient = numerator ~/ BigInt.from(denominator);
-    final remainder = numerator % BigInt.from(denominator);
-    final rounded = quotient +
-        (remainder * BigInt.from(2) >= BigInt.from(denominator)
+    final rounded = _roundPositiveFractionHalfUp(
+      numerator,
+      BigInt.from(120000),
+    );
+    return rounded.toInt();
+  }
+
+  static BigInt _roundPositiveFractionHalfUp(
+    BigInt numerator,
+    BigInt denominator,
+  ) {
+    final quotient = numerator ~/ denominator;
+    final remainder = numerator % denominator;
+    return quotient +
+        (remainder * BigInt.from(2) >= denominator
             ? BigInt.one
             : BigInt.zero);
-    return rounded.toInt();
   }
 
   static DateTime _dueDate(
