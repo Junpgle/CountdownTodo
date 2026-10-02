@@ -745,6 +745,14 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
 
     final userText = apiMessages[lastUserIdx]['content']?.toString() ?? '';
     final contextQueryText = _buildContextQueryText(userText);
+    final now = DateTime.now();
+    final focusRecordPriorityRange = _useCustomInjectRange
+        ? AiTodoContextBuilder.resolveCustomInjectionDateRange(
+            customStart: _customInjectStart,
+            customEnd: _customInjectEnd,
+            now: now,
+          )
+        : null;
     final currentUserMessageId = apiMessages[lastUserIdx]['_messageId']
         ?.toString();
     final injection = AiTodoContextBuilder.buildContextInjection(
@@ -764,7 +772,8 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       conflicts: widget.conflicts,
       teams: widget.teams,
       expandFocusContext: _injectMoreContext,
-      now: DateTime.now(),
+      focusRecordPriorityRange: focusRecordPriorityRange,
+      now: now,
     );
     if (injection != null) {
       apiMessages[lastUserIdx] = {

@@ -960,6 +960,84 @@ void main() {
       expect(expandedContext.length, greaterThan(regularContext.length));
     });
 
+    test('注入更多先保留自定义范围记录再补充扩展范围', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final customStart = DateTime(2026, 9, 1);
+      final customEnd = DateTime(2026, 9, 30);
+      final focusRecordPriorityRange =
+          AiTodoContextBuilder.resolveCustomInjectionDateRange(
+            customStart: customStart,
+            customEnd: customEnd,
+            now: now,
+          );
+      final regularQuery = AiTodoContextBuilder.buildContextQueryText(
+        userMessage: '分析我上个月的效率',
+        customStart: customStart,
+        customEnd: customEnd,
+        now: now,
+      );
+      final expandedQuery = AiTodoContextBuilder.buildContextQueryText(
+        userMessage: '分析我上个月的效率',
+        customStart: customStart,
+        customEnd: customEnd,
+        injectMoreContext: true,
+        now: now,
+      );
+      final timeLogs = [
+        for (var day = 1; day <= 30; day++)
+          TimeLogItem(
+            id: 'selected-$day',
+            title: List.filled(20, '用户选择范围专注记录第 $day 天，完成重要工作').join('；'),
+            startTime: DateTime(2026, 9, day, 9).millisecondsSinceEpoch,
+            endTime: DateTime(2026, 9, day, 10).millisecondsSinceEpoch,
+          ),
+        for (var offset = 1; offset <= 23; offset++)
+          for (var slot = 1; slot <= 3; slot++)
+            TimeLogItem(
+              id: 'future-$offset-$slot',
+              title: '短记',
+              startTime: DateTime(
+                2026,
+                10,
+                2 + offset,
+                8 + slot,
+              ).millisecondsSinceEpoch,
+              endTime: DateTime(
+                2026,
+                10,
+                2 + offset,
+                9 + slot,
+              ).millisecondsSinceEpoch,
+            ),
+      ];
+
+      String contextFor(
+        String userMessage, {
+        bool expandFocusContext = false,
+      }) => AiTodoContextBuilder.buildContextInjection(
+        userMessage: userMessage,
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        expandFocusContext: expandFocusContext,
+        focusRecordPriorityRange: focusRecordPriorityRange,
+        now: now,
+      )!;
+
+      final regularContext = contextFor(regularQuery);
+      final expandedContext = contextFor(
+        expandedQuery,
+        expandFocusContext: true,
+      );
+
+      expect(regularContext, contains('selected-1'));
+      expect(expandedContext, contains('selected-1'));
+      expect(expandedContext, contains('selected-30'));
+      expect(expandedContext, contains('future-23-3'));
+      expect(expandedContext.length, greaterThan(regularContext.length));
+    });
+
     test('上周效率只汇总上一自然周，不混入本周记录', () {
       final now = DateTime(2026, 10, 2, 12);
       final timeLogs = [
@@ -1598,6 +1676,6 @@ void main() {
         );
       }
     });
-
   });
+
 }

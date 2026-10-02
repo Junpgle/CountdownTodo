@@ -488,6 +488,7 @@ JSON操作块必须且只能使用以下协议：
     required List<ConflictInfo> conflicts,
     required List<Team> teams,
     bool expandFocusContext = false,
+    AiContextDateRange? focusRecordPriorityRange,
     DateTime? now,
   }) {
     final nowValue = now ?? DateTime.now();
@@ -619,6 +620,7 @@ JSON操作块必须且只能使用以下协议：
           userMessage,
           nowValue,
           recordLimit: expandFocusContext ? 60 : 30,
+          priorityRange: focusRecordPriorityRange,
         ),
       );
       if (planBlocks.isNotEmpty) {
@@ -1898,6 +1900,7 @@ ${sections.join('\n')}
     String userMessage,
     DateTime now, {
     int recordLimit = 30,
+    AiContextDateRange? priorityRange,
   }) {
     final activeLogs = timeLogs.where((t) => !t.isDeleted).toList();
     final activePomodoros = pomodoroRecords.where((p) => !p.isDeleted).toList();
@@ -1908,8 +1911,13 @@ ${sections.join('\n')}
       ...activePomodoros.map(_FocusRecord.fromPomodoro),
     ]..sort((a, b) => b.startMs.compareTo(a.startMs));
     final scopedRecords = period == null
-        ? records.take(recordLimit).toList()
+        ? records
         : records.where((r) => _focusOverlapsPeriod(r, period)).toList();
+    final recordsToFormat = _limitFocusRecords(
+      scopedRecords,
+      limit: recordLimit,
+      priorityRange: priorityRange,
+    );
 
     if (period != null) {
       final totalMinutes = scopedRecords
@@ -1923,8 +1931,7 @@ ${sections.join('\n')}
           .where((r) => r.source == '番茄钟')
           .map((r) => _focusOverlapMinutes(r, period))
           .fold<int>(0, (sum, minutes) => sum + minutes);
-      final lines = scopedRecords
-          .take(recordLimit)
+      final lines = recordsToFormat
           .map((r) {
             final start = _formatEpochMillis(r.startMs);
             final end = _formatEpochMillis(r.endMs);
@@ -1940,7 +1947,7 @@ ${period.label}记录:
 ${lines.isEmpty ? '暂无' : lines}''';
     }
 
-    final lines = scopedRecords
+    final lines = recordsToFormat
         .map((r) {
           final start = _formatEpochMillis(r.startMs);
           final end = _formatEpochMillis(r.endMs);
@@ -1948,6 +1955,37 @@ ${lines.isEmpty ? '暂无' : lines}''';
         })
         .join('\n');
     return '专注记录（最近$recordLimit条，按开始时间倒序）:\n$lines';
+  }
+
+  static List<_FocusRecord> _limitFocusRecords(
+    List<_FocusRecord> records, {
+    required int limit,
+    AiContextDateRange? priorityRange,
+  }) {
+    if (records.length <= limit) return records;
+    if (priorityRange == null) return records.take(limit).toList();
+
+    final selectedPeriod = _TimeLogPeriod(
+      label: '用户选择范围',
+      start: priorityRange.start,
+      end: priorityRange.endExclusive,
+    );
+    final selectedRecords = records
+        .where((record) => _focusOverlapsPeriod(record, selectedPeriod))
+        .take(limit)
+        .toList();
+    final remainingLimit = limit - selectedRecords.length;
+    if (remainingLimit > 0) {
+      selectedRecords.addAll(
+        records
+            .where((record) => !_focusOverlapsPeriod(record, selectedPeriod))
+            .take(remainingLimit),
+      );
+    }
+    selectedRecords.sort(
+      (left, right) => right.startMs.compareTo(left.startMs),
+    );
+    return selectedRecords;
   }
 
   static String _formatConflicts(List<ConflictInfo> conflicts) {

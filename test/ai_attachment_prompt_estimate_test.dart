@@ -171,7 +171,7 @@ void main() {
     await FeatureTipService.markTipShown('todo_chat_guide');
 
     final now = DateTime.now();
-    final customStart = DateTime(now.year, now.month - 2, 1);
+    final customStart = DateTime(now.year, now.month - 1, 1);
     final customEnd = DateTime(now.year, now.month, 0);
     final timeLogs = <TimeLogItem>[
       for (
@@ -181,7 +181,7 @@ void main() {
       )
         TimeLogItem(
           id: 'custom-$day',
-          title: '自定义范围专注记录第 $day 天，持续专注完成重要工作',
+          title: List.filled(20, '自定义范围专注记录第 $day 天持续专注完成重要工作').join('；'),
           startTime: DateTime(
             customStart.year,
             customStart.month,
@@ -195,40 +195,24 @@ void main() {
             10,
           ).millisecondsSinceEpoch,
         ),
-      for (var day in [1, 2])
-        TimeLogItem(
-          id: 'previous-$day',
-          title: '上个月专注记录第 $day 天',
-          startTime: DateTime(
-            customEnd.year,
-            customEnd.month,
-            day,
-            9,
-          ).millisecondsSinceEpoch,
-          endTime: DateTime(
-            customEnd.year,
-            customEnd.month,
-            day,
-            10,
-          ).millisecondsSinceEpoch,
-        ),
-      for (var offset in [5, 10, 15])
-        TimeLogItem(
-          id: 'future-$offset',
-          title: '未来专注记录第 $offset 天',
-          startTime: DateTime(
-            now.year,
-            now.month,
-            now.day + offset,
-            9,
-          ).millisecondsSinceEpoch,
-          endTime: DateTime(
-            now.year,
-            now.month,
-            now.day + offset,
-            10,
-          ).millisecondsSinceEpoch,
-        ),
+      for (var offset = 1; offset <= 23; offset++)
+        for (var slot = 1; slot <= 3; slot++)
+          TimeLogItem(
+            id: 'future-$offset-$slot',
+            title: '短记',
+            startTime: DateTime(
+              now.year,
+              now.month,
+              now.day + offset,
+              8 + slot,
+            ).millisecondsSinceEpoch,
+            endTime: DateTime(
+              now.year,
+              now.month,
+              now.day + offset,
+              9 + slot,
+            ).millisecondsSinceEpoch,
+          ),
     ];
 
     await tester.pumpWidget(
