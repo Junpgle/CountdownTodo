@@ -345,8 +345,15 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
         }
       } else {
         final selected = _balanceTime;
+        final preservesStoredSnapshotTime =
+            old != null &&
+            old.isPaymentMethod &&
+            old.monthKey == financeMonthKey(widget.month) &&
+            old.paymentMethodUuid == paymentMethodUuid &&
+            selected?.millisecondsSinceEpoch == old.effectiveBalanceSnapshotAt;
         if (selected == null ||
-            financeMonthKey(selected) != financeMonthKey(widget.month) ||
+            (!preservesStoredSnapshotTime &&
+                financeMonthKey(selected) != financeMonthKey(widget.month)) ||
             selected.isAfter(DateTime.now())) {
           _showError('余额对应时间必须在所选月份内且不晚于现在');
           return;

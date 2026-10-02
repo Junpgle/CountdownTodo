@@ -2908,6 +2908,31 @@ void main() {
     );
     expect(find.text('该月余额 ¥100.00'), findsOneWidget);
     expect(find.text('该月余额 ¥200.00'), findsNothing);
+
+    final previousMonthCard = _key(
+      'finance-budget-card-timezone-card-previous-month',
+    );
+    await _tap(tester, previousMonthCard);
+    await _waitFor(
+      tester,
+      () =>
+          find.byType(FinanceBudgetEntryScreen).evaluate().isNotEmpty &&
+          _key('finance-budget-amount').evaluate().isNotEmpty,
+    );
+    await tester.enterText(_field('finance-budget-amount'), '110');
+    await _tap(tester, find.text('保存余额'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceBudgetEntryScreen).evaluate().isEmpty,
+    );
+    final editedSnapshot = (await tester.runAsync(
+      () => FinanceStorage.getBudget('timezone-card-previous-month'),
+    ))!;
+    expect(editedSnapshot.amountMinor, 11000);
+    expect(
+      editedSnapshot.effectiveBalanceSnapshotAt,
+      previousSnapshotAt.millisecondsSinceEpoch,
+    );
     expect(tester.takeException(), isNull);
   });
 

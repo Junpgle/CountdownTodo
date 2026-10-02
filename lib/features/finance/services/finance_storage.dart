@@ -1796,13 +1796,10 @@ abstract final class FinanceStorage {
       throw ArgumentError.value(original.uuid, 'original', '预算标识不匹配');
     }
     if (balanceSnapshotAt != null) {
-      final snapshotTime = DateTime.fromMillisecondsSinceEpoch(
-        balanceSnapshotAt,
-      );
       if (!budget.isPaymentMethod ||
           balanceSnapshotAt <= 0 ||
           balanceSnapshotAt > DateTime.now().millisecondsSinceEpoch ||
-          financeMonthKey(snapshotTime) != budget.monthKey) {
+          !_isBalanceSnapshotForMonth(budget.monthKey, balanceSnapshotAt)) {
         throw ArgumentError.value(
           balanceSnapshotAt,
           'balanceSnapshotAt',
