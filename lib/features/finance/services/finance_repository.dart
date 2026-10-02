@@ -298,13 +298,18 @@ abstract final class FinanceRepository {
     FinanceBudget? original,
     bool resetBalanceSnapshot = false,
     int? balanceSnapshotAt,
-  }) {
-    return FinanceStorage.saveBudget(
+  }) async {
+    await FinanceStorage.saveBudget(
       budget,
       original: original,
       resetBalanceSnapshot: resetBalanceSnapshot,
       balanceSnapshotAt: balanceSnapshotAt,
     );
+    try {
+      await FinanceAutomationService.checkBudgetAlerts();
+    } catch (_) {
+      // Budget alerts must not roll back a successfully saved budget.
+    }
   }
 
   static Future<void> deleteBudget(String uuid) {

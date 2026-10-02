@@ -10,7 +10,10 @@ import 'package:countdown_todo/services/database_helper.dart';
 import 'package:countdown_todo/services/focus_do_not_disturb_service.dart';
 import 'package:countdown_todo/services/storage/app_settings_storage.dart';
 import 'package:countdown_todo/storage_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -792,5 +795,80 @@ void main() {
         'finance-budget-v1-$accountKey-${savedBudget.uuid}-'
         '${savedBudget.monthKey}-${savedBudget.version}-80';
     expect(prefs.getBool(alertKey), isNull);
+  });
+
+  test('保存预算时立即检查已有支出并发送阈值提醒', () async {
+    final db = await openDatabase();
+    const accountKey = 'finance-budget-save-alert-test-user';
+    const localNotificationChannel = MethodChannel(
+      'dexterous.com/flutter/local_notifications',
+    );
+    const macStatusBarChannel = MethodChannel('countdown_todo/macos_status_bar');
+    var shownNotifications = 0;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    MacOSFlutterLocalNotificationsPlugin.registerWith();
+    messenger.setMockMethodCallHandler(localNotificationChannel, (call) async {
+      switch (call.method) {
+        case 'initialize':
+          return true;
+        case 'checkPermissions':
+          return {
+            'isEnabled': true,
+            'isAlertEnabled': true,
+            'isBadgeEnabled': true,
+            'isSoundEnabled': true,
+            'isProvisionalEnabled': false,
+            'isCriticalEnabled': false,
+            'isProvidesAppNotificationSettingsEnabled': false,
+          };
+        case 'show':
+          shownNotifications++;
+          return null;
+      }
+      return null;
+    });
+    messenger.setMockMethodCallHandler(macStatusBarChannel, (call) async => null);
+    addTearDown(() async {
+      await FocusDoNotDisturbService.setActive(false, force: true);
+      messenger.setMockMethodCallHandler(localNotificationChannel, null);
+      messenger.setMockMethodCallHandler(macStatusBarChannel, null);
+      debugDefaultTargetPlatformOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(StorageService.keyCurrentUser, accountKey);
+    await AppSettingsStorage.setFinanceBudgetAlertEnabled(true);
+    await AppSettingsStorage.setNormalNotificationEnabled(true);
+    await FocusDoNotDisturbService.setActive(false, force: true);
+    final now = DateTime.now();
+    final monthKey = financeMonthKey(now);
+    await FinanceRepository.saveTransaction(
+      FinanceTransaction(
+        uuid: 'expense-before-budget-save',
+        amountMinor: 8000,
+        transactionDate: dateKey(now),
+        occurredAt: now.millisecondsSinceEpoch,
+      ),
+    );
+
+    await FinanceRepository.saveBudget(
+      FinanceBudget(
+        uuid: 'saved-budget-alert',
+        monthKey: monthKey,
+        amountMinor: 10000,
+      ),
+    );
+
+    final savedBudget =
+        (await FinanceStorage.getBudgets(monthKey: monthKey)).single;
+    final alertKey =
+        'finance-budget-v1-$accountKey-${savedBudget.uuid}-'
+        '${savedBudget.monthKey}-${savedBudget.version}-80';
+    expect(shownNotifications, 1);
+    expect(prefs.getBool(alertKey), isTrue);
   });
 }
