@@ -29,6 +29,20 @@ void main() {
     expect(drafts.single.source, FinanceEntrySource.import);
   });
 
+  test('结构化日期也支持相对星期', () {
+    final drafts = FinanceTextParser.parse(
+      '''#记账
+类型: 支出
+金额: 30
+分类: 餐饮
+日期: 上星期五''',
+      now: DateTime(2026, 8, 30),
+    );
+
+    expect(drafts, hasLength(1));
+    expect(drafts.single.transactionDate, '2026-08-21');
+  });
+
   test('解析紧凑格式、收入和退款', () {
     final drafts = FinanceTextParser.parse(
       '''#记账 | 收入 | 1000 | 工资 | 八月工资 | 2026-08-01 | 银行卡
@@ -165,6 +179,25 @@ void main() {
       expect(draft.amountMinor, 800000);
       expect(draft.transactionDate, '2026-08-29');
       expect(draft.categoryName, '工资');
+    });
+
+    test('识别本周和上周的具体星期，不把日期词拼进商家', () {
+      final previousWeek = FinanceTextParser.parseOneSentence(
+        '上周五午餐花了 30 元，微信支付',
+        now: now,
+      );
+      final thisWeek = FinanceTextParser.parseOneSentence(
+        '这周一午餐花了 12 元',
+        now: now,
+      );
+
+      expect(previousWeek, isNotNull);
+      expect(previousWeek!.transactionDate, '2026-08-21');
+      expect(previousWeek.merchant, '午餐');
+      expect(previousWeek.paymentMethodName, '微信');
+      expect(thisWeek, isNotNull);
+      expect(thisWeek!.transactionDate, '2026-08-24');
+      expect(thisWeek.merchant, '午餐');
     });
 
     test('支持退款和付款方式', () {

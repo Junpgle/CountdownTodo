@@ -19,7 +19,7 @@ abstract final class FinanceTextParser {
 付款方式: 微信
 备注: 工作日午餐
 
-类型支持：支出、收入、退款。金额单位为元，日期省略时默认为今天。''';
+类型支持：支出、收入、退款。金额单位为元，日期可写今天/昨天/本周一/上周五或具体日期，省略时默认为今天。''';
 
   /// The natural-language shortcut shown in the normal entry form.
   ///
@@ -208,6 +208,11 @@ abstract final class FinanceTextParser {
     '其他收入': '其他',
     '其他': '其他',
   };
+
+  static final RegExp _relativeWeekdayPattern = RegExp(
+    r'(上周|上星期|上礼拜|本周|这周|本星期|这星期|本礼拜|这礼拜)\s*'
+    r'([一二三四五六日天1-7])',
+  );
 
   static final RegExp _blockMarker = RegExp(
     r'^[ \t]*(?:#[ \t]*)?(?:\[[ \t]*)?记账(?:[ \t]*#?[ \t]*\d+)?(?:[ \t]*\])?(?=[ \t]*(?:\||$))',
@@ -995,6 +1000,7 @@ abstract final class FinanceTextParser {
   static String _removeSentenceDate(String value) {
     return value
         .replaceAll(RegExp(r'今天|昨天|前天|明天'), '')
+        .replaceAll(_relativeWeekdayPattern, '')
         .replaceAll(
           RegExp(
             r'\d{4}\s*(?:年|[-/.])\s*\d{1,2}\s*'
@@ -1009,6 +1015,8 @@ abstract final class FinanceTextParser {
   static DateTime? _parseSentenceDate(String text, DateTime now) {
     final relative = RegExp(r'今天|昨天|前天|明天').firstMatch(text)?.group(0);
     if (relative != null) return _parseDate(relative, now);
+    final relativeWeekday = _parseRelativeWeekdayDate(text, now);
+    if (relativeWeekday != null) return relativeWeekday;
 
     final full = RegExp(
       r'(?<!\d)(\d{4})\s*(?:年|[-/.])\s*(\d{1,2})\s*'
@@ -1057,6 +1065,31 @@ abstract final class FinanceTextParser {
     return _day(candidate);
   }
 
+  static DateTime? _parseRelativeWeekdayDate(String text, DateTime now) {
+    final match = _relativeWeekdayPattern.firstMatch(text);
+    if (match == null) return null;
+    final offset = switch (match.group(2)!) {
+      '一' || '1' => 0,
+      '二' || '2' => 1,
+      '三' || '3' => 2,
+      '四' || '4' => 3,
+      '五' || '5' => 4,
+      '六' || '6' => 5,
+      '日' || '天' || '7' => 6,
+      _ => null,
+    };
+    if (offset == null) return null;
+    final today = _day(now);
+    final thisMonday = financeCalendarDayOffset(
+      today,
+      DateTime.monday - today.weekday,
+    );
+    final weekStart = match.group(1)!.startsWith('上')
+        ? financeCalendarDayOffset(thisMonday, -7)
+        : thisMonday;
+    return financeCalendarDayOffset(weekStart, offset);
+  }
+
   static FinanceTransactionType _parseType(String text) {
     final value = text.toLowerCase();
     if (value.contains('退款') || value.contains('refund')) {
@@ -1088,6 +1121,8 @@ abstract final class FinanceTextParser {
     if (value.contains('明天') || value == 'tomorrow') {
       return financeCalendarDayOffset(_day(now), 1);
     }
+    final relativeWeekday = _parseRelativeWeekdayDate(value, now);
+    if (relativeWeekday != null) return relativeWeekday;
 
     final normalized = value
         .replaceAll('年', '-')
