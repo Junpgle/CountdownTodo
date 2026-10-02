@@ -146,7 +146,9 @@ class _FinanceCategoryDetailScreenState
   bool _belongsToRoot(FinanceTransaction transaction) {
     final category = categories[transaction.categoryUuid];
     final root = _rootCategory;
-    if (root == null) return category == null;
+    if (root == null) {
+      return rootCategoryUuid == null && category == null;
+    }
     return category != null && _rootFor(category).uuid == root.uuid;
   }
 
@@ -181,6 +183,7 @@ class _FinanceCategoryDetailScreenState
   ) {
     final root = _rootCategory;
     if (root == null) {
+      if (rootCategoryUuid != null) return const [];
       final amount = _netExpense(matchingTransactions);
       if (matchingTransactions.isEmpty) return const [];
       return [
@@ -236,6 +239,22 @@ class _FinanceCategoryDetailScreenState
     final items = _items(matchingTransactions);
     final total = _netExpense(matchingTransactions);
     final hasSubcategories = root != null && _childCategories(root).isNotEmpty;
+    final String categoryTitle;
+    final String sectionTitle;
+    final String emptyMessage;
+    if (root == null) {
+      categoryTitle = rootCategoryUuid == null ? '未分类' : '分类已删除';
+      sectionTitle = rootCategoryUuid == null ? '未分类账单' : '分类不可用';
+      emptyMessage = rootCategoryUuid == null
+          ? '没有可筛选的分类账单'
+          : '这个分类已删除或不可用';
+    } else {
+      categoryTitle = root.name;
+      sectionTitle = hasSubcategories ? '小类' : '分类';
+      emptyMessage = hasSubcategories
+          ? '这个大类下暂无可展示的小类账单'
+          : '这个分类下暂无账单';
+    }
 
     return Scaffold(
       appBar: const FloatingGlassAppBar(title: Text('支出分类详情')),
@@ -263,7 +282,7 @@ class _FinanceCategoryDetailScreenState
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          root?.name ?? '未分类',
+                          categoryTitle,
                           style: TextStyle(
                             color: colorScheme.onPrimaryContainer,
                             fontSize: 20,
@@ -295,11 +314,7 @@ class _FinanceCategoryDetailScreenState
           ),
           const SizedBox(height: 24),
           Text(
-            root == null
-                ? '未分类账单'
-                : hasSubcategories
-                    ? '小类'
-                    : '分类',
+            sectionTitle,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -310,11 +325,7 @@ class _FinanceCategoryDetailScreenState
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  root == null
-                      ? '没有可筛选的分类账单'
-                      : hasSubcategories
-                          ? '这个大类下暂无可展示的小类账单'
-                          : '这个分类下暂无账单',
+                  emptyMessage,
                   textAlign: TextAlign.center,
                   style: TextStyle(color: colorScheme.onSurfaceVariant),
                 ),

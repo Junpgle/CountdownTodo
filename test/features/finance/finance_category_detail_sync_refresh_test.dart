@@ -2,6 +2,7 @@
 library;
 
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
+import 'package:countdown_todo/features/finance/screens/finance_category_detail_screen.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_widgets.dart';
 import 'package:countdown_todo/services/database_helper.dart';
@@ -130,6 +131,56 @@ void main() {
     await tester.pump();
     expect(selectedTransactions, hasLength(1));
     expect(selectedTransactions!.single.amountMinor, 2500);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('同步删除分类后不会把旧分类账单显示成未分类', (tester) async {
+    final db = await _openDatabase(tester);
+    _closeDatabase(db);
+    final now = DateTime.now();
+    final periodStart = DateTime(now.year, now.month);
+    final periodEnd = DateTime(now.year, now.month + 1);
+    final root = FinanceCategory(uuid: 'deleted-detail-root', name: '待删除分类');
+    final transaction = FinanceTransaction(
+      uuid: 'deleted-detail-transaction',
+      amountMinor: 3200,
+      categoryUuid: root.uuid,
+      transactionDate: dateKey(now),
+    );
+    await tester.runAsync(() async {
+      await FinanceStorage.saveCategory(root);
+      await FinanceStorage.saveTransaction(transaction);
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FinanceCategoryDetailScreen(
+          periodTitle: '${now.year}年${now.month}月',
+          periodStart: periodStart,
+          periodEnd: periodEnd,
+          clock: DateTime.now,
+          rootCategoryUuid: root.uuid,
+          transactions: [transaction],
+          categories: {root.uuid: root},
+        ),
+      ),
+    );
+    expect(find.text('待删除分类'), findsWidgets);
+
+    final deletedRoot = FinanceCategory.fromMap(root.toMap())
+      ..isDeleted = true
+      ..version = root.version + 1
+      ..updatedAt = root.updatedAt + 10000;
+    final mergedCount = await tester.runAsync(
+      () => FinanceStorage.mergeRemoteBundle({
+        'categories': [deletedRoot.toMap()],
+      }),
+    );
+    expect(mergedCount, greaterThan(0));
+
+    await _waitFor(tester, () => find.text('分类已删除').evaluate().isNotEmpty);
+    expect(find.text('未分类'), findsNothing);
+    expect(find.text('这个分类已删除或不可用'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
