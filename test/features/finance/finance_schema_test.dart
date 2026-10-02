@@ -3056,7 +3056,7 @@ void main() {
     expect(await db.query('finance_loan_installments'), isEmpty);
   });
 
-  test('历史退款分类迁移到支出侧的专用分类', () async {
+  test('运行中导入和云端合并的历史退款会迁移到支出侧专用分类', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'refund-migration-test',
     });
@@ -3069,9 +3069,11 @@ void main() {
       await db.close();
     });
     await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+    await FinanceStorage.ensureReady();
     final oldUpdatedAt = DateTime(2026, 1, 1).millisecondsSinceEpoch;
-    await db.insert('finance_transactions', {
-      'uuid': 'legacy-refund',
+    Map<String, Object?> legacyRefund(String uuid, int updatedAt) => {
+      'uuid': uuid,
       'type': 'refund',
       'amount_minor': 1200,
       'currency_code': 'CNY',
@@ -3082,28 +3084,47 @@ void main() {
       'is_deleted': 0,
       'version': 1,
       'created_at': oldUpdatedAt,
-      'updated_at': oldUpdatedAt,
+      'updated_at': updatedAt,
       'pending_sync': 0,
-    });
+    };
 
     final revisionBeforeRepair = FinanceStorage.revision.value;
-    FinanceStorage.databaseOverride = db;
-    await FinanceStorage.ensureReady();
+    final importResult = await FinanceStorage.importBundle({
+      'transactions': [legacyRefund('imported-legacy-refund', oldUpdatedAt)],
+    });
+    expect(importResult['imported'], 1);
     expect(FinanceStorage.revision.value, revisionBeforeRepair + 1);
-    final transactions = await FinanceStorage.getTransactions();
-    expect(FinanceStorage.revision.value, revisionBeforeRepair + 1);
+    final importedRefund = (await FinanceStorage.getTransaction(
+      'imported-legacy-refund',
+    ))!;
+    expect(importedRefund.categoryUuid, 'finance-system-category-refund');
+    expect(importedRefund.pendingSync, isTrue);
+
+    final revisionBeforeMerge = FinanceStorage.revision.value;
+    expect(
+      await FinanceStorage.mergeRemoteBundle({
+        'transactions': [
+          legacyRefund('remote-legacy-refund', oldUpdatedAt + 1),
+        ],
+      }),
+      2,
+    );
+    expect(FinanceStorage.revision.value, revisionBeforeMerge + 1);
+    final remoteRefund = (await FinanceStorage.getTransaction(
+      'remote-legacy-refund',
+    ))!;
+    expect(remoteRefund.categoryUuid, 'finance-system-category-refund');
+    expect(remoteRefund.pendingSync, isTrue);
+
     final refundCategory = await db.query(
       'finance_categories',
       where: 'uuid = ?',
       whereArgs: ['finance-system-category-refund'],
     );
-
-    expect(transactions.single.categoryUuid, 'finance-system-category-refund');
-    expect(transactions.single.pendingSync, isTrue);
     expect(refundCategory.single['type'], 'expense');
 
-    await FinanceStorage.getTransactions();
-    expect(FinanceStorage.revision.value, revisionBeforeRepair + 1);
+    await FinanceStorage.ensureReady();
+    expect(FinanceStorage.revision.value, revisionBeforeMerge + 1);
   });
 
   test('贷款保存还款计划，已还利息进入支出并支持删除恢复', () async {

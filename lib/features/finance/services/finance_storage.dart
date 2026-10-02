@@ -52,10 +52,9 @@ abstract final class FinanceStorage {
     _readyFuture = ready;
     try {
       await ready;
-      // This is a legacy-data migration. Run it once when attaching a database;
-      // repeating the write on every read creates avoidable SQLite lock
-      // contention during concurrent screen initialization.
-      await _repairLegacyRefundCategories(db);
+      // Repair existing legacy rows once when attaching a database. Import and
+      // remote-merge paths repair rows introduced while the app is running.
+      if (await _repairLegacyRefundCategories(db) > 0) _notifyChanged();
     } catch (_) {
       if (identical(_readyDatabase, db) && identical(_readyFuture, ready)) {
         _readyDatabase = null;
@@ -125,7 +124,7 @@ abstract final class FinanceStorage {
     });
   }
 
-  static Future<void> _repairLegacyRefundCategories(Database db) async {
+  static Future<int> _repairLegacyRefundCategories(Database db) async {
     final migrationNow = DateTime.now().millisecondsSinceEpoch;
     final repairedCount = await db.rawUpdate(
       '''
@@ -144,7 +143,7 @@ abstract final class FinanceStorage {
       ''',
       ['finance-system-category-refund', migrationNow, migrationNow],
     );
-    if (repairedCount > 0) _notifyChanged();
+    return repairedCount;
   }
 
   static Future<List<FinanceTransaction>> getTransactions({
@@ -2689,7 +2688,13 @@ abstract final class FinanceStorage {
     final result = await database.transaction(
       (txn) => _importBundleInTransaction(txn, bundle, remapUuid: remapUuid),
     );
-    if ((result['imported'] ?? 0) > 0 || (result['updated'] ?? 0) > 0) {
+    final incomingTransactions = bundle['transactions'];
+    final repairedLegacyRefunds = _hasIncomingRefund(incomingTransactions)
+        ? await _repairLegacyRefundCategories(database)
+        : 0;
+    if ((result['imported'] ?? 0) > 0 ||
+        (result['updated'] ?? 0) > 0 ||
+        repairedLegacyRefunds > 0) {
       _notifyChanged();
     }
     return result;
@@ -3473,8 +3478,17 @@ abstract final class FinanceStorage {
         forceRemoteKeys: forceRemoteKeys,
       );
     });
+    final repairedLegacyRefunds = !transactions.any(
+      (item) => item.type == FinanceTransactionType.refund,
+    )
+        ? 0
+        : await _repairLegacyRefundCategories(db);
+    changed += repairedLegacyRefunds;
     if (changed > 0) {
-      _notifyChanged(requestSync: repairedRefundUuids.isNotEmpty);
+      _notifyChanged(
+        requestSync:
+            repairedRefundUuids.isNotEmpty || repairedLegacyRefunds > 0,
+      );
     }
     return changed;
   }
@@ -4455,6 +4469,15 @@ abstract final class FinanceStorage {
     final value = raw['type'];
     return const {'expense', 'income', 'refund'}.contains(value) ||
         const {0, 1, 2, '0', '1', '2'}.contains(value);
+  }
+
+  static bool _hasIncomingRefund(Object? rawTransactions) {
+    if (rawTransactions is! List) return false;
+    return rawTransactions.any((raw) {
+      if (raw is! Map) return false;
+      final type = raw['type'];
+      return type == 'refund' || type == 2 || type == '2';
+    });
   }
 
   static bool _hasValidRawOptionalTransactionType(
