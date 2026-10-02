@@ -694,6 +694,7 @@ abstract final class FinanceTextParser {
     r'(?:(?:(?:会员|平台|商家|店铺|支付宝|微信|银联|信用卡|银行卡|云闪付|花呗|白条)'
     r'(?:支付|付款)?)?'
     r'(?:使用|用了|用)?(?:红包|优惠券|代金券)抵扣)|'
+    r'(?:最后|最终)\s*(?:支付|付款|付了?|实付|实际支付|实际付款)|'
     r'实付|实际支付|实际付款|现付|'
     r'实收|实际收款|实际到账|到账|到手|省下|抵扣)',
   ).hasMatch(value.trim());
@@ -834,7 +835,9 @@ abstract final class FinanceTextParser {
   static RegExpMatch? _findSentenceAmountMatch(String text) {
     final patterns = [
       RegExp(
-        r'(?:实际支付|实际付款|实付|现付|净付|实际收款|实收金额|实收|实际到账|到账|到手)'
+        r'(?:(?:最后|最终)\s*(?:支付|付款|付了?|实付|实际支付|实际付款)|'
+        r'折后|优惠后|抵扣后|补贴后|'
+        r'实际支付|实际付款|实付|现付|净付|实际收款|实收金额|实收|实际到账|到账|到手)'
         r'\s*[:=]?\s*(?:¥|￥)?\s*'
         r'(\d+(?:[,.]\d+)*)(?=\s*(?:元|块钱?|人民币|CNY|RMB|[,，。；;]|$))',
         caseSensitive: false,
@@ -944,6 +947,7 @@ abstract final class FinanceTextParser {
     if (explicitValue != null) return explicitValue;
     final paymentInText = _knownSentencePayment(text);
     if (explicit != null && explicit.trim().isNotEmpty) {
+      if (_parseAmount(explicit) != null) return paymentInText;
       if (paymentInText != null &&
           RegExp(
             r'^(?:分类|类别|归类为?|记到|备注|说明|商家|商户|店铺|项目|名称)\s*[:=]?',
@@ -1020,6 +1024,12 @@ abstract final class FinanceTextParser {
         ),
         '',
       );
+      if (payment != null && payment.trim().isNotEmpty) {
+        value = value.replaceAll(
+          RegExp(RegExp.escape(payment.trim()), caseSensitive: false),
+          '',
+        );
+      }
       value = value.replaceAll(
         RegExp(
           r'记一笔|记账|记录|一共|合计|实付|金额|支出|收入|退款|消费|花(?:了|费)?|'

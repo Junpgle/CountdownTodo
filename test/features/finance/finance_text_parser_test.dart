@@ -369,6 +369,15 @@ void main() {
     expect(paymentActionDrafts, hasLength(1));
     expect(paymentActionDrafts.single.amountMinor, 2500);
 
+    final lastPaymentDrafts = FinanceTextParser.parseQuickEntries(
+      '今天午餐原价 30 元，支付宝优惠 5 元，最后付款 25 元',
+      now: fixedNow,
+    );
+    expect(lastPaymentDrafts, hasLength(1));
+    expect(lastPaymentDrafts.single.amountMinor, 2500);
+    expect(lastPaymentDrafts.single.paymentMethodName, '支付宝');
+    expect(lastPaymentDrafts.single.merchant, '午餐');
+
     final redPacketDrafts = FinanceTextParser.parseQuickEntries(
       '今天午餐原价 30 元，支付宝红包抵扣 5 元，实付 25 元',
       now: fixedNow,
