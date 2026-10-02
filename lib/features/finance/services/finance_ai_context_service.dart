@@ -229,6 +229,21 @@ abstract final class FinanceAiContextService {
     return asksForData || _containsAny(text, _mutationWords);
   }
 
+  static bool _shouldIncludePaymentBalances({
+    required String userMessage,
+    required String conversationContext,
+    required String previousUserMessage,
+  }) {
+    if (_containsAny(userMessage, ['余额'])) return true;
+    if (_containsAny(userMessage, _otherContextDomains)) return false;
+    final earlierBalanceQuestion =
+        _containsAny(conversationContext, ['余额']) ||
+        _containsAny(previousUserMessage, ['余额']);
+    return earlierBalanceQuestion &&
+        (_containsAny(userMessage, _queryWords) ||
+            _containsAny(userMessage, _financeFollowUpWords));
+  }
+
   /// Returns whether the model needs the local finance catalog without
   /// exposing the user's existing ledger.  This covers new-entry requests
   /// such as "今天午餐花了 28 元", which are not ledger queries but still
@@ -267,6 +282,11 @@ abstract final class FinanceAiContextService {
     final needsLedger = shouldInjectFor(
       userMessage,
       conversationContext: conversationContext,
+    );
+    final needsPaymentBalances = _shouldIncludePaymentBalances(
+      userMessage: userMessage,
+      conversationContext: conversationContext,
+      previousUserMessage: previousUserMessage,
     );
     final needsCatalog = shouldInjectCatalogFor(
       userMessage,
@@ -308,7 +328,52 @@ abstract final class FinanceAiContextService {
                 item.transactionDate.compareTo(toKey) < 0,
           )
           .toList(growable: false);
-      final budgets = (values[1] as List<FinanceBudget>)
+      final allBudgets = values[1] as List<FinanceBudget>;
+      Map<String, int>? paymentMethodBalances;
+      if (needsPaymentBalances) {
+        final snapshots = FinanceRepository.latestPaymentBalanceSnapshots(
+          allBudgets.where((budget) => budget.isPaymentMethod),
+          asOfAt: asOfAt,
+          nowAt: asOfAt,
+        );
+        paymentMethodBalances = {};
+        if (snapshots.isNotEmpty) {
+          final earliestSnapshotAt = snapshots
+              .map((budget) => budget.effectiveBalanceSnapshotAt)
+              .reduce((left, right) => left < right ? left : right);
+          final balanceValues = await Future.wait<dynamic>([
+            FinanceRepository.getBalanceTransactions(
+              snapshotAt: earliestSnapshotAt,
+              before: nowValue,
+              paymentMethodUuids: snapshots
+                  .map((budget) => budget.paymentMethodUuid!)
+                  .toSet(),
+            ),
+            FinanceRepository.getPaidLoanInstallments(),
+          ]);
+          final balanceTransactions =
+              balanceValues[0] as List<FinanceTransaction>;
+          final loanRepayments =
+              balanceValues[1] as List<FinanceLoanInstallment>;
+          final loanInterestTransactionUuids = loanRepayments
+              .map((item) => item.interestTransactionUuid)
+              .whereType<String>()
+              .toSet();
+          for (final snapshot in snapshots) {
+            final paymentMethodUuid = snapshot.paymentMethodUuid!;
+            paymentMethodBalances[paymentMethodUuid] =
+                FinanceRepository.paymentMethodBalanceAt(
+                  snapshot: snapshot,
+                  transactions: balanceTransactions,
+                  loanRepayments: loanRepayments,
+                  loanInterestTransactionUuids:
+                      loanInterestTransactionUuids,
+                  asOfAt: asOfAt,
+                );
+          }
+        }
+      }
+      final budgets = allBudgets
           .where(
             (budget) =>
                 !budget.isPaymentMethod &&
@@ -339,6 +404,7 @@ abstract final class FinanceAiContextService {
         budgets: budgets,
         budgetSummaries: budgetSummaries,
         asOfAt: asOfAt,
+        paymentMethodBalances: paymentMethodBalances,
       );
       return [
         if (needsCatalog) catalog,
@@ -368,6 +434,13 @@ abstract final class FinanceAiContextService {
       parts.add(
         '记账明细 ${(dateRangeOverride ?? resolveDateRange(_rangeQueryText(userMessage, previousUserMessage), now: now)).label}',
       );
+      if (_shouldIncludePaymentBalances(
+        userMessage: userMessage,
+        conversationContext: conversationContext,
+        previousUserMessage: previousUserMessage,
+      )) {
+        parts.add('付款方式实际余额');
+      }
     }
     if (shouldInjectCatalogFor(
       userMessage,
@@ -537,6 +610,7 @@ abstract final class FinanceAiContextService {
     required List<FinanceBudget> budgets,
     required Map<String, FinanceSummary> budgetSummaries,
     required int asOfAt,
+    Map<String, int>? paymentMethodBalances,
   }) {
     final categoryMap = {for (final item in categories) item.uuid: item};
     final paymentMap = {for (final item in paymentMethods) item.uuid: item};
@@ -562,10 +636,40 @@ abstract final class FinanceAiContextService {
           '支出 ${formatFinanceAmount(summary.expenseMinor)} | '
           '退款 ${formatFinanceAmount(summary.refundMinor)} | '
           '净支出 ${formatFinanceAmount(summary.netExpenseMinor)} | '
-          '结余 ${formatFinanceAmount(summary.balanceMinor)} | '
+          '账期结余 ${formatFinanceAmount(summary.balanceMinor)} | '
           '共${summary.transactionCount}笔',
+      '本期结余不代表付款方式实际余额。',
       '以上汇总只统计截至 ${DateTime.fromMillisecondsSinceEpoch(asOfAt).toString()} 已发生的账单；未来账单在明细中标记为待发生。',
     ];
+
+    if (paymentMethodBalances != null) {
+      final balanceMethodUuids = <String>{
+        ...paymentMethods.map((method) => method.uuid),
+        ...paymentMethodBalances.keys,
+      }.toList()..sort((left, right) {
+        final byName = paymentName(left).compareTo(paymentName(right));
+        return byName == 0 ? left.compareTo(right) : byName;
+      });
+      lines.add(
+        '付款方式实际余额（截至 ${DateTime.fromMillisecondsSinceEpoch(asOfAt).toString()}，已应用快照后的收支和还款）:',
+      );
+      if (balanceMethodUuids.isEmpty) {
+        lines.add('- 没有配置付款方式');
+      } else {
+        for (final uuid in balanceMethodUuids) {
+          final balance = paymentMethodBalances[uuid];
+          if (balance == null) {
+            lines.add(
+              '- ${paymentName(uuid)}: 未录入余额快照，无法确定实际余额',
+            );
+          } else {
+            lines.add(
+              '- ${paymentName(uuid)}: ${formatFinanceAmount(balance)}',
+            );
+          }
+        }
+      }
+    }
 
     final categoryTotals = <MapEntry<String, int>>[
       ...summary.expenseByCategory.entries,

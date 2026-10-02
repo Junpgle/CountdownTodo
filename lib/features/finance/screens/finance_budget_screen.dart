@@ -108,42 +108,11 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     Iterable<FinanceBudget> budgets,
     int asOfAt,
   ) {
-    final now = widget.clock().millisecondsSinceEpoch;
-    final asOfMonthKey = financeMonthKey(
-      DateTime.fromMillisecondsSinceEpoch(asOfAt),
-    );
-    // The month key comes from the source device's wall calendar; its epoch
-    // can cross a local month edge after sync to a device in another timezone.
-    const snapshotTimezoneDriftMs = 28 * 60 * 60 * 1000;
-    final latestByMethod = <String, FinanceBudget>{};
-    for (final budget in budgets) {
-      final paymentMethodUuid = budget.paymentMethodUuid;
-      final snapshotAt = budget.effectiveBalanceSnapshotAt;
-      final monthOrder = budget.monthKey.compareTo(asOfMonthKey);
-      if (paymentMethodUuid == null ||
-          paymentMethodUuid.isEmpty ||
-          monthOrder > 0 ||
-          (monthOrder == 0 &&
-              snapshotAt > asOfAt + snapshotTimezoneDriftMs) ||
-          (monthOrder < 0 && snapshotAt > asOfAt) ||
-          snapshotAt > now) {
-        continue;
-      }
-      final current = latestByMethod[paymentMethodUuid];
-      if (current == null) {
-        latestByMethod[paymentMethodUuid] = budget;
-        continue;
-      }
-      final currentMonthOrder = budget.monthKey.compareTo(current.monthKey);
-      final isLaterSnapshotInSameMonth = currentMonthOrder == 0 &&
-          (snapshotAt > current.effectiveBalanceSnapshotAt ||
-              (snapshotAt == current.effectiveBalanceSnapshotAt &&
-                  budget.updatedAt > current.updatedAt));
-      if (currentMonthOrder > 0 || isLaterSnapshotInSameMonth) {
-        latestByMethod[paymentMethodUuid] = budget;
-      }
-    }
-    final snapshots = latestByMethod.values.toList()
+    final snapshots = FinanceRepository.latestPaymentBalanceSnapshots(
+      budgets,
+      asOfAt: asOfAt,
+      nowAt: widget.clock().millisecondsSinceEpoch,
+    ).toList()
       ..sort((left, right) => _budgetTitle(left).compareTo(_budgetTitle(right)));
     return snapshots;
   }
@@ -431,35 +400,13 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
 
   int _usedFor(FinanceBudget budget) {
     if (budget.paymentMethodUuid != null) {
-      final paymentMethodUuid = budget.paymentMethodUuid!;
-      final snapshotAt = budget.effectiveBalanceSnapshotAt;
-      final asOfAt = _balanceAsOfAt;
-      final transactionsAfterSnapshot = _balanceTransactions.where(
-        (transaction) {
-          if (transaction.paymentMethodUuid != paymentMethodUuid ||
-              _loanInterestTransactionUuids.contains(transaction.uuid)) {
-            return false;
-          }
-          final eventAt = _balanceEventTime(
-            transaction,
-            snapshotAt: snapshotAt,
-          );
-          return eventAt > snapshotAt && eventAt <= asOfAt;
-        },
+      return budget.amountMinor - FinanceRepository.paymentMethodBalanceAt(
+        snapshot: budget,
+        transactions: _balanceTransactions,
+        loanRepayments: _loanRepayments,
+        loanInterestTransactionUuids: _loanInterestTransactionUuids,
+        asOfAt: _balanceAsOfAt,
       );
-      final balanceChange =
-          FinanceRepository.summarizePaymentMethodBalanceChanges(
-            transactionsAfterSnapshot,
-          )[paymentMethodUuid];
-      final repayments = _loanRepayments
-          .where(
-            (item) =>
-                item.paymentMethodUuid == paymentMethodUuid &&
-                item.paidAt! > snapshotAt &&
-                item.paidAt! <= asOfAt,
-          )
-          .fold<int>(0, (sum, item) => sum + item.paymentMinor);
-      return -(balanceChange ?? 0) + repayments;
     }
     return _summary.spendingForBudget(budget, _categories);
   }

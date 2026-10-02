@@ -233,6 +233,69 @@ void main() {
     expect(followUp, '记账明细 2025-01-01 至 2025-12-31');
   });
 
+  test('AI 查询付款方式余额时提供快照及之后的账户流水', () async {
+    final snapshotAt = DateTime(2026, 9, 1, 10);
+    await db.insert(
+      'finance_payment_methods',
+      FinancePaymentMethod(uuid: 'ai-card', name: 'AI银行卡').toMap(),
+    );
+    await db.insert(
+      'finance_payment_methods',
+      FinancePaymentMethod(uuid: 'ai-card-no-snapshot', name: '备用银行卡')
+          .toMap(),
+    );
+    await FinanceStorage.saveBudget(
+      FinanceBudget(
+        uuid: 'ai-card-snapshot',
+        monthKey: '2026-09',
+        paymentMethodUuid: 'ai-card',
+        amountMinor: 10000,
+        balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+        createdAt: snapshotAt.millisecondsSinceEpoch,
+        updatedAt: snapshotAt.millisecondsSinceEpoch,
+      ),
+      balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+    );
+    final expense = FinanceTransaction(
+      uuid: 'ai-card-expense',
+      amountMinor: 2000,
+      paymentMethodUuid: 'ai-card',
+      transactionDate: '2026-09-02',
+      occurredAt: DateTime(2026, 9, 2, 12).millisecondsSinceEpoch,
+    );
+    for (final transaction in [
+      expense,
+      FinanceTransaction(
+        uuid: 'ai-card-income',
+        type: FinanceTransactionType.income,
+        amountMinor: 5000,
+        paymentMethodUuid: 'ai-card',
+        transactionDate: '2026-09-02',
+        occurredAt: DateTime(2026, 9, 2, 11).millisecondsSinceEpoch,
+      ),
+      FinanceTransaction(
+        uuid: 'ai-card-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 500,
+        paymentMethodUuid: 'ai-card',
+        transactionDate: '2026-09-02',
+        occurredAt: DateTime(2026, 9, 2, 13).millisecondsSinceEpoch,
+        relatedTransactionUuid: expense.uuid,
+      ),
+    ]) {
+      await FinanceStorage.saveTransaction(transaction);
+    }
+
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '银行卡余额多少',
+      now: DateTime(2026, 9, 2, 23, 59),
+    );
+
+    expect(context, contains('- AI银行卡: ¥135.00'));
+    expect(context, contains('- 备用银行卡: 未录入余额快照，无法确定实际余额'));
+    expect(context, contains('本期结余不代表付款方式实际余额'));
+  });
+
   test('AI 财务上下文会说明账单和预算明细被截断', () {
     final categories = [
       for (var index = 0; index < 21; index++)

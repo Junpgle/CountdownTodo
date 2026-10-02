@@ -94,6 +94,88 @@ abstract final class FinanceRepository {
     return FinanceSummary.fromTransactions(transactions);
   }
 
+  /// Selects the latest usable account snapshot at [asOfAt] for every payment
+  /// method. Snapshot month keys are kept because their epoch can cross a
+  /// local month boundary after sync to a device in another timezone.
+  static List<FinanceBudget> latestPaymentBalanceSnapshots(
+    Iterable<FinanceBudget> budgets, {
+    required int asOfAt,
+    required int nowAt,
+  }) {
+    final asOfMonthKey = financeMonthKey(
+      DateTime.fromMillisecondsSinceEpoch(asOfAt),
+    );
+    const snapshotTimezoneDriftMs = 28 * 60 * 60 * 1000;
+    final latestByMethod = <String, FinanceBudget>{};
+    for (final budget in budgets) {
+      final paymentMethodUuid = budget.paymentMethodUuid;
+      final snapshotAt = budget.effectiveBalanceSnapshotAt;
+      final monthOrder = budget.monthKey.compareTo(asOfMonthKey);
+      if (paymentMethodUuid == null ||
+          paymentMethodUuid.isEmpty ||
+          monthOrder > 0 ||
+          (monthOrder == 0 &&
+              snapshotAt > asOfAt + snapshotTimezoneDriftMs) ||
+          (monthOrder < 0 && snapshotAt > asOfAt) ||
+          snapshotAt > nowAt) {
+        continue;
+      }
+      final current = latestByMethod[paymentMethodUuid];
+      if (current == null) {
+        latestByMethod[paymentMethodUuid] = budget;
+        continue;
+      }
+      final currentMonthOrder = budget.monthKey.compareTo(current.monthKey);
+      final isLaterSnapshotInSameMonth = currentMonthOrder == 0 &&
+          (snapshotAt > current.effectiveBalanceSnapshotAt ||
+              (snapshotAt == current.effectiveBalanceSnapshotAt &&
+                  budget.updatedAt > current.updatedAt));
+      if (currentMonthOrder > 0 || isLaterSnapshotInSameMonth) {
+        latestByMethod[paymentMethodUuid] = budget;
+      }
+    }
+    return latestByMethod.values.toList(growable: false);
+  }
+
+  /// Reconstructs an account's current balance from its saved snapshot,
+  /// transaction movements and separately stored loan repayments.
+  static int paymentMethodBalanceAt({
+    required FinanceBudget snapshot,
+    required Iterable<FinanceTransaction> transactions,
+    required Iterable<FinanceLoanInstallment> loanRepayments,
+    required Set<String> loanInterestTransactionUuids,
+    required int asOfAt,
+  }) {
+    final paymentMethodUuid = snapshot.paymentMethodUuid;
+    if (paymentMethodUuid == null || paymentMethodUuid.isEmpty) {
+      throw ArgumentError.value(snapshot, 'snapshot', '必须是付款方式余额快照');
+    }
+    final snapshotAt = snapshot.effectiveBalanceSnapshotAt;
+    final transactionsAfterSnapshot = transactions.where((transaction) {
+      if (transaction.paymentMethodUuid != paymentMethodUuid ||
+          loanInterestTransactionUuids.contains(transaction.uuid)) {
+        return false;
+      }
+      final eventAt = transaction.balanceEventAt(snapshotAt: snapshotAt);
+      return eventAt > snapshotAt && eventAt <= asOfAt;
+    });
+    final balanceChange =
+        summarizePaymentMethodBalanceChanges(transactionsAfterSnapshot)[
+          paymentMethodUuid
+        ] ??
+        0;
+    final repayments = loanRepayments
+        .where((item) {
+          final paidAt = item.paidAt;
+          return item.paymentMethodUuid == paymentMethodUuid &&
+              paidAt != null &&
+              paidAt > snapshotAt &&
+              paidAt <= asOfAt;
+        })
+        .fold<int>(0, (sum, item) => sum + item.paymentMinor);
+    return snapshot.amountMinor + balanceChange - repayments;
+  }
+
   /// Returns net monthly spending grouped by payment method; linked refunds
   /// reduce the amount used by the method they were recorded under.
   static Map<String, int> summarizePaymentMethodSpending(
