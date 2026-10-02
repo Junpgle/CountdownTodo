@@ -94,7 +94,7 @@ class _FinanceCategoryDetailScreenState
     final root = _rootCategory;
     if (root == null) {
       final amount = _netExpense(matchingTransactions);
-      if (amount <= 0) return const [];
+      if (matchingTransactions.isEmpty) return const [];
       return [
         _FinanceCategoryDetailItem(
           categoryUuid: financeUncategorizedCategoryFilterUuid,

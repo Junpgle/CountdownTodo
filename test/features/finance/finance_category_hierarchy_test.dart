@@ -2,6 +2,7 @@
 library;
 
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
+import 'package:countdown_todo/features/finance/screens/finance_category_detail_screen.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_catalog_editor.dart';
 import 'package:countdown_todo/services/database_helper.dart';
@@ -36,6 +37,57 @@ void main() {
   tearDown(() async {
     FinanceStorage.databaseOverride = null;
     await db.close();
+  });
+
+  testWidgets('未分类净额为负时仍显示并打开账单明细', (tester) async {
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'uncategorized-expense',
+        amountMinor: 1000,
+        transactionDate: '2026-10-01',
+        categoryUuid: null,
+      ),
+      FinanceTransaction(
+        uuid: 'uncategorized-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 1500,
+        transactionDate: '2026-10-02',
+        categoryUuid: null,
+      ),
+    ];
+    String? selectedCategoryUuid;
+    List<FinanceTransaction>? selectedTransactions;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FinanceCategoryDetailScreen(
+          periodTitle: '2026年10月',
+          rootCategoryUuid: null,
+          transactions: transactions,
+          categories: const {},
+          onCategorySelected: (categoryUuid, _, periodTransactions) async {
+            selectedCategoryUuid = categoryUuid;
+            selectedTransactions = periodTransactions;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 笔账单 · 点击查看'), findsOneWidget);
+    expect(find.text('没有可筛选的分类账单'), findsNothing);
+    await tester.tap(
+      find.byKey(
+        ValueKey(
+          'finance-category-detail-$financeUncategorizedCategoryFilterUuid',
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(selectedCategoryUuid, financeUncategorizedCategoryFilterUuid);
+    expect(selectedTransactions, hasLength(2));
+    expect(tester.takeException(), isNull);
   });
 
   for (final archived in [false, true]) {
