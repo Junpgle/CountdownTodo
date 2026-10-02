@@ -3069,8 +3069,6 @@ void main() {
       await db.close();
     });
     await DatabaseHelper.ensureFinanceSchema(db);
-    FinanceStorage.databaseOverride = db;
-    await FinanceStorage.ensureReady();
     final oldUpdatedAt = DateTime(2026, 1, 1).millisecondsSinceEpoch;
     await db.insert('finance_transactions', {
       'uuid': 'legacy-refund',
@@ -3089,6 +3087,9 @@ void main() {
     });
 
     final revisionBeforeRepair = FinanceStorage.revision.value;
+    FinanceStorage.databaseOverride = db;
+    await FinanceStorage.ensureReady();
+    expect(FinanceStorage.revision.value, revisionBeforeRepair + 1);
     final transactions = await FinanceStorage.getTransactions();
     expect(FinanceStorage.revision.value, revisionBeforeRepair + 1);
     final refundCategory = await db.query(

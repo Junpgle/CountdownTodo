@@ -44,7 +44,6 @@ abstract final class FinanceStorage {
     final db = await _database;
     if (identical(_readyDatabase, db)) {
       await _readyFuture;
-      await _repairLegacyRefundCategories(db);
       return;
     }
 
@@ -53,6 +52,9 @@ abstract final class FinanceStorage {
     _readyFuture = ready;
     try {
       await ready;
+      // This is a legacy-data migration. Run it once when attaching a database;
+      // repeating the write on every read creates avoidable SQLite lock
+      // contention during concurrent screen initialization.
       await _repairLegacyRefundCategories(db);
     } catch (_) {
       if (identical(_readyDatabase, db) && identical(_readyFuture, ready)) {
