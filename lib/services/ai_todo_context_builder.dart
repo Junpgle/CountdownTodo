@@ -1864,11 +1864,46 @@ ${sections.join('\n')}
     );
   }
 
+  static _DateRange? _resolveRecentDayRange(String text, DateTime now) {
+    final days = _matchesAny(text, [
+      '最近7天',
+      '最近七天',
+      '过去7天',
+      '过去七天',
+      '近7天',
+      '近七天',
+      '最近一周',
+      '过去一周',
+      '近一周',
+    ])
+        ? 7
+        : _matchesAny(text, [
+            '最近30天',
+            '最近三十天',
+            '过去30天',
+            '过去三十天',
+            '近30天',
+            '近三十天',
+          ])
+        ? 30
+        : null;
+    if (days == null) return null;
+
+    final todayStart = DateTime(now.year, now.month, now.day);
+    return _DateRange(
+      label: '最近$days天',
+      start: todayStart.subtract(Duration(days: days - 1)),
+      end: todayStart.add(const Duration(days: 1)),
+    );
+  }
+
   static _DateRange? _resolveCoursePeriod(String text, DateTime now) {
     final explicit = _resolveExplicitDateRange(text);
     if (explicit != null) return explicit;
     final rollingMonthRange = _resolveRollingMonthRange(text, now);
     if (rollingMonthRange != null) return rollingMonthRange;
+    final recentDayRange = _resolveRecentDayRange(text, now);
+    if (recentDayRange != null) return recentDayRange;
     final todayStart = DateTime(now.year, now.month, now.day);
     final currentMonthStart = DateTime(now.year, now.month);
     if (text.contains('上个月') || text.contains('上月')) {
@@ -2871,6 +2906,8 @@ ${lines.isEmpty ? '暂无' : lines}''';
     if (explicit != null) return explicit;
     final rollingMonthRange = _resolveRollingMonthRange(text, now);
     if (rollingMonthRange != null) return rollingMonthRange;
+    final recentDayRange = _resolveRecentDayRange(text, now);
+    if (recentDayRange != null) return recentDayRange;
 
     final todayStart = DateTime(now.year, now.month, now.day);
     if (text.contains('今天') || text.contains('今日')) {

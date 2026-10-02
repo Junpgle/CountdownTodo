@@ -1195,6 +1195,90 @@ void main() {
       expect(context, contains('展示 60/62 条，优先用户所选范围'));
     });
 
+    test('最近七天范围一致筛选待办与倒计时日期', () {
+      final now = DateTime(2026, 10, 3, 12);
+      final todos = [
+        {
+          'id': 'outside-seven-days-todo',
+          'title': '七天范围外待办',
+          'startTime': '2026-09-26T09:00:00',
+          'dueDate': '2026-09-26T18:00:00',
+          'timeMode': 'deadline',
+        },
+        {
+          'id': 'first-day-seven-days-todo',
+          'title': '七天首日待办',
+          'startTime': '2026-09-27T09:00:00',
+          'dueDate': '2026-09-27T18:00:00',
+          'timeMode': 'deadline',
+        },
+        {
+          'id': 'today-seven-days-todo',
+          'title': '今天到期待办',
+          'startTime': '2026-10-03T09:00:00',
+          'dueDate': '2026-10-03T18:00:00',
+          'timeMode': 'deadline',
+        },
+        {
+          'id': 'future-seven-days-todo',
+          'title': '未来待办',
+          'startTime': '2026-10-04T09:00:00',
+          'dueDate': '2026-10-04T18:00:00',
+          'timeMode': 'deadline',
+        },
+      ];
+      final countdowns = [
+        CountdownItem(
+          id: 'outside-seven-days-countdown',
+          title: '七天范围外倒计时',
+          targetDate: DateTime(2026, 9, 26),
+        ),
+        CountdownItem(
+          id: 'first-day-seven-days-countdown',
+          title: '七天首日倒计时',
+          targetDate: DateTime(2026, 9, 27),
+        ),
+        CountdownItem(
+          id: 'today-seven-days-countdown',
+          title: '今天倒计时',
+          targetDate: DateTime(2026, 10, 3),
+        ),
+        CountdownItem(
+          id: 'future-seven-days-countdown',
+          title: '未来倒计时',
+          targetDate: DateTime(2026, 10, 4),
+        ),
+      ];
+
+      final todoContext = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '最近七天有哪些待办',
+        courses: const [],
+        timeLogs: const [],
+        todos: todos,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final countdownContext = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '最近七天有哪些倒计时',
+        courses: const [],
+        timeLogs: const [],
+        countdowns: countdowns,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(todoContext, contains('first-day-seven-days-todo'));
+      expect(todoContext, contains('today-seven-days-todo'));
+      expect(todoContext, isNot(contains('outside-seven-days-todo')));
+      expect(todoContext, isNot(contains('future-seven-days-todo')));
+      expect(countdownContext, contains('七天首日倒计时'));
+      expect(countdownContext, contains('今天倒计时'));
+      expect(countdownContext, isNot(contains('七天范围外倒计时')));
+      expect(countdownContext, isNot(contains('未来倒计时')));
+    });
+
     test('过去半年待办按滚动自然月范围筛选到期日期', () {
       final now = DateTime(2026, 10, 3, 12);
       final todos = [
