@@ -1417,6 +1417,42 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('预算月份箭头遵守日期选择器范围', (tester) async {
+    await _seed(tester);
+    final now = DateTime.now();
+    Future<void> pumpMonth(DateTime month) => _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: month, clock: () => now),
+      size: const Size(1100, 1000),
+    );
+    IconButton buttonFor(String tooltip) => tester.widget<IconButton>(
+      find
+          .ancestor(
+            of: find.byTooltip(tooltip),
+            matching: find.byType(IconButton),
+          )
+          .first,
+    );
+
+    await pumpMonth(DateTime(2000));
+    expect(
+      buttonFor('上个月').onPressed,
+      isNull,
+    );
+    expect(
+      buttonFor('下个月').onPressed,
+      isNotNull,
+    );
+
+    final lastAllowedDate = now.add(const Duration(days: 3650));
+    await pumpMonth(DateTime(lastAllowedDate.year, lastAllowedDate.month));
+    expect(
+      buttonFor('下个月').onPressed,
+      isNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('历史月份的小结和分类空状态显示所选月份', (tester) async {
     final now = DateTime.now();
     final selectedMonth = DateTime(now.year, now.month - 1);

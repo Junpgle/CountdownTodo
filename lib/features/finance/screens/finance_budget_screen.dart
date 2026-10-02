@@ -375,8 +375,19 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   }
 
   void _changeMonth(int delta) {
+    if (!_canChangeMonth(delta)) return;
     setState(() => _month = DateTime(_month.year, _month.month + delta));
     _load();
+  }
+
+  bool _canChangeMonth(int delta) {
+    final nextMonth = DateTime(_month.year, _month.month + delta);
+    final firstAllowedMonth = DateTime(2000);
+    final lastAllowedDate = widget.clock().add(const Duration(days: 3650));
+    final lastAllowedMonth =
+        DateTime(lastAllowedDate.year, lastAllowedDate.month);
+    return !nextMonth.isBefore(firstAllowedMonth) &&
+        !nextMonth.isAfter(lastAllowedMonth);
   }
 
   void _showCurrentMonth() {
@@ -578,7 +589,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       children: [
         IconButton(
           tooltip: '上个月',
-          onPressed: () => _changeMonth(-1),
+          onPressed: _canChangeMonth(-1) ? () => _changeMonth(-1) : null,
           icon: const Icon(Icons.chevron_left),
         ),
         Expanded(
@@ -610,7 +621,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         ),
         IconButton(
           tooltip: '下个月',
-          onPressed: () => _changeMonth(1),
+          onPressed: _canChangeMonth(1) ? () => _changeMonth(1) : null,
           icon: const Icon(Icons.chevron_right),
         ),
       ],
