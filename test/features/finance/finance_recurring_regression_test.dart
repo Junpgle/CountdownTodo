@@ -870,5 +870,25 @@ void main() {
         '${savedBudget.monthKey}-${savedBudget.version}-80';
     expect(shownNotifications, 1);
     expect(prefs.getBool(alertKey), isTrue);
+
+    await FinanceStorage.deleteTransaction('expense-before-budget-save');
+    await _clearBudgetAlertMarkers(prefs, accountKey);
+    await FinanceRepository.restoreTransaction('expense-before-budget-save');
+    expect(shownNotifications, 2);
+
+    await FinanceStorage.deleteBudget(savedBudget.uuid);
+    await _clearBudgetAlertMarkers(prefs, accountKey);
+    await FinanceRepository.restoreBudget(savedBudget.uuid);
+    expect(shownNotifications, 3);
   });
+}
+
+Future<void> _clearBudgetAlertMarkers(
+  SharedPreferences prefs,
+  String accountKey,
+) async {
+  final prefix = 'finance-budget-v1-$accountKey-';
+  for (final key in prefs.getKeys().where((key) => key.startsWith(prefix))) {
+    await prefs.remove(key);
+  }
 }

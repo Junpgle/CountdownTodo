@@ -138,12 +138,14 @@ abstract final class FinanceRepository {
     FinanceTransaction? original,
   }) async {
     await FinanceStorage.saveTransaction(transaction, original: original);
+    await _checkBudgetAlertsSafely();
+  }
+
+  static Future<void> _checkBudgetAlertsSafely() async {
     try {
-      await FinanceAutomationService.checkBudgetAlerts(
-        now: DateTime.now(),
-      );
+      await FinanceAutomationService.checkBudgetAlerts();
     } catch (_) {
-      // 预算通知失败不能回滚已经保存成功的账单。
+      // Notification failures must not roll back a successful finance change.
     }
   }
 
@@ -163,11 +165,7 @@ abstract final class FinanceRepository {
       startDate: startDate,
       existingInstallments: existingInstallments,
     );
-    try {
-      await FinanceAutomationService.checkBudgetAlerts();
-    } catch (_) {
-      // 预算通知失败不能回滚已经保存成功的分期账单。
-    }
+    await _checkBudgetAlertsSafely();
     return saved;
   }
 
@@ -185,8 +183,9 @@ abstract final class FinanceRepository {
     return FinanceStorage.deleteInstallmentGroup(groupUuid);
   }
 
-  static Future<void> restoreInstallmentGroup(String groupUuid) {
-    return FinanceStorage.restoreInstallmentGroup(groupUuid);
+  static Future<void> restoreInstallmentGroup(String groupUuid) async {
+    await FinanceStorage.restoreInstallmentGroup(groupUuid);
+    await _checkBudgetAlertsSafely();
   }
 
   static Future<List<FinanceLoan>> getLoans({
@@ -305,19 +304,21 @@ abstract final class FinanceRepository {
       resetBalanceSnapshot: resetBalanceSnapshot,
       balanceSnapshotAt: balanceSnapshotAt,
     );
-    try {
-      await FinanceAutomationService.checkBudgetAlerts();
-    } catch (_) {
-      // Budget alerts must not roll back a successfully saved budget.
-    }
+    await _checkBudgetAlertsSafely();
   }
 
   static Future<void> deleteBudget(String uuid) {
     return FinanceStorage.deleteBudget(uuid);
   }
 
-  static Future<void> restoreBudget(String uuid) {
-    return FinanceStorage.restoreBudget(uuid);
+  static Future<void> restoreBudget(String uuid) async {
+    await FinanceStorage.restoreBudget(uuid);
+    await _checkBudgetAlertsSafely();
+  }
+
+  static Future<void> restoreTransaction(String uuid) async {
+    await FinanceStorage.restoreTransaction(uuid);
+    await _checkBudgetAlertsSafely();
   }
 
   static Future<List<FinanceRecurringRule>> getRecurringRules({

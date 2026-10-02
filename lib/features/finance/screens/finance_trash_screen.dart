@@ -103,11 +103,11 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
         : 'single';
     if (restoreMode == null || !mounted) return;
     if (restoreMode == 'group' && transaction.installmentGroupUuid != null) {
-      await FinanceStorage.restoreInstallmentGroup(
+      await FinanceRepository.restoreInstallmentGroup(
         transaction.installmentGroupUuid!,
       );
     } else {
-      await FinanceStorage.restoreTransaction(transaction.uuid);
+      await FinanceRepository.restoreTransaction(transaction.uuid);
     }
     if (!mounted) return;
     AppSnackBars.showSnackBar(
@@ -119,7 +119,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
 
   Future<void> _restoreBudget(FinanceBudget budget) async {
     try {
-      await FinanceStorage.restoreBudget(budget.uuid);
+      await FinanceRepository.restoreBudget(budget.uuid);
     } catch (error) {
       if (!mounted) return;
       AppSnackBars.showSnackBar(
