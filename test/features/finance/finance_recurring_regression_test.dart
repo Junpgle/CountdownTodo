@@ -1,6 +1,8 @@
 @TestOn('vm')
 library;
 
+import 'dart:async';
+
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/services/finance_automation_service.dart';
 import 'package:countdown_todo/features/finance/services/finance_repository.dart';
@@ -956,6 +958,90 @@ void main() {
     await FinanceAutomationService.checkBudgetAlerts(now: now);
 
     expect(notificationBodies, ['本月总支出 ¥25,000,000.00 / ¥30,000,000.00']);
+  });
+
+  test('并发预算检查只发送一次相同提醒', () async {
+    final db = await openDatabase();
+    const accountKey = 'finance-concurrent-budget-alert-test-user';
+    const localNotificationChannel = MethodChannel(
+      'dexterous.com/flutter/local_notifications',
+    );
+    const macStatusBarChannel = MethodChannel(
+      'countdown_todo/macos_status_bar',
+    );
+    var shownNotifications = 0;
+    final notificationStarted = Completer<void>();
+    final releaseNotification = Completer<void>();
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    MacOSFlutterLocalNotificationsPlugin.registerWith();
+    messenger.setMockMethodCallHandler(localNotificationChannel, (call) async {
+      switch (call.method) {
+        case 'initialize':
+          return true;
+        case 'checkPermissions':
+          return {
+            'isEnabled': true,
+            'isAlertEnabled': true,
+            'isBadgeEnabled': true,
+            'isSoundEnabled': true,
+            'isProvisionalEnabled': false,
+            'isCriticalEnabled': false,
+            'isProvidesAppNotificationSettingsEnabled': false,
+          };
+        case 'show':
+          shownNotifications++;
+          if (!notificationStarted.isCompleted) notificationStarted.complete();
+          await releaseNotification.future;
+          return null;
+      }
+      return null;
+    });
+    messenger.setMockMethodCallHandler(
+      macStatusBarChannel,
+      (call) async => null,
+    );
+    addTearDown(() async {
+      if (!releaseNotification.isCompleted) releaseNotification.complete();
+      await FocusDoNotDisturbService.setActive(false, force: true);
+      messenger.setMockMethodCallHandler(localNotificationChannel, null);
+      messenger.setMockMethodCallHandler(macStatusBarChannel, null);
+      debugDefaultTargetPlatformOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(StorageService.keyCurrentUser, accountKey);
+    await AppSettingsStorage.setFinanceBudgetAlertEnabled(true);
+    await AppSettingsStorage.setNormalNotificationEnabled(true);
+    await FocusDoNotDisturbService.setActive(false, force: true);
+    final now = DateTime.now();
+    await FinanceStorage.saveBudget(
+      FinanceBudget(
+        uuid: 'concurrent-budget-alert',
+        monthKey: financeMonthKey(now),
+        amountMinor: 10000,
+      ),
+    );
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'concurrent-budget-alert-expense',
+        amountMinor: 8000,
+        transactionDate: dateKey(now),
+        occurredAt: now.millisecondsSinceEpoch,
+      ),
+    );
+
+    final first = FinanceAutomationService.checkBudgetAlerts(now: now);
+    await notificationStarted.future.timeout(const Duration(seconds: 3));
+    final second = FinanceAutomationService.checkBudgetAlerts(now: now);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    releaseNotification.complete();
+    await Future.wait([first, second]);
+
+    expect(shownNotifications, 1);
   });
 
   test('开启预算提醒后立即检查已达到阈值的支出', () async {

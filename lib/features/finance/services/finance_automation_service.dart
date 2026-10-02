@@ -25,6 +25,7 @@ abstract final class FinanceAutomationService {
   static const int recurringNotificationBaseId = 52001;
   static const int recurringNotificationRange = 7999;
   static const int maxRecurringCatchUpPeriods = 12;
+  static final Set<String> _budgetAlertInFlight = {};
 
   /// 计算规则在指定年月的发生时间。
   ///
@@ -354,7 +355,10 @@ abstract final class FinanceAutomationService {
 
       final alertKey =
           'finance-budget-v1-$accountKey-${budget.uuid}-${budget.monthKey}-${budget.version}-$threshold';
-      if (prefs.getBool(alertKey) == true) continue;
+      if (prefs.getBool(alertKey) == true ||
+          !_budgetAlertInFlight.add(alertKey)) {
+        continue;
+      }
       final scope = budget.categoryUuid == null
           ? '本月总支出'
           : '${categoryNames[budget.categoryUuid] ?? '分类'}支出';
@@ -370,6 +374,8 @@ abstract final class FinanceAutomationService {
         if (delivered) await prefs.setBool(alertKey, true);
       } catch (_) {
         // 系统通知不可用时保留下一次重试机会，但不影响记账流程。
+      } finally {
+        _budgetAlertInFlight.remove(alertKey);
       }
     }
   }
