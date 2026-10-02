@@ -1262,6 +1262,38 @@ abstract final class FinanceTextParser {
         value.contains('入账')) {
       return FinanceTransactionType.income;
     }
+    final hasIncomeCategory = const [
+      '工资',
+      '薪资',
+      '薪水',
+      '月薪',
+      '发薪',
+      '加班费',
+      '奖金',
+      '年终奖',
+      '绩效',
+      '津贴',
+      '补贴',
+      '报销',
+    ].any((term) => value.contains(term));
+    final hasExpenseAction = const [
+      '花了',
+      '花费',
+      '消费',
+      '支出',
+      '支付',
+      '付款',
+      '买了',
+      '买入',
+      '购买',
+      '交费',
+      '缴费',
+      '转给',
+      '给了',
+    ].any((term) => value.contains(term));
+    if (hasIncomeCategory && !hasExpenseAction) {
+      return FinanceTransactionType.income;
+    }
     return FinanceTransactionType.expense;
   }
 
