@@ -121,12 +121,21 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
           )
         : 'single';
     if (restoreMode == null || !mounted) return;
-    if (restoreMode == 'group' && transaction.installmentGroupUuid != null) {
-      await FinanceRepository.restoreInstallmentGroup(
-        transaction.installmentGroupUuid!,
+    try {
+      if (restoreMode == 'group' && transaction.installmentGroupUuid != null) {
+        await FinanceRepository.restoreInstallmentGroup(
+          transaction.installmentGroupUuid!,
+        );
+      } else {
+        await FinanceRepository.restoreTransaction(transaction.uuid);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(content: Text('恢复账单失败：$error')),
       );
-    } else {
-      await FinanceRepository.restoreTransaction(transaction.uuid);
+      return;
     }
     if (!mounted) return;
     AppSnackBars.showSnackBar(

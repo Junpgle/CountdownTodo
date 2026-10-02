@@ -367,6 +367,11 @@ abstract final class FinanceStorage {
         if (existing.isDeleted && !changesDeletedState) {
           throw StateError('账单已删除，请重新加载后再编辑');
         }
+        if (existing.isDeleted &&
+            changesDeletedState &&
+            !transaction.isDeleted) {
+          await _validateInstallmentRestore(txn, existing);
+        }
         transaction
           ..createdAt = existing.createdAt
           ..deviceId = existing.deviceId;
@@ -920,6 +925,37 @@ abstract final class FinanceStorage {
     if (existing == null ||
         repaymentFields.any((key) => existing[key] != values[key])) {
       throw StateError('贷款利息账单由还款记录管理，请在贷款还款中修改或撤销还款');
+    }
+  }
+
+  static Future<void> _validateInstallmentRestore(
+    DatabaseExecutor db,
+    FinanceTransaction transaction,
+  ) async {
+    final groupUuid = transaction.installmentGroupUuid;
+    final installmentIndex = transaction.installmentIndex;
+    if (!transaction.isInstallment ||
+        groupUuid == null ||
+        installmentIndex == null) {
+      return;
+    }
+
+    final rows = await db.query(
+      'finance_transactions',
+      where: 'installment_group_uuid = ?',
+      whereArgs: [groupUuid],
+    );
+    int? currentCount;
+    for (final row in rows) {
+      final count = FinanceTransaction.fromMap(row).installmentCount;
+      if (count != null &&
+          count > 1 &&
+          (currentCount == null || count < currentCount)) {
+        currentCount = count;
+      }
+    }
+    if (currentCount != null && installmentIndex > currentCount) {
+      throw StateError('此期已超出当前分期计划，请先调整分期期数后再恢复');
     }
   }
 

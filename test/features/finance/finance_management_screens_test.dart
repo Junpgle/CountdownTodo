@@ -3569,6 +3569,59 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('回收站不能单独恢复已超出当前期数的分期账单', (tester) async {
+    final db = await _seed(tester);
+    late String removedInstallmentUuid;
+    await tester.runAsync(() async {
+      final saved = await FinanceStorage.saveInstallmentPlan(
+        transaction: FinanceTransaction(
+          uuid: 'shortened-plan-first',
+          amountMinor: 12000,
+          transactionDate: '2026-09-01',
+          merchant: '期数调整账单',
+        ),
+        totalAmountMinor: 12000,
+        installmentCount: 3,
+        startDate: DateTime(2026, 9, 1),
+      );
+      removedInstallmentUuid = saved.last.uuid;
+      final groupUuid = saved.first.installmentGroupUuid!;
+      final group = await FinanceStorage.getInstallmentGroup(
+        groupUuid,
+        includeDeleted: true,
+      );
+      await FinanceStorage.saveInstallmentPlan(
+        transaction: FinanceTransaction.fromMap(saved.first.toMap()),
+        totalAmountMinor: 8000,
+        installmentCount: 2,
+        startDate: DateTime(2026, 9, 1),
+        existingInstallments: group,
+      );
+    });
+
+    await _pump(tester, const FinanceTrashScreen());
+    await _tap(
+      tester,
+      _key('finance-trash-restore-transaction-$removedInstallmentUuid'),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await _tap(tester, find.text('只恢复本期'));
+    await _waitFor(
+      tester,
+      () => find.textContaining('超出当前分期计划').evaluate().isNotEmpty,
+    );
+
+    final row = await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'uuid = ?',
+        whereArgs: [removedInstallmentUuid],
+      ),
+    );
+    expect(row!.single['is_deleted'], 1);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('真实预算、贷款、还款、自动化和回收站适配窄屏与桌面', (tester) async {
     await _seed(tester);
     for (final narrow in [true, false]) {

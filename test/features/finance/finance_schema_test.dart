@@ -3053,6 +3053,14 @@ void main() {
       everyElement(predicate<FinanceTransaction>(
           (item) => item.isDeleted || item.installmentCount == 2)),
     );
+    await expectLater(
+      FinanceStorage.restoreTransaction(saved.last.uuid),
+      throwsA(isA<StateError>()),
+    );
+    expect(
+      (await FinanceStorage.getTransaction(saved.last.uuid))!.isDeleted,
+      isTrue,
+    );
 
     await FinanceStorage.deleteInstallmentGroup(groupUuid);
     expect(await FinanceStorage.getInstallmentGroup(groupUuid), isEmpty);
