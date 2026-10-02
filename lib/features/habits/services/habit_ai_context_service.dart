@@ -57,12 +57,16 @@ abstract final class HabitAiContextService {
   static const _weekRangeTerms = [
     '上上周',
     '上上星期',
+    '上上礼拜',
     '上周',
     '上星期',
+    '上礼拜',
     '本周',
     '本星期',
+    '本礼拜',
     '这周',
     '这星期',
+    '这礼拜',
   ];
 
   static final RegExp _monthPattern = RegExp(
@@ -102,7 +106,7 @@ abstract final class HabitAiContextService {
 
   static final RegExp _relativePeriodPattern = RegExp(
     r'最近(?:30天|三十天|7天|七天)|过去(?:30天|三十天|7天|七天)|近(?:30天|三十天|7天|七天)|'
-    r'最近一周|过去一周|近一周|上上(?:周|星期)|上(?:周|星期)|本(?:周|星期)|这(?:周|星期)|'
+    r'最近一周|过去一周|近一周|上上(?:周|星期|礼拜)|上(?:周|星期|礼拜)|本(?:周|星期|礼拜)|这(?:周|星期|礼拜)|'
     r'上上个月|上上月|上个月|上月|本月|这个月|当月|今年|本年|去年|上一年|前年|前一年|'
     r'大前天|大前日|前天|前日|昨天|昨日|今天|今日',
   );
@@ -490,18 +494,24 @@ abstract final class HabitAiContextService {
       to = DateTime(day.year).subtract(const Duration(days: 1));
     } else if (text.contains('今年') || text.contains('本年')) {
       from = DateTime(day.year);
-    } else if (text.contains('上上周') || text.contains('上上星期')) {
+    } else if (text.contains('上上周') ||
+        text.contains('上上星期') ||
+        text.contains('上上礼拜')) {
       final thisMonday = _mondayOf(day);
       from = thisMonday.subtract(const Duration(days: 14));
       to = thisMonday.subtract(const Duration(days: 8));
-    } else if (text.contains('上周') || text.contains('上星期')) {
+    } else if (text.contains('上周') ||
+        text.contains('上星期') ||
+        text.contains('上礼拜')) {
       final thisMonday = _mondayOf(day);
       from = thisMonday.subtract(const Duration(days: 7));
       to = thisMonday.subtract(const Duration(days: 1));
     } else if (text.contains('本周') ||
         text.contains('本星期') ||
+        text.contains('本礼拜') ||
         text.contains('这周') ||
-        text.contains('这星期')) {
+        text.contains('这星期') ||
+        text.contains('这礼拜')) {
       from = _mondayOf(day);
     } else if (_containsAny(text, _recent30DayTerms)) {
       from = day.subtract(const Duration(days: 29));
