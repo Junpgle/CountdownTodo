@@ -1072,8 +1072,8 @@ class AiTodoActionExecutor {
               .inMinutes,
         );
         if (action.hasRemark) updated.remark = action.remark;
-        if (action.reminderMinutes != null) {
-          updated.reminderMinutes = action.reminderMinutes!;
+        if (action.hasReminderMinutes) {
+          updated.reminderMinutes = action.reminderMinutes ?? 0;
         }
       }
       updated.markAsChanged();
