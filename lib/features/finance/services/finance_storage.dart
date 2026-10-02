@@ -52,9 +52,6 @@ abstract final class FinanceStorage {
     _readyFuture = ready;
     try {
       await ready;
-      // Repair existing legacy rows once when attaching a database. Import and
-      // remote-merge paths repair rows introduced while the app is running.
-      if (await _repairLegacyRefundCategories(db) > 0) _notifyChanged();
     } catch (_) {
       if (identical(_readyDatabase, db) && identical(_readyFuture, ready)) {
         _readyDatabase = null;
@@ -122,6 +119,9 @@ abstract final class FinanceStorage {
         }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
     });
+    // Keep the migration inside the shared readiness future so concurrent
+    // readers cannot proceed after catalog setup but before legacy repair.
+    if (await _repairLegacyRefundCategories(db) > 0) _notifyChanged();
   }
 
   static Future<int> _repairLegacyRefundCategories(Database db) async {
