@@ -214,8 +214,8 @@ abstract final class FinanceTextParser {
     r'([一二三四五六日天1-7])',
   );
   static final RegExp _chineseMonthDayPattern = RegExp(
-    r'(?:(?:(\d{4})\s*年|前年|去年|上一年|前一年)\s*)?'
-    r'(十一|十二|十|[一二三四五六七八九]|1[0-2]|0?[1-9])\s*月\s*'
+    r'(?:(?:(\d{4})\s*年|今年|前年|去年|上一年|前一年)\s*)?'
+    r'(十一|十二|十|[一二三四五六七八九]|1[0-2]|0?[1-9])\s*(?:月|/)\s*'
     r'(\d{1,2}|[一二三四五六七八九十廿]{1,3})\s*[日号]?',
   );
   static final RegExp _relativeDayPattern = RegExp(

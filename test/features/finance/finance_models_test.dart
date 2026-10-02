@@ -210,6 +210,12 @@ void main() {
           .transactionDate,
       '2024-09-02',
     );
+    final slashDate = FinanceTextParser.parseQuickEntries(
+      '去年9/2 午餐20元',
+      now: now,
+    ).single;
+    expect(slashDate.transactionDate, '2025-09-02');
+    expect(slashDate.merchant, '午餐');
   });
 
   test('自然语言快速记账拒绝不存在的明确日期', () {
