@@ -1566,6 +1566,55 @@ void main() {
       expect(thirtyDayPreview, contains('专注记录20260903-20261002'));
     });
 
+    test('相对日期区间比较不会静默只注入一个周期', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        TimeLogItem(
+          id: 'last-week',
+          title: '上周专注',
+          startTime: DateTime(2026, 9, 21, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 21, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'recent-days',
+          title: '最近七天专注',
+          startTime: DateTime(2026, 10, 1, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 1, 10).millisecondsSinceEpoch,
+        ),
+      ];
+
+      for (final prompt in [
+        '比较最近7天和上周的效率',
+        '比较最近7天与最近30天的效率',
+        '比较本周和上周的效率',
+      ]) {
+        expect(
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          ),
+          isNull,
+          reason: prompt,
+        );
+        expect(
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          ),
+          isNull,
+          reason: prompt,
+        );
+      }
+    });
+
     test('效率分析按去年、今年和上一自然季度筛选记录', () {
       final now = DateTime(2026, 10, 2, 12);
       final timeLogs =

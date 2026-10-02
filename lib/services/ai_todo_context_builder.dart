@@ -36,6 +36,14 @@ class AiTodoContextBuilder {
     r'(?<![\d一二两三四五六七八九十])(?:最近|过去|近)?\s*'
     r'(?:(\d{1,2}|[一二两三四五六七八九十]{1,3})\s*个月|半年)',
   );
+  static final RegExp _relativeDayRangePattern = RegExp(
+    r'最近(?:7天|七天|30天|三十天|一周)|'
+    r'过去(?:7天|七天|30天|三十天|一周)|'
+    r'近(?:7天|七天|30天|三十天|一周)',
+  );
+  static final RegExp _relativeWeekPeriodPattern = RegExp(
+    r'上上(?:周|星期|礼拜)|上(?:周|星期|礼拜)|本(?:周|星期|礼拜)|这(?:周|星期|礼拜)',
+  );
 
   static AiContextDateRange? resolveCustomInjectionDateRange({
     DateTime? customStart,
@@ -533,7 +541,8 @@ JSON操作块必须且只能使用以下协议：
   }) {
     final nowValue = now ?? DateTime.now();
     if (_hasUnsupportedExplicitDate(userMessage, now: nowValue) ||
-        _hasAmbiguousMonthPeriods(userMessage)) {
+        _hasAmbiguousMonthPeriods(userMessage) ||
+        _hasAmbiguousRelativeDayPeriods(userMessage)) {
       return null;
     }
     final sections = <String>[];
@@ -720,7 +729,8 @@ ${sections.join('\n')}
   }) {
     final nowValue = now ?? DateTime.now();
     if (_hasUnsupportedExplicitDate(userMessage, now: nowValue) ||
-        _hasAmbiguousMonthPeriods(userMessage)) {
+        _hasAmbiguousMonthPeriods(userMessage) ||
+        _hasAmbiguousRelativeDayPeriods(userMessage)) {
       return null;
     }
     final parts = <String>[];
@@ -2838,6 +2848,14 @@ ${lines.isEmpty ? '暂无' : lines}''';
         _explicitIsoDatePattern.allMatches(text).length +
         _explicitChineseDatePattern.allMatches(text).length;
     return monthPeriods + rollingMonthCount + explicitDays > 1;
+  }
+
+  static bool _hasAmbiguousRelativeDayPeriods(String text) {
+    final recentDayPeriodCount = _relativeDayRangePattern.allMatches(text).length;
+    final relativeWeekPeriodCount = _relativeWeekPeriodPattern
+        .allMatches(text)
+        .length;
+    return recentDayPeriodCount + relativeWeekPeriodCount > 1;
   }
 
   static int? _parseRollingMonthCount(String value) =>
