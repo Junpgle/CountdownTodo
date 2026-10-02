@@ -2017,10 +2017,10 @@ abstract final class FinanceStorage {
                 existing.updatedAt != original.updatedAt);
         if (baselineChanged) {
           itemToSave = _mergeRecurringRuleEdits(existing, original, rule);
-          itemToSave.lastGeneratedPeriod =
-              existing.frequency != itemToSave.frequency
-                  ? itemToSave.generationPeriodBefore(DateTime.now())
-                  : _mergeRecurringGenerationPeriod(existing, itemToSave);
+          itemToSave.lastGeneratedPeriod = _editedRecurringGenerationPeriod(
+            existing,
+            itemToSave,
+          );
           itemToSave.markAsChanged();
           _validateRecurringRule(itemToSave);
         } else {
@@ -2028,7 +2028,7 @@ abstract final class FinanceStorage {
               rule.updatedAt <= existing.updatedAt) {
             throw StateError('周期账单已更新，请重新加载后再保存');
           }
-          itemToSave.lastGeneratedPeriod = _mergeRecurringGenerationPeriod(
+          itemToSave.lastGeneratedPeriod = _editedRecurringGenerationPeriod(
             existing,
             rule,
           );
@@ -2212,6 +2212,19 @@ abstract final class FinanceStorage {
       current.effectiveLastGeneratedPeriod,
       incoming.effectiveLastGeneratedPeriod,
     );
+  }
+
+  static String? _editedRecurringGenerationPeriod(
+    FinanceRecurringRule current,
+    FinanceRecurringRule incoming,
+  ) {
+    if (current.frequency != incoming.frequency ||
+        current.isEnabled != incoming.isEnabled ||
+        current.autoGenerate != incoming.autoGenerate ||
+        current.isDeleted != incoming.isDeleted) {
+      return incoming.generationPeriodBefore(DateTime.now());
+    }
+    return _mergeRecurringGenerationPeriod(current, incoming);
   }
 
   static FinanceRecurringRule _mergeRecurringRuleEdits(

@@ -94,6 +94,55 @@ void main() {
       );
     });
 
+    test('重新启用暂停的自动记账规则不会补记暂停期间', () async {
+      final now = DateTime.now();
+      final lastPeriod = financeMonthKey(DateTime(now.year, now.month - 3));
+      final rule = FinanceRecurringRule(
+        uuid: 'resume-paused-auto-rule',
+        name: '暂停期间的订阅',
+        amountMinor: 10000,
+        dayOfMonth: 1,
+        startDate: '$lastPeriod-01',
+        lastGeneratedPeriod: lastPeriod,
+      );
+      await FinanceStorage.saveRecurringRule(rule);
+
+      await FinanceStorage.setRecurringRuleEnabled(rule.uuid, false);
+      await FinanceStorage.setRecurringRuleEnabled(rule.uuid, true);
+
+      expect(
+        await FinanceAutomationService.reconcileCurrentPeriod(now: now),
+        0,
+      );
+      expect(await FinanceStorage.getTransactions(), isEmpty);
+    });
+
+    test('手动记账模式切回自动时不会补记手动期间', () async {
+      final now = DateTime.now();
+      final lastPeriod = financeMonthKey(DateTime(now.year, now.month - 3));
+      final rule = FinanceRecurringRule(
+        uuid: 'resume-auto-generation-rule',
+        name: '手动期间的订阅',
+        amountMinor: 10000,
+        dayOfMonth: 1,
+        startDate: '$lastPeriod-01',
+        lastGeneratedPeriod: lastPeriod,
+        autoGenerate: false,
+      );
+      await FinanceStorage.saveRecurringRule(rule);
+      final original = (await FinanceStorage.getRecurringRule(rule.uuid))!;
+      final updated = FinanceRecurringRule.fromMap(original.toMap())
+        ..autoGenerate = true
+        ..markAsChanged();
+      await FinanceStorage.saveRecurringRule(updated, original: original);
+
+      expect(
+        await FinanceAutomationService.reconcileCurrentPeriod(now: now),
+        0,
+      );
+      expect(await FinanceStorage.getTransactions(), isEmpty);
+    });
+
     test('哈希冲突的周期账单仍各自保留系统提醒', () async {
       for (final uuid in ['rule-0', 'rule-242']) {
         await FinanceStorage.saveRecurringRule(
@@ -449,7 +498,9 @@ void main() {
         expect(
           (await FinanceStorage.getRecurringRule(old.uuid))!
               .lastGeneratedPeriod,
-          '2026-09',
+          current.autoGenerate
+              ? '2026-09'
+              : current.generationPeriodBefore(DateTime.now()),
         );
       });
     }

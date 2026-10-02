@@ -2003,8 +2003,9 @@ class FinanceBudget {
 /// 周期账单规则。
 ///
 /// `dayOfMonth` 在每月/每年的目标月份中使用，遇到短月时自动落在该月
-/// 最后一天。`lastGeneratedPeriod` 是幂等标记：同一周期只允许生成一笔
-/// 自动账单，避免应用重复启动造成重复记账。
+/// 最后一天。`lastGeneratedPeriod` 记录自动生成进度：同一周期只允许生成一笔
+/// 自动账单；规则暂停、删除或切换为手动记账时也会推进进度，避免重新启用后
+/// 补出暂停期间的账单。
 class FinanceRecurringRule {
   String uuid;
   String name;
