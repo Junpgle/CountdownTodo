@@ -411,7 +411,7 @@ abstract final class FinanceTextParser {
       );
       if (draft != null) drafts.add(draft);
     }
-    return _deduplicate(drafts);
+    return drafts;
   }
 
   /// Converts typed results from a vision model into finance drafts while
@@ -439,7 +439,7 @@ abstract final class FinanceTextParser {
         drafts.add(draft);
       }
     }
-    return _deduplicate(drafts);
+    return drafts;
   }
 
   /// Extracts the assistant's separate finance event protocol.
@@ -468,7 +468,7 @@ abstract final class FinanceTextParser {
         }
       }
     }
-    return _deduplicate(drafts);
+    return drafts;
   }
 
   /// Extracts read-only finance queries and confirmation-required mutations.
@@ -628,26 +628,6 @@ abstract final class FinanceTextParser {
             result.containsKey('merchant') ||
             result.containsKey('paymentMethod') ||
             result.containsKey('payment_method'));
-  }
-
-  static List<FinanceEntryDraft> _deduplicate(
-    Iterable<FinanceEntryDraft> drafts,
-  ) {
-    final result = <FinanceEntryDraft>[];
-    final seen = <String>{};
-    for (final draft in drafts) {
-      final key = [
-        draft.type.name,
-        draft.amountMinor,
-        draft.transactionDate,
-        draft.categoryUuid ?? draft.categoryName ?? '',
-        draft.paymentMethodUuid ?? draft.paymentMethodName ?? '',
-        draft.merchant ?? '',
-        draft.note ?? '',
-      ].join('|').toLowerCase();
-      if (seen.add(key)) result.add(draft);
-    }
-    return result;
   }
 
   static List<String> _splitBlocks(String text) {

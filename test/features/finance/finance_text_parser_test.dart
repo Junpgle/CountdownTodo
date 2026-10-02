@@ -80,6 +80,50 @@ void main() {
     expect(drafts[1].amountMinor, 10000);
   });
 
+  test('结构化文本、识别结果和 AI 草稿都保留重复账单', () {
+    final structured = FinanceTextParser.parse(
+      '''#记账
+类型: 支出
+金额: 20
+日期: 今天
+商家: 午餐
+
+#记账
+类型: 支出
+金额: 20
+日期: 今天
+商家: 午餐''',
+      now: fixedNow,
+    );
+    expect(structured, hasLength(2));
+
+    final recognized = FinanceTextParser.fromRecognitionResults([
+      {
+        'itemKind': 'finance',
+        'type': 'expense',
+        'amount': 20,
+        'date': '2026-08-29',
+        'merchant': '午餐',
+      },
+      {
+        'itemKind': 'finance',
+        'type': 'expense',
+        'amount': 20,
+        'date': '2026-08-29',
+        'merchant': '午餐',
+      },
+    ], now: fixedNow);
+    expect(recognized, hasLength(2));
+
+    final assistantDrafts = FinanceTextParser.extractAssistantDrafts(
+      '''[FINANCE_START]
+[{"itemKind":"finance","type":"expense","amount":20,"date":"2026-08-29","merchant":"午餐"},
+ {"itemKind":"finance","type":"expense","amount":20,"date":"2026-08-29","merchant":"午餐"}]
+[FINANCE_END]''',
+    );
+    expect(assistantDrafts, hasLength(2));
+  });
+
   test('不依赖中文输入法也能识别显式账单字段', () {
     const text = 'amount:12.50\ntype:expense';
 
