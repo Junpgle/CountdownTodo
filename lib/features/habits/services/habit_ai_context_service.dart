@@ -54,6 +54,16 @@ abstract final class HabitAiContextService {
     '过去一周',
     '近一周',
   ];
+  static const _weekRangeTerms = [
+    '上上周',
+    '上上星期',
+    '上周',
+    '上星期',
+    '本周',
+    '本星期',
+    '这周',
+    '这星期',
+  ];
 
   static final RegExp _monthPattern = RegExp(
     r'(?:(\d{4})\s*年\s*)?(十一|十二|十|[一二三四五六七八九]|\d{1,2})\s*月(?:份)?',
@@ -251,9 +261,7 @@ abstract final class HabitAiContextService {
           '前日',
           ..._recent7DayTerms,
           ..._recent30DayTerms,
-          '本周',
-          '这周',
-          '上周',
+          ..._weekRangeTerms,
           '本月',
           '这个月',
           '上月',
@@ -282,9 +290,7 @@ abstract final class HabitAiContextService {
           '前日',
           ..._recent7DayTerms,
           ..._recent30DayTerms,
-          '本周',
-          '这周',
-          '上周',
+          ..._weekRangeTerms,
           '本月',
           '这个月',
           '上月',
@@ -493,6 +499,7 @@ abstract final class HabitAiContextService {
       from = thisMonday.subtract(const Duration(days: 7));
       to = thisMonday.subtract(const Duration(days: 1));
     } else if (text.contains('本周') ||
+        text.contains('本星期') ||
         text.contains('这周') ||
         text.contains('这星期')) {
       from = _mondayOf(day);

@@ -110,6 +110,36 @@ void main() {
       expect(summary, contains('2026-09-27 至 2026-10-03'));
     });
 
+    test('resolves week aliases and uses them in follow-ups', () {
+      final testNow = DateTime(2026, 10, 3, 12);
+      for (final (period, expectedRange) in [
+        ('本周', '2026-09-28 至 2026-10-03'),
+        ('本星期', '2026-09-28 至 2026-10-03'),
+        ('这周', '2026-09-28 至 2026-10-03'),
+        ('这星期', '2026-09-28 至 2026-10-03'),
+        ('上周', '2026-09-21 至 2026-09-27'),
+        ('上星期', '2026-09-21 至 2026-09-27'),
+        ('上上周', '2026-09-14 至 2026-09-20'),
+        ('上上星期', '2026-09-14 至 2026-09-20'),
+      ]) {
+        final direct = HabitAiContextService.buildContextInjectionSummary(
+          userMessage: '查看$period习惯进度',
+          goals: const [],
+          now: testNow,
+        );
+        final followUp = HabitAiContextService.buildContextInjectionSummary(
+          userMessage: '那$period呢？',
+          previousUserMessage: '查看2026-06-01至2026-06-30的习惯进度',
+          conversationContext: '习惯进度',
+          goals: const [],
+          now: testNow,
+        );
+
+        expect(direct, contains(expectedRange), reason: period);
+        expect(followUp, contains(expectedRange), reason: period);
+      }
+    });
+
     test('resolves recent-day aliases and treats them as follow-up ranges', () {
       final testNow = DateTime(2026, 10, 3, 12);
       for (final period in [
