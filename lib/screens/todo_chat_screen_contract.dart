@@ -9,6 +9,8 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   bool _isLoading = false;
   String _streamingContent = '';
   String _streamingReasoning = '';
+  List<ChatNativeToolCall> _streamingToolCalls = [];
+  String? _streamingFinishReason;
   List<String> _suggestions = [];
   String _customPrompt = '';
   bool _promptEnabled = true;
@@ -24,6 +26,11 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   String _pendingManualSmartContext = '';
   List<ChatSession> _sessions = [];
   bool _smartContext = true;
+  AiContextMode _contextMode = AiContextMode.functionCalling;
+  bool get _usesContextInjection =>
+      _smartContext && _contextMode == AiContextMode.smartContextInjection;
+  final Map<String, Map<String, dynamic>> _queryToolResults = {};
+  AiQueryToolService _createQueryToolService();
   bool _showInjectedContextPreview = false;
   bool _injectMoreContext = false;
   bool _useCustomInjectRange = false;
@@ -49,6 +56,25 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   List<FixedScheduleItem> _fixedSchedules = [];
   Completer<void>? _cancelGeneration;
   bool _classificationSuggestionInjected = false;
+
+  FinanceDateRange? _financeContextDateRangeOverride() {
+    if (!_useCustomInjectRange ||
+        _customInjectStart == null ||
+        _customInjectEnd == null) {
+      return null;
+    }
+    final start = DateTime(
+      _customInjectStart!.year,
+      _customInjectStart!.month,
+      _customInjectStart!.day,
+    );
+    final selectedEnd = DateTime(
+      _customInjectEnd!.year,
+      _customInjectEnd!.month,
+      _customInjectEnd!.day,
+    );
+    return FinanceDateRange(start, selectedEnd.add(const Duration(days: 1)));
+  }
 
   // 🚀 宽屏适配相关
   bool _sidebarVisible = true;
@@ -100,7 +126,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   Future<void> _loadDeepThinking();
   Future<void> _openTutorialPage();
   void _scrollToBottom();
-  String _buildSystemPrompt({bool nativeToolCalls = false});
+  String _buildSystemPrompt({bool nativeToolCalls = false, bool? queryTools});
   List<Map<String, dynamic>> _buildApiMessages({
     String? pendingUserText,
     bool trackSmartContext = true,
@@ -108,9 +134,14 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
     String habitContext = '',
     bool nativeToolCalls = false,
     bool includeReasoningContent = false,
+    bool? contextInjection,
+    bool? queryTools,
   });
   String _latestUserTextFromHistory();
-  String _injectContext(List<Map<String, dynamic>> apiMessages);
+  String _injectContext(
+    List<Map<String, dynamic>> apiMessages, {
+    bool? enabled,
+  });
   String _buildContextSummary();
   Future<void> _sendMessage();
   Future<void> _pickChatAttachment();
@@ -120,6 +151,8 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
     required String provider,
     bool nativeToolCalls = false,
     bool includeReasoningContent = false,
+    bool? contextInjection,
+    bool? queryTools,
   });
   Future<void> _copyManualPromptFromInput();
   Future<void> _pasteManualReplyFromClipboard();
@@ -218,21 +251,10 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   String _buildRawReplyDebugText(ChatMessage msg);
   Future<void> _showRawReplyDialog(ChatMessage msg);
   Widget _buildMessageBubble(ChatMessage msg, bool isDark);
-  Widget _buildCollapsibleReasoning(
-    String reasoning,
-    bool isDark,
-    bool isStreaming,
-  );
   Widget _buildStreamingBubble(bool isDark);
   Widget _buildInputArea(ColorScheme colorScheme);
   Widget _buildChatAttachmentPreview(
     ChatImageAttachment attachment, {
     bool compact = false,
-  });
-  Widget _buildIconButtonOption({
-    required IconData icon,
-    required bool isSelected,
-    required String tooltip,
-    required Function(bool) onTap,
   });
 }

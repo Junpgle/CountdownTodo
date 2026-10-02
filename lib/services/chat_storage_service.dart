@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import '../models/ai_context_mode.dart';
 import '../models/chat_message.dart';
 import 'ai_action_parser.dart';
 import 'legacy_ai_prompt_sanitizer.dart';
@@ -21,16 +22,16 @@ class ChatSession {
     required this.title,
     DateTime? createdAt,
     DateTime? updatedAt,
-  })  : id = id ?? const Uuid().v4(),
-        createdAt = createdAt ?? DateTime.now(),
-        updatedAt = updatedAt ?? DateTime.now();
+  }) : id = id ?? const Uuid().v4(),
+       createdAt = createdAt ?? DateTime.now(),
+       updatedAt = updatedAt ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'createdAt': createdAt.millisecondsSinceEpoch,
-        'updatedAt': updatedAt.millisecondsSinceEpoch,
-      };
+    'id': id,
+    'title': title,
+    'createdAt': createdAt.millisecondsSinceEpoch,
+    'updatedAt': updatedAt.millisecondsSinceEpoch,
+  };
 
   factory ChatSession.fromJson(Map<String, dynamic> json) {
     return ChatSession(
@@ -62,6 +63,7 @@ class ChatStorageService {
   static const String _chatProviderKey = 'chat_provider';
   static const String _deepThinkingKey = 'chat_deep_thinking';
   static const String _smartContextKey = 'chat_smart_context';
+  static const String _contextModeKey = 'chat_context_mode';
   static const String _showContextPreviewKey = 'chat_show_context_preview';
   static const String _injectMoreContextKey = 'chat_inject_more_context';
 
@@ -477,6 +479,18 @@ class ChatStorageService {
     final prefs = await SharedPreferences.getInstance();
     final scopedKey = await _getScopedKey(_smartContextKey);
     return prefs.getBool(scopedKey) ?? true;
+  }
+
+  static Future<AiContextMode> getContextMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_contextModeKey);
+    return AiContextMode.fromStorage(prefs.getString(scopedKey));
+  }
+
+  static Future<void> setContextMode(AiContextMode mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    final scopedKey = await _getScopedKey(_contextModeKey);
+    await prefs.setString(scopedKey, mode.name);
   }
 
   static Future<void> setSmartContextEnabled(bool enabled) async {

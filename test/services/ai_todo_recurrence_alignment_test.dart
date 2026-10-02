@@ -34,71 +34,75 @@ void main() {
   }
 
   group('AI recurring todo alignment', () {
-    test('chat context exposes occurrence and series identities separately',
-        () {
-      final current = occurrence(
-        id: 'occurrence-current',
-        day: 20,
-        recurrence: RecurrenceType.daily,
-      );
-      final future = occurrence(
-        id: 'occurrence-future',
-        day: 21,
-        recurrence: RecurrenceType.none,
-      );
+    test(
+      'chat context exposes occurrence and series identities separately',
+      () {
+        final current = occurrence(
+          id: 'occurrence-current',
+          day: 20,
+          recurrence: RecurrenceType.daily,
+        );
+        final future = occurrence(
+          id: 'occurrence-future',
+          day: 21,
+          recurrence: RecurrenceType.none,
+        );
 
-      final maps = AiTodoChatLauncher.toChatTodoMaps([current, future]);
-      final futureMap = maps.singleWhere(
-        (todo) => todo['id'] == 'occurrence-future',
-      );
+        final maps = AiTodoChatLauncher.toChatTodoMaps([current, future]);
+        final futureMap = maps.singleWhere(
+          (todo) => todo['id'] == 'occurrence-future',
+        );
 
-      expect(futureMap['recurrence'], 'none');
-      expect(futureMap['recurrenceRule'], 'daily');
-      expect(futureMap['recurrenceSeriesId'], 'series-water');
-      expect(futureMap['recurrenceRole'], 'occurrence');
-      expect(futureMap['timeMode'], 'dateOnly');
-      expect(futureMap['dueDate'], endsWith('23:59'));
+        expect(futureMap['recurrence'], 'none');
+        expect(futureMap['recurrenceRule'], 'daily');
+        expect(futureMap['recurrenceSeriesId'], 'series-water');
+        expect(futureMap['recurrenceRole'], 'occurrence');
+        expect(futureMap['timeMode'], 'dateOnly');
+        expect(futureMap['dueDate'], endsWith('23:59'));
 
-      final prompt = AiTodoContextBuilder.buildSystemPrompt(
-        customPrompt: '{todos}',
-        promptEnabled: true,
-        todos: maps,
-        todoGroups: const [],
-        now: DateTime(2026, 7, 20, 12),
-      );
-      expect(prompt, contains('期次todoId: occurrence-future'));
-      expect(prompt, contains('系列ID: series-water'));
-      expect(prompt, contains('系列规则: daily'));
-      expect(prompt, contains('目标日期: 2026-07-20'));
-      expect(prompt, isNot(contains('日期锚点:')));
-    });
+        final prompt = AiTodoContextBuilder.buildSystemPrompt(
+          customPrompt: '{todos}',
+          promptEnabled: true,
+          todos: maps,
+          todoGroups: const [],
+          now: DateTime(2026, 7, 20, 12),
+        );
+        expect(prompt, contains('期次todoId: occurrence-future'));
+        expect(prompt, contains('系列ID: series-water'));
+        expect(prompt, contains('系列规则: daily'));
+        expect(prompt, contains('目标日期: 2026-07-20'));
+        expect(prompt, isNot(contains('日期锚点:')));
+      },
+    );
 
-    test('parser preserves explicit null and recurrence scope patch intent',
-        () {
-      const response = '''
+    test(
+      'parser preserves explicit null and recurrence scope patch intent',
+      () {
+        const response = '''
 [ACTION_START]
 [{"action":"update_todo","updates":[{"todoId":"occurrence-current","timeMode":"unscheduled","dueDate":null,"recurrence":"none","recurrenceSeriesId":"series-water","recurrenceScope":"future"}]}]
 [ACTION_END]
 ''';
 
-      final action = AiActionParser.extractTodoActions(
-        response,
-        originalText: '从本期开始结束循环并清空日期',
-      ).single;
+        final action = AiActionParser.extractTodoActions(
+          response,
+          originalText: '从本期开始结束循环并清空日期',
+        ).single;
 
-      expect(action.hasDueDate, isTrue);
-      expect(action.dueDate, isNull);
-      expect(action.hasTimeMode, isTrue);
-      expect(action.hasRecurrence, isTrue);
-      expect(action.recurrence, 'none');
-      expect(action.recurrenceSeriesId, 'series-water');
-      expect(action.appliesToFutureOccurrences, isTrue);
+        expect(action.hasDueDate, isTrue);
+        expect(action.dueDate, isNull);
+        expect(action.hasTimeMode, isTrue);
+        expect(action.hasRecurrence, isTrue);
+        expect(action.recurrence, 'none');
+        expect(action.recurrenceSeriesId, 'series-water');
+        expect(action.appliesToFutureOccurrences, isTrue);
 
-      final restored = AiTodoAction.fromJson(action.toJson());
-      expect(restored.hasDueDate, isTrue);
-      expect(restored.hasRecurrence, isTrue);
-      expect(restored.appliesToFutureOccurrences, isTrue);
-    });
+        final restored = AiTodoAction.fromJson(action.toJson());
+        expect(restored.hasDueDate, isTrue);
+        expect(restored.hasRecurrence, isTrue);
+        expect(restored.appliesToFutureOccurrences, isTrue);
+      },
+    );
 
     test('omitted recurrence keeps active rule and full todo metadata', () {
       final current = occurrence(
@@ -152,19 +156,21 @@ void main() {
 
       final result = AiTodoActionExecutor.execute(
         actions: [action],
-        existingTodos:
-            AiTodoChatLauncher.toChatTodoMaps([past, current, future]),
+        existingTodos: AiTodoChatLauncher.toChatTodoMaps([
+          past,
+          current,
+          future,
+        ]),
       );
 
+      expect(result.updatedTodos.map((todo) => todo.id).toSet(), {
+        'occurrence-current',
+        'occurrence-future',
+      });
       expect(
-        result.updatedTodos.map((todo) => todo.id).toSet(),
-        {'occurrence-current', 'occurrence-future'},
+        result.updatedTodos,
+        everyElement(predicate<TodoItem>((todo) => todo.title == '补充水分')),
       );
-      expect(
-          result.updatedTodos,
-          everyElement(predicate<TodoItem>(
-            (todo) => todo.title == '补充水分',
-          )));
       expect(
         result.updatedTodos
             .singleWhere((todo) => todo.id == 'occurrence-current')
@@ -179,33 +185,35 @@ void main() {
       );
     });
 
-    test('complete remains occurrence-only even if model emits future scope',
-        () {
-      final current = occurrence(
-        id: 'occurrence-current',
-        day: 20,
-        recurrence: RecurrenceType.daily,
-      );
-      final future = occurrence(
-        id: 'occurrence-future',
-        day: 21,
-        recurrence: RecurrenceType.none,
-      );
-      final action = AiTodoAction(
-        type: AiTodoActionType.completeTodo,
-        todoId: current.id,
-        recurrenceScope: 'future',
-      );
+    test(
+      'complete remains occurrence-only even if model emits future scope',
+      () {
+        final current = occurrence(
+          id: 'occurrence-current',
+          day: 20,
+          recurrence: RecurrenceType.daily,
+        );
+        final future = occurrence(
+          id: 'occurrence-future',
+          day: 21,
+          recurrence: RecurrenceType.none,
+        );
+        final action = AiTodoAction(
+          type: AiTodoActionType.completeTodo,
+          todoId: current.id,
+          recurrenceScope: 'future',
+        );
 
-      final result = AiTodoActionExecutor.execute(
-        actions: [action],
-        existingTodos: AiTodoChatLauncher.toChatTodoMaps([current, future]),
-      );
+        final result = AiTodoActionExecutor.execute(
+          actions: [action],
+          existingTodos: AiTodoChatLauncher.toChatTodoMaps([current, future]),
+        );
 
-      expect(result.updatedTodos, hasLength(1));
-      expect(result.updatedTodos.single.id, 'occurrence-current');
-      expect(result.updatedTodos.single.isDone, isTrue);
-    });
+        expect(result.updatedTodos, hasLength(1));
+        expect(result.updatedTodos.single.id, 'occurrence-current');
+        expect(result.updatedTodos.single.isDone, isTrue);
+      },
+    );
 
     test('ending recurrence keeps target and tombstones generated future', () {
       final current = occurrence(
@@ -299,38 +307,41 @@ void main() {
       expect(rejected.newTodos, isEmpty);
       expect(missingAnchor.isAdded, isFalse);
       expect(accepted.newTodos, hasLength(1));
-      expect(accepted.newTodos.single.recurrenceSeriesId,
-          accepted.newTodos.single.id);
+      expect(
+        accepted.newTodos.single.recurrenceSeriesId,
+        accepted.newTodos.single.id,
+      );
       expect(accepted.newTodos.single.isDateOnly, isTrue);
     });
 
     test(
-        'legacy plan_todos schedules an existing todo instead of duplicating it',
-        () {
-      const response = '''
+      'legacy plan_todos schedules an existing todo instead of duplicating it',
+      () {
+        const response = '''
 [ACTION_START]
 [{"action":"plan_todos","todos":[{"title":"复习高数","startTime":"2026-07-20 19:00","dueDate":"2026-07-20 20:00"}]}]
 [ACTION_END]
 ''';
 
-      final actions = AiActionParser.extractTodoActions(
-        response,
-        originalText: '帮我规划今天的待办',
-        existingTodoTitles: const {'todo-math': '复习高数'},
-      );
-      final result = AiTodoActionExecutor.execute(
-        actions: actions,
-        existingTodos: const [
-          {'id': 'todo-math', 'title': '复习高数'},
-        ],
-      );
+        final actions = AiActionParser.extractTodoActions(
+          response,
+          originalText: '帮我规划今天的待办',
+          existingTodoTitles: const {'todo-math': '复习高数'},
+        );
+        final result = AiTodoActionExecutor.execute(
+          actions: actions,
+          existingTodos: const [
+            {'id': 'todo-math', 'title': '复习高数'},
+          ],
+        );
 
-      expect(actions.single.type, AiTodoActionType.createPlanBlock);
-      expect(actions.single.todoId, 'todo-math');
-      expect(result.newTodos, isEmpty);
-      expect(result.newPlanBlocks, hasLength(1));
-      expect(result.newPlanBlocks.single.todoId, 'todo-math');
-    });
+        expect(actions.single.type, AiTodoActionType.createPlanBlock);
+        expect(actions.single.todoId, 'todo-math');
+        expect(result.newTodos, isEmpty);
+        expect(result.newPlanBlocks, hasLength(1));
+        expect(result.newPlanBlocks.single.todoId, 'todo-math');
+      },
+    );
 
     test('unmatched legacy plan_todos cannot create a duplicate todo', () {
       const response = '''
@@ -348,31 +359,33 @@ void main() {
       expect(actions, isEmpty);
     });
 
-    test('actionless planning payload resolves an exact existing todo only',
-        () {
-      const response = '''
+    test(
+      'actionless planning payload resolves an exact existing todo only',
+      () {
+        const response = '''
 [ACTION_START]
 [{"todos":[{"title":"复习高数","startTime":"2026-07-20 19:00","endTime":"2026-07-20 20:00"}]}]
 [ACTION_END]
 ''';
 
-      final actions = AiActionParser.extractTodoActions(
-        response,
-        originalText: '帮我规划今天的待办',
-        existingTodoTitles: const {'todo-math': '复习高数'},
-      );
-      final result = AiTodoActionExecutor.execute(
-        actions: actions,
-        existingTodos: const [
-          {'id': 'todo-math', 'title': '复习高数'},
-        ],
-      );
+        final actions = AiActionParser.extractTodoActions(
+          response,
+          originalText: '帮我规划今天的待办',
+          existingTodoTitles: const {'todo-math': '复习高数'},
+        );
+        final result = AiTodoActionExecutor.execute(
+          actions: actions,
+          existingTodos: const [
+            {'id': 'todo-math', 'title': '复习高数'},
+          ],
+        );
 
-      expect(actions.single.type, AiTodoActionType.createPlanBlock);
-      expect(actions.single.todoId, 'todo-math');
-      expect(result.newTodos, isEmpty);
-      expect(result.newPlanBlocks, hasLength(1));
-    });
+        expect(actions.single.type, AiTodoActionType.createPlanBlock);
+        expect(actions.single.todoId, 'todo-math');
+        expect(result.newTodos, isEmpty);
+        expect(result.newPlanBlocks, hasLength(1));
+      },
+    );
 
     test('actionless todo payload is rejected instead of creating a todo', () {
       const response = '''
@@ -395,23 +408,24 @@ void main() {
     });
 
     test(
-        'executor rejects a legacy plan_todos action without a resolved target',
-        () {
-      final action = AiTodoAction(
-        type: AiTodoActionType.planTodos,
-        title: '复习高数',
-        startTime: '2026-07-20 19:00',
-        dueDate: '2026-07-20 20:00',
-      );
+      'executor rejects a legacy plan_todos action without a resolved target',
+      () {
+        final action = AiTodoAction(
+          type: AiTodoActionType.planTodos,
+          title: '复习高数',
+          startTime: '2026-07-20 19:00',
+          dueDate: '2026-07-20 20:00',
+        );
 
-      final result = AiTodoActionExecutor.execute(
-        actions: [action],
-        existingTodos: const [],
-      );
+        final result = AiTodoActionExecutor.execute(
+          actions: [action],
+          existingTodos: const [],
+        );
 
-      expect(result.newTodos, isEmpty);
-      expect(action.isAdded, isFalse);
-    });
+        expect(result.newTodos, isEmpty);
+        expect(action.isAdded, isFalse);
+      },
+    );
 
     test('action protocol documents recurrence occurrence safety', () {
       final prompt = AiTodoContextBuilder.buildActionProtocolPrompt('修改循环待办');
@@ -423,8 +437,9 @@ void main() {
     });
 
     test('planning protocol prioritizes plan blocks over todo creation', () {
-      final prompt =
-          AiTodoContextBuilder.buildActionProtocolPrompt('帮我规划今天的待办');
+      final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(
+        '帮我规划今天的待办',
+      );
 
       expect(prompt, contains('- create_plan_block:'));
       expect(prompt, contains('禁止用create_todo复制已有待办'));
@@ -511,27 +526,30 @@ void main() {
       expect(prompt, isNot(contains('要创建成习惯，还是循环待办')));
     });
 
-    test('automatic classification selects one active series representative',
-        () {
-      final current = occurrence(
-        id: 'occurrence-current',
-        day: 20,
-        recurrence: RecurrenceType.daily,
-      );
-      final future = occurrence(
-        id: 'occurrence-future',
-        day: 21,
-        recurrence: RecurrenceType.none,
-      );
+    test(
+      'automatic classification selects one active series representative',
+      () {
+        final current = occurrence(
+          id: 'occurrence-current',
+          day: 20,
+          recurrence: RecurrenceType.daily,
+        );
+        final future = occurrence(
+          id: 'occurrence-future',
+          day: 21,
+          recurrence: RecurrenceType.none,
+        );
 
-      final representatives =
-          TodoClassificationService.seriesRepresentativesForTest(
-        [future, current],
-      );
+        final representatives =
+            TodoClassificationService.seriesRepresentativesForTest([
+              future,
+              current,
+            ]);
 
-      expect(representatives, hasLength(1));
-      expect(representatives.single.id, 'occurrence-current');
-    });
+        expect(representatives, hasLength(1));
+        expect(representatives.single.id, 'occurrence-current');
+      },
+    );
   });
 
   group('AI fixed schedule alignment', () {
@@ -595,51 +613,64 @@ void main() {
 
       expect(created.date, '2026-07-20');
       expect(
-          created.startTime, DateTime(2026, 7, 20, 10).millisecondsSinceEpoch);
+        created.startTime,
+        DateTime(2026, 7, 20, 10).millisecondsSinceEpoch,
+      );
       expect(created.endTime, isNull);
       expect(created.source, FixedScheduleSource.ai);
       expect(created.location, '第一会议室');
       expect(created.reminderMinutes, [15, 60]);
     });
 
-    test('materializes recurring schedules into independently addressed dates',
-        () {
-      final action = AiTodoAction.fromJson({
-        'action': 'create_schedule',
-        'title': '晨会',
-        'date': '2026-07-20',
-        'startTime': '2026-07-20 09:00',
-        'endTime': '2026-07-20 09:30',
-        'recurrence': 'daily',
-        'recurrenceEndDate': '2026-07-22',
-      });
+    test(
+      'materializes recurring schedules into independently addressed dates',
+      () {
+        final action = AiTodoAction.fromJson({
+          'action': 'create_schedule',
+          'title': '晨会',
+          'date': '2026-07-20',
+          'startTime': '2026-07-20 09:00',
+          'endTime': '2026-07-20 09:30',
+          'recurrence': 'daily',
+          'recurrenceEndDate': '2026-07-22',
+        });
 
-      final result = AiTodoActionExecutor.execute(
-        actions: [action],
-        existingTodos: const [],
-      );
+        final result = AiTodoActionExecutor.execute(
+          actions: [action],
+          existingTodos: const [],
+        );
 
-      expect(result.newFixedSchedules, hasLength(3));
-      expect(
-        result.newFixedSchedules.map((item) => item.date),
-        ['2026-07-20', '2026-07-21', '2026-07-22'],
-      );
-      expect(
-        result.newFixedSchedules.map((item) => item.id).toSet(),
-        hasLength(3),
-      );
-      expect(
-        result.newFixedSchedules.map((item) => item.recurrenceSeriesId).toSet(),
-        hasLength(1),
-      );
-    });
+        expect(result.newFixedSchedules, hasLength(3));
+        expect(result.newFixedSchedules.map((item) => item.date), [
+          '2026-07-20',
+          '2026-07-21',
+          '2026-07-22',
+        ]);
+        expect(
+          result.newFixedSchedules.map((item) => item.id).toSet(),
+          hasLength(3),
+        );
+        expect(
+          result.newFixedSchedules
+              .map((item) => item.recurrenceSeriesId)
+              .toSet(),
+          hasLength(1),
+        );
+      },
+    );
 
     test('future cancellation does not touch past schedule occurrences', () {
-      final past =
-          schedule(id: 'past', day: 19, recurrence: RecurrenceType.none);
+      final past = schedule(
+        id: 'past',
+        day: 19,
+        recurrence: RecurrenceType.none,
+      );
       final current = schedule(id: 'current', day: 20);
-      final future =
-          schedule(id: 'future', day: 21, recurrence: RecurrenceType.none);
+      final future = schedule(
+        id: 'future',
+        day: 21,
+        recurrence: RecurrenceType.none,
+      );
       final action = AiTodoAction(
         type: AiTodoActionType.cancelFixedSchedule,
         scheduleId: current.id,
@@ -653,15 +684,17 @@ void main() {
         existingFixedSchedules: [past, current, future],
       );
 
-      expect(
-        result.updatedFixedSchedules.map((item) => item.id).toSet(),
-        {'current', 'future'},
-      );
+      expect(result.updatedFixedSchedules.map((item) => item.id).toSet(), {
+        'current',
+        'future',
+      });
       expect(
         result.updatedFixedSchedules,
-        everyElement(predicate<FixedScheduleItem>(
-          (item) => item.status == FixedScheduleStatus.cancelled,
-        )),
+        everyElement(
+          predicate<FixedScheduleItem>(
+            (item) => item.status == FixedScheduleStatus.cancelled,
+          ),
+        ),
       );
       expect(past.status, FixedScheduleStatus.scheduled);
     });
@@ -706,33 +739,39 @@ void main() {
       );
     });
 
-    test('recognition prompts enforce current item and recurrence semantics',
-        () {
-      expect(LLMConfig.defaultTextPrompt, contains('location'));
-      expect(LLMConfig.defaultTextPrompt, contains('不得默认今天'));
-      expect(LLMConfig.defaultTextPrompt, contains('fixedSchedule默认15'));
-      expect(
-          LLMConfig.defaultTextPrompt, contains('普通todo只输出timeMode和dueDate'));
-      expect(
-          LLMConfig.defaultTextPrompt, isNot(contains('普通todo禁止输出startTime')));
-      expect(LLMConfig.defaultVisionPrompt, contains('保留recurrence'));
-      expect(
-        LLMConfig.itemSemanticGuardrailPrompt,
-        allOf(
-          contains('CDT_RECOGNITION_PROTOCOL_V2'),
-          contains('优先于前文'),
-          contains('禁止默认今天'),
-          contains('fixedSchedule地点使用location字段'),
-        ),
-      );
-      expect(ChatStorageService.defaultPrompt, isNot(contains('plan_todos')));
-      final migratedPrompt = ChatStorageService.ensureCurrentPromptProtocol(
-        '自定义提示词：请帮助用户安排事项\n旧协议：plan_todos',
-      );
-      expect(migratedPrompt, contains('CDT_CHAT_PROTOCOL_V2'));
-      expect(migratedPrompt, contains('create_plan_block'));
-      expect(migratedPrompt, isNot(contains('plan_todos')));
-    });
+    test(
+      'recognition prompts enforce current item and recurrence semantics',
+      () {
+        expect(LLMConfig.defaultTextPrompt, contains('location'));
+        expect(LLMConfig.defaultTextPrompt, contains('不得默认今天'));
+        expect(LLMConfig.defaultTextPrompt, contains('fixedSchedule默认15'));
+        expect(
+          LLMConfig.defaultTextPrompt,
+          contains('普通todo只输出timeMode和dueDate'),
+        );
+        expect(
+          LLMConfig.defaultTextPrompt,
+          isNot(contains('普通todo禁止输出startTime')),
+        );
+        expect(LLMConfig.defaultVisionPrompt, contains('保留recurrence'));
+        expect(
+          LLMConfig.itemSemanticGuardrailPrompt,
+          allOf(
+            contains('CDT_RECOGNITION_PROTOCOL_V2'),
+            contains('优先于前文'),
+            contains('禁止默认今天'),
+            contains('fixedSchedule地点使用location字段'),
+          ),
+        );
+        expect(ChatStorageService.defaultPrompt, isNot(contains('plan_todos')));
+        final migratedPrompt = ChatStorageService.ensureCurrentPromptProtocol(
+          '自定义提示词：请帮助用户安排事项\n旧协议：plan_todos',
+        );
+        expect(migratedPrompt, contains('CDT_CHAT_PROTOCOL_V2'));
+        expect(migratedPrompt, contains('create_plan_block'));
+        expect(migratedPrompt, isNot(contains('plan_todos')));
+      },
+    );
 
     test('image prompt adds compact island content to saved prompts', () {
       final config = LLMConfig(
@@ -936,22 +975,30 @@ void main() {
       expect(thirtyDayContext, isNot(contains('future-log')));
       expect(thirtyDayPreview, contains('专注记录20260903-20261002'));
     });
+
     test('效率分析按去年、今年和上一自然季度筛选记录', () {
       final now = DateTime(2026, 10, 2, 12);
-      final timeLogs = [
-        ('last-year', DateTime(2025, 12, 31, 9)),
-        ('this-year-start', DateTime(2026, 1, 1, 9)),
-        ('previous-quarter', DateTime(2026, 6, 30, 9)),
-        ('last-quarter-start', DateTime(2026, 7, 1, 9)),
-        ('last-quarter-end', DateTime(2026, 9, 30, 9)),
-        ('this-quarter', DateTime(2026, 10, 1, 9)),
-        ('future', DateTime(2026, 10, 3, 9)),
-      ].map((entry) => TimeLogItem(
-        id: entry.$1,
-        title: entry.$1,
-        startTime: entry.$2.millisecondsSinceEpoch,
-        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
-      )).toList();
+      final timeLogs =
+          [
+                ('last-year', DateTime(2025, 12, 31, 9)),
+                ('this-year-start', DateTime(2026, 1, 1, 9)),
+                ('previous-quarter', DateTime(2026, 6, 30, 9)),
+                ('last-quarter-start', DateTime(2026, 7, 1, 9)),
+                ('last-quarter-end', DateTime(2026, 9, 30, 9)),
+                ('this-quarter', DateTime(2026, 10, 1, 9)),
+                ('future', DateTime(2026, 10, 3, 9)),
+              ]
+              .map(
+                (entry) => TimeLogItem(
+                  id: entry.$1,
+                  title: entry.$1,
+                  startTime: entry.$2.millisecondsSinceEpoch,
+                  endTime: entry.$2
+                      .add(const Duration(hours: 1))
+                      .millisecondsSinceEpoch,
+                ),
+              )
+              .toList();
 
       String contextFor(String prompt) =>
           AiTodoContextBuilder.buildContextInjection(
@@ -1286,6 +1333,7 @@ void main() {
       expect(monthDay, isNot(contains('future')));
       expect(previewFor('分析10月1日效率'), contains('专注记录20261001'));
     });
+
     test('前后相对日效率范围只筛选对应自然日', () {
       final now = DateTime(2026, 10, 2, 12);
       final cases = [

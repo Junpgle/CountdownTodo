@@ -12,6 +12,7 @@ class AiTodoContextBuilder {
     required String customPrompt,
     required bool promptEnabled,
     bool nativeToolCalls = false,
+    bool queryTools = false,
     DateTime? now,
   }) {
     final nowValue = now ?? DateTime.now();
@@ -30,14 +31,14 @@ class AiTodoContextBuilder {
     }
     resolvedBasePrompt = resolvedBasePrompt
         .replaceAll('{now}', nowText)
-        .replaceAll('{todos}', '待办将按需通过智能上下文注入');
+        .replaceAll('{todos}', queryTools ? '待办需按需调用查询工具读取' : '待办将按需通过智能上下文注入');
     resolvedBasePrompt = _compactCapabilitySection(resolvedBasePrompt);
     final sharedRules = nativeToolCalls
         ? '''【全局规则】
 所有时间按本地时间理解，并以当前基准时间和括号中的时区判断相对日期。
 待办表示待完成的结果；规划块是可调整的执行时段；课程、会议、预约等外部约束是固定日程。没有日期和具体时间时不要默认今天全天。
 重复是周期机制，不等于习惯；周期事项未明确选择习惯或循环待办时先询问。循环修改默认只作用于本期，只有用户明确要求才作用于本期及以后。
-仅对用户明确提出的数据变更调用本轮提供的工具。工具调用只生成待确认草案，不直接保存、删除或声称操作已完成；不确定对象或缺少关键信息时先追问。'''
+仅对用户明确提出的数据变更调用propose_*工具。这些调用只生成待确认草案，不直接保存、删除或声称操作已完成；query_*工具用于只读查询，可按需调用。不确定对象或缺少关键信息时先追问。'''
         : '''【时间规则】
 所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算。
 
@@ -52,7 +53,10 @@ class AiTodoContextBuilder {
     return text.replaceFirst(pattern, '【你的能力】\n按本轮动作协议执行，仅保留当前问题相关能力。');
   }
 
-  static String buildActionProtocolPrompt(String userMessage) {
+  static String buildActionProtocolPrompt(
+    String userMessage, {
+    String previousUserMessage = '',
+  }) {
     final actions = <String>[];
     void add(String line) {
       if (!actions.contains(line)) actions.add(line);
@@ -67,7 +71,7 @@ class AiTodoContextBuilder {
         userMessage.toLowerCase().contains('habit');
     final explicitlyTargetsHabit =
         _matchesAny(userMessage, _habitTypeKeywords) ||
-            userMessage.toLowerCase().contains('habit');
+        userMessage.toLowerCase().contains('habit');
     final explicitlyTargetsTodo = _matchesAny(userMessage, _todoTypeKeywords);
     final requestsHabitAction =
         mentionsHabit &&
@@ -83,10 +87,18 @@ class AiTodoContextBuilder {
     final ambiguousHabitTodoChoice =
         unresolvedHabitTodoChoice &&
         !_looksLikeInformationQuestion(userMessage);
+    final contextualTodoMutation =
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          _shouldInjectTodoContext,
+        ) &&
+        _matchesAny(userMessage, _existingTodoKeywords);
     final requestsTodoAction =
-        !requestsHabitAction &&
+        (!requestsHabitAction || explicitlyTargetsTodo) &&
         !unresolvedHabitTodoChoice &&
-        (_shouldInjectTodoContext(userMessage) ||
+        (contextualTodoMutation ||
+            _shouldInjectTodoContext(userMessage) ||
             _matchesAny(userMessage, _createTodoKeywords) ||
             _matchesAny(userMessage, _recurrenceKeywords) ||
             userMessage.contains('待办') ||
@@ -94,7 +106,7 @@ class AiTodoContextBuilder {
     final requestsScheduleAction = isPlanningRequest
         ? _matchesAny(userMessage, _fixedScheduleEventKeywords)
         : _shouldInjectFixedScheduleContext(userMessage) ||
-            _matchesAny(userMessage, _fixedScheduleKeywords);
+              _matchesAny(userMessage, _fixedScheduleKeywords);
     final requestsFinanceAction =
         _matchesAny(userMessage, _financeKeywords) ||
         userMessage.contains('#记账') ||
@@ -142,7 +154,7 @@ class AiTodoContextBuilder {
     }
     if (requestsFinanceAction) {
       add(
-        '- 记账草案：回复正文末尾追加 [FINANCE_START]...[FINANCE_END]，其中必须是JSON数组；每笔使用 {"type":"expense|income|refund","amount":28.50,"category":"餐饮","categoryUuid":null,"merchant":"午餐","date":"YYYY-MM-DD","paymentMethod":"微信","paymentMethodUuid":null,"note":"备注"}，金额单位为元，缺失的可选字段用null；若提供本地记账目录，UUID只能复制目录中的真实值；只生成草案，不要声称已保存',
+        '- 记账草案：回复正文末尾追加 [FINANCE_START]...[FINANCE_END]，其中必须是JSON数组；每笔使用 {"type":"expense|income|refund","amount":28.50,"category":"餐饮","categoryUuid":null,"merchant":"午餐","date":"YYYY-MM-DD","paymentMethod":"微信","paymentMethodUuid":null,"note":"备注"}，金额单位为元，缺失的可选字段用null；若提供本地记账目录，UUID只能复制目录中的真实值；只生成草案并告知用户在应用显示的“待确认记账”卡片中核对后点击“编辑并保存”；聊天中的“确认/确定”不会保存账单，不得承诺收到文字确认后代为保存，也不得声称已保存',
       );
       add(
         '- 记账与取餐码双识别：同一条消息同时包含账单和取餐/取件信息时，两者都保留，记账放FINANCE块，取餐放ACTION块，禁止二选一',
@@ -228,9 +240,9 @@ class AiTodoContextBuilder {
     if (actions.isEmpty) {
       add(
         unresolvedHabitTodoChoice
-          ? '- 本轮不生成结构化创建操作：如果用户是在咨询周期性安排，直接回答；如果用户想创建但未选择类型，先询问习惯或循环待办'
-          : mentionsHabit
-              ? '- 本轮是习惯信息咨询，不要生成结构化操作'
+            ? '- 本轮不生成结构化创建操作：如果用户是在咨询周期性安排，直接回答；如果用户想创建但未选择类型，先询问习惯或循环待办'
+            : mentionsHabit
+            ? '- 本轮是习惯信息咨询，不要生成结构化操作'
             : '- create_todo / update_todo / complete_todo / delete_todo',
       );
     }
@@ -385,6 +397,7 @@ JSON操作块必须且只能使用以下协议：
   /// 根据用户消息关键词，返回需要注入的上下文片段。无匹配返回 null。
   static String? buildContextInjection({
     required String userMessage,
+    String previousUserMessage = '',
     required List<CourseItem> courses,
     required List<TimeLogItem> timeLogs,
     List<TodoGroup> todoGroups = const [],
@@ -400,17 +413,89 @@ JSON操作块必须且只能使用以下协议：
   }) {
     final nowValue = now ?? DateTime.now();
     final sections = <String>[];
+    final injectCourseContext =
+        _shouldInjectCourseContext(userMessage) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          _shouldInjectCourseContext,
+        );
+    final injectFixedScheduleContext =
+        _shouldInjectFixedScheduleContext(userMessage) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          _shouldInjectFixedScheduleContext,
+        );
+    final injectTodoContext =
+        _shouldInjectTodoContext(userMessage) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          _shouldInjectTodoContext,
+        );
+    final injectCountdownContext =
+        _matchesAny(userMessage, _countdownKeywords) ||
+        _looksLikeCountdownQuery(userMessage) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          (text) =>
+              _matchesAny(text, _countdownKeywords) ||
+              _looksLikeCountdownQuery(text),
+        );
+    final injectPomodoroTagContext =
+        _matchesAny(userMessage, _tagKeywords) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          (text) => _matchesAny(text, _tagKeywords),
+        );
+    final injectPlanContext =
+        _shouldInjectPlanContext(userMessage) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          _shouldInjectPlanContext,
+        );
+    final injectFocusContext =
+        _shouldInjectFocusContext(userMessage) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          _shouldInjectFocusContext,
+        );
+    final injectTodoGroupContext =
+        _matchesAny(userMessage, _groupKeywords) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          (text) => _matchesAny(text, _groupKeywords),
+        );
+    final injectConflictContext =
+        _matchesAny(userMessage, _conflictKeywords) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          (text) => _matchesAny(text, _conflictKeywords),
+        );
+    final injectTeamContext =
+        _matchesAny(userMessage, _teamKeywords) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          (text) => _matchesAny(text, _teamKeywords),
+        );
 
-    if (_shouldInjectCourseContext(userMessage) && courses.isNotEmpty) {
+    if (injectCourseContext && courses.isNotEmpty) {
       sections.add(_formatCourses(courses, userMessage, nowValue));
     }
-    if (_shouldInjectFixedScheduleContext(userMessage) &&
-        fixedSchedules.isNotEmpty) {
+    if (injectFixedScheduleContext && fixedSchedules.isNotEmpty) {
       sections.add(
         _formatFixedSchedules(fixedSchedules, userMessage, nowValue),
       );
     }
-    if (_shouldInjectTodoContext(userMessage) && todos.isNotEmpty) {
+    if (injectTodoContext && todos.isNotEmpty) {
       sections.add(
         _formatTodos(
           todos,
@@ -423,22 +508,18 @@ JSON操作块必须且只能使用以下协议：
         sections.add('分类/文件夹（随待办注入）:\n${_formatGroups(todoGroups)}');
       }
     }
-    if (!_shouldInjectTodoContext(userMessage) &&
-        _matchesAny(userMessage, _groupKeywords) &&
-        todoGroups.isNotEmpty) {
+    if (!injectTodoContext && injectTodoGroupContext && todoGroups.isNotEmpty) {
       sections.add('分类/文件夹:\n${_formatGroups(todoGroups)}');
     }
-    if ((_matchesAny(userMessage, _countdownKeywords) ||
-            _looksLikeCountdownQuery(userMessage)) &&
-        countdowns.isNotEmpty) {
+    if (injectCountdownContext && countdowns.isNotEmpty) {
       sections.add(
         _formatCountdowns(countdowns, userMessage: userMessage, now: nowValue),
       );
     }
-    if (_matchesAny(userMessage, _tagKeywords) && pomodoroTags.isNotEmpty) {
+    if (injectPomodoroTagContext && pomodoroTags.isNotEmpty) {
       sections.add('番茄标签:\n${_formatPomodoroTags(pomodoroTags)}');
     }
-    if (_matchesAny(userMessage, _planKeywords) && planBlocks.isNotEmpty) {
+    if (injectPlanContext && planBlocks.isNotEmpty) {
       sections.add(
         _formatPlanBlocks(
           planBlocks,
@@ -448,8 +529,7 @@ JSON操作块必须且只能使用以下协议：
         ),
       );
     }
-    if ((_matchesAny(userMessage, _timeLogKeywords) ||
-            _looksLikeFocusQuery(userMessage)) &&
+    if (injectFocusContext &&
         (timeLogs.isNotEmpty ||
             pomodoroRecords.isNotEmpty ||
             planBlocks.isNotEmpty)) {
@@ -467,10 +547,10 @@ JSON操作块必须且只能使用以下协议：
         );
       }
     }
-    if (_matchesAny(userMessage, _conflictKeywords) && conflicts.isNotEmpty) {
+    if (injectConflictContext && conflicts.isNotEmpty) {
       sections.add(_formatConflicts(conflicts));
     }
-    if (_matchesAny(userMessage, _teamKeywords) && teams.isNotEmpty) {
+    if (injectTeamContext && teams.isNotEmpty) {
       sections.add(_formatTeams(teams));
     }
 
@@ -490,6 +570,7 @@ ${sections.join('\n')}
   /// 返回用于输入区提示的注入摘要，不包含完整上下文正文。
   static String? buildContextInjectionSummary({
     required String userMessage,
+    String previousUserMessage = '',
     required List<CourseItem> courses,
     required List<TimeLogItem> timeLogs,
     List<TodoGroup> todoGroups = const [],
@@ -505,8 +586,81 @@ ${sections.join('\n')}
   }) {
     final nowValue = now ?? DateTime.now();
     final parts = <String>[];
+    final injectCourseContext =
+        _shouldInjectCourseContext(userMessage) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          _shouldInjectCourseContext,
+        );
+    final injectFixedScheduleContext =
+        _shouldInjectFixedScheduleContext(userMessage) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          _shouldInjectFixedScheduleContext,
+        );
+    final injectTodoContext =
+        _shouldInjectTodoContext(userMessage) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          _shouldInjectTodoContext,
+        );
+    final injectCountdownContext =
+        _matchesAny(userMessage, _countdownKeywords) ||
+        _looksLikeCountdownQuery(userMessage) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          (text) =>
+              _matchesAny(text, _countdownKeywords) ||
+              _looksLikeCountdownQuery(text),
+        );
+    final injectPomodoroTagContext =
+        _matchesAny(userMessage, _tagKeywords) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          (text) => _matchesAny(text, _tagKeywords),
+        );
+    final injectPlanContext =
+        _shouldInjectPlanContext(userMessage) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          _shouldInjectPlanContext,
+        );
+    final injectFocusContext =
+        _shouldInjectFocusContext(userMessage) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          _shouldInjectFocusContext,
+        );
+    final injectTodoGroupContext =
+        _matchesAny(userMessage, _groupKeywords) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          (text) => _matchesAny(text, _groupKeywords),
+        );
+    final injectConflictContext =
+        _matchesAny(userMessage, _conflictKeywords) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          (text) => _matchesAny(text, _conflictKeywords),
+        );
+    final injectTeamContext =
+        _matchesAny(userMessage, _teamKeywords) ||
+        _shouldInheritContext(
+          userMessage,
+          previousUserMessage,
+          (text) => _matchesAny(text, _teamKeywords),
+        );
 
-    if (_shouldInjectCourseContext(userMessage) && courses.isNotEmpty) {
+    if (injectCourseContext && courses.isNotEmpty) {
       final period = _resolveCoursePeriod(userMessage, nowValue);
       if (period != null) {
         parts.add(
@@ -516,8 +670,7 @@ ${sections.join('\n')}
         parts.add('课程今日起');
       }
     }
-    if (_shouldInjectFixedScheduleContext(userMessage) &&
-        fixedSchedules.isNotEmpty) {
+    if (injectFixedScheduleContext && fixedSchedules.isNotEmpty) {
       final scoped = _scopeFixedSchedulesByTime(
         fixedSchedules,
         userMessage: userMessage,
@@ -525,7 +678,7 @@ ${sections.join('\n')}
       );
       parts.add('日程${scoped.length}条');
     }
-    if (_shouldInjectTodoContext(userMessage) && todos.isNotEmpty) {
+    if (injectTodoContext && todos.isNotEmpty) {
       final scoped = _scopeTodosByTime(
         todos,
         userMessage: userMessage,
@@ -536,14 +689,10 @@ ${sections.join('\n')}
         parts.add('分类${todoGroups.length}个');
       }
     }
-    if (!_shouldInjectTodoContext(userMessage) &&
-        _matchesAny(userMessage, _groupKeywords) &&
-        todoGroups.isNotEmpty) {
+    if (!injectTodoContext && injectTodoGroupContext && todoGroups.isNotEmpty) {
       parts.add('分类${todoGroups.length}个');
     }
-    if ((_matchesAny(userMessage, _countdownKeywords) ||
-            _looksLikeCountdownQuery(userMessage)) &&
-        countdowns.isNotEmpty) {
+    if (injectCountdownContext && countdowns.isNotEmpty) {
       final scoped = _scopeCountdownsByTime(
         countdowns,
         userMessage: userMessage,
@@ -551,10 +700,10 @@ ${sections.join('\n')}
       );
       parts.add('倒计时${scoped.length}个');
     }
-    if (_matchesAny(userMessage, _tagKeywords) && pomodoroTags.isNotEmpty) {
+    if (injectPomodoroTagContext && pomodoroTags.isNotEmpty) {
       parts.add('番茄标签${pomodoroTags.where((t) => !t.isDeleted).length}个');
     }
-    if (_matchesAny(userMessage, _planKeywords) && planBlocks.isNotEmpty) {
+    if (injectPlanContext && planBlocks.isNotEmpty) {
       final scoped = _scopePlanBlocksByTime(
         planBlocks,
         userMessage: userMessage,
@@ -563,8 +712,7 @@ ${sections.join('\n')}
       parts.add('规划块${scoped.length}个');
     }
 
-    if ((_matchesAny(userMessage, _timeLogKeywords) ||
-            _looksLikeFocusQuery(userMessage)) &&
+    if (injectFocusContext &&
         (timeLogs.isNotEmpty ||
             pomodoroRecords.isNotEmpty ||
             planBlocks.isNotEmpty)) {
@@ -583,10 +731,10 @@ ${sections.join('\n')}
       }
     }
 
-    if (_matchesAny(userMessage, _conflictKeywords) && conflicts.isNotEmpty) {
+    if (injectConflictContext && conflicts.isNotEmpty) {
       parts.add('冲突信息');
     }
-    if (_matchesAny(userMessage, _teamKeywords) && teams.isNotEmpty) {
+    if (injectTeamContext && teams.isNotEmpty) {
       parts.add('团队信息');
     }
 
@@ -621,6 +769,30 @@ ${sections.join('\n')}
         !asksList;
     if (createOnly) return false;
     return touchesExisting || asksList;
+  }
+
+  static bool _isContextFollowUp(String text, String previousUserMessage) {
+    if (previousUserMessage.trim().isEmpty) return false;
+    return _matchesAny(text, _contextReferenceKeywords) ||
+        RegExp(r'第(?:[一二三四五六七八九十]|\d+)个').hasMatch(text);
+  }
+
+  static bool _shouldInheritContext(
+    String userMessage,
+    String previousUserMessage,
+    bool Function(String) classifier,
+  ) {
+    return _isContextFollowUp(userMessage, previousUserMessage) &&
+        classifier(previousUserMessage);
+  }
+
+  static bool _shouldInjectFocusContext(String text) =>
+      _matchesAny(text, _timeLogKeywords) || _looksLikeFocusQuery(text);
+
+  static bool _shouldInjectPlanContext(String text) {
+    return _matchesAny(text, _planKeywords) ||
+        (_matchesAny(text, _planningKeywords) &&
+            _matchesAny(text, _planningTimeKeywords));
   }
 
   static bool _looksLikeTodoListQuery(String text) {
@@ -755,6 +927,8 @@ ${sections.join('\n')}
     '计划',
     '排一下',
     '排时间',
+    '排进',
+    '排入',
     '待办规划',
     '今日计划',
   ];
@@ -797,15 +971,31 @@ ${sections.join('\n')}
     '修改',
     '更新',
     '完成',
+    '删掉',
     '删除',
     '延期',
     '改期',
+    '改到',
+    '移到',
+    '挪到',
+    '调到',
+    '调整到',
+    '提前到',
+    '推迟到',
+    '延到',
+    '顺延',
+    '往后推',
+    '往前调',
+    '调整',
     '分类',
     '归类',
+    '分个类',
     '拆分',
     '合并',
     '重排',
     '重计划',
+    '排进',
+    '排入',
     '规划',
     '这个待办',
     '该待办',
@@ -886,6 +1076,21 @@ ${sections.join('\n')}
   ];
   static const _conflictKeywords = ['冲突', '同步', '版本', '覆盖', '合并冲突', '冲突解决'];
   static const _teamKeywords = ['团队', '协作', '成员', '管理员', '邀请', '队友', '小组'];
+  static const _contextReferenceKeywords = [
+    '那个',
+    '这个',
+    '它',
+    '这些',
+    '那些',
+    '刚才',
+    '上面',
+    '其中',
+    '还有',
+    '剩下',
+    '继续',
+    '呢',
+    '那',
+  ];
 
   static String buildPromptPreview({
     required String customPrompt,
@@ -1041,21 +1246,21 @@ ${sections.join('\n')}
     final lines = scoped
         .take(50)
         .map((item) {
-      final time = item.startTime == null
-          ? '时间待定'
-          : item.endTime == null
+          final time = item.startTime == null
+              ? '时间待定'
+              : item.endTime == null
               ? '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal())}（结束待定）'
               : '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal())}-${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal())}';
-      final series = item.recurrenceSeriesId?.trim().isNotEmpty == true
-          ? ' | 系列ID: ${item.recurrenceSeriesId} | 重复: ${item.recurrence.name}'
-          : '';
-      final location = item.location?.trim().isNotEmpty == true
-          ? ' | 地点: ${item.location}'
-          : '';
+          final series = item.recurrenceSeriesId?.trim().isNotEmpty == true
+              ? ' | 系列ID: ${item.recurrenceSeriesId} | 重复: ${item.recurrence.name}'
+              : '';
+          final location = item.location?.trim().isNotEmpty == true
+              ? ' | 地点: ${item.location}'
+              : '';
           final remark = item.remark?.trim().isNotEmpty == true
               ? ' | 备注: ${item.remark}'
               : '';
-      return '- [日程ID: ${item.id}] ${item.date} $time ${item.title} | 状态: ${item.status.name}$location$remark$series';
+          return '- [日程ID: ${item.id}] ${item.date} $time ${item.title} | 状态: ${item.status.name}$location$remark$series';
         })
         .join('\n');
     return '固定日程（外部时间硬约束；每条使用自己的日程ID）:\n$lines';
@@ -1119,8 +1324,10 @@ ${sections.join('\n')}
           );
     final period = _resolveCoursePeriod(userMessage, now);
     final scopedCourses = _selectCoursesForPeriod(activeCourses, period, now);
-    final lines = scopedCourses
-        .take(30)
+    final selectedCourses = period == null
+        ? scopedCourses.take(30)
+        : scopedCourses;
+    final lines = selectedCourses
         .map(
           (c) =>
               '- ${c.date} ${c.formattedStartTime}-${c.formattedEndTime} ${c.courseName} | ${c.roomName} | ${c.teacherName}',
@@ -1176,6 +1383,48 @@ ${sections.join('\n')}
         start: currentMonthStart,
         end: DateTime(now.year, now.month + 1),
       );
+    }
+    final weekdayMatch = RegExp(r'(?:星期|礼拜|周)([一二三四五六日天])').firstMatch(text);
+    if (weekdayMatch != null) {
+      final targetWeekday = switch (weekdayMatch.group(1)) {
+        '一' => DateTime.monday,
+        '二' => DateTime.tuesday,
+        '三' => DateTime.wednesday,
+        '四' => DateTime.thursday,
+        '五' => DateTime.friday,
+        '六' => DateTime.saturday,
+        '日' || '天' => DateTime.sunday,
+        _ => null,
+      };
+      if (targetWeekday != null) {
+        final thisWeekStart = todayStart.subtract(
+          Duration(days: now.weekday - DateTime.monday),
+        );
+        final weekdayOffset = targetWeekday - DateTime.monday;
+        final DateTime targetDay;
+        if (text.contains('上周') ||
+            text.contains('上星期') ||
+            text.contains('上礼拜')) {
+          targetDay = thisWeekStart.add(Duration(days: weekdayOffset - 7));
+        } else if (text.contains('下周') ||
+            text.contains('下星期') ||
+            text.contains('下礼拜')) {
+          targetDay = thisWeekStart.add(Duration(days: weekdayOffset + 7));
+        } else if (text.contains('本周') ||
+            text.contains('这周') ||
+            text.contains('本星期') ||
+            text.contains('这星期')) {
+          targetDay = thisWeekStart.add(Duration(days: weekdayOffset));
+        } else {
+          final daysAhead = (targetWeekday - now.weekday + 7) % 7;
+          targetDay = todayStart.add(Duration(days: daysAhead));
+        }
+        return _DateRange(
+          label: '指定星期',
+          start: targetDay,
+          end: targetDay.add(const Duration(days: 1)),
+        );
+      }
     }
     final futureDays = _parseFutureDays(text);
     if (futureDays != null) {
@@ -1327,10 +1576,10 @@ ${sections.join('\n')}
       final lines = scopedRecords
           .take(30)
           .map((r) {
-        final start = _formatEpochMillis(r.startMs);
-        final end = _formatEpochMillis(r.endMs);
-        final minutes = _focusOverlapMinutes(r, period);
-        return '- [${r.source} ID: ${r.id}] $start-$end ${r.title} | 本时段计入${formatMinutesChinese(minutes)}${r.status != null ? ' | 状态: ${r.status}' : ''}';
+            final start = _formatEpochMillis(r.startMs);
+            final end = _formatEpochMillis(r.endMs);
+            final minutes = _focusOverlapMinutes(r, period);
+            return '- [${r.source} ID: ${r.id}] $start-$end ${r.title} | 本时段计入${formatMinutesChinese(minutes)}${r.status != null ? ' | 状态: ${r.status}' : ''}';
           })
           .join('\n');
       return '''专注记录:
@@ -1343,9 +1592,9 @@ ${lines.isEmpty ? '暂无' : lines}''';
 
     final lines = scopedRecords
         .map((r) {
-      final start = _formatEpochMillis(r.startMs);
-      final end = _formatEpochMillis(r.endMs);
-      return '- [${r.source} ID: ${r.id}] $start-$end ${r.title} | ${formatMinutesChinese(r.minutes)}${r.status != null ? ' | 状态: ${r.status}' : ''}';
+          final start = _formatEpochMillis(r.startMs);
+          final end = _formatEpochMillis(r.endMs);
+          return '- [${r.source} ID: ${r.id}] $start-$end ${r.title} | ${formatMinutesChinese(r.minutes)}${r.status != null ? ' | 状态: ${r.status}' : ''}';
         })
         .join('\n');
     return '专注记录（最近30条，按开始时间倒序）:\n$lines';
@@ -1360,10 +1609,10 @@ ${lines.isEmpty ? '暂无' : lines}''';
               c.item['title'] ?? c.item['content'] ?? c.item['id'] ?? '';
           final other =
               c.conflictWith['title'] ??
-          c.conflictWith['content'] ??
-          c.conflictWith['id'] ??
-          '';
-      return '- ${c.type}: $title <-> $other';
+              c.conflictWith['content'] ??
+              c.conflictWith['id'] ??
+              '';
+          return '- ${c.type}: $title <-> $other';
         })
         .join('\n');
     return '冲突信息:\n$lines';
@@ -1635,26 +1884,25 @@ ${lines.isEmpty ? '暂无' : lines}''';
         end: end,
       );
     }
-    if (text.contains('上周') ||
-        text.contains('上星期') ||
-        text.contains('上礼拜')) {
+    if (text.contains('上周') || text.contains('上星期') || text.contains('上礼拜')) {
       final thisWeekStart = todayStart.subtract(
         Duration(days: now.weekday - DateTime.monday),
       );
       final start = thisWeekStart.subtract(const Duration(days: 7));
       return _TimeLogPeriod(label: '上周', start: start, end: thisWeekStart);
     }
-    final recentDays = _matchesAny(text, [
-      '最近7天',
-      '最近七天',
-      '过去7天',
-      '过去七天',
-      '近7天',
-      '近七天',
-      '最近一周',
-      '过去一周',
-      '近一周',
-    ])
+    final recentDays =
+        _matchesAny(text, [
+          '最近7天',
+          '最近七天',
+          '过去7天',
+          '过去七天',
+          '近7天',
+          '近七天',
+          '最近一周',
+          '过去一周',
+          '近一周',
+        ])
         ? 7
         : _matchesAny(text, [
             '最近30天',
@@ -1677,11 +1925,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
         todayStart.month,
         todayStart.day + 1,
       );
-      return _TimeLogPeriod(
-        label: '最近$recentDays天',
-        start: start,
-        end: end,
-      );
+      return _TimeLogPeriod(label: '最近$recentDays天', start: start, end: end);
     }
     final currentQuarterStart = DateTime(
       now.year,

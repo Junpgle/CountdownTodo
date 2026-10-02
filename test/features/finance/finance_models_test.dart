@@ -199,6 +199,51 @@ void main() {
     );
   });
 
+  test('流式AI回复隐藏完整和未完成的记账协议块', () {
+    expect(
+      FinanceTextParser.cleanStreamingAssistantContent(
+        '已识别账单\n[FINANCE_START]\n{"type":"income"}',
+      ),
+      '已识别账单',
+    );
+    expect(
+      FinanceTextParser.cleanStreamingAssistantContent(
+        '已识别账单\n[FINANCE_START]\n[]\n[FINANCE_END]\n请核对后保存',
+      ),
+      '已识别账单\n\n请核对后保存',
+    );
+    expect(
+      FinanceTextParser.cleanStreamingAssistantContent(
+        '[FINANCE_ACTION_START]',
+      ),
+      isEmpty,
+    );
+  });
+
+  test('AI 简写 FN 协议会生成待确认收入草案并从回复正文隐藏', () {
+    const response = '''
+[FN_START] {"type":"income","amount":90,"date":"2026-09-30","note":"兼职收入，已到账"} [FN_END]
+已识别为兼职收入，请核对后保存。
+''';
+
+    final drafts = FinanceTextParser.extractAssistantDrafts(response);
+
+    expect(drafts, hasLength(1));
+    expect(drafts.single.type, FinanceTransactionType.income);
+    expect(drafts.single.amountMinor, 9000);
+    expect(drafts.single.transactionDate, '2026-09-30');
+    expect(
+      FinanceTextParser.cleanAssistantContent(response),
+      '已识别为兼职收入，请核对后保存。',
+    );
+    expect(
+      FinanceTextParser.cleanStreamingAssistantContent(
+        '[FN_START] {"type":"income","amount":90',
+      ),
+      isEmpty,
+    );
+  });
+
   test('快速记账区分金额千位逗号与多笔账单分隔符', () {
     final now = DateTime(2026, 10, 2);
     final groupedAmount = FinanceTextParser.parseQuickEntries(

@@ -63,6 +63,7 @@ abstract final class HabitAiContextService {
     required String userMessage,
     required List<HabitGoal> goals,
     String conversationContext = '',
+    String previousUserMessage = '',
     DateTime? now,
   }) {
     if (!shouldInjectFor(
@@ -75,7 +76,10 @@ abstract final class HabitAiContextService {
       (goal) => !goal.isDeleted && !goal.isArchived,
     );
     final count = activeGoals.length;
-    final range = _resolveRange(userMessage, _day(now ?? DateTime.now()));
+    final range = _resolveRange(
+      _rangeQueryText(userMessage, previousUserMessage),
+      _day(now ?? DateTime.now()),
+    );
     return count == 0
         ? '习惯数据（暂无启用目标，${range.label}）'
         : '习惯目标及进度$count项（${range.label}）';
@@ -85,6 +89,7 @@ abstract final class HabitAiContextService {
     required String userMessage,
     required List<HabitGoal> goals,
     String conversationContext = '',
+    String previousUserMessage = '',
     DateTime? now,
   }) async {
     if (!shouldInjectFor(
@@ -105,7 +110,10 @@ abstract final class HabitAiContextService {
         .take(40)
         .toList();
     final today = _day(now ?? DateTime.now());
-    final range = _resolveRange(userMessage, today);
+    final range = _resolveRange(
+      _rangeQueryText(userMessage, previousUserMessage),
+      today,
+    );
     final lines = <String>[
       '【用户习惯数据｜只读快照】',
       '查询范围: ${range.label}',
@@ -154,6 +162,57 @@ abstract final class HabitAiContextService {
       lines.add('（为控制上下文长度，仅列出前 ${activeGoals.length} 项。）');
     }
     return lines.join('\n');
+  }
+
+  static String _rangeQueryText(
+    String userMessage,
+    String previousUserMessage,
+  ) {
+    final text = userMessage.toLowerCase();
+    final hasCurrentRange =
+        _parseExplicitDate(text) != null ||
+        _yearMonthPattern.hasMatch(text) ||
+        _monthPattern.hasMatch(text) ||
+        _containsAny(text, [
+          '今天',
+          '今日',
+          '昨天',
+          '昨日',
+          '前天',
+          '本周',
+          '这周',
+          '上周',
+          '本月',
+          '这个月',
+          '上月',
+          '上个月',
+          '今年',
+          '去年',
+        ]);
+    final previous = previousUserMessage.toLowerCase();
+    final hasPreviousRange =
+        _parseExplicitDate(previous) != null ||
+        _yearMonthPattern.hasMatch(previous) ||
+        _monthPattern.hasMatch(previous) ||
+        _containsAny(previous, [
+          '今天',
+          '今日',
+          '昨天',
+          '昨日',
+          '前天',
+          '本周',
+          '这周',
+          '上周',
+          '本月',
+          '这个月',
+          '上月',
+          '上个月',
+          '今年',
+          '去年',
+        ]);
+    return !hasCurrentRange && hasPreviousRange
+        ? previousUserMessage
+        : userMessage;
   }
 
   static String _formatRule(HabitGoal goal, HabitGoalRuleRevision rule) {

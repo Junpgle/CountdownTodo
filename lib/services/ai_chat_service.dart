@@ -100,16 +100,36 @@ class AiChatStreamChunk {
   const AiChatStreamChunk({
     this.content = '',
     this.reasoningContent = '',
+    this.toolCallDeltas = const [],
     this.toolCalls = const [],
+    this.toolResults = const {},
+    this.finishReason,
     this.usage,
     this.usageSummary,
   });
 
   final String content;
   final String reasoningContent;
+  final List<AiChatFunctionCallDelta> toolCallDeltas;
   final List<AiChatFunctionCall> toolCalls;
+  final Map<String, Map<String, dynamic>> toolResults;
+  final String? finishReason;
   final AiTokenUsage? usage;
   final ChatUsageSummary? usageSummary;
+}
+
+class AiChatFunctionCallDelta {
+  const AiChatFunctionCallDelta({
+    required this.index,
+    this.id,
+    this.name = '',
+    this.arguments = '',
+  });
+
+  final int index;
+  final String? id;
+  final String name;
+  final String arguments;
 }
 
 class AiChatFunctionCall {
@@ -210,6 +230,9 @@ class AiChatService {
               'mimo-v2-flash',
               'mimo-v2-omni',
             }.contains(normalizedModel),
+      mimoTokenPlanProvider =>
+        host == 'token-plan-cn.xiaomimimo.com' &&
+            const {'mimo-v2.5', 'mimo-v2.5-pro'}.contains(normalizedModel),
       _ => false,
     };
   }
@@ -388,9 +411,10 @@ class AiChatService {
     String usageOperation = 'chat',
     int imageCount = 0,
     List<Map<String, dynamic>>? tools,
+    http.Client Function()? clientFactory,
   }) async* {
     await _ensureAiInteractionAllowed();
-    final client = http.Client();
+    final client = clientFactory?.call() ?? http.Client();
     var chunkCount = 0;
     var emittedCount = 0;
     var lastError = '';
@@ -404,11 +428,11 @@ class AiChatService {
       if (cancelToken != null) {
         unawaited(
           cancelToken.future.then((_) {
-          cancelled = true;
-          // Closing the client also aborts a request that is still waiting for
-          // response headers, which a stream-level cancellation check cannot
-          // reach.
-          client.close();
+            cancelled = true;
+            // Closing the client also aborts a request that is still waiting for
+            // response headers, which a stream-level cancellation check cannot
+            // reach.
+            client.close();
           }),
         );
       }
@@ -450,7 +474,111 @@ class AiChatService {
 
       var buffer = '';
       var streamDone = false;
-      await for (final chunk in response.stream.transform(utf8.decoder)) {
+
+      Stream<AiChatStreamChunk> processSseLine(String line) async* {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty) return;
+        if (!trimmed.startsWith('data:')) {
+          lastError = '非SSE行: $trimmed';
+          return;
+        }
+
+        final data = trimmed.substring(5).trim();
+        if (data == '[DONE]') {
+          streamDone = true;
+          return;
+        }
+
+        chunkCount++;
+        try {
+          final json = jsonDecode(data) as Map<String, dynamic>;
+          final error = json['error'] as Map<String, dynamic>?;
+          if (error != null) {
+            throw Exception('API错误: ${error['message']}');
+          }
+
+          final usage = AiTokenUsage.fromJson(json['usage']);
+          if (usage != null) streamUsage = usage;
+
+          // `finish_reason` ends a choice, not the SSE response. Continue
+          // consuming the stream through [DONE], retaining trailing usage.
+          final choices = json['choices'] as List?;
+          if (choices == null || choices.isEmpty) {
+            if (usage != null) yield AiChatStreamChunk(usage: usage);
+            return;
+          }
+
+          final choice = choices[0] as Map<String, dynamic>;
+          final finishReason = choice['finish_reason']?.toString();
+          final delta = choice['delta'] as Map<String, dynamic>?;
+          if (delta == null) {
+            if (finishReason != null && finishReason.isNotEmpty) {
+              yield AiChatStreamChunk(finishReason: finishReason);
+            }
+            return;
+          }
+
+          final content = delta['content'] as String? ?? '';
+          final reasoningContent = delta['reasoning_content'] as String? ?? '';
+          final toolCallDeltas = <AiChatFunctionCallDelta>[];
+          final rawToolCallDeltas = delta['tool_calls'];
+          if (rawToolCallDeltas is List) {
+            for (final rawToolCall in rawToolCallDeltas.whereType<Map>()) {
+              final toolCall = Map<String, dynamic>.from(rawToolCall);
+              final index =
+                  int.tryParse(toolCall['index']?.toString() ?? '') ??
+                  lastToolCallIndex;
+              lastToolCallIndex = index;
+              final callBuffer = toolCallBuffers.putIfAbsent(
+                index,
+                _AiChatFunctionCallBuffer.new,
+              );
+              final id = toolCall['id']?.toString();
+              if (id != null && id.isNotEmpty) callBuffer.id = id;
+              var nameDelta = '';
+              var argumentsDelta = '';
+              final function = toolCall['function'];
+              if (function is Map) {
+                final functionMap = Map<String, dynamic>.from(function);
+                nameDelta = functionMap['name']?.toString() ?? '';
+                argumentsDelta = functionMap['arguments']?.toString() ?? '';
+                callBuffer.name += nameDelta;
+                callBuffer.arguments += argumentsDelta;
+              }
+              toolCallDeltas.add(
+                AiChatFunctionCallDelta(
+                  index: index,
+                  id: id,
+                  name: nameDelta,
+                  arguments: argumentsDelta,
+                ),
+              );
+            }
+          }
+
+          final hasOutput =
+              content.isNotEmpty ||
+              reasoningContent.isNotEmpty ||
+              toolCallDeltas.isNotEmpty;
+          if (hasOutput) {
+            emittedCount++;
+          }
+          if (hasOutput || (finishReason != null && finishReason.isNotEmpty)) {
+            yield AiChatStreamChunk(
+              reasoningContent: reasoningContent,
+              content: content,
+              toolCallDeltas: toolCallDeltas,
+              finishReason: finishReason,
+              usage: usage,
+            );
+          }
+        } catch (e) {
+          lastError = '$e';
+        }
+      }
+
+      await for (final chunk
+          in response.stream.transform(utf8.decoder).timeout(timeout)) {
         if (cancelToken?.isCompleted == true) {
           cancelled = true;
           break;
@@ -463,87 +591,18 @@ class AiChatService {
 
           final line = buffer.substring(0, newlineIdx).replaceAll('\r', '');
           buffer = buffer.substring(newlineIdx + 1);
-          final trimmed = line.trim();
-          if (trimmed.isEmpty) continue;
-          if (!trimmed.startsWith('data:')) {
-            lastError = '非SSE行: $trimmed';
-            continue;
+          await for (final parsed in processSseLine(line)) {
+            yield parsed;
           }
+          if (streamDone) break;
+        }
+      }
 
-          final data = trimmed.substring(5).trim();
-          if (data == '[DONE]') {
-            streamDone = true;
-            break;
-          }
-
-          chunkCount++;
-          try {
-            final json = jsonDecode(data) as Map<String, dynamic>;
-            final error = json['error'] as Map<String, dynamic>?;
-            if (error != null) {
-              throw Exception('API错误: ${error['message']}');
-            }
-
-            final usage = AiTokenUsage.fromJson(json['usage']);
-            if (usage != null) streamUsage = usage;
-
-            // MiMo documents usage as nullable on streaming chunks. Keep the
-            // latest non-null value and record it after consuming the stream;
-            // finish_reason only ends a choice, not the SSE response.
-            final choices = json['choices'] as List?;
-            if (choices == null || choices.isEmpty) {
-              if (usage != null) {
-                yield AiChatStreamChunk(usage: usage);
-              }
-              continue;
-            }
-
-            final choice = choices[0] as Map<String, dynamic>;
-            final delta = choice['delta'] as Map<String, dynamic>?;
-            if (delta == null) continue;
-
-            final content = delta['content'] as String? ?? '';
-            final reasoningContent =
-                delta['reasoning_content'] as String? ?? '';
-            final toolCallDeltas = delta['tool_calls'];
-            if (toolCallDeltas is List) {
-              for (final rawToolCall in toolCallDeltas.whereType<Map>()) {
-                final toolCall = Map<String, dynamic>.from(rawToolCall);
-                final index =
-                    int.tryParse(toolCall['index']?.toString() ?? '') ??
-                    lastToolCallIndex;
-                lastToolCallIndex = index;
-                final callBuffer = toolCallBuffers.putIfAbsent(
-                  index,
-                  _AiChatFunctionCallBuffer.new,
-                );
-                final id = toolCall['id']?.toString();
-                if (id != null && id.isNotEmpty) callBuffer.id = id;
-                final function = toolCall['function'];
-                if (function is Map) {
-                  final functionMap = Map<String, dynamic>.from(function);
-                  callBuffer.name += functionMap['name']?.toString() ?? '';
-                  callBuffer.arguments +=
-                      functionMap['arguments']?.toString() ?? '';
-                }
-              }
-            }
-            final hasReasoningContent = reasoningContent.isNotEmpty;
-            final hasContent = content.isNotEmpty;
-
-            if (hasContent || hasReasoningContent) {
-              emittedCount++;
-              yield AiChatStreamChunk(
-                reasoningContent: reasoningContent,
-                content: content,
-                usage: usage,
-              );
-            }
-
-            if (streamDone) break;
-          } catch (e) {
-            lastError = '$e';
-          }
+      // Some compatible providers close after the final SSE data line without
+      // a newline. Process that line too so a final tool delta is not dropped.
+      if (!cancelled && !streamDone && buffer.trim().isNotEmpty) {
+        await for (final parsed in processSseLine(buffer)) {
+          yield parsed;
         }
       }
 
@@ -618,7 +677,7 @@ class AiChatService {
       body['messages'] = normalizeMessagesForNim(messages);
     }
     body[usesMimoChatProtocol(provider, apiUrl)
-        ? 'max_completion_tokens'
+            ? 'max_completion_tokens'
             : 'max_tokens'] =
         maxTokens;
 
@@ -730,9 +789,9 @@ class AiChatService {
   }
 
   static Map<String, String> _headers(String apiKey) => {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $apiKey',
-      };
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer $apiKey',
+  };
 
   static Future<void> _ensureAiInteractionAllowed() async {
     final allowed = await MinorModeService.instance.authorizeAiInteraction();

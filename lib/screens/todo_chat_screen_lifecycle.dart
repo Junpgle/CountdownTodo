@@ -145,14 +145,16 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   String _buildSmartContextPreview(String userText) {
-    if (!_smartContext || userText.isEmpty) return '';
+    if (!_usesContextInjection || userText.isEmpty) return '';
     final contextQueryText = _buildContextQueryText(userText);
     final now = DateTime.now();
     final conversationContext = _recentConversationTextForContext();
+    final previousUserMessage = _latestUserTextFromHistory();
     final summaries =
         [
               AiTodoContextBuilder.buildContextInjectionSummary(
                 userMessage: contextQueryText,
+                previousUserMessage: previousUserMessage,
                 courses: widget.courses,
                 timeLogs: widget.timeLogs,
                 todoGroups: widget.todoGroups,
@@ -169,11 +171,14 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
               FinanceAiContextService.buildContextInjectionSummary(
                 userMessage: contextQueryText,
                 conversationContext: conversationContext,
+                previousUserMessage: previousUserMessage,
+                dateRangeOverride: _financeContextDateRangeOverride(),
                 now: now,
               ),
               HabitAiContextService.buildContextInjectionSummary(
                 userMessage: contextQueryText,
                 conversationContext: conversationContext,
+                previousUserMessage: previousUserMessage,
                 goals: _habitGoals,
                 now: now,
               ),
@@ -215,7 +220,10 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
 
   String _buildActionProtocolPreview(String userText) {
     if (userText.isEmpty) return '';
-    final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(userText);
+    final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(
+      userText,
+      previousUserMessage: _latestUserTextFromHistory(),
+    );
     final categories = <String>[];
     void addIf(bool cond, String label) {
       if (cond && !categories.contains(label)) categories.add(label);
@@ -484,6 +492,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     final prompt = await ChatStorageService.getCustomPrompt();
     final enabled = await ChatStorageService.isPromptEnabled();
     final smartContext = await ChatStorageService.isSmartContextEnabled();
+    final contextMode = await ChatStorageService.getContextMode();
     final showContextPreview =
         await ChatStorageService.shouldShowContextPreview();
     final injectMoreContext =
@@ -493,6 +502,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         _customPrompt = prompt;
         _promptEnabled = enabled;
         _smartContext = smartContext;
+        _contextMode = contextMode;
         _showInjectedContextPreview = showContextPreview;
         _injectMoreContext = injectMoreContext;
       });
@@ -547,11 +557,16 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     });
   }
 
-  String _buildSystemPrompt({bool nativeToolCalls = false}) {
+  String _buildSystemPrompt({bool nativeToolCalls = false, bool? queryTools}) {
     return AiTodoContextBuilder.buildLeanSystemPrompt(
       customPrompt: _customPrompt,
       promptEnabled: _promptEnabled,
       nativeToolCalls: nativeToolCalls,
+      queryTools:
+          queryTools ??
+          (nativeToolCalls &&
+              _smartContext &&
+              _contextMode == AiContextMode.functionCalling),
     );
   }
 
@@ -564,21 +579,45 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     String habitContext = '',
     bool nativeToolCalls = false,
     bool includeReasoningContent = false,
+    bool? contextInjection,
+    bool? queryTools,
   }) {
     final List<Map<String, dynamic>> apiMessages = [
       {
         'role': 'system',
-        'content': _buildSystemPrompt(nativeToolCalls: nativeToolCalls),
+        'content': _buildSystemPrompt(
+          nativeToolCalls: nativeToolCalls,
+          queryTools: queryTools,
+        ),
       },
     ];
     final protocolSourceText = pendingUserText?.trim().isNotEmpty == true
         ? pendingUserText!.trim()
         : _latestUserTextFromHistory();
+    if (queryTools ??
+        (nativeToolCalls &&
+            _smartContext &&
+            _contextMode == AiContextMode.functionCalling)) {
+      apiMessages.add({
+        'role': 'system',
+        'content': AiQueryToolService.systemPrompt,
+      });
+    }
+    final currentUserMessageId = pendingUserText?.trim().isNotEmpty == true
+        ? null
+        : _messages.reversed
+              .where((message) => message.role == ChatRole.user)
+              .firstOrNull
+              ?.id;
+    final previousUserMessage = _latestUserTextFromHistory(
+      excludingMessageId: currentUserMessageId,
+    );
     if (protocolSourceText.isNotEmpty && !nativeToolCalls) {
       apiMessages.add({
         'role': 'system',
         'content': AiTodoContextBuilder.buildActionProtocolPrompt(
           protocolSourceText,
+          previousUserMessage: previousUserMessage,
         ),
       });
     }
@@ -588,19 +627,32 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
       if (pendingUserText != null && pendingUserText.trim().isNotEmpty)
         ChatMessage(role: ChatRole.user, content: pendingUserText.trim()),
     ];
+    final queryHistoryIds = sourceMessages.reversed
+        .where(
+          (message) =>
+              message.nativeToolCalls?.any(
+                (call) => call.name.startsWith('query_') && call.result != null,
+              ) ??
+              false,
+        )
+        .take(AiToolResultContext.historyMessages)
+        .map((message) => message.id)
+        .toSet();
 
     if (sourceMessages.length <= _maxContextMessages) {
       for (final msg in sourceMessages) {
         final message = <String, dynamic>{
           'role': msg.role == ChatRole.user ? 'user' : 'assistant',
-          'content': msg.toLLMMessage(),
+          'content': msg.toLLMMessage(
+            toolHistoryBudget: queryHistoryIds.contains(msg.id)
+                ? AiToolResultContext.maxHistoryChars
+                : 0,
+          ),
           '_messageId': msg.id,
         };
-        if (includeReasoningContent &&
-            msg.role == ChatRole.assistant &&
-            msg.reasoningContent.trim().isNotEmpty) {
-          message['reasoning_content'] = msg.reasoningContent;
-        }
+        // Past completed reasoning is kept for the user, not resent each turn.
+        // Provider-required reasoning for current tool rounds is handled by
+        // AiToolChatRunner, alongside the corresponding tool_calls.
         apiMessages.add(message);
       }
     } else {
@@ -628,19 +680,18 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         if (msg.content == firstUserMsg.content) continue;
         final message = <String, dynamic>{
           'role': msg.role == ChatRole.user ? 'user' : 'assistant',
-          'content': msg.toLLMMessage(),
+          'content': msg.toLLMMessage(
+            toolHistoryBudget: queryHistoryIds.contains(msg.id)
+                ? AiToolResultContext.maxHistoryChars
+                : 0,
+          ),
           '_messageId': msg.id,
         };
-        if (includeReasoningContent &&
-            msg.role == ChatRole.assistant &&
-            msg.reasoningContent.trim().isNotEmpty) {
-          message['reasoning_content'] = msg.reasoningContent;
-        }
         apiMessages.add(message);
       }
     }
 
-    final smartContext = _injectContext(apiMessages);
+    final smartContext = _injectContext(apiMessages, enabled: contextInjection);
     final additionalContexts = [
       financeContext,
       habitContext,
@@ -674,9 +725,10 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     return apiMessages;
   }
 
-  String _latestUserTextFromHistory() {
+  String _latestUserTextFromHistory({String? excludingMessageId}) {
     for (int i = _messages.length - 1; i >= 0; i--) {
-      if (_messages[i].role == ChatRole.user &&
+      if (_messages[i].id != excludingMessageId &&
+          _messages[i].role == ChatRole.user &&
           _messages[i].content.trim().isNotEmpty) {
         return _messages[i].content.trim();
       }
@@ -685,8 +737,11 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   /// 根据最后一条用户消息的关键词，按需注入课程/时间日志/冲突/团队上下文。
-  String _injectContext(List<Map<String, dynamic>> apiMessages) {
-    if (!_smartContext) return '';
+  String _injectContext(
+    List<Map<String, dynamic>> apiMessages, {
+    bool? enabled,
+  }) {
+    if (!(enabled ?? _usesContextInjection)) return '';
     // 找到最后一条 user 消息
     int lastUserIdx = -1;
     for (int i = apiMessages.length - 1; i >= 0; i--) {
@@ -699,8 +754,13 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
 
     final userText = apiMessages[lastUserIdx]['content']?.toString() ?? '';
     final contextQueryText = _buildContextQueryText(userText);
+    final currentUserMessageId = apiMessages[lastUserIdx]['_messageId']
+        ?.toString();
     final injection = AiTodoContextBuilder.buildContextInjection(
       userMessage: contextQueryText,
+      previousUserMessage: _latestUserTextFromHistory(
+        excludingMessageId: currentUserMessageId,
+      ),
       courses: widget.courses,
       timeLogs: widget.timeLogs,
       todoGroups: widget.todoGroups,

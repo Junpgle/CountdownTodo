@@ -4,7 +4,6 @@ import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
@@ -12,6 +11,14 @@ import '../models.dart';
 import '../models/ai_todo_action.dart';
 import '../services/suggestion_feedback_service.dart';
 import '../models/chat_message.dart';
+import '../models/ai_context_mode.dart';
+import '../widgets/ai_context_mode_selector.dart';
+import '../widgets/ai_chat_markdown.dart';
+import '../widgets/ai_chat_thinking_panel.dart';
+import '../widgets/ai_chat_composer.dart';
+import '../services/ai_query_tool_service.dart';
+import '../services/ai_tool_result_context.dart';
+import '../services/ai_tool_chat_runner.dart';
 import '../services/ai_action_parser.dart';
 import '../services/ai_chat_service.dart';
 import '../services/ai_native_tool_call_parser.dart';
@@ -52,11 +59,13 @@ import '../features/finance/services/ai_usage_cost_service.dart';
 import '../features/habits/models/habit_goal.dart';
 import '../features/habits/repositories/habit_repository.dart';
 import '../features/habits/services/habit_ai_context_service.dart';
+import '../features/habits/services/habit_progress_calculator.dart';
 import '../utils/app_dialogs.dart';
 
 part 'todo_chat_screen_contract.dart';
 part 'todo_chat_screen_lifecycle.dart';
 part 'todo_chat_screen_send.dart';
+part 'todo_chat_screen_queries.dart';
 part 'todo_chat_screen_layout.dart';
 part 'todo_chat_screen_actions.dart';
 part 'todo_chat_screen_messages.dart';
@@ -113,6 +122,7 @@ class _TodoChatScreenState extends _TodoChatScreenStateBase
     with
         _TodoChatLifecycle,
         _TodoChatSend,
+        _TodoChatQueries,
         _TodoChatLayout,
         _TodoChatActions,
         _TodoChatMessages {}

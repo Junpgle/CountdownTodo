@@ -207,7 +207,7 @@ class SearchService {
     SearchResult(
       id: 'setting_ai_assistant',
       title: 'AI 助手设置 / 智能上下文',
-      subtitle: '调整智能上下文、注入预览、提示词与深度思考',
+      subtitle: '切换工具查询或智能注入，调整预览、提示词与深度思考',
       icon: Icons.auto_awesome_rounded,
       type: SearchResultType.setting,
       breadcrumb: '设置 > AI',

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../services/chat_storage_service.dart';
+import '../../../models/ai_context_mode.dart';
+import '../../../widgets/ai_context_mode_selector.dart';
 import '../../../services/llm_service.dart';
 import '../../../utils/settings_navigation.dart';
 import '../../../widgets/app_settings_widgets.dart';
@@ -29,6 +31,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
   bool _isLoading = true;
   bool _isSavingPrompt = false;
   bool _smartContext = true;
+  AiContextMode _contextMode = AiContextMode.functionCalling;
   bool _showContextPreview = false;
   bool _injectMoreContext = false;
   bool _deepThinking = false;
@@ -57,6 +60,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
       ChatStorageService.shouldShowContextPreview(),
       ChatStorageService.shouldInjectMoreContext(),
       ChatStorageService.isDeepThinkingEnabled(),
+      ChatStorageService.getContextMode(),
     ]);
     if (!mounted) return;
     _promptController.text = values[0] as String;
@@ -66,6 +70,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
       _showContextPreview = values[3] as bool;
       _injectMoreContext = values[4] as bool;
       _deepThinking = values[5] as bool;
+      _contextMode = values[6] as AiContextMode;
       _isLoading = false;
     });
   }
@@ -98,6 +103,18 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
       _showSnackBar('保存助手提示词失败：$error');
     } finally {
       if (mounted) setState(() => _isSavingPrompt = false);
+    }
+  }
+
+  Future<void> _setContextMode(AiContextMode mode) async {
+    final previous = _contextMode;
+    setState(() => _contextMode = mode);
+    try {
+      await ChatStorageService.setContextMode(mode);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _contextMode = previous);
+      _showSnackBar('保存上下文模式失败：$error');
     }
   }
 
@@ -154,8 +171,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
 
   void _showSnackBar(String message) {
     if (!mounted) return;
-    AppSnackBars.showSnackBar(
-        context, SnackBar(content: Text(message)));
+    AppSnackBars.showSnackBar(context, SnackBar(content: Text(message)));
   }
 
   Widget _buildSwitch({
@@ -203,7 +219,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
             },
             decoration: InputDecoration(
               labelText: '自定义提示词',
-              hintText: '可使用 {now}、{todos} 等变量；待办、日程、账单等上下文会按当前问题注入。',
+              hintText: '可使用 {now}、{todos} 等变量；业务数据按所选模式查询或注入。',
               alignLabelWithHint: true,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -232,8 +248,9 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
                 label: const Text('预览'),
               ),
               FilledButton.icon(
-                onPressed:
-                    _promptDirty && !_isSavingPrompt ? _savePrompt : null,
+                onPressed: _promptDirty && !_isSavingPrompt
+                    ? _savePrompt
+                    : null,
                 icon: _isSavingPrompt
                     ? const SizedBox(
                         width: 16,
@@ -270,10 +287,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
               if (config == null || !config.isConfigured) {
                 return Text(
                   '未配置；对话和识图功能暂不可用',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colorScheme.error,
-                  ),
+                  style: TextStyle(fontSize: 12, color: colorScheme.error),
                 );
               }
               final vision = config.visionModel.trim();
@@ -281,10 +295,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
                 vision.isEmpty
                     ? '文本模型：${config.model}'
                     : '文本：${config.model} · 多模态：$vision',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: colorScheme.primary,
-                ),
+                style: TextStyle(fontSize: 12, color: colorScheme.primary),
               );
             },
           ),
@@ -336,7 +347,7 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
                   children: [
                     _buildSwitch(
                       title: '启用智能上下文',
-                      subtitle: '按当前问题注入待办、日程、规划、账单等只读数据',
+                      subtitle: '允许助手通过所选模式读取待办、日程、账单等业务数据',
                       value: _smartContext,
                       onChanged: (value) => _setSetting(
                         value: value,
@@ -344,12 +355,21 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
                         persist: ChatStorageService.setSmartContextEnabled,
                       ),
                     ),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: AiContextModeSelector(
+                        value: _contextMode,
+                        onChanged: _setContextMode,
+                      ),
+                    ),
                     const AppSettingsDivider(indent: 16),
                     _buildSwitch(
                       title: '在输入区显示注入预览',
                       subtitle: '关闭只隐藏 UI 详情，不会停止上下文注入',
                       value: _showContextPreview,
-                      enabled: _smartContext,
+                      enabled:
+                          _smartContext &&
+                          _contextMode == AiContextMode.smartContextInjection,
                       onChanged: (value) => _setSetting(
                         value: value,
                         update: (next) => _showContextPreview = next,
@@ -361,7 +381,9 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
                       title: '默认扩展上下文范围',
                       subtitle: '相关日期问题默认查看未来 30 天',
                       value: _injectMoreContext,
-                      enabled: _smartContext,
+                      enabled:
+                          _smartContext &&
+                          _contextMode == AiContextMode.smartContextInjection,
                       onChanged: (value) => _setSetting(
                         value: value,
                         update: (next) => _injectMoreContext = next,
@@ -396,7 +418,9 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
                         child: Text(
                           'CDT Actions v2 · Smart Context v2\n'
                           '新回复使用带版本的动作信封；历史聊天仍兼容旧版 ACTION 数组。\n'
-                          '关闭智能上下文后，助手不会自动读取上述业务数据。',
+                          '默认使用工具查询：模型选择查询条件，App 回传只读结果后继续回答。\n'
+                          '工具查询需要支持原生 Function Calling 的模型；不支持时可切换智能注入。\n'
+                          '关闭智能上下文后，两种模式都不会读取新的业务数据。',
                           style: TextStyle(
                             fontSize: 12.5,
                             height: 1.5,

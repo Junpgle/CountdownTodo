@@ -430,7 +430,7 @@ abstract final class FinanceTextParser {
   }) {
     final drafts = <FinanceEntryDraft>[];
     final marker = RegExp(
-      r'\[FINANCE_START\](.*?)\[FINANCE_END\]',
+      r'\[(?:FINANCE|FN)_START\](.*?)\[(?:FINANCE|FN)_END\]',
       dotAll: true,
     );
     for (final match in marker.allMatches(content)) {
@@ -497,7 +497,10 @@ abstract final class FinanceTextParser {
   static String cleanAssistantContent(String content) {
     return content
         .replaceAll(
-          RegExp(r'\[FINANCE_START\].*?\[FINANCE_END\]', dotAll: true),
+          RegExp(
+            r'\[(?:FINANCE|FN)_START\].*?\[(?:FINANCE|FN)_END\]',
+            dotAll: true,
+          ),
           '',
         )
         .replaceAll(
@@ -508,6 +511,27 @@ abstract final class FinanceTextParser {
           '',
         )
         .trim();
+  }
+
+  /// Hides finance protocol blocks while a response is still arriving.
+  ///
+  /// An incomplete block has no closing marker yet, so strip its trailing
+  /// contents as well as the complete blocks handled by
+  /// [cleanAssistantContent].
+  static String cleanStreamingAssistantContent(String content) {
+    var visible = content;
+    for (final markers in [
+      ('[FINANCE_START]', '[FINANCE_END]'),
+      ('[FN_START]', '[FN_END]'),
+      ('[FINANCE_ACTION_START]', '[FINANCE_ACTION_END]'),
+    ]) {
+      final start = visible.lastIndexOf(markers.$1);
+      if (start >= 0 &&
+          visible.indexOf(markers.$2, start + markers.$1.length) < 0) {
+        visible = visible.substring(0, start);
+      }
+    }
+    return cleanAssistantContent(visible);
   }
 
   static bool isFinanceResult(Map<String, dynamic> result) {

@@ -269,17 +269,39 @@ class AiNativeToolDefinitionBuilder {
     'delete_pomodoro_tag',
   };
 
+  /// Keep risky actions out of the function schema unless the user explicitly
+  /// asks for that operation in this turn. Confirmation cards remain the
+  /// second safety barrier after model output is parsed.
+  static const Map<String, List<String>> _explicitCdtActionTriggers = {
+    'complete_todo': ['完成', '做完', '办完', '勾选', '打钩'],
+    'delete_todo': ['删除', '删掉', '删了', '移除', '清空', '取消'],
+    'cancel_schedule': ['取消', '撤销'],
+    'delete_schedule': ['删除', '删掉', '移除'],
+    'delete_plan_block': ['删除', '删掉', '移除'],
+    'skip_plan_block': ['跳过', '略过'],
+    'delete_time_log': ['删除', '删掉', '移除'],
+    'stop_pomodoro': ['停止番茄钟', '停止专注', '结束番茄钟', '结束专注'],
+    'complete_countdown': ['完成倒计时'],
+    'delete_countdown': ['删除倒计时', '删除', '删掉', '移除'],
+    'split_todo': ['拆分待办', '拆分任务', '拆分'],
+    'merge_todos': ['合并待办', '合并任务', '合并'],
+    'delete_todo_group': ['删除分类', '删除分组', '删除文件夹'],
+    'delete_pomodoro_tag': ['删除番茄标签', '删除标签'],
+  };
+
   /// Builds OpenAI-compatible function tools for the actions relevant to one
   /// user request. The returned calls are proposals consumed by the existing
   /// confirmation UI; they are not executed against storage here.
   static List<Map<String, dynamic>> buildNativeToolDefinitions(
-    String userMessage,
-  ) {
+    String userMessage, {
+    String previousUserMessage = '',
+  }) {
     final message = userMessage.trim();
     if (message.isEmpty) return const [];
 
     final actionPrompt = AiTodoContextBuilder.buildActionProtocolPrompt(
       message,
+      previousUserMessage: previousUserMessage,
     );
     final actionSectionEnd = actionPrompt.indexOf('动作块格式');
     final actionSection = actionSectionEnd == -1
@@ -326,7 +348,7 @@ class AiNativeToolDefinitionBuilder {
         _matchesAny(message, readOnlyWords) &&
         !_matchesAny(message, writeWords);
     final isTodoCategorizationRequest =
-        _matchesAny(message, ['分类', '归类', '分组']) &&
+        _matchesAny(message, ['分类', '归类', '分组', '分个类']) &&
         _matchesAny(message, ['待办', '任务']) &&
         !_matchesAny(message, [
           '有哪些',
@@ -344,7 +366,15 @@ class AiNativeToolDefinitionBuilder {
           '删除文件夹',
         ]);
 
-    final protocolActionNames = _extractProtocolActionNames(actionSection);
+    final protocolActionNames = _extractProtocolActionNames(actionSection)
+        .where((action) {
+          final triggers = _explicitCdtActionTriggers[action];
+          return triggers == null ||
+              triggers.any(
+                (trigger) => _isExplicitlyRequested(message, trigger),
+              );
+        })
+        .toSet();
     final availableActions =
         isOnlyInformation || isGenericFallback || isReadOnlyQuery
         ? <String>[]
@@ -523,7 +553,7 @@ class AiNativeToolDefinitionBuilder {
         'type': 'function',
         'function': {
           'name': 'propose_finance_drafts',
-          'description': '识别新增支出、收入或退款，并提交待确认草案。金额单位为元；不要声称已保存。分类和付款方式 UUID 只能使用本轮记账上下文中的真实值。',
+          'description': '识别新增支出、收入或退款并提交待确认草案。金额单位为元；应用会显示“待确认记账”卡片，用户需点击“编辑并保存”后才会写入账本。聊天中的“确认/确定”不会保存账单，不得声称已保存。分类和付款方式 UUID 只能使用本轮记账上下文中的真实值。',
           'parameters': {
             'type': 'object',
             'properties': {
@@ -703,6 +733,7 @@ class AiNativeToolDefinitionBuilder {
     '改期',
     '分类',
     '归类',
+    '分个类',
     '拆分',
     '合并',
     '重排',
@@ -715,5 +746,24 @@ class AiNativeToolDefinitionBuilder {
 
   static bool _matchesAny(String text, List<String> keywords) {
     return keywords.any((keyword) => text.contains(keyword));
+  }
+
+  static bool _isExplicitlyRequested(String text, String trigger) {
+    var searchFrom = 0;
+    while (searchFrom < text.length) {
+      final index = text.indexOf(trigger, searchFrom);
+      if (index == -1) return false;
+      final clauseBoundary = text.lastIndexOf(RegExp(r'[，。；！？,;]'), index);
+      final clauseStart = clauseBoundary == -1 ? 0 : clauseBoundary + 1;
+      final prefix = text.substring(clauseStart, index);
+      final negations = RegExp(r'不|别|无需|禁止|避免').allMatches(prefix).toList();
+      final contrasts = RegExp(r'但是|不过|但|而是').allMatches(prefix).toList();
+      final isNegated =
+          negations.isNotEmpty &&
+          (contrasts.isEmpty || negations.last.start > contrasts.last.start);
+      if (!isNegated) return true;
+      searchFrom = index + trigger.length;
+    }
+    return false;
   }
 }

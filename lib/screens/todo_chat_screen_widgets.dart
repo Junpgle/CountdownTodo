@@ -4,10 +4,7 @@ class _StaggeredFadeSlide extends StatelessWidget {
   final Widget child;
   final Duration delay;
 
-  const _StaggeredFadeSlide({
-    required this.child,
-    this.delay = Duration.zero,
-  });
+  const _StaggeredFadeSlide({required this.child, this.delay = Duration.zero});
 
   @override
   Widget build(BuildContext context) {
@@ -19,8 +16,8 @@ class _StaggeredFadeSlide extends StatelessWidget {
         final delayedValue = delay.inMilliseconds == 0
             ? value
             : ((value * (360 + delay.inMilliseconds) - delay.inMilliseconds) /
-                    360)
-                .clamp(0.0, 1.0);
+                      360)
+                  .clamp(0.0, 1.0);
         return Opacity(
           opacity: delayedValue,
           child: Transform.translate(
@@ -89,10 +86,7 @@ class _IridescentActionPanel extends StatefulWidget {
   final Widget child;
   final bool isDark;
 
-  const _IridescentActionPanel({
-    required this.child,
-    required this.isDark,
-  });
+  const _IridescentActionPanel({required this.child, required this.isDark});
 
   @override
   State<_IridescentActionPanel> createState() => _IridescentActionPanelState();
@@ -145,10 +139,7 @@ class _IridescentActionPanelState extends State<_IridescentActionPanel>
               progress: _controller.value,
               isDark: widget.isDark,
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(2.5),
-              child: child,
-            ),
+            child: Padding(padding: const EdgeInsets.all(2.5), child: child),
           );
         },
         child: widget.child,
@@ -221,157 +212,23 @@ class _IridescentBorderPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1
       ..color = Colors.white.withValues(alpha: isDark ? 0.28 : 0.38);
-    final highlightRect = borderRect.deflate(1.2).shift(
+    final highlightRect = borderRect
+        .deflate(1.2)
+        .shift(
           Offset(
             math.cos(progress * math.pi * 2) * 0.7,
             math.sin(progress * math.pi * 2) * 0.7,
           ),
         );
     canvas.drawRRect(
-        BorderRadius.circular(16).toRRect(highlightRect), sheenPaint);
+      BorderRadius.circular(16).toRRect(highlightRect),
+      sheenPaint,
+    );
   }
 
   @override
   bool shouldRepaint(covariant _IridescentBorderPainter oldDelegate) {
     return oldDelegate.progress != progress || oldDelegate.isDark != isDark;
-  }
-}
-
-class _CollapsibleReasoningWidget extends StatefulWidget {
-  final String reasoning;
-  final bool isDark;
-  final bool isStreaming;
-
-  const _CollapsibleReasoningWidget({
-    required this.reasoning,
-    required this.isDark,
-    required this.isStreaming,
-  });
-
-  @override
-  State<_CollapsibleReasoningWidget> createState() =>
-      _CollapsibleReasoningWidgetState();
-}
-
-class _CollapsibleReasoningWidgetState
-    extends State<_CollapsibleReasoningWidget> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      margin: const EdgeInsets.only(bottom: 4),
-      decoration: BoxDecoration(
-        color: widget.isDark
-            ? Colors.grey[900]!.withValues(alpha: 0.5)
-            : Colors.grey[100]!.withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.psychology_outlined,
-                    size: 16,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.7),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '思考过程',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withValues(alpha: 0.7),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (widget.isStreaming)
-                    SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 1.5,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: 0.5),
-                      ),
-                    ),
-                  const SizedBox(width: 4),
-                  AnimatedRotation(
-                    turns: _expanded ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeOutCubic,
-                    child: Icon(
-                      Icons.keyboard_arrow_down,
-                      size: 20,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withValues(alpha: 0.5),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          AnimatedCrossFade(
-            firstChild: const SizedBox(width: double.infinity),
-            secondChild: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-              child: MarkdownBody(
-                data: widget.reasoning,
-                styleSheet: MarkdownStyleSheet(
-                  p: TextStyle(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.6),
-                    fontSize: 13,
-                    fontStyle: FontStyle.italic,
-                  ),
-                  code: TextStyle(
-                    color: Theme.of(context).colorScheme.primary,
-                    backgroundColor: Theme.of(context)
-                        .colorScheme
-                        .primaryContainer
-                        .withValues(alpha: 0.3),
-                    fontSize: 12,
-                  ),
-                ),
-                selectable: true,
-              ),
-            ),
-            crossFadeState: _expanded
-                ? CrossFadeState.showSecond
-                : CrossFadeState.showFirst,
-            duration: const Duration(milliseconds: 220),
-            firstCurve: Curves.easeInCubic,
-            secondCurve: Curves.easeOutCubic,
-            sizeCurve: Curves.easeOutCubic,
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -421,9 +278,10 @@ class _PulseAvatarState extends State<_PulseAvatar>
   @override
   Widget build(BuildContext context) {
     return ScaleTransition(
-      scale: Tween<double>(begin: 0.95, end: 1.05).animate(
-        CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-      ),
+      scale: Tween<double>(
+        begin: 0.95,
+        end: 1.05,
+      ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
       child: widget.child,
     );
   }
@@ -470,11 +328,11 @@ class _ThinkingLoaderState extends State<_ThinkingLoader>
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: Theme.of(context).brightness == Brightness.dark
             ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.4)
-            : Colors.white,
+            : colorScheme.surface,
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
@@ -516,7 +374,7 @@ class _ThinkingLoaderState extends State<_ThinkingLoader>
           Text(
             '正在思考',
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 12,
               color: colorScheme.onSurface.withValues(alpha: 0.5),
               fontWeight: FontWeight.w500,
             ),
@@ -531,10 +389,7 @@ class _DanmakuSuggestions extends StatefulWidget {
   final List<String> suggestions;
   final Function(String) onTap;
 
-  const _DanmakuSuggestions({
-    required this.suggestions,
-    required this.onTap,
-  });
+  const _DanmakuSuggestions({required this.suggestions, required this.onTap});
 
   @override
   State<_DanmakuSuggestions> createState() => _DanmakuSuggestionsState();
@@ -560,8 +415,9 @@ class _DanmakuSuggestionsState extends State<_DanmakuSuggestions>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    PowerSaveModeService.enabledListenable
-        .addListener(_syncScrollingWithVisibility);
+    PowerSaveModeService.enabledListenable.addListener(
+      _syncScrollingWithVisibility,
+    );
     final lifecycleState = WidgetsBinding.instance.lifecycleState;
     _appInForeground =
         lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
@@ -620,15 +476,14 @@ class _DanmakuSuggestionsState extends State<_DanmakuSuggestions>
     );
     // Distances scale with the interval so Android halves timer wakeups while
     // preserving the original pixels-per-second speed.
-    final intervalScale = scrollInterval.inMicroseconds /
+    final intervalScale =
+        scrollInterval.inMicroseconds /
         const Duration(milliseconds: 30).inMicroseconds;
     final moved1 = _autoScroll(_scrollCtrl1, 0.35 * intervalScale);
     final moved2 = _autoScroll(_scrollCtrl2, 0.55 * intervalScale);
     final moved3 = _autoScroll(_scrollCtrl3, 0.45 * intervalScale);
     final moved = moved1 || moved2 || moved3;
-    _scheduleScrollTick(
-      moved ? scrollInterval : const Duration(seconds: 1),
-    );
+    _scheduleScrollTick(moved ? scrollInterval : const Duration(seconds: 1));
   }
 
   bool _autoScroll(ScrollController ctrl, double distance) {
@@ -650,8 +505,9 @@ class _DanmakuSuggestionsState extends State<_DanmakuSuggestions>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    PowerSaveModeService.enabledListenable
-        .removeListener(_syncScrollingWithVisibility);
+    PowerSaveModeService.enabledListenable.removeListener(
+      _syncScrollingWithVisibility,
+    );
     _timer?.cancel();
     _scrollCtrl1.dispose();
     _scrollCtrl2.dispose();

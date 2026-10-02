@@ -1468,7 +1468,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   leading: Icon(Icons.auto_awesome_rounded,
                       color: Theme.of(context).colorScheme.tertiary),
                   title: const Text('AI 助手设置'),
-                  subtitle: const Text('智能上下文、提示词、预览与深度思考'),
+                  subtitle: const Text('工具查询、智能注入、提示词与深度思考'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _openSettingsPage(
                     'ai_assistant',
