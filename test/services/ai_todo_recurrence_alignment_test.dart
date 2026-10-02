@@ -811,5 +811,53 @@ void main() {
       expect(regular, isNot(contains('future-plan')));
       expect(expanded, equals(regular));
     });
+
+    test('上周效率只汇总上一自然周，不混入本周记录', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        TimeLogItem(
+          id: 'last-week-monday',
+          title: '上周周一专注',
+          startTime: DateTime(2026, 9, 21, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 21, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'last-week-sunday',
+          title: '上周周日专注',
+          startTime: DateTime(2026, 9, 27, 10).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 27, 11).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'this-week',
+          title: '本周专注',
+          startTime: DateTime(2026, 10, 1, 11).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 1, 12).millisecondsSinceEpoch,
+        ),
+      ];
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析上周的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析上周的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(context, contains('上周合计'));
+      expect(context, contains('last-week-monday'));
+      expect(context, contains('last-week-sunday'));
+      expect(context, isNot(contains('this-week')));
+      expect(preview, contains('专注记录20260921-20260927'));
+      expect(preview, isNot(contains('最近30条')));
+    });
   });
 }

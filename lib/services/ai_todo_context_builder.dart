@@ -1415,6 +1415,15 @@ ${lines.isEmpty ? '暂无' : lines}''';
       final start = todayStart.subtract(const Duration(days: 1));
       return _TimeLogPeriod(label: '昨日', start: start, end: todayStart);
     }
+    if (text.contains('上周') ||
+        text.contains('上星期') ||
+        text.contains('上礼拜')) {
+      final thisWeekStart = todayStart.subtract(
+        Duration(days: now.weekday - DateTime.monday),
+      );
+      final start = thisWeekStart.subtract(const Duration(days: 7));
+      return _TimeLogPeriod(label: '上周', start: start, end: thisWeekStart);
+    }
     if (text.contains('本周') || text.contains('这周')) {
       final start = todayStart.subtract(Duration(days: now.weekday - 1));
       return _TimeLogPeriod(
