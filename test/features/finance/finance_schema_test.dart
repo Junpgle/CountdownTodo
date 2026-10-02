@@ -1609,6 +1609,50 @@ void main() {
       expect(await FinanceStorage.getPaidLoanInstallments(), isEmpty);
     });
 
+    test('云同步修改周期账单规则后报告提醒需要重排', () async {
+      final rule = FinanceRecurringRule(
+        uuid: 'remote-reminder-rule',
+        name: '旧周期账单名称',
+        amountMinor: 1200,
+        startDate: '2026-01-01',
+      );
+      await FinanceStorage.saveRecurringRule(rule);
+      final request = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      final remoteRule = FinanceRecurringRule.fromMap(rule.toMap())
+        ..name = '同步后的周期账单名称'
+        ..version = rule.version + 1
+        ..updatedAt = rule.updatedAt + 10000
+        ..pendingSync = false;
+      final response = _balanceSyncResponse(supportsBalances: true)
+        ..['server_finance_recurring_rules'] = [remoteRule.toMap()];
+
+      final result = await FinanceSyncService.finish(
+        request: request,
+        response: response,
+        supported: true,
+      );
+
+      expect(result.recurringRulesChanged, true);
+      expect(
+        (await FinanceStorage.getRecurringRule(rule.uuid))!.name,
+        '同步后的周期账单名称',
+      );
+
+      final unchangedRequest = await FinanceSyncService.prepare(
+        username: user,
+        forceFullSync: false,
+      );
+      final unchangedResult = await FinanceSyncService.finish(
+        request: unchangedRequest,
+        response: response,
+        supported: true,
+      );
+      expect(unchangedResult.recurringRulesChanged, false);
+    });
+
     test('同步同批原单和退款墓碑完整应用，两种返回顺序都不漏删除', () async {
       for (final reverse in [false, true]) {
         final suffix = reverse ? 'reversed' : 'ordered';

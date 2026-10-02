@@ -3113,6 +3113,7 @@ abstract final class FinanceStorage {
     Map<String, dynamic> bundle, {
     Set<String> forceRemoteKeys = const {},
     Set<String>? deferredTransactionUuids,
+    Set<String>? changedSections,
   }) async {
     await ensureReady();
     final categories = _listOfMaps(bundle['categories'])
@@ -3274,11 +3275,15 @@ abstract final class FinanceStorage {
         budgets,
         forceRemoteKeys: forceRemoteKeys,
       );
-      changed += await _mergeRecurringRules(
+      final recurringRuleChanges = await _mergeRecurringRules(
         txn,
         recurringRules,
         forceRemoteKeys: forceRemoteKeys,
       );
+      changed += recurringRuleChanges;
+      if (recurringRuleChanges > 0) {
+        changedSections?.add('recurring_rules');
+      }
       changed += await _mergeTemplates(
         txn,
         templates,

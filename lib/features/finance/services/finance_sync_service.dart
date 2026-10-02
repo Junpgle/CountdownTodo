@@ -127,6 +127,7 @@ class FinanceSyncResult {
     this.remoteChangesDeferred = false,
     this.remoteChangeCount = 0,
     this.acknowledgedChangeCount = 0,
+    this.recurringRulesChanged = false,
     this.rejectedChanges = const [],
   });
 
@@ -137,6 +138,7 @@ class FinanceSyncResult {
   final bool remoteChangesDeferred;
   final int remoteChangeCount;
   final int acknowledgedChangeCount;
+  final bool recurringRulesChanged;
   final List<dynamic> rejectedChanges;
 }
 
@@ -291,6 +293,7 @@ abstract final class FinanceSyncService {
     }
     final conflictKeys = _conflictKeys(response['finance_conflicts']);
     final deferredTransactionUuids = <String>{};
+    final changedSections = <String>{};
     // If a local write happened while the request was in flight, defer the
     // whole remote snapshot to the next round. Otherwise a newer server clock
     // could make an unrelated response win over the just-created local row
@@ -302,6 +305,7 @@ abstract final class FinanceSyncService {
             remoteBundle,
             forceRemoteKeys: conflictKeys,
             deferredTransactionUuids: deferredTransactionUuids,
+            changedSections: changedSections,
           )
         : 0;
 
@@ -351,6 +355,7 @@ abstract final class FinanceSyncService {
       remoteChangesDeferred: remoteChangesDeferred,
       remoteChangeCount: remoteChangeCount,
       acknowledgedChangeCount: acknowledgedChangeCount,
+      recurringRulesChanged: changedSections.contains('recurring_rules'),
       rejectedChanges: response['finance_conflicts'] is List
           ? List<dynamic>.from(response['finance_conflicts'] as List)
           : const [],

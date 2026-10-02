@@ -12,6 +12,7 @@ import 'models.dart';
 import 'services/api_service.dart';
 import 'services/band_sync_service.dart';
 import 'services/pomodoro_service.dart';
+import 'services/reminder_schedule_service.dart';
 import 'services/database_helper.dart'; // 🚀 引入 Uni-Sync 新引擎
 import 'services/sync_capability_service.dart';
 import 'services/sync_oplog_policy.dart';
