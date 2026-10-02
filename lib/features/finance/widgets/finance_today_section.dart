@@ -254,7 +254,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
         Row(
           children: [
             _buildMetric(
-              label: '支出',
+              label: '净支出',
               value: formatFinanceAmount(_summary.netExpenseMinor),
               valueColor: widget.isLight ? Colors.white : colorScheme.error,
               labelColor: subColor,

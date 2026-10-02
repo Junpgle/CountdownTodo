@@ -1108,6 +1108,52 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('首页记账小卡明确标出退款后的净支出', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final occurredAt = DateTime(now.year, now.month, now.day)
+        .millisecondsSinceEpoch;
+    final originalUuid = 'today-section-previous-month-expense';
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: originalUuid,
+          amountMinor: 5000,
+          transactionDate: dateKey(DateTime(now.year, now.month - 1, 15)),
+          occurredAt: occurredAt - const Duration(days: 20).inMilliseconds,
+          createdAt: occurredAt - const Duration(days: 20).inMilliseconds,
+          merchant: '上月消费',
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'today-section-previous-month-refund',
+          type: FinanceTransactionType.refund,
+          amountMinor: 5000,
+          relatedTransactionUuid: originalUuid,
+          transactionDate: dateKey(now),
+          occurredAt: occurredAt,
+          createdAt: now.millisecondsSinceEpoch,
+          merchant: '本月退款',
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      const Scaffold(
+        body: FinanceTodaySection(username: 'default'),
+      ),
+    );
+
+    expect(find.text('净支出'), findsOneWidget);
+    expect(find.text('支出'), findsNothing);
+    expect(find.text(formatFinanceAmount(-5000)), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('夏令时回拨日以及月底账单在日周月视图中都能显示', (tester) async {
     final spendingLabel = DateTime(2026, 11).isAfter(DateTime.now())
         ? '计划净支出'
