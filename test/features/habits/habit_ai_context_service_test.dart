@@ -82,6 +82,59 @@ void main() {
       expect(summary, contains('2026-09-27 至 2026-10-03'));
     });
 
+    test('resolves the second previous week instead of the previous week', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看上上周的习惯进度',
+        goals: const [],
+        now: now,
+      );
+
+      expect(summary, contains('2026-09-14 至 2026-09-20'));
+    });
+
+    test('resolves previous calendar years and dates', () {
+      final previousYear =
+          HabitAiContextService.buildContextInjectionSummary(
+            userMessage: '查看去年习惯进度',
+            goals: const [],
+            now: now,
+          );
+      final previousYearDate =
+          HabitAiContextService.buildContextInjectionSummary(
+            userMessage: '查看去年9月1日习惯进度',
+            goals: const [],
+            now: now,
+          );
+      final beforePreviousYear =
+          HabitAiContextService.buildContextInjectionSummary(
+            userMessage: '查看前年习惯进度',
+            goals: const [],
+            now: now,
+          );
+
+      expect(previousYear, contains('2025-01-01 至 2025-12-31'));
+      expect(previousYearDate, contains('2025-09-01'));
+      expect(beforePreviousYear, contains('2024-01-01 至 2024-12-31'));
+    });
+
+    test('does not silently select one period from a relative comparison', () {
+      for (final prompt in [
+        '比较最近7天和上周的习惯进度',
+        '比较最近7天和最近30天的习惯进度',
+        '比较上个月和本周的习惯进度',
+        '比较上上周和上周的习惯进度',
+        '比较去年和今年的习惯进度',
+      ]) {
+        final summary = HabitAiContextService.buildContextInjectionSummary(
+          userMessage: prompt,
+          goals: const [],
+          now: now,
+        );
+
+        expect(summary, isNull, reason: prompt);
+      }
+    });
+
     test('rolling month follow-up overrides the previous explicit range', () {
       final summary = HabitAiContextService.buildContextInjectionSummary(
         userMessage: '那最近六个月呢？',

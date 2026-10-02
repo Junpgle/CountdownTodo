@@ -71,6 +71,18 @@ abstract final class HabitAiContextService {
     r'(?:近|最近|过去)\s*(?:(\d+|[零〇○一二两三四五六七八九十]{1,3})\s*个?月|半年)',
   );
 
+  static final RegExp _relativePeriodPattern = RegExp(
+    r'最近(?:30天|三十天|7天|七天)|过去(?:30天|三十天|7天|七天)|近(?:30天|三十天|7天|七天)|'
+    r'最近一周|过去一周|近一周|上上(?:周|星期)|上(?:周|星期)|本(?:周|星期)|这(?:周|星期)|'
+    r'上上个月|上上月|上个月|上月|本月|这个月|当月|今年|本年|去年|上一年|前年|前一年|'
+    r'大前天|大前日|前天|前日|昨天|昨日|今天|今日',
+  );
+  static final RegExp _relativeYearQualifiedMonthPattern = RegExp(
+    r'(?:今年|本年|去年|上一年|前年|前一年)\s*'
+    r'(?:十一|十二|十|[一二三四五六七八九]|\d{1,2})\s*月'
+    r'(?:\s*(?:\d{1,2}|[一二三四五六七八九十]{1,3})\s*[日号]?)?',
+  );
+
   static bool shouldInjectFor(
     String userMessage, {
     String conversationContext = '',
@@ -78,7 +90,10 @@ abstract final class HabitAiContextService {
   }) {
     final text = userMessage.trim().toLowerCase();
     if (text.isEmpty) return false;
-    if (_hasInvalidExplicitDate(text, now: now)) return false;
+    if (_hasInvalidExplicitDate(text, now: now) ||
+        _hasMultipleRecognizedDatePeriods(text)) {
+      return false;
+    }
     if (_containsAny(text, _habitKeywords)) return true;
     return _containsAny(conversationContext.toLowerCase(), _habitKeywords) &&
         _containsAny(text, _followUpWords) &&
@@ -104,7 +119,10 @@ abstract final class HabitAiContextService {
     );
     final count = activeGoals.length;
     final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
-    if (_hasInvalidExplicitDate(rangeQueryText, now: now)) return null;
+    if (_hasInvalidExplicitDate(rangeQueryText, now: now) ||
+        _hasMultipleRecognizedDatePeriods(rangeQueryText)) {
+      return null;
+    }
     final range = _resolveRange(rangeQueryText, _day(now ?? DateTime.now()));
     return count == 0
         ? '习惯数据（暂无启用目标，${range.label}）'
@@ -138,7 +156,10 @@ abstract final class HabitAiContextService {
         .toList();
     final today = _day(now ?? DateTime.now());
     final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
-    if (_hasInvalidExplicitDate(rangeQueryText, now: now)) return null;
+    if (_hasInvalidExplicitDate(rangeQueryText, now: now) ||
+        _hasMultipleRecognizedDatePeriods(rangeQueryText)) {
+      return null;
+    }
     final range = _resolveRange(rangeQueryText, today);
     final lines = <String>[
       '【用户习惯数据｜只读快照】',
@@ -219,6 +240,10 @@ abstract final class HabitAiContextService {
           '上个月',
           '今年',
           '去年',
+          '本年',
+          '上一年',
+          '前年',
+          '前一年',
         ]);
     final previous = previousUserMessage.toLowerCase();
     final hasPreviousRange =
@@ -245,6 +270,10 @@ abstract final class HabitAiContextService {
           '上个月',
           '今年',
           '去年',
+          '本年',
+          '上一年',
+          '前年',
+          '前一年',
         ]);
     return !hasCurrentRange && hasPreviousRange
         ? previousUserMessage
@@ -339,9 +368,19 @@ abstract final class HabitAiContextService {
       return (from: explicitDate, to: explicitDate, label: dateKey);
     }
     final chineseDate = _chineseDatePattern.firstMatch(text);
+    final defaultChineseDateYear = text.contains('前年')
+        ? today.year - 2
+        : text.contains('去年') ||
+              text.contains('上一年') ||
+              text.contains('前一年')
+        ? today.year - 1
+        : today.year;
     final parsedChineseDate = chineseDate == null
         ? null
-        : _parseChineseDateMatch(chineseDate, defaultYear: today.year);
+        : _parseChineseDateMatch(
+            chineseDate,
+            defaultYear: defaultChineseDateYear,
+          );
     if (parsedChineseDate != null) {
       final dateKey = _dateKey(parsedChineseDate);
       return (from: parsedChineseDate, to: parsedChineseDate, label: dateKey);
@@ -409,8 +448,20 @@ abstract final class HabitAiContextService {
         text.contains('这个月') ||
         text.contains('当月')) {
       from = DateTime(day.year, day.month);
+    } else if (text.contains('前年')) {
+      from = DateTime(day.year - 2);
+      to = DateTime(day.year - 1).subtract(const Duration(days: 1));
+    } else if (text.contains('去年') ||
+        text.contains('上一年') ||
+        text.contains('前一年')) {
+      from = DateTime(day.year - 1);
+      to = DateTime(day.year).subtract(const Duration(days: 1));
     } else if (text.contains('今年') || text.contains('本年')) {
       from = DateTime(day.year);
+    } else if (text.contains('上上周') || text.contains('上上星期')) {
+      final thisMonday = _mondayOf(day);
+      from = thisMonday.subtract(const Duration(days: 14));
+      to = thisMonday.subtract(const Duration(days: 8));
     } else if (text.contains('上周') || text.contains('上星期')) {
       final thisMonday = _mondayOf(day);
       from = thisMonday.subtract(const Duration(days: 7));
@@ -476,6 +527,41 @@ abstract final class HabitAiContextService {
       if (_parseChineseDateRange(rangeMatch, today) == null) return true;
     }
     return false;
+  }
+
+  static bool _hasMultipleRecognizedDatePeriods(String text) {
+    final spans = <(int, int)>[];
+    void addMatches(RegExp pattern) {
+      spans.addAll(
+        pattern.allMatches(text).map((match) => (match.start, match.end)),
+      );
+    }
+
+    addMatches(_relativePeriodPattern);
+    addMatches(_relativeYearQualifiedMonthPattern);
+    addMatches(_rollingMonthPattern);
+    addMatches(_yearMonthPattern);
+    addMatches(_monthPattern);
+    addMatches(_calendarDateRangePattern);
+    addMatches(_calendarDatePattern);
+    addMatches(_chineseDateRangePattern);
+    addMatches(_chineseDatePattern);
+
+    spans.sort((first, second) {
+      final startOrder = first.$1.compareTo(second.$1);
+      return startOrder != 0 ? startOrder : second.$2.compareTo(first.$2);
+    });
+    var distinctPeriods = 0;
+    var currentEnd = -1;
+    for (final span in spans) {
+      if (span.$1 >= currentEnd) {
+        distinctPeriods++;
+        currentEnd = span.$2;
+      } else if (span.$2 > currentEnd) {
+        currentEnd = span.$2;
+      }
+    }
+    return distinctPeriods > 1;
   }
 
   static ({DateTime from, DateTime to})? _parseChineseDateRange(
