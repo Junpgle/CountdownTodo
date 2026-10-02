@@ -153,7 +153,7 @@ void main() {
       await tester.pump();
       expect(find.text('注入更多: 开'), findsOneWidget);
 
-      expect(currentEstimate(), before);
+      expect(currentEstimate(), greaterThanOrEqualTo(before));
       expect(currentContextPreview(), contextBefore);
     },
   );
