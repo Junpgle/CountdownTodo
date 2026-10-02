@@ -1731,7 +1731,10 @@ class FinanceEntryDraft {
     'is_ignored': isIgnored,
   };
 
-  factory FinanceEntryDraft.fromJson(Map<String, dynamic> map) {
+  factory FinanceEntryDraft.fromJson(
+    Map<String, dynamic> map, {
+    DateTime? now,
+  }) {
     final minorValue = map['amount_minor'] ?? map['amountMinor'];
     final amountMinor = minorValue == null
         ? _draftAmountMinor(
@@ -1757,7 +1760,7 @@ class FinanceEntryDraft {
                 map['date'] ??
                 map['transaction_day'],
           ) ??
-          dateKey(DateTime.now()),
+          dateKey(now ?? DateTime.now()),
       categoryUuid: _string(map['category_uuid'] ?? map['categoryUuid']),
       categoryName: _string(
         map['category_name'] ?? map['categoryName'] ?? map['category'],

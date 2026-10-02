@@ -345,6 +345,44 @@ void main() {
     expect(validAction?.transactionDate, '2026-02-28');
   });
 
+  test('视觉与聊天识别草案无效日期回落到基准日', () {
+    final now = DateTime(2026, 10, 2);
+    final recognized = FinanceTextParser.fromRecognitionResults(
+      [
+        {
+          'isFinance': true,
+          'type': 'expense',
+          'amount': 12.34,
+          'date': '2026-02-30',
+        },
+      ],
+      now: now,
+    );
+    final assistant = FinanceTextParser.extractAssistantDrafts(
+      '[FINANCE_START]\n'
+      '[{"type":"expense","amount":12.34,"date":"2026-02-30"}]\n'
+      '[FINANCE_END]',
+      now: now,
+    );
+    final undatedRecognition = FinanceTextParser.fromRecognitionResults(
+      [
+        {'isFinance': true, 'type': 'expense', 'amount': 12.34},
+      ],
+      now: now,
+    );
+    final undatedAssistant = FinanceTextParser.extractAssistantDrafts(
+      '[FINANCE_START]\n'
+      '[{"type":"expense","amount":12.34}]\n'
+      '[FINANCE_END]',
+      now: now,
+    );
+
+    expect(recognized.single.transactionDate, '2026-10-02');
+    expect(assistant.single.transactionDate, '2026-10-02');
+    expect(undatedRecognition.single.transactionDate, '2026-10-02');
+    expect(undatedAssistant.single.transactionDate, '2026-10-02');
+  });
+
   test('流式AI回复隐藏完整和未完成的记账协议块', () {
     expect(
       FinanceTextParser.cleanStreamingAssistantContent(

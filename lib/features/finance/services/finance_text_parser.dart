@@ -429,13 +429,11 @@ abstract final class FinanceTextParser {
       if (normalized['originalText'] == null && originalText != null) {
         normalized['originalText'] = originalText;
       }
-      final draft = FinanceEntryDraft.fromJson(normalized)
+      final draft = FinanceEntryDraft.fromJson(normalized, now: now)
         ..source = source
         ..originalText ??= originalText;
       if (draft.amountMinor > 0) {
-        if (draft.transactionDate.trim().isEmpty) {
-          draft.transactionDate = dateKey(now ?? DateTime.now());
-        }
+        _normalizeDraftDate(draft, now: now);
         drafts.add(draft);
       }
     }
@@ -458,17 +456,21 @@ abstract final class FinanceTextParser {
     for (final match in marker.allMatches(content)) {
       final payload = _decodeMaps(match.group(1) ?? '');
       for (final map in payload) {
-        final draft = FinanceEntryDraft.fromJson(map)
+        final draft = FinanceEntryDraft.fromJson(map, now: now)
           ..source = FinanceEntrySource.ai;
         if (draft.amountMinor > 0) {
-          if (draft.transactionDate.trim().isEmpty) {
-            draft.transactionDate = dateKey(now ?? DateTime.now());
-          }
+          _normalizeDraftDate(draft, now: now);
           drafts.add(draft);
         }
       }
     }
     return drafts;
+  }
+
+  static void _normalizeDraftDate(FinanceEntryDraft draft, {DateTime? now}) {
+    final reference = now ?? DateTime.now();
+    final parsed = _parseDate(draft.transactionDate, reference);
+    draft.transactionDate = dateKey(parsed ?? reference);
   }
 
   /// Extracts read-only finance queries and confirmation-required mutations.
