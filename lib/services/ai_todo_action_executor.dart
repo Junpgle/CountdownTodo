@@ -1091,8 +1091,7 @@ class AiTodoActionExecutor {
     final title = action.title?.trim().isNotEmpty == true
         ? action.title!.trim()
         : match.first['title']?.toString();
-    final plannedMinutes =
-        action.durationMinutes ?? end.difference(start).inMinutes;
+    final plannedMinutes = max(1, end.difference(start).inMinutes);
 
     return TodoPlanBlock(
       todoId: todoId,
