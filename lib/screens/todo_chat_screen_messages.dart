@@ -823,6 +823,15 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                         color: colorScheme.onSurface.withValues(alpha: 0.65),
                       ),
                     ),
+                    Text(
+                      '文本近似值，不含附件、财务/习惯明细或原生工具定义；实际用量以模型返回为准。',
+                      maxLines: 2,
+                      style: TextStyle(
+                        fontSize: 10,
+                        height: 1.3,
+                        color: colorScheme.onSurface.withValues(alpha: 0.55),
+                      ),
+                    ),
                   ],
                 ),
               ),

@@ -243,6 +243,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     await tester.enterText(find.byType(TextField).first, '分析我上个月的效率');
     await tester.pump(const Duration(milliseconds: 500));
+    expect(
+      find.textContaining('不含附件、财务/习惯明细或原生工具定义'),
+      findsOneWidget,
+    );
 
     int currentEstimate() {
       final estimateLabel = find.byWidgetPredicate(
