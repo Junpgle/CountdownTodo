@@ -1089,17 +1089,6 @@ abstract final class FinanceTextParser {
       );
     }
 
-    final monthDay = RegExp(
-      r'(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*日?',
-    ).firstMatch(text);
-    if (monthDay != null) {
-      return _safeSentenceDate(
-        now.year,
-        int.tryParse(monthDay.group(1) ?? ''),
-        int.tryParse(monthDay.group(2) ?? ''),
-      );
-    }
-
     final chineseMonthDay = _chineseMonthDayPattern.firstMatch(text);
     if (chineseMonthDay != null) {
       final yearText = chineseMonthDay.group(1);
@@ -1115,6 +1104,17 @@ abstract final class FinanceTextParser {
         year,
         _parseChineseDateNumber(chineseMonthDay.group(2) ?? ''),
         _parseChineseDateNumber(chineseMonthDay.group(3) ?? ''),
+      );
+    }
+
+    final monthDay = RegExp(
+      r'(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*日?',
+    ).firstMatch(text);
+    if (monthDay != null) {
+      return _safeSentenceDate(
+        now.year,
+        int.tryParse(monthDay.group(1) ?? ''),
+        int.tryParse(monthDay.group(2) ?? ''),
       );
     }
 

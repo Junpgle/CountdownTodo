@@ -195,6 +195,23 @@ void main() {
     }
   });
 
+  test('自然语言快速记账解析带阿拉伯数字的历史年份', () {
+    final now = DateTime(2026, 10, 2);
+
+    expect(
+      FinanceTextParser.parseQuickEntries('去年9月2日 午餐20元', now: now)
+          .single
+          .transactionDate,
+      '2025-09-02',
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('前年9月2日 午餐20元', now: now)
+          .single
+          .transactionDate,
+      '2024-09-02',
+    );
+  });
+
   test('自然语言快速记账拒绝不存在的明确日期', () {
     final now = DateTime(2026, 10, 2);
 
