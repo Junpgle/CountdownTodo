@@ -497,7 +497,7 @@ JSON操作块必须且只能使用以下协议：
     AiContextDateRange? focusRecordPriorityRange,
     DateTime? now,
   }) {
-    if (_hasInvalidExplicitIsoDate(userMessage)) return null;
+    if (_hasUnsupportedExplicitIsoDate(userMessage)) return null;
     final nowValue = now ?? DateTime.now();
     final sections = <String>[];
     final injectCourseContext =
@@ -681,7 +681,7 @@ ${sections.join('\n')}
     bool expandFocusContext = false,
     DateTime? now,
   }) {
-    if (_hasInvalidExplicitIsoDate(userMessage)) return null;
+    if (_hasUnsupportedExplicitIsoDate(userMessage)) return null;
     final nowValue = now ?? DateTime.now();
     final parts = <String>[];
     final injectCourseContext =
@@ -2545,13 +2545,22 @@ ${lines.isEmpty ? '暂无' : lines}''';
     );
   }
 
-  static bool _hasInvalidExplicitIsoDate(String text) {
-    for (final range in _explicitIsoDateRangePattern.allMatches(text)) {
+  static bool _hasUnsupportedExplicitIsoDate(String text) {
+    final dateMatches = _explicitIsoDatePattern.allMatches(text).toList();
+    final ranges = _explicitIsoDateRangePattern.allMatches(text).toList();
+    // Focus context supports a single date range; reject comparisons instead
+    // of silently injecting only the first period's data.
+    if (ranges.length > 1 ||
+        dateMatches.length > 2 ||
+        (ranges.isEmpty && dateMatches.length > 1)) {
+      return true;
+    }
+    for (final range in ranges) {
       final start = _parseStrictIsoDate(range.group(1)!);
       final end = _parseStrictIsoDate(range.group(2)!);
       if (start == null || end == null || end.isBefore(start)) return true;
     }
-    return _explicitIsoDatePattern.allMatches(text).any(
+    return dateMatches.any(
       (match) => _parseStrictIsoDate(match.group(1)!) == null,
     );
   }

@@ -73,6 +73,37 @@ void main() {
     },
   );
 
+  test('two valid comparison ranges do not inject only the first range', () {
+    final start = DateTime(2026, 6, 10, 9);
+    final timeLogs = [
+      TimeLogItem(
+        id: 'june-log',
+        title: '六月记录',
+        startTime: start.millisecondsSinceEpoch,
+        endTime: start.add(const Duration(minutes: 30)).millisecondsSinceEpoch,
+      ),
+    ];
+    final context = AiTodoContextBuilder.buildContextInjection(
+      userMessage: '比较2026-06-01至2026-06-30和2026-07-01至2026-07-31的效率',
+      courses: const [],
+      timeLogs: timeLogs,
+      conflicts: const [],
+      teams: const [],
+      now: DateTime(2026, 10, 2, 12),
+    );
+    final summary = AiTodoContextBuilder.buildContextInjectionSummary(
+      userMessage: '比较2026-06-01至2026-06-30和2026-07-01至2026-07-31的效率',
+      courses: const [],
+      timeLogs: timeLogs,
+      conflicts: const [],
+      teams: const [],
+      now: DateTime(2026, 10, 2, 12),
+    );
+
+    expect(context, isNull);
+    expect(summary, isNull);
+  });
+
   test('impossible explicit single date does not fall back to recent logs', () {
     final start = DateTime(2026, 10, 1, 9);
     final context = AiTodoContextBuilder.buildContextInjection(
