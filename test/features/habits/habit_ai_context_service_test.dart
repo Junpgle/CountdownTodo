@@ -61,6 +61,26 @@ void main() {
       expect(summary, isNull);
     });
 
+    test('does not inject only the first of two comparison date ranges', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '比较2026-06-01至2026-06-30和2026-07-01至2026-07-31的习惯进度',
+        goals: const [],
+        now: now,
+      );
+
+      expect(summary, isNull);
+    });
+
+    test('keeps a single valid explicit date range', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看2026-06-01至2026-07-05的习惯进度',
+        goals: const [],
+        now: now,
+      );
+
+      expect(summary, contains('2026-06-01 至 2026-07-05'));
+    });
+
     test('does not reuse an invalid range from the previous message', () {
       final summary = HabitAiContextService.buildContextInjectionSummary(
         userMessage: '习惯进度如何？',

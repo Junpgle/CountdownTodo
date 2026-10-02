@@ -360,10 +360,16 @@ abstract final class HabitAiContextService {
   static bool _hasInvalidExplicitDate(String text) {
     final dateMatches = _calendarDatePattern.allMatches(text).toList();
     if (dateMatches.isEmpty) return false;
+    final ranges = _calendarDateRangePattern.allMatches(text).toList();
+    if (ranges.length > 1 ||
+        (ranges.isEmpty && dateMatches.length > 1) ||
+        (ranges.length == 1 && dateMatches.length > 2)) {
+      return true;
+    }
     if (dateMatches.any((match) => _parseCalendarDateMatch(match) == null)) {
       return true;
     }
-    for (final rangeMatch in _calendarDateRangePattern.allMatches(text)) {
+    for (final rangeMatch in ranges) {
       final from = _parseExplicitDate(rangeMatch.group(1)!);
       final to = _parseExplicitDate(rangeMatch.group(2)!);
       if (from == null || to == null || to.isBefore(from)) return true;
