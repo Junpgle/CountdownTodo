@@ -376,6 +376,18 @@ abstract final class FinanceAutomationService {
     }
   }
 
+  /// Turns budget reminders on and immediately evaluates the current month.
+  /// A failed notification must not undo the user's preference change.
+  static Future<void> setBudgetAlertsEnabled(bool enabled) async {
+    await AppSettingsStorage.setFinanceBudgetAlertEnabled(enabled);
+    if (!enabled) return;
+    try {
+      await checkBudgetAlerts();
+    } catch (_) {
+      // The next finance mutation or app launch will retry the alert check.
+    }
+  }
+
   static String _formatAmount(int amountMinor) {
     final value = NumberFormat('#,##0.00', 'zh_CN').format(amountMinor / 100);
     return '¥$value';

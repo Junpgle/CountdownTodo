@@ -7,6 +7,7 @@ import '../../../storage_service.dart';
 import '../../../services/reminder_schedule_service.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
+import '../services/finance_automation_service.dart';
 import '../services/finance_repository.dart';
 import '../widgets/finance_catalog_editor.dart';
 import '../widgets/finance_catalog_manager.dart';
@@ -460,7 +461,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
                 value: _budgetAlertsEnabled,
                 onChanged: (value) async {
                   setState(() => _budgetAlertsEnabled = value);
-                  await AppSettingsStorage.setFinanceBudgetAlertEnabled(value);
+                  await FinanceAutomationService.setBudgetAlertsEnabled(value);
                 },
                 title: const Text('预算提醒'),
                 subtitle: const Text('达到 80% 或超支时发送系统通知'),

@@ -882,6 +882,81 @@ void main() {
     expect(shownNotifications, 3);
   });
 
+  test('开启预算提醒后立即检查已达到阈值的支出', () async {
+    final db = await openDatabase();
+    const accountKey = 'finance-enable-budget-alert-test-user';
+    const localNotificationChannel = MethodChannel(
+      'dexterous.com/flutter/local_notifications',
+    );
+    const macStatusBarChannel = MethodChannel('countdown_todo/macos_status_bar');
+    var shownNotifications = 0;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    MacOSFlutterLocalNotificationsPlugin.registerWith();
+    messenger.setMockMethodCallHandler(localNotificationChannel, (call) async {
+      switch (call.method) {
+        case 'initialize':
+          return true;
+        case 'checkPermissions':
+          return {
+            'isEnabled': true,
+            'isAlertEnabled': true,
+            'isBadgeEnabled': true,
+            'isSoundEnabled': true,
+            'isProvisionalEnabled': false,
+            'isCriticalEnabled': false,
+            'isProvidesAppNotificationSettingsEnabled': false,
+          };
+        case 'show':
+          shownNotifications++;
+          return null;
+      }
+      return null;
+    });
+    messenger.setMockMethodCallHandler(macStatusBarChannel, (call) async => null);
+    addTearDown(() async {
+      await FocusDoNotDisturbService.setActive(false, force: true);
+      messenger.setMockMethodCallHandler(localNotificationChannel, null);
+      messenger.setMockMethodCallHandler(macStatusBarChannel, null);
+      debugDefaultTargetPlatformOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(StorageService.keyCurrentUser, accountKey);
+    await AppSettingsStorage.setFinanceBudgetAlertEnabled(false);
+    await AppSettingsStorage.setNormalNotificationEnabled(true);
+    await FocusDoNotDisturbService.setActive(false, force: true);
+    final now = DateTime.now();
+    final monthKey = financeMonthKey(now);
+    await FinanceStorage.saveBudget(
+      FinanceBudget(
+        uuid: 'enabled-budget-alert',
+        monthKey: monthKey,
+        amountMinor: 10000,
+      ),
+    );
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'enabled-budget-alert-expense',
+        amountMinor: 8000,
+        transactionDate: dateKey(now),
+        occurredAt: now.millisecondsSinceEpoch,
+      ),
+    );
+
+    await FinanceAutomationService.setBudgetAlertsEnabled(true);
+
+    expect(shownNotifications, 1);
+    final budget = (await FinanceStorage.getBudgets(monthKey: monthKey)).single;
+    final alertKey =
+        'finance-budget-v1-$accountKey-${budget.uuid}-'
+        '${budget.monthKey}-${budget.version}-80';
+    expect(prefs.getBool(alertKey), isTrue);
+  });
+
   test('从回收站恢复周期账单后重新调度提醒', () async {
     final db = await openDatabase();
     const accountKey = 'finance-recurring-restore-test-user';
