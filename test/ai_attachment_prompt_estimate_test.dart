@@ -70,6 +70,7 @@ void main() {
         AiContextMode.smartContextInjection,
       );
       await ChatStorageService.setInjectMoreContext(false);
+      await ChatStorageService.setShowContextPreview(true);
       await FeatureTipService.markTipShown('todo_chat_guide');
 
       final now = DateTime.now();
@@ -136,13 +137,24 @@ void main() {
         );
       }
 
+      String currentContextPreview() {
+        final preview = tester
+            .widgetList<SelectableText>(find.byType(SelectableText))
+            .map((widget) => widget.data ?? '')
+            .firstWhere((data) => data.startsWith('将注入：'));
+        return preview;
+      }
+
       final before = currentEstimate();
+      final contextBefore = currentContextPreview();
       expect(before, greaterThan(0));
+      expect(contextBefore, contains('专注记录'));
       await tester.tap(find.text('注入更多'));
       await tester.pump();
       expect(find.text('注入更多: 开'), findsOneWidget);
 
       expect(currentEstimate(), before);
+      expect(currentContextPreview(), contextBefore);
     },
   );
 }
