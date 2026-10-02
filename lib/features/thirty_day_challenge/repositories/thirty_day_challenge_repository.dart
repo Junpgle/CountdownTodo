@@ -93,9 +93,19 @@ abstract final class ThirtyDayChallengeRepository {
   }
 
   static Future<Map<String, dynamic>?> exportBackup({String? username}) async {
-    final state = await load(username: username);
     final hasStartedChallenge = await hasStarted(username: username);
-    final corruptStateBackup = await getCorruptStateBackup(username: username);
+    var corruptStateBackup =
+        await getCorruptStateBackup(username: username);
+    ThirtyDayChallengeState? state;
+    if (!hasStartedChallenge && corruptStateBackup == null) {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(await _scopedKey(username));
+      if (raw == null || raw.isEmpty) return null;
+      state = await load(username: username);
+      corruptStateBackup = await getCorruptStateBackup(username: username);
+      if (corruptStateBackup == null) return null;
+    }
+    state ??= await load(username: username);
     if (!hasStartedChallenge && corruptStateBackup == null) return null;
     final bundle = <String, dynamic>{
       'state': state.toJson(),

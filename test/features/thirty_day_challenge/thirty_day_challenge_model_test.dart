@@ -47,6 +47,13 @@ void main() {
     expect(restored.isBuiltIn, isTrue);
   });
 
+  test('没有挑战记录时读取导出选项不会写入空挑战', () async {
+    expect(await ThirtyDayChallengeRepository.exportBackup(), isNull);
+    final prefs = await SharedPreferences.getInstance();
+
+    expect(prefs.getKeys(), isEmpty);
+  });
+
   test('挑战备份往返保留进度、记录和参与状态', () async {
     final started = await ThirtyDayChallengeRepository.startNewChallenge(
       title: '周末阅读计划',
