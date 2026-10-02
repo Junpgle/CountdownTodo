@@ -68,7 +68,14 @@ class AiTodoContextBuilder {
       final end = DateFormat('yyyy-MM-dd').format(
         customRange.endExclusive.subtract(const Duration(days: 1)),
       );
-      return '$userMessage，并使用自定义注入范围 $start 至 $end';
+      final queryText = userMessage
+          .replaceAll(_explicitIsoDateRangePattern, '')
+          .replaceAll(_explicitIsoDatePattern, '')
+          .trim();
+      final rangeInstruction = '使用自定义注入范围 $start 至 $end';
+      return queryText.isEmpty
+          ? rangeInstruction
+          : '$queryText，并$rangeInstruction';
     }
     if (!injectMoreContext) return userMessage;
     if (userMessage.contains('未来30天')) return userMessage;

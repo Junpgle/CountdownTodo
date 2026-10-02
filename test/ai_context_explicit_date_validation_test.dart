@@ -104,6 +104,55 @@ void main() {
     expect(summary, isNull);
   });
 
+  test('selected custom range overrides dates in the prompt for context', () {
+    final customStart = DateTime(2026, 7, 1);
+    final customEnd = DateTime(2026, 7, 31);
+    final now = DateTime(2026, 10, 2, 12);
+    final selectedRange = AiTodoContextBuilder.resolveCustomInjectionDateRange(
+      customStart: customStart,
+      customEnd: customEnd,
+      now: now,
+    )!;
+    final contextQuery = AiTodoContextBuilder.buildContextQueryText(
+      userMessage: '分析2026-06-01至2026-06-30的效率',
+      customStart: customStart,
+      customEnd: customEnd,
+      now: now,
+    );
+    final juneStart = DateTime(2026, 6, 15, 9);
+    final julyStart = DateTime(2026, 7, 15, 9);
+    final context = AiTodoContextBuilder.buildContextInjection(
+      userMessage: contextQuery,
+      courses: const [],
+      timeLogs: [
+        TimeLogItem(
+          id: 'june-log',
+          title: '六月记录',
+          startTime: juneStart.millisecondsSinceEpoch,
+          endTime: juneStart
+              .add(const Duration(minutes: 30))
+              .millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'july-log',
+          title: '七月记录',
+          startTime: julyStart.millisecondsSinceEpoch,
+          endTime: julyStart
+              .add(const Duration(minutes: 30))
+              .millisecondsSinceEpoch,
+        ),
+      ],
+      conflicts: const [],
+      teams: const [],
+      focusRecordPriorityRange: selectedRange,
+      now: now,
+    );
+
+    expect(context, contains('2026-07-01 00:00 至 2026-08-01 00:00'));
+    expect(context, contains('july-log'));
+    expect(context, isNot(contains('june-log')));
+  });
+
   test('impossible explicit single date does not fall back to recent logs', () {
     final start = DateTime(2026, 10, 1, 9);
     final context = AiTodoContextBuilder.buildContextInjection(
