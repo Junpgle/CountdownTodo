@@ -226,6 +226,13 @@ abstract final class FinanceTextParser {
     r'明天|明日|后天|后日|today|yesterday|tomorrow',
     caseSensitive: false,
   );
+  static final RegExp _unsupportedCurrencyAmountPattern = RegExp(
+    r'(?:[$€£]\s*\d|\d[\d,]*(?:\.\d+)?\s*[$€£]|'
+    r'(?:USD|EUR|GBP|HKD|JPY|AUD|CAD|SGD)\s*\d|'
+    r'\d[\d,]*(?:\.\d+)?\s*'
+    r'(?:USD|EUR|GBP|HKD|JPY|AUD|CAD|SGD|美元|美金|欧元|英镑|港币|港元|日元|日币|韩元|澳元|加元|新加坡元|dollars?|euros?|pounds?))',
+    caseSensitive: false,
+  );
 
   static final RegExp _blockMarker = RegExp(
     r'^[ \t]*(?:#[ \t]*)?(?:\[[ \t]*)?记账(?:[ \t]*#?[ \t]*\d+)?(?:[ \t]*\])?(?=[ \t]*(?:\||$))',
@@ -267,7 +274,9 @@ abstract final class FinanceTextParser {
     FinanceEntrySource source = FinanceEntrySource.manual,
   }) {
     final text = _normalizeOneSentence(input);
-    if (text.isEmpty) return null;
+    if (text.isEmpty || _unsupportedCurrencyAmountPattern.hasMatch(text)) {
+      return null;
+    }
 
     final amountMatch = _findSentenceAmountMatch(text);
     final amount = _parseAmount(amountMatch?.group(1));
@@ -831,6 +840,7 @@ abstract final class FinanceTextParser {
 
   static int? _parseAmount(String? raw) {
     if (raw == null || raw.trim().isEmpty) return null;
+    if (_unsupportedCurrencyAmountPattern.hasMatch(raw)) return null;
     final normalized = raw
         .trim()
         .replaceAll(RegExp(r'^[¥￥$€£]\s*'), '')

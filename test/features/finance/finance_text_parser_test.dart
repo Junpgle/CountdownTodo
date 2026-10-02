@@ -237,6 +237,26 @@ void main() {
       );
     });
 
+    test('外币金额不会静默按人民币录入', () {
+      for (final text in ['今天咖啡 \$5', '今天咖啡 5 美元', '今天咖啡 EUR 5']) {
+        expect(
+          FinanceTextParser.parseOneSentence(text, now: now),
+          isNull,
+          reason: text,
+        );
+      }
+      expect(
+        FinanceTextParser.parse(
+          '''#记账
+类型: 支出
+金额: \$5
+日期: 今天''',
+          now: now,
+        ),
+        isEmpty,
+      );
+    });
+
     test('没有逗号和元也能从自然语言中识别金额及字段', () {
       final draft = FinanceTextParser.parseOneSentence(
         '今天午餐28.5微信支付分类餐饮',
