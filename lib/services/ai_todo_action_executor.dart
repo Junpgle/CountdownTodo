@@ -1327,7 +1327,7 @@ class AiTodoActionExecutor {
           : existing?.tagUuids ?? [],
       startTime: start.millisecondsSinceEpoch,
       endTime: end.millisecondsSinceEpoch,
-      remark: action.remark ?? existing?.remark,
+      remark: action.hasRemark ? action.remark : existing?.remark,
       version: existing?.version ?? 1,
       createdAt: existing?.createdAt,
       isDeleted: existing?.isDeleted ?? false,
