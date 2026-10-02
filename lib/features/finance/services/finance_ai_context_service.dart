@@ -20,6 +20,14 @@ typedef _ExplicitFinanceDateToken = ({
   bool hasExplicitYear,
 });
 
+typedef _ExplicitFinanceMonthToken = ({
+  int start,
+  int end,
+  int year,
+  int month,
+  bool hasExplicitYear,
+});
+
 /// Builds a small, query-scoped finance snapshot for the AI assistant.
 ///
 /// The snapshot is intentionally separate from the generic todo context:
@@ -1043,6 +1051,13 @@ abstract final class FinanceAiContextService {
       }
       if (!isValidRollingPeriod) return true;
     }
+    if (explicitDateTokens.isEmpty) {
+      final explicitMonthTokens = _explicitMonthTokens(text, now.year);
+      if (explicitMonthTokens.length > 1 &&
+          _resolveExplicitMonthRange(text, now) == null) {
+        return true;
+      }
+    }
     return false;
   }
 
@@ -1148,26 +1163,71 @@ abstract final class FinanceAiContextService {
     String text,
     DateTime current,
   ) {
-    final numericYearMonth = _numericYearMonthPattern.firstMatch(text);
-    int? year;
-    int? month;
-    String? relativeYear;
-    if (numericYearMonth != null) {
-      year = int.tryParse(numericYearMonth.group(1)!);
-      final rawMonth = numericYearMonth.group(2)!;
-      if (rawMonth.length > 2) return null;
-      month = int.tryParse(rawMonth);
-    } else {
-      final chineseMonth = _chineseMonthPattern.firstMatch(text);
-      if (chineseMonth == null) return null;
-      year = int.tryParse(chineseMonth.group(1) ?? '');
-      relativeYear = chineseMonth.group(2);
-      month = _parseMonthNumber(chineseMonth.group(3)!);
+    final tokens = _explicitMonthTokens(text, current.year);
+    if (tokens.isEmpty || tokens.length > 2) return null;
+    final first = tokens.first;
+    if (first.month < 1 || first.month > 12) return null;
+    final from = DateTime(first.year, first.month);
+    if (tokens.length == 1) {
+      return FinanceDateRange(from, DateTime(first.year, first.month + 1));
     }
-    if (month == null || month < 1 || month > 12) return null;
-    year = _resolveCalendarYear(year, relativeYear, current.year);
-    final from = DateTime(year, month);
-    return FinanceDateRange(from, DateTime(year, month + 1));
+
+    final last = tokens.last;
+    if (last.month < 1 || last.month > 12 ||
+        !_explicitDateRangeSeparator.hasMatch(
+          text.substring(first.end, last.start),
+        )) {
+      return null;
+    }
+    var endYear = last.year;
+    if (!last.hasExplicitYear) {
+      endYear = first.year;
+      if (last.month < first.month) endYear++;
+    }
+    if (endYear < first.year ||
+        (endYear == first.year && last.month < first.month)) {
+      return null;
+    }
+    return FinanceDateRange(from, DateTime(endYear, last.month + 1));
+  }
+
+  static List<_ExplicitFinanceMonthToken> _explicitMonthTokens(
+    String text,
+    int currentYear,
+  ) {
+    final tokens = <_ExplicitFinanceMonthToken>[];
+    for (final match in _numericYearMonthPattern.allMatches(text)) {
+      tokens.add((
+        start: match.start + match.group(0)!.indexOf(match.group(1)!),
+        end: match.end,
+        year: int.tryParse(match.group(1)!) ?? currentYear,
+        month: int.tryParse(match.group(2)!) ?? 0,
+        hasExplicitYear: true,
+      ));
+    }
+    for (final match in _chineseMonthPattern.allMatches(text)) {
+      final isRollingMonth = _rollingMonthPeriodPattern.allMatches(text).any(
+        (rollingMonth) =>
+            match.start >= rollingMonth.start &&
+            match.end <= rollingMonth.end,
+      );
+      if (isRollingMonth) continue;
+      final relativeYear = match.group(2);
+      final explicitYear = int.tryParse(match.group(1) ?? '');
+      tokens.add((
+        start: match.start,
+        end: match.end,
+        year: _resolveCalendarYear(
+          explicitYear,
+          relativeYear,
+          currentYear,
+        ),
+        month: _parseMonthNumber(match.group(3)!) ?? 0,
+        hasExplicitYear: explicitYear != null || relativeYear != null,
+      ));
+    }
+    tokens.sort((left, right) => left.start.compareTo(right.start));
+    return tokens;
   }
 
   static int _resolveCalendarYear(

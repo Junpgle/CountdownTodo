@@ -311,6 +311,38 @@ void main() {
     expect(context, isNot(contains('[transactionId: august]')));
   });
 
+  test('显式月份范围包含起止月并正确跨年', () async {
+    for (final (query, expectedFrom, expectedTo) in [
+      ('2026年8月到9月支出多少', '2026-08-01', '2026-10-01'),
+      ('2026-08到2026-09支出多少', '2026-08-01', '2026-10-01'),
+      ('去年12月到1月支出多少', '2025-12-01', '2026-02-01'),
+    ]) {
+      final range = FinanceAiContextService.resolveDateRange(
+        query,
+        now: DateTime(2026, 10, 2),
+      );
+      expect(dateKey(range.from), expectedFrom, reason: query);
+      expect(dateKey(range.to), expectedTo, reason: query);
+      expect(
+        FinanceAiContextService.shouldInjectFor(query),
+        isTrue,
+        reason: query,
+      );
+    }
+
+    expect(
+      FinanceAiContextService.shouldInjectFor('2026年8月和2026年9月支出多少'),
+      isFalse,
+    );
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '2026年8月到9月支出多少',
+      now: DateTime(2026, 9, 2, 23, 59),
+    );
+    expect(context, contains('[transactionId: august]'));
+    expect(context, contains('[transactionId: earlier-september]'));
+    expect(context, contains('[transactionId: today]'));
+  });
+
   test('明确日期和月份的年份由各自的日期前缀决定', () {
     final now = DateTime(2026, 9, 2);
     final dateRange = FinanceAiContextService.resolveDateRange(
