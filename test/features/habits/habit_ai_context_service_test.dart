@@ -76,6 +76,52 @@ void main() {
       }
     });
 
+    test('resolves rolling year aliases and keeps them in follow-ups', () {
+      final testNow = DateTime(2026, 10, 3, 12);
+      for (final period in [
+        '最近一年',
+        '最近1年',
+        '过去一年',
+        '过去1年',
+        '近一年',
+        '近1年',
+        '最近12个月',
+        '过去12个月',
+        '近12个月',
+      ]) {
+        final direct = HabitAiContextService.buildContextInjectionSummary(
+          userMessage: '查看$period的习惯进度',
+          goals: const [],
+          now: testNow,
+        );
+        final followUp = HabitAiContextService.buildContextInjectionSummary(
+          userMessage: '那$period呢？',
+          previousUserMessage: '查看2026-06-01至2026-06-30的习惯进度',
+          conversationContext: '习惯进度',
+          goals: const [],
+          now: testNow,
+        );
+
+        expect(direct, contains('2025-10-03 至 2026-10-03'), reason: period);
+        expect(followUp, contains('2025-10-03 至 2026-10-03'), reason: period);
+      }
+
+      final leapYearRange =
+          HabitAiContextService.buildContextInjectionSummary(
+            userMessage: '查看最近一年的习惯进度',
+            goals: const [],
+            now: DateTime(2024, 2, 29, 12),
+          );
+      final comparison = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '比较最近一年和去年习惯进度',
+        goals: const [],
+        now: testNow,
+      );
+
+      expect(leapYearRange, contains('2023-02-28 至 2024-02-29'));
+      expect(comparison, isNull);
+    });
+
     test('resolves the second previous month in direct and follow-up queries', () {
       final testNow = DateTime(2026, 10, 3, 12);
       for (final period in ['上上个月', '上上月']) {

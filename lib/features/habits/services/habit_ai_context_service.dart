@@ -103,6 +103,9 @@ abstract final class HabitAiContextService {
   static final RegExp _rollingMonthPattern = RegExp(
     r'(?:近|最近|过去)\s*(?:(\d+|[零〇○一二两三四五六七八九十]{1,3})\s*个?月|半年)',
   );
+  static final RegExp _rollingYearPattern = RegExp(
+    r'(?:近|最近|过去)\s*(?:一年|1年)',
+  );
 
   static final RegExp _relativePeriodPattern = RegExp(
     r'最近(?:30天|三十天|7天|七天)|过去(?:30天|三十天|7天|七天)|近(?:30天|三十天|7天|七天)|'
@@ -262,6 +265,7 @@ abstract final class HabitAiContextService {
         _yearMonthPattern.hasMatch(text) ||
         _monthPattern.hasMatch(text) ||
         _rollingMonthPattern.hasMatch(text) ||
+        _rollingYearPattern.hasMatch(text) ||
         _quarterPeriodPattern.hasMatch(text) ||
         _containsAny(text, [
           '今天',
@@ -294,6 +298,7 @@ abstract final class HabitAiContextService {
         _yearMonthPattern.hasMatch(previous) ||
         _monthPattern.hasMatch(previous) ||
         _rollingMonthPattern.hasMatch(previous) ||
+        _rollingYearPattern.hasMatch(previous) ||
         _quarterPeriodPattern.hasMatch(previous) ||
         _containsAny(previous, [
           '今天',
@@ -451,6 +456,20 @@ abstract final class HabitAiContextService {
           label: '${_dateKey(from)} 至 ${_dateKey(today)}',
         );
       }
+    }
+    if (_rollingYearPattern.hasMatch(text)) {
+      final targetYear = today.year - 1;
+      final lastDay = DateTime(targetYear, today.month + 1, 0).day;
+      final from = DateTime(
+        targetYear,
+        today.month,
+        today.day > lastDay ? lastDay : today.day,
+      );
+      return (
+        from: from,
+        to: today,
+        label: '${_dateKey(from)} 至 ${_dateKey(today)}',
+      );
     }
     final numeric = _yearMonthPattern.firstMatch(text);
     final chinese = numeric == null ? _monthPattern.firstMatch(text) : null;
@@ -667,6 +686,7 @@ abstract final class HabitAiContextService {
     addMatches(_quarterPeriodPattern);
     addMatches(_relativeYearQualifiedMonthPattern);
     addMatches(_rollingMonthPattern);
+    addMatches(_rollingYearPattern);
     addMatches(_yearMonthPattern);
     addMatches(_monthPattern);
     addMatches(_calendarDateRangePattern);
