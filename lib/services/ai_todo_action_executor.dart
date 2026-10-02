@@ -1636,6 +1636,10 @@ class AiTodoActionExecutor {
     DateTime? existingDue,
     TodoTimeMode existingMode = TodoTimeMode.unscheduled,
   }) {
+    if (action.hasDueDate && action.dueDate == null) {
+      return (start: null, due: null, isDateOnly: false);
+    }
+
     final requestedMode = TodoTimeMode.values.firstWhere(
       (mode) => mode.name == action.timeMode,
       orElse: () {
