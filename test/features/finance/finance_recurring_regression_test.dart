@@ -882,6 +882,82 @@ void main() {
     expect(shownNotifications, 3);
   });
 
+  test('大额预算提醒不会截断已使用金额', () async {
+    final db = await openDatabase();
+    const accountKey = 'finance-large-budget-alert-test-user';
+    const localNotificationChannel = MethodChannel(
+      'dexterous.com/flutter/local_notifications',
+    );
+    const macStatusBarChannel = MethodChannel(
+      'countdown_todo/macos_status_bar',
+    );
+    final notificationBodies = <String>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    MacOSFlutterLocalNotificationsPlugin.registerWith();
+    messenger.setMockMethodCallHandler(localNotificationChannel, (call) async {
+      switch (call.method) {
+        case 'initialize':
+          return true;
+        case 'checkPermissions':
+          return {
+            'isEnabled': true,
+            'isAlertEnabled': true,
+            'isBadgeEnabled': true,
+            'isSoundEnabled': true,
+            'isProvisionalEnabled': false,
+            'isCriticalEnabled': false,
+            'isProvidesAppNotificationSettingsEnabled': false,
+          };
+        case 'show':
+          final arguments = Map<String, dynamic>.from(call.arguments as Map);
+          notificationBodies.add(arguments['body'] as String);
+          return null;
+      }
+      return null;
+    });
+    messenger.setMockMethodCallHandler(
+      macStatusBarChannel,
+      (call) async => null,
+    );
+    addTearDown(() async {
+      await FocusDoNotDisturbService.setActive(false, force: true);
+      messenger.setMockMethodCallHandler(localNotificationChannel, null);
+      messenger.setMockMethodCallHandler(macStatusBarChannel, null);
+      debugDefaultTargetPlatformOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(StorageService.keyCurrentUser, accountKey);
+    await AppSettingsStorage.setFinanceBudgetAlertEnabled(true);
+    await AppSettingsStorage.setNormalNotificationEnabled(true);
+    await FocusDoNotDisturbService.setActive(false, force: true);
+    final now = DateTime.now();
+    final monthKey = financeMonthKey(now);
+    await FinanceStorage.saveBudget(
+      FinanceBudget(
+        uuid: 'large-budget-alert',
+        monthKey: monthKey,
+        amountMinor: 3000000000,
+      ),
+    );
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'large-budget-alert-expense',
+        amountMinor: 2500000000,
+        transactionDate: dateKey(now),
+        occurredAt: now.millisecondsSinceEpoch,
+      ),
+    );
+
+    await FinanceAutomationService.checkBudgetAlerts(now: now);
+
+    expect(notificationBodies, ['本月总支出 ¥25,000,000.00 / ¥30,000,000.00']);
+  });
+
   test('开启预算提醒后立即检查已达到阈值的支出', () async {
     final db = await openDatabase();
     const accountKey = 'finance-enable-budget-alert-test-user';

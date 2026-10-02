@@ -342,9 +342,7 @@ abstract final class FinanceAutomationService {
 
     for (final budget in budgets) {
       if (budget.isPaymentMethod) continue;
-      final used = summary
-          .spendingForBudget(budget, categories)
-          .clamp(0, 0x7fffffff);
+      final used = summary.spendingForBudget(budget, categories);
       if (used <= 0 || budget.amountMinor <= 0) continue;
       final ratio = used / budget.amountMinor;
       final threshold = ratio >= 1
