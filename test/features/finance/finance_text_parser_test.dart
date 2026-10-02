@@ -459,6 +459,13 @@ void main() {
     );
     expect(returnedGoods, isNotNull);
     expect(returnedGoods!.type, FinanceTransactionType.refund);
+
+    final cashback = FinanceTextParser.parseOneSentence(
+      '今天收到银行卡返现 10 元',
+      now: fixedNow,
+    );
+    expect(cashback, isNotNull);
+    expect(cashback!.type, FinanceTransactionType.refund);
   });
 
   test('逗号分隔字段时保留每笔账单的分类和付款方式', () {
