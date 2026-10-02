@@ -11,8 +11,9 @@ import '../models/finance_models.dart';
 import 'finance_repository.dart';
 
 int _readNonNegativeInt(Object? value) {
-  final parsed =
-      value is num ? value.toInt() : int.tryParse(value?.toString() ?? '') ?? 0;
+  final parsed = value is num
+      ? value.toInt()
+      : int.tryParse(value?.toString() ?? '') ?? 0;
   return parsed < 0 ? 0 : parsed;
 }
 
@@ -43,10 +44,7 @@ class AiUsagePriceTier {
     this.outputMicrosPerMillion = 0,
   });
 
-  bool matches({
-    required int promptTokens,
-    required int completionTokens,
-  }) {
+  bool matches({required int promptTokens, required int completionTokens}) {
     return promptTokens >= minPromptTokens &&
         (maxPromptTokens == null || promptTokens < maxPromptTokens!) &&
         completionTokens >= minCompletionTokens &&
@@ -55,31 +53,32 @@ class AiUsagePriceTier {
   }
 
   Map<String, dynamic> toJson() => {
-        'min_prompt_tokens': minPromptTokens,
-        'max_prompt_tokens': maxPromptTokens,
-        'min_completion_tokens': minCompletionTokens,
-        'max_completion_tokens': maxCompletionTokens,
-        'cached_input_micros_per_million': cachedInputMicrosPerMillion,
-        'input_micros_per_million': inputMicrosPerMillion,
-        'output_micros_per_million': outputMicrosPerMillion,
-      };
+    'min_prompt_tokens': minPromptTokens,
+    'max_prompt_tokens': maxPromptTokens,
+    'min_completion_tokens': minCompletionTokens,
+    'max_completion_tokens': maxCompletionTokens,
+    'cached_input_micros_per_million': cachedInputMicrosPerMillion,
+    'input_micros_per_million': inputMicrosPerMillion,
+    'output_micros_per_million': outputMicrosPerMillion,
+  };
 
   factory AiUsagePriceTier.fromJson(Map<String, dynamic> json) =>
       AiUsagePriceTier(
         minPromptTokens: _readNonNegativeInt(json['min_prompt_tokens']),
-        maxPromptTokens: _readNullableNonNegativeInt(
-          json['max_prompt_tokens'],
-        ),
+        maxPromptTokens: _readNullableNonNegativeInt(json['max_prompt_tokens']),
         minCompletionTokens: _readNonNegativeInt(json['min_completion_tokens']),
         maxCompletionTokens: _readNullableNonNegativeInt(
           json['max_completion_tokens'],
         ),
-        cachedInputMicrosPerMillion:
-            _readNonNegativeInt(json['cached_input_micros_per_million']),
-        inputMicrosPerMillion:
-            _readNonNegativeInt(json['input_micros_per_million']),
-        outputMicrosPerMillion:
-            _readNonNegativeInt(json['output_micros_per_million']),
+        cachedInputMicrosPerMillion: _readNonNegativeInt(
+          json['cached_input_micros_per_million'],
+        ),
+        inputMicrosPerMillion: _readNonNegativeInt(
+          json['input_micros_per_million'],
+        ),
+        outputMicrosPerMillion: _readNonNegativeInt(
+          json['output_micros_per_million'],
+        ),
       );
 }
 
@@ -117,49 +116,55 @@ class AiUsagePricing {
   String get id => '$provider::$model';
 
   Map<String, dynamic> toJson() => {
-        'provider': provider,
-        'model': model,
-        'cached_input_micros_per_million': cachedInputMicrosPerMillion,
-        'input_micros_per_million': inputMicrosPerMillion,
-        'output_micros_per_million': outputMicrosPerMillion,
-        'image_micros_per_image': imageMicrosPerImage,
-        'audio_micros_per_hour': audioMicrosPerHour,
-        'peak_cached_input_micros_per_million': peakCachedInputMicrosPerMillion,
-        'peak_input_micros_per_million': peakInputMicrosPerMillion,
-        'peak_output_micros_per_million': peakOutputMicrosPerMillion,
-        'image_tokens_included': imageTokensIncluded,
-        'is_free': isFree,
-        'tiers': tiers.map((item) => item.toJson()).toList(),
-      };
+    'provider': provider,
+    'model': model,
+    'cached_input_micros_per_million': cachedInputMicrosPerMillion,
+    'input_micros_per_million': inputMicrosPerMillion,
+    'output_micros_per_million': outputMicrosPerMillion,
+    'image_micros_per_image': imageMicrosPerImage,
+    'audio_micros_per_hour': audioMicrosPerHour,
+    'peak_cached_input_micros_per_million': peakCachedInputMicrosPerMillion,
+    'peak_input_micros_per_million': peakInputMicrosPerMillion,
+    'peak_output_micros_per_million': peakOutputMicrosPerMillion,
+    'image_tokens_included': imageTokensIncluded,
+    'is_free': isFree,
+    'tiers': tiers.map((item) => item.toJson()).toList(),
+  };
 
   factory AiUsagePricing.fromJson(Map<String, dynamic> json) {
     final rawTiers = json['tiers'];
     final tiers = rawTiers is List
         ? rawTiers
-            .whereType<Map>()
-            .map((item) => AiUsagePriceTier.fromJson(
-                  Map<String, dynamic>.from(item),
-                ))
-            .toList()
+              .whereType<Map>()
+              .map(
+                (item) =>
+                    AiUsagePriceTier.fromJson(Map<String, dynamic>.from(item)),
+              )
+              .toList()
         : const <AiUsagePriceTier>[];
     return AiUsagePricing(
       provider: json['provider']?.toString() ?? '',
       model: json['model']?.toString() ?? '',
-      cachedInputMicrosPerMillion:
-          _readNonNegativeInt(json['cached_input_micros_per_million']),
-      inputMicrosPerMillion:
-          _readNonNegativeInt(json['input_micros_per_million']),
-      outputMicrosPerMillion:
-          _readNonNegativeInt(json['output_micros_per_million']),
+      cachedInputMicrosPerMillion: _readNonNegativeInt(
+        json['cached_input_micros_per_million'],
+      ),
+      inputMicrosPerMillion: _readNonNegativeInt(
+        json['input_micros_per_million'],
+      ),
+      outputMicrosPerMillion: _readNonNegativeInt(
+        json['output_micros_per_million'],
+      ),
       imageMicrosPerImage: _readNonNegativeInt(json['image_micros_per_image']),
       audioMicrosPerHour: _readNonNegativeInt(json['audio_micros_per_hour']),
       peakCachedInputMicrosPerMillion: _readNonNegativeInt(
         json['peak_cached_input_micros_per_million'],
       ),
-      peakInputMicrosPerMillion:
-          _readNonNegativeInt(json['peak_input_micros_per_million']),
-      peakOutputMicrosPerMillion:
-          _readNonNegativeInt(json['peak_output_micros_per_million']),
+      peakInputMicrosPerMillion: _readNonNegativeInt(
+        json['peak_input_micros_per_million'],
+      ),
+      peakOutputMicrosPerMillion: _readNonNegativeInt(
+        json['peak_output_micros_per_million'],
+      ),
       imageTokensIncluded: json['image_tokens_included'] == true,
       isFree: json['is_free'] == true,
       tiers: tiers,
@@ -236,8 +241,9 @@ class AiUsageRecord {
       promptTokens: promptTokens,
       completionTokens: _readNonNegativeInt(map['completion_tokens']),
       totalTokens: _readNonNegativeInt(map['total_tokens']),
-      cachedPromptTokens:
-          cachedPromptTokens > promptTokens ? promptTokens : cachedPromptTokens,
+      cachedPromptTokens: cachedPromptTokens > promptTokens
+          ? promptTokens
+          : cachedPromptTokens,
       imageTokens: _readNonNegativeInt(map['image_tokens']),
       audioTokens: _readNonNegativeInt(map['audio_tokens']),
       videoTokens: _readNonNegativeInt(map['video_tokens']),
@@ -351,18 +357,18 @@ abstract final class AiUsageCostService {
     ),
     AiUsagePricing(
       provider: 'mimo',
-      model: 'mimo-v2.5-pro',
-      cachedInputMicrosPerMillion: 25000,
-      inputMicrosPerMillion: 3000000,
-      outputMicrosPerMillion: 6000000,
-      imageTokensIncluded: true,
-    ),
-    AiUsagePricing(
-      provider: 'mimo',
       model: 'mimo-v2.6-pro-ultraspeed',
       cachedInputMicrosPerMillion: 250000,
       inputMicrosPerMillion: 30000000,
       outputMicrosPerMillion: 60000000,
+      imageTokensIncluded: true,
+    ),
+    AiUsagePricing(
+      provider: 'mimo',
+      model: 'mimo-v2.5-pro',
+      cachedInputMicrosPerMillion: 25000,
+      inputMicrosPerMillion: 3000000,
+      outputMicrosPerMillion: 6000000,
       imageTokensIncluded: true,
     ),
     AiUsagePricing(
@@ -499,21 +505,13 @@ abstract final class AiUsageCostService {
         ),
       ],
     ),
-    AiUsagePricing(
-      provider: 'zhipu',
-      model: 'glm-4.7-flash',
-      isFree: true,
-    ),
+    AiUsagePricing(provider: 'zhipu', model: 'glm-4.7-flash', isFree: true),
     AiUsagePricing(
       provider: 'zhipu',
       model: 'glm-4-flash-250414',
       isFree: true,
     ),
-    AiUsagePricing(
-      provider: 'zhipu',
-      model: 'glm-4.5-flash',
-      isFree: true,
-    ),
+    AiUsagePricing(provider: 'zhipu', model: 'glm-4.5-flash', isFree: true),
     AiUsagePricing(
       provider: 'zhipu',
       model: 'glm-4.6v-flash',
@@ -600,7 +598,7 @@ abstract final class AiUsageCostService {
   }
 
   static Future<({bool autoLedger, List<AiUsagePricing> prices})>
-      _loadSettings() async {
+  _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(await _settingsKey());
     if (raw == null || raw.isEmpty) {
@@ -610,8 +608,9 @@ abstract final class AiUsageCostService {
       final json = jsonDecode(raw) as Map<String, dynamic>;
       final values = (json['prices'] as List? ?? const [])
           .whereType<Map>()
-          .map((item) =>
-              AiUsagePricing.fromJson(Map<String, dynamic>.from(item)))
+          .map(
+            (item) => AiUsagePricing.fromJson(Map<String, dynamic>.from(item)),
+          )
           .where((item) => item.provider.isNotEmpty && item.model.isNotEmpty)
           .toList();
       return (
@@ -635,9 +634,8 @@ abstract final class AiUsageCostService {
     values.sort((a, b) => a.id.compareTo(b.id));
     return values;
   }
-  static List<AiUsagePricing> _settingsOverrides(
-    List<AiUsagePricing> prices,
-  ) {
+
+  static List<AiUsagePricing> _settingsOverrides(List<AiUsagePricing> prices) {
     return prices.where((pricing) {
       final builtIn = _builtInPricing
           .where((item) => item.id == pricing.id)
@@ -669,7 +667,6 @@ abstract final class AiUsageCostService {
         pricing.tiers.isEmpty;
   }
 
-
   static bool isBuiltInPricing(AiUsagePricing pricing) =>
       _builtInPricing.any((item) => item.id == pricing.id);
 
@@ -677,8 +674,8 @@ abstract final class AiUsageCostService {
     required bool autoLedger,
     required List<AiUsagePricing> prices,
   }) async {
-    final overrides = _settingsOverrides(prices);
     final prefs = await SharedPreferences.getInstance();
+    final overrides = _settingsOverrides(prices);
     await prefs.setString(
       await _settingsKey(),
       jsonEncode({
@@ -763,8 +760,8 @@ abstract final class AiUsageCostService {
     final normalizedImageCount = _readNonNegativeInt(imageCount);
     final clampedCachedPromptTokens =
         normalizedCachedPromptTokens > normalizedPromptTokens
-            ? normalizedPromptTokens
-            : normalizedCachedPromptTokens;
+        ? normalizedPromptTokens
+        : normalizedCachedPromptTokens;
     final timestamp = now ?? DateTime.now();
     final settings = await _loadSettings();
     final pricing = settings.prices
@@ -870,8 +867,10 @@ abstract final class AiUsageCostService {
         continue;
       }
       final pricing = settings.prices
-          .where((item) =>
-              item.provider == record.provider && item.model == record.model)
+          .where(
+            (item) =>
+                item.provider == record.provider && item.model == record.model,
+          )
           .firstOrNull;
       final costMicros = _calculateCostMicros(
         pricing,
@@ -913,7 +912,8 @@ abstract final class AiUsageCostService {
       final provider = row['provider']?.toString() ?? '';
       final model = row['model']?.toString() ?? '';
       if (provider.isEmpty || model.isEmpty) continue;
-      changed = await _syncLedgerAggregate(
+      changed =
+          await _syncLedgerAggregate(
             db: db,
             monthStart: monthStart,
             monthEnd: monthEnd,
@@ -994,7 +994,8 @@ abstract final class AiUsageCostService {
     // MiMo, Zhipu vision, and DeepSeek vision report media as parts of the
     // prompt token total. Do not add a per-image fee on top of those tokens.
     // For other providers, retain the existing optional fixed image fee.
-    final tokenNumerator = uncachedTokens * rates.inputMicrosPerMillion +
+    final tokenNumerator =
+        uncachedTokens * rates.inputMicrosPerMillion +
         cachedTokens * cachedInputRate +
         normalizedCompletionTokens * rates.outputMicrosPerMillion;
     final tokenCostMicros =
@@ -1025,7 +1026,8 @@ abstract final class AiUsageCostService {
       if (tier == null) return null;
     }
 
-    var cachedInputMicrosPerMillion = tier?.cachedInputMicrosPerMillion ??
+    var cachedInputMicrosPerMillion =
+        tier?.cachedInputMicrosPerMillion ??
         pricing.cachedInputMicrosPerMillion;
     var inputMicrosPerMillion =
         tier?.inputMicrosPerMillion ?? pricing.inputMicrosPerMillion;
@@ -1074,29 +1076,32 @@ abstract final class AiUsageCostService {
   }) async {
     final monthKey = financeMonthKey(monthStart);
     final ledgerKey = _monthlyLedgerKey(monthKey, provider, model);
-    final totalMicros = Sqflite.firstIntValue(await db.rawQuery(
-          'SELECT COALESCE(SUM(cost_micros), 0) FROM ai_usage_records '
-          'WHERE provider = ? AND model = ? AND is_priced = 1 '
-          'AND created_at >= ? AND created_at < ?',
-          [
-            provider,
-            model,
-            monthStart.millisecondsSinceEpoch,
-            monthEnd.millisecondsSinceEpoch,
-          ],
-        )) ??
+    final totalMicros =
+        Sqflite.firstIntValue(
+          await db.rawQuery(
+            'SELECT COALESCE(SUM(cost_micros), 0) FROM ai_usage_records '
+            'WHERE provider = ? AND model = ? AND is_priced = 1 '
+            'AND created_at >= ? AND created_at < ?',
+            [
+              provider,
+              model,
+              monthStart.millisecondsSinceEpoch,
+              monthEnd.millisecondsSinceEpoch,
+            ],
+          ),
+        ) ??
         0;
     final amountMinor = (totalMicros + (_microsPerFen ~/ 2)) ~/ _microsPerFen;
     if (amountMinor <= 0) return false;
 
-    final allLinks = await db.query(
-      'ai_usage_ledger_links',
-    );
-    final links = allLinks.where((row) {
-      final key = row['ledger_key']?.toString() ?? '';
-      return key == ledgerKey ||
-          _isLegacyDailyLedgerKey(key, monthKey, provider, model);
-    }).toList(growable: false);
+    final allLinks = await db.query('ai_usage_ledger_links');
+    final links = allLinks
+        .where((row) {
+          final key = row['ledger_key']?.toString() ?? '';
+          return key == ledgerKey ||
+              _isLegacyDailyLedgerKey(key, monthKey, provider, model);
+        })
+        .toList(growable: false);
     final linkedUuids = links
         .map((row) => row['finance_transaction_uuid']?.toString() ?? '')
         .where((uuid) => uuid.isNotEmpty)
@@ -1115,9 +1120,11 @@ abstract final class AiUsageCostService {
       }
     }
 
-    final existing =
-        linkedTransactions.values.where((item) => !item.isDeleted).firstOrNull;
-    final transaction = existing ??
+    final existing = linkedTransactions.values
+        .where((item) => !item.isDeleted)
+        .firstOrNull;
+    final transaction =
+        existing ??
         FinanceTransaction(
           uuid: _monthlyLedgerTransactionUuid(monthKey, provider, model),
           type: FinanceTransactionType.expense,
@@ -1156,15 +1163,11 @@ abstract final class AiUsageCostService {
         );
       }
     }
-    await db.insert(
-      'ai_usage_ledger_links',
-      {
-        'ledger_key': ledgerKey,
-        'finance_transaction_uuid': transaction.uuid,
-        'updated_at': DateTime.now().millisecondsSinceEpoch,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('ai_usage_ledger_links', {
+      'ledger_key': ledgerKey,
+      'finance_transaction_uuid': transaction.uuid,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
     return changed;
   }
 
@@ -1172,8 +1175,7 @@ abstract final class AiUsageCostService {
     String monthKey,
     String provider,
     String model,
-  ) =>
-      '$_monthlyLedgerKeyPrefix|$monthKey|$provider|$model';
+  ) => '$_monthlyLedgerKeyPrefix|$monthKey|$provider|$model';
 
   static bool _isLegacyDailyLedgerKey(
     String key,
