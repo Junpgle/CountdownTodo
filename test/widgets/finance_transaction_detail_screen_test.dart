@@ -227,6 +227,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     String? selectedCategoryUuid;
     GlobalKey? selectedSourceKey;
+    List<FinanceTransaction>? selectedTransactions;
     final transactions = [
       FinanceTransaction(
         uuid: 'overview-milk-tea',
@@ -295,9 +296,10 @@ void main() {
           onAdd: () {},
           addActionKey: GlobalKey(),
           onRefresh: () async {},
-          onCategorySelected: (value, sourceKey) async {
+          onCategorySelected: (value, sourceKey, periodTransactions) async {
             selectedCategoryUuid = value;
             selectedSourceKey = sourceKey;
+            selectedTransactions = periodTransactions;
           },
         ),
       ),
@@ -334,6 +336,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(selectedCategoryUuid, 'milk-tea');
     expect(selectedSourceKey?.currentContext, isNotNull);
+    expect(
+      selectedTransactions?.map((transaction) => transaction.uuid),
+      containsAll(transactions.map((transaction) => transaction.uuid)),
+    );
     expect(find.text('支出分类详情'), findsOneWidget);
   });
 
