@@ -215,8 +215,9 @@ abstract final class FinanceTextParser {
   );
   static final RegExp _chineseMonthDayPattern = RegExp(
     r'(?:(?:(\d{4})\s*年|(今年|前年|去年|上一年|前一年))\s*)?'
-    r'(十一|十二|十|[一二三四五六七八九]|1[0-2]|0?[1-9])\s*(?:月|/)\s*'
-    r'(\d{1,2}|[一二三四五六七八九十廿]{1,3})\s*[日号]?',
+    r'(?<!\d)(十一|十二|十|[一二三四五六七八九]|1[0-2]|0?[1-9])'
+    r'\s*(?:月|/)\s*'
+    r'(\d{1,2}|[一二三四五六七八九十廿]{1,3})(?!\d)\s*[日号]?',
   );
   static final RegExp _relativeDayPattern = RegExp(
     r'大前天|大前日|大后天|大后日|前天|前日|昨天|昨日|今天|今日|'
@@ -1078,8 +1079,8 @@ abstract final class FinanceTextParser {
     if (relativeWeekday != null) return relativeWeekday;
 
     final full = RegExp(
-      r'(?<!\d)(\d{4})\s*(?:年|[-/.])\s*(\d{1,2})\s*'
-      r'(?:月|[-/.])\s*(\d{1,2})\s*日?',
+      r'(?<!\d)(\d{4})\s*(?:年|[-/.])\s*(\d+)\s*'
+      r'(?:月|[-/.])\s*(\d+)(?!\d)\s*日?',
     ).firstMatch(text);
     if (full != null) {
       return _safeSentenceDate(
@@ -1107,7 +1108,7 @@ abstract final class FinanceTextParser {
     }
 
     final monthDay = RegExp(
-      r'(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*日?',
+      r'(?<!\d)(\d+)\s*月\s*(\d+)(?!\d)\s*日?',
     ).firstMatch(text);
     if (monthDay != null) {
       return _safeSentenceDate(
@@ -1118,7 +1119,7 @@ abstract final class FinanceTextParser {
     }
 
     final slashMonthDay = RegExp(
-      r'(?<!\d)(\d{1,2})\s*/\s*(\d{1,2})(?!\d)',
+      r'(?<!\d)(\d+)\s*/\s*(\d+)(?!\d)',
     ).firstMatch(text);
     if (slashMonthDay != null) {
       return _safeSentenceDate(
