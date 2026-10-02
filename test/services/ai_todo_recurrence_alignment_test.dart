@@ -1341,5 +1341,59 @@ void main() {
         expect(preview, contains('专注记录$dateKey'), reason: prompt);
       }
     });
+    test('上上周和上上个月效率范围不会匹配上一期', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('two-months-prior', DateTime(2026, 8, 31, 9)),
+        ('last-month', DateTime(2026, 9, 30, 9)),
+        ('two-weeks-prior', DateTime(2026, 9, 18, 9)),
+        ('last-week', DateTime(2026, 9, 25, 9)),
+        ('this-week', DateTime(2026, 9, 29, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final twoMonths = contextFor('分析上上个月效率');
+      expect(twoMonths, contains('上上个月合计'));
+      expect(twoMonths, contains('two-months-prior'));
+      expect(twoMonths, isNot(contains('last-month')));
+      expect(
+        previewFor('分析上上个月效率'),
+        contains('专注记录20260801-20260831'),
+      );
+
+      final twoWeeks = contextFor('分析上上周效率');
+      expect(twoWeeks, contains('上上周合计'));
+      expect(twoWeeks, contains('two-weeks-prior'));
+      expect(twoWeeks, isNot(contains('last-week')));
+      expect(twoWeeks, isNot(contains('this-week')));
+      expect(
+        previewFor('分析上上周效率'),
+        contains('专注记录20260914-20260920'),
+      );
+    });
+
   });
 }

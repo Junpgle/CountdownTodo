@@ -1575,6 +1575,13 @@ ${lines.isEmpty ? '暂无' : lines}''';
         end: todayStart.add(const Duration(days: 1)),
       );
     }
+    if (text.contains('上上个月') || text.contains('上上月')) {
+      return _TimeLogPeriod(
+        label: '上上个月',
+        start: DateTime(now.year, now.month - 2),
+        end: DateTime(now.year, now.month - 1),
+      );
+    }
     if (text.contains('上个月') || text.contains('上月')) {
       return _TimeLogPeriod(
         label: '上个月',
@@ -1616,6 +1623,17 @@ ${lines.isEmpty ? '暂无' : lines}''';
     if (text.contains('昨天') || text.contains('昨日')) {
       final start = todayStart.subtract(const Duration(days: 1));
       return _TimeLogPeriod(label: '昨日', start: start, end: todayStart);
+    }
+    if (_matchesAny(text, ['上上周', '上上星期', '上上礼拜'])) {
+      final thisWeekStart = todayStart.subtract(
+        Duration(days: now.weekday - DateTime.monday),
+      );
+      final end = thisWeekStart.subtract(const Duration(days: 7));
+      return _TimeLogPeriod(
+        label: '上上周',
+        start: end.subtract(const Duration(days: 7)),
+        end: end,
+      );
     }
     if (text.contains('上周') ||
         text.contains('上星期') ||
