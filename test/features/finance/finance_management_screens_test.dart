@@ -893,6 +893,66 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('未来月份概览将待发生账单标为计划数据', (tester) async {
+    final now = DateTime.now();
+    final futureMonth = DateTime(now.year, now.month + 1);
+    final plannedAt = DateTime(
+      futureMonth.year,
+      futureMonth.month,
+      10,
+      12,
+    );
+    final transaction = FinanceTransaction(
+      uuid: 'future-overview-planned-expense',
+      amountMinor: 2500,
+      categoryUuid: 'test-food',
+      transactionDate: dateKey(plannedAt),
+      occurredAt: plannedAt.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: plannedAt.timeZoneOffset.inMinutes,
+      createdAt: now.millisecondsSinceEpoch,
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: futureMonth,
+          summary: FinanceSummary.fromTransactions([transaction]),
+          transactions: [transaction],
+          categories: {
+            'test-food': FinanceCategory(
+              uuid: 'test-food',
+              name: '日常餐饮',
+              icon: '🍜',
+            ),
+          },
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('计划净支出'), findsOneWidget);
+    expect(find.text('计划总支出'), findsOneWidget);
+    expect(find.text('计划支出分类'), findsOneWidget);
+    expect(find.text('计划每日净支出'), findsOneWidget);
+    expect(find.textContaining('平均计划净支出'), findsOneWidget);
+
+    await _tap(tester, find.text('周视图'));
+    final weeklyTitle = tester
+        .widget<Text>(find.textContaining('每日净支出').first)
+        .data!;
+    expect(weeklyTitle, startsWith('计划'));
+
+    await _tap(tester, find.text('日视图'));
+    final dailyTitle = tester
+        .widget<Text>(find.textContaining('时段净支出').first)
+        .data!;
+    expect(dailyTitle, startsWith('计划'));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('导出菜单按所选月份命名账单', (tester) async {
     await _seed(tester);
     final now = DateTime.now();
@@ -1049,6 +1109,9 @@ void main() {
   });
 
   testWidgets('夏令时回拨日以及月底账单在日周月视图中都能显示', (tester) async {
+    final spendingLabel = DateTime(2026, 11).isAfter(DateTime.now())
+        ? '计划净支出'
+        : '净支出';
     final transactions = [
       FinanceTransaction(
         uuid: 'dst-fallback-first-day',
@@ -1078,7 +1141,10 @@ void main() {
     );
 
     await _tap(tester, find.text('日视图'));
-    expect(find.byTooltip('未知时刻 · 净支出 ¥20.00'), findsOneWidget);
+    expect(
+      find.byTooltip('未知时刻 · $spendingLabel ¥20.00'),
+      findsOneWidget,
+    );
 
     await _tap(tester, find.text('周视图'));
     expect(
@@ -1086,7 +1152,7 @@ void main() {
         (widget) =>
             widget is Tooltip &&
             widget.message?.contains('11月1日') == true &&
-            widget.message?.contains('净支出 ¥20.00') == true,
+            widget.message?.contains('$spendingLabel ¥20.00') == true,
       ),
       findsOneWidget,
     );
@@ -1097,7 +1163,7 @@ void main() {
         (widget) =>
             widget is Tooltip &&
             widget.message?.contains('11月30日') == true &&
-            widget.message?.contains('净支出 ¥30.00') == true,
+            widget.message?.contains('$spendingLabel ¥30.00') == true,
       ),
       findsOneWidget,
     );

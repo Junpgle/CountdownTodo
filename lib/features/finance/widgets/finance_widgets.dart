@@ -120,7 +120,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           ),
           const SizedBox(height: 24),
           Text(
-            '支出分类',
+            period.isPlanned ? '计划支出分类' : '支出分类',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -130,7 +130,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
             _buildEmptyCard(
               context,
               icon: Icons.pie_chart_outline,
-              message: '${period.shortTitle}没有可展示的净支出分类',
+              message: period.isPlanned
+                  ? '${period.shortTitle}没有可展示的计划净支出分类'
+                  : '${period.shortTitle}没有可展示的净支出分类',
             )
           else
             Card(
@@ -152,7 +154,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
             ),
           const SizedBox(height: 24),
           Text(
-            _spendingChartTitle,
+            _spendingChartTitle(period),
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -176,6 +178,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     final transactionsInRange = _transactionsInRange(range);
     final now = DateTime.now();
     final includesNow = !now.isBefore(range.from) && now.isBefore(range.to);
+    final isPlanned = range.from.isAfter(now);
     final periodTransactions = includesNow
         ? transactionsInRange
               .where(
@@ -213,10 +216,20 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       shortTitle: shortTitle,
       summary: periodSummary,
       transactions: periodTransactions,
+      isPlanned: isPlanned,
     );
   }
 
-  String get _spendingChartTitle {
+  String _spendingChartTitle(_FinanceOverviewPeriod period) {
+    if (period.isPlanned) {
+      return switch (_view) {
+        _FinanceOverviewView.month => '计划每日净支出',
+        _FinanceOverviewView.week =>
+          '计划${_formatFinanceDateRange(period.from, period.to)}每日净支出',
+        _FinanceOverviewView.day =>
+          '计划${_formatFinanceDayLabel(dateKey(_focusedDate))}时段净支出',
+      };
+    }
     final now = DateTime.now();
     return switch (_view) {
       _FinanceOverviewView.month => '每日净支出',
@@ -488,7 +501,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
               ),
             ),
             Text(
-              '净支出',
+              period.isPlanned ? '计划净支出' : '净支出',
               style: TextStyle(color: colorScheme.onPrimaryContainer),
             ),
             const SizedBox(height: 20),
@@ -497,7 +510,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                 Expanded(
                   child: _buildSummaryMetric(
                     context,
-                    label: '收入',
+                    label: period.isPlanned ? '计划收入' : '收入',
                     value: formatFinanceAmount(period.summary.incomeMinor),
                     color: colorScheme.onPrimaryContainer,
                   ),
@@ -505,7 +518,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                 Expanded(
                   child: _buildSummaryMetric(
                     context,
-                    label: '总支出',
+                    label: period.isPlanned ? '计划总支出' : '总支出',
                     value: formatFinanceAmount(period.summary.expenseMinor),
                     color: colorScheme.onPrimaryContainer,
                   ),
@@ -513,7 +526,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                 Expanded(
                   child: _buildSummaryMetric(
                     context,
-                    label: '本期结余',
+                    label: period.isPlanned ? '计划结余' : '本期结余',
                     value: formatFinanceAmount(period.summary.balanceMinor),
                     color: colorScheme.onPrimaryContainer,
                   ),
@@ -694,6 +707,10 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     ColorScheme colorScheme,
     _FinanceOverviewPeriod period,
   ) {
+    final spendingLabel = period.isPlanned ? '计划净支出' : '净支出';
+    final emptyMessage = period.isPlanned
+        ? '${period.shortTitle}还没有计划净支出记录'
+        : '${period.shortTitle}还没有净支出记录';
     if (_view == _FinanceOverviewView.day) {
       const unknownHourIndex = 24;
       final values = List<int>.filled(unknownHourIndex + 1, 0);
@@ -721,10 +738,10 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
         tooltips: [
           for (var hour = 0; hour < values.length; hour++)
             hour == unknownHourIndex
-                ? '未知时刻 · 净支出 ${formatFinanceAmount(values[hour])}'
-                : '$hour时 · 净支出 ${formatFinanceAmount(values[hour])}',
+                ? '未知时刻 · $spendingLabel ${formatFinanceAmount(values[hour])}'
+                : '$hour时 · $spendingLabel ${formatFinanceAmount(values[hour])}',
         ],
-        emptyMessage: '${period.shortTitle}还没有净支出记录',
+        emptyMessage: emptyMessage,
         barWidth: 28,
       );
     }
@@ -754,9 +771,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       tooltips: [
         for (var index = 0; index < dates.length; index++)
           '${_formatFinanceDayLabel(dateKey(dates[index]))} · '
-              '净支出 ${formatFinanceAmount(values[index])}',
+              '$spendingLabel ${formatFinanceAmount(values[index])}',
       ],
-      emptyMessage: '${period.shortTitle}还没有净支出记录',
+      emptyMessage: emptyMessage,
       barWidth: _view == _FinanceOverviewView.month ? 24 : 40,
     );
   }
@@ -901,13 +918,25 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     return Card(
       child: ListTile(
         leading: Icon(Icons.lightbulb_outline, color: colorScheme.primary),
-        title: Text('${period.shortTitle}小结'),
+        title: Text(
+          period.isPlanned
+              ? '${period.shortTitle}计划小结'
+              : '${period.shortTitle}小结',
+        ),
         subtitle: Text(
           outflowTransactionCount == 0
-              ? '共 ${period.summary.transactionCount} 笔记录，本期暂无支出或退款记录。'
-              : '共 ${period.summary.transactionCount} 笔记录，'
-                    '支出/退款 $outflowTransactionCount 笔，'
-                    '平均净支出 ${formatFinanceAmount(average)}。',
+              ? period.isPlanned
+                    ? '共 ${period.summary.transactionCount} 笔待发生记录，'
+                          '本期暂无计划支出或退款记录。'
+                    : '共 ${period.summary.transactionCount} 笔记录，'
+                          '本期暂无支出或退款记录。'
+              : period.isPlanned
+                  ? '共 ${period.summary.transactionCount} 笔待发生记录，'
+                        '计划支出/退款 $outflowTransactionCount 笔，'
+                        '平均计划净支出 ${formatFinanceAmount(average)}。'
+                  : '共 ${period.summary.transactionCount} 笔记录，'
+                        '支出/退款 $outflowTransactionCount 笔，'
+                        '平均净支出 ${formatFinanceAmount(average)}。',
         ),
       ),
     );
@@ -1355,6 +1384,7 @@ class _FinanceOverviewPeriod {
   final String shortTitle;
   final FinanceSummary summary;
   final List<FinanceTransaction> transactions;
+  final bool isPlanned;
 
   const _FinanceOverviewPeriod({
     required this.from,
@@ -1363,6 +1393,7 @@ class _FinanceOverviewPeriod {
     required this.shortTitle,
     required this.summary,
     required this.transactions,
+    required this.isPlanned,
   });
 }
 
