@@ -207,7 +207,7 @@ abstract final class FinanceLoanCalculator {
     var remaining = principalMinor;
 
     return List<FinanceLoanScheduleAllocation>.generate(termMonths, (index) {
-      final interest = (remaining * monthlyRate).round();
+      final interest = _monthlyInterestMinor(remaining, annualInterestRateBps);
       int principalPayment;
       if (repaymentMethod ==
               FinanceLoanRepaymentMethod.equalPrincipalInterest &&
@@ -242,6 +242,21 @@ abstract final class FinanceLoanCalculator {
     final factor = math.pow(1 + monthlyRate, termMonths).toDouble();
     final payment = principalMinor * monthlyRate * factor / (factor - 1);
     return payment.round().clamp(1, maxFinanceAmountMinor).toInt();
+  }
+
+  /// Round monthly interest in integer minor units. Multiplying large balances
+  /// by a double rate can move a value across a half-cent boundary.
+  static int _monthlyInterestMinor(int principalMinor, int annualRateBps) {
+    final numerator =
+        BigInt.from(principalMinor) * BigInt.from(annualRateBps);
+    const denominator = 120000;
+    final quotient = numerator ~/ BigInt.from(denominator);
+    final remainder = numerator % BigInt.from(denominator);
+    final rounded = quotient +
+        (remainder * BigInt.from(2) >= BigInt.from(denominator)
+            ? BigInt.one
+            : BigInt.zero);
+    return rounded.toInt();
   }
 
   static DateTime _dueDate(

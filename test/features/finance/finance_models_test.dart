@@ -520,6 +520,19 @@ void main() {
     expect(equalPrincipal.last.remainingPrincipalMinor, 0);
   });
 
+  test('贷款计算器在最大安全金额附近按精确分数计算利息', () {
+    final schedule = FinanceLoanCalculator.generate(
+      principalMinor: 9007199202179999,
+      annualInterestRateBps: 1,
+      termMonths: 1,
+      startDate: DateTime(2026, 1, 1),
+      repaymentDay: 1,
+      repaymentMethod: FinanceLoanRepaymentMethod.equalPrincipal,
+    );
+
+    expect(schedule.single.interestMinor, 75059993351);
+  });
+
   test('预算模型可以在 SQLite/JSON 字段之间往返', () {
     final original = FinanceBudget(
       uuid: 'budget-1',
