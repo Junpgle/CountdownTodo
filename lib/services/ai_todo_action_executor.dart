@@ -1087,9 +1087,10 @@ class AiTodoActionExecutor {
     final match = existingTodos
         .where((todo) => todo['id']?.toString() == todoId)
         .toList();
+    if (match.isEmpty) return null;
     final title = action.title?.trim().isNotEmpty == true
         ? action.title!.trim()
-        : (match.isNotEmpty ? match.first['title']?.toString() : null);
+        : match.first['title']?.toString();
     final plannedMinutes =
         action.durationMinutes ?? end.difference(start).inMinutes;
 

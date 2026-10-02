@@ -273,16 +273,17 @@ class AiActionParser {
               );
               return AiTodoAction.fromJson({
                 ...block,
-                'todoId':
-                    block['todoId'] ??
-                    block['todo_id'] ??
-                    block['todoUuid'] ??
-                    inferredTodoId,
+                'todoId': inferredTodoId,
                 'title': block['title'] ?? block['titleSnapshot'],
                 'action': actionData['action'],
               });
             })
-            .where((action) => action.todoId?.trim().isNotEmpty == true)
+            .where((action) {
+              final todoId = action.todoId?.trim();
+              return todoId != null &&
+                  todoId.isNotEmpty &&
+                  existingTodoTitles.containsKey(todoId);
+            })
             .toList();
       case 'update_plan_block':
       case 'delete_plan_block':
@@ -616,8 +617,11 @@ class AiActionParser {
     Map<String, String> existingTodoTitles,
   ) {
     final explicitId = todo['todoId'] ?? todo['todo_id'] ?? todo['todoUuid'];
-    if (explicitId != null && explicitId.toString().trim().isNotEmpty) {
-      return explicitId.toString().trim();
+    final normalizedExplicitId = explicitId?.toString().trim();
+    if (normalizedExplicitId != null && normalizedExplicitId.isNotEmpty) {
+      return existingTodoTitles.containsKey(normalizedExplicitId)
+          ? normalizedExplicitId
+          : null;
     }
 
     final legacyId = todo['id']?.toString().trim();
