@@ -332,6 +332,36 @@ void main() {
     expect(dateKey(monthEndRange.from), '2026-02-28');
   });
 
+  test('效率分析不会注入无关月份的账单数据', () async {
+    for (final query in [
+      '分析我上个月的效率',
+      '分析我9月的效率',
+      '分析我2026年9月的效率',
+    ]) {
+      expect(
+        FinanceAiContextService.shouldInjectFor(query),
+        isFalse,
+        reason: query,
+      );
+      expect(
+        FinanceAiContextService.buildContextInjectionSummary(
+          userMessage: query,
+          now: DateTime(2026, 10, 2),
+        ),
+        isNull,
+        reason: query,
+      );
+      expect(
+        await FinanceAiContextService.buildContext(
+          userMessage: query,
+          now: DateTime(2026, 10, 2),
+        ),
+        isEmpty,
+        reason: query,
+      );
+    }
+  });
+
   test('AI 查询付款方式余额时提供快照及之后的账户流水', () async {
     final snapshotAt = DateTime(2026, 9, 1, 10);
     await db.insert(
