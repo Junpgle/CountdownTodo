@@ -1503,7 +1503,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
       return _TimeLogPeriod(
         label: '本周',
         start: start,
-        end: start.add(const Duration(days: 7)),
+        end: todayStart.add(const Duration(days: 1)),
       );
     }
     if (text.contains('本月') || text.contains('这个月')) {
@@ -1511,7 +1511,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
       return _TimeLogPeriod(
         label: '本月',
         start: start,
-        end: DateTime(now.year, now.month + 1),
+        end: todayStart.add(const Duration(days: 1)),
       );
     }
     return null;

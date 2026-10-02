@@ -995,5 +995,51 @@ void main() {
       expect(lastYear, isNot(contains('this-year-start')));
       expect(previewFor('分析去年效率'), contains('专注记录20250101-20251231'));
     });
+
+    test('本周和本月效率范围截止今天，不包含未来日志', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('last-week', DateTime(2026, 9, 27, 9)),
+        ('current-week', DateTime(2026, 10, 1, 9)),
+        ('future', DateTime(2026, 10, 3, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final thisWeek = contextFor('分析本周的效率');
+      expect(thisWeek, contains('本周合计'));
+      expect(thisWeek, contains('current-week'));
+      expect(thisWeek, isNot(contains('last-week')));
+      expect(thisWeek, isNot(contains('future')));
+      expect(previewFor('分析本周的效率'), contains('专注记录20260928-20261002'));
+
+      final thisMonth = contextFor('分析本月的效率');
+      expect(thisMonth, contains('本月合计'));
+      expect(thisMonth, contains('current-week'));
+      expect(thisMonth, isNot(contains('future')));
+      expect(previewFor('分析本月的效率'), contains('专注记录20261001-20261002'));
+    });
   });
 }
