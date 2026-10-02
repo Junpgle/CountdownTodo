@@ -452,7 +452,13 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('删除账单？'),
-              content: const Text('删除后不会计入统计，确认继续吗？'),
+              content: Text(
+                transaction.type == FinanceTransactionType.refund
+                    ? transaction.paymentMethodUuid?.trim().isNotEmpty == true
+                          ? '删除后，这笔退款不再抵扣净支出，也不再增加该付款方式的余额。确认继续吗？'
+                          : '删除后，这笔退款不再抵扣净支出。确认继续吗？'
+                    : '删除后不会计入统计，确认继续吗？',
+              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),

@@ -2863,6 +2863,57 @@ void main() {
     expect(rows.single['is_deleted'], 0);
   });
 
+  testWidgets('删除退款前明确提示净支出和账户余额影响', (tester) async {
+    await _seed(tester);
+    final now = DateTime.now();
+    final original = FinanceTransaction(
+      uuid: 'ui-refund-delete-copy-original',
+      amountMinor: 10000,
+      paymentMethodUuid: 'finance-system-payment-cash',
+      transactionDate: dateKey(now),
+      merchant: '退款确认原单',
+    );
+    await tester.runAsync(() async {
+      await FinanceStorage.saveTransaction(original);
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-refund-delete-copy-refund',
+          type: FinanceTransactionType.refund,
+          amountMinor: 1000,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: original.transactionDate,
+          merchant: '需要删除的退款',
+          relatedTransactionUuid: original.uuid,
+        ),
+      );
+    });
+    await _pump(
+      tester,
+      const FinanceHomeScreen(username: 'default'),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(of: find.text('需要删除的退款'), matching: find.byType(ListTile))
+        .first;
+    await _tap(
+      tester,
+      find.descendant(of: row, matching: find.byType(PopupMenuButton<String>)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('删除后，这笔退款不再抵扣净支出，也不再增加该付款方式的余额。确认继续吗？'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(TextButton, '取消'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('跨时区账单显示记录时刻且编辑保存保留原始时间戳', (tester) async {
     final db = await _seed(tester);
     final transaction = FinanceTransaction(
