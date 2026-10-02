@@ -174,6 +174,27 @@ void main() {
     expect(drafts.map((draft) => draft.amountMinor).toList(), [2000, 3000]);
   });
 
+  test('自然语言快速记账支持大前天到大后天', () {
+    final now = DateTime(2026, 10, 2);
+    final cases = [
+      ('大前天', '2026-09-29'),
+      ('前天', '2026-09-30'),
+      ('昨天', '2026-10-01'),
+      ('今天', '2026-10-02'),
+      ('明天', '2026-10-03'),
+      ('后天', '2026-10-04'),
+      ('大后天', '2026-10-05'),
+    ];
+
+    for (final (phrase, expectedDate) in cases) {
+      final drafts = FinanceTextParser.parseQuickEntries(
+        '$phrase 午餐20元',
+        now: now,
+      );
+      expect(drafts.single.transactionDate, expectedDate, reason: phrase);
+    }
+  });
+
   test('自然语言快速记账拒绝不存在的明确日期', () {
     final now = DateTime(2026, 10, 2);
 

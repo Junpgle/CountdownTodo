@@ -218,6 +218,11 @@ abstract final class FinanceTextParser {
     r'(十一|十二|十|[一二三四五六七八九]|1[0-2]|0?[1-9])\s*月\s*'
     r'(\d{1,2}|[一二三四五六七八九十廿]{1,3})\s*[日号]?',
   );
+  static final RegExp _relativeDayPattern = RegExp(
+    r'大前天|大前日|大后天|大后日|前天|前日|昨天|昨日|今天|今日|'
+    r'明天|明日|后天|后日|today|yesterday|tomorrow',
+    caseSensitive: false,
+  );
 
   static final RegExp _blockMarker = RegExp(
     r'^[ \t]*(?:#[ \t]*)?(?:\[[ \t]*)?记账(?:[ \t]*#?[ \t]*\d+)?(?:[ \t]*\])?(?=[ \t]*(?:\||$))',
@@ -1050,7 +1055,7 @@ abstract final class FinanceTextParser {
 
   static String _removeSentenceDate(String value) {
     return value
-        .replaceAll(RegExp(r'今天|昨天|前天|明天'), '')
+        .replaceAll(_relativeDayPattern, '')
         .replaceAll(_relativeWeekdayPattern, '')
         .replaceAll(
           RegExp(
@@ -1065,7 +1070,9 @@ abstract final class FinanceTextParser {
   }
 
   static DateTime? _parseSentenceDate(String text, DateTime now) {
-    final relative = RegExp(r'今天|昨天|前天|明天').firstMatch(text)?.group(0);
+    final relative = _relativeDayPattern
+        .firstMatch(text.toLowerCase())
+        ?.group(0);
     if (relative != null) return _parseDate(relative, now);
     final relativeWeekday = _parseRelativeWeekdayDate(text, now);
     if (relativeWeekday != null) return relativeWeekday;
@@ -1225,15 +1232,19 @@ abstract final class FinanceTextParser {
   static DateTime? _parseDate(String? raw, DateTime now) {
     if (raw == null || raw.trim().isEmpty) return _day(now);
     final value = raw.trim().toLowerCase();
-    if (value.contains('今天') || value == 'today') return _day(now);
-    if (value.contains('昨天') || value == 'yesterday') {
-      return financeCalendarDayOffset(_day(now), -1);
-    }
-    if (value.contains('前天')) {
-      return financeCalendarDayOffset(_day(now), -2);
-    }
-    if (value.contains('明天') || value == 'tomorrow') {
-      return financeCalendarDayOffset(_day(now), 1);
+    final relative = _relativeDayPattern.firstMatch(value)?.group(0);
+    if (relative != null) {
+      final offset = switch (relative) {
+        '大前天' || '大前日' => -3,
+        '前天' || '前日' => -2,
+        '昨天' || '昨日' || 'yesterday' => -1,
+        '今天' || '今日' || 'today' => 0,
+        '明天' || '明日' || 'tomorrow' => 1,
+        '后天' || '后日' => 2,
+        '大后天' || '大后日' => 3,
+        _ => null,
+      };
+      if (offset != null) return financeCalendarDayOffset(_day(now), offset);
     }
     final relativeWeekday = _parseRelativeWeekdayDate(value, now);
     if (relativeWeekday != null) return relativeWeekday;
