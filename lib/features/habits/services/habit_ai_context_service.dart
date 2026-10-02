@@ -268,6 +268,8 @@ abstract final class HabitAiContextService {
           ..._weekRangeTerms,
           '本月',
           '这个月',
+          '上上个月',
+          '上上月',
           '上月',
           '上个月',
           '今年',
@@ -297,6 +299,8 @@ abstract final class HabitAiContextService {
           ..._weekRangeTerms,
           '本月',
           '这个月',
+          '上上个月',
+          '上上月',
           '上月',
           '上个月',
           '今年',
@@ -477,6 +481,11 @@ abstract final class HabitAiContextService {
     } else if (text.contains('今天') || text.contains('今日')) {
       from = day;
       to = day;
+    } else if (text.contains('上上个月') || text.contains('上上月')) {
+      from = DateTime(day.year, day.month - 2);
+      to = DateTime(day.year, day.month - 1).subtract(
+        const Duration(days: 1),
+      );
     } else if (text.contains('上个月') || text.contains('上月')) {
       from = DateTime(day.year, day.month - 1);
       to = DateTime(day.year, day.month).subtract(const Duration(days: 1));

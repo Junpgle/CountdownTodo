@@ -76,6 +76,27 @@ void main() {
       }
     });
 
+    test('resolves the second previous month in direct and follow-up queries', () {
+      final testNow = DateTime(2026, 10, 3, 12);
+      for (final period in ['上上个月', '上上月']) {
+        final direct = HabitAiContextService.buildContextInjectionSummary(
+          userMessage: '查看$period的习惯进度',
+          goals: const [],
+          now: testNow,
+        );
+        final followUp = HabitAiContextService.buildContextInjectionSummary(
+          userMessage: '那$period呢？',
+          previousUserMessage: '查看2026-06-01至2026-06-30的习惯进度',
+          conversationContext: '习惯进度',
+          goals: const [],
+          now: testNow,
+        );
+
+        expect(direct, contains('2026-08-01 至 2026-08-31'), reason: period);
+        expect(followUp, contains('2026-08-01 至 2026-08-31'), reason: period);
+      }
+    });
+
     test('clamps rolling month starts to the target month length', () {
       final summary = HabitAiContextService.buildContextInjectionSummary(
         userMessage: '查看过去6个月的习惯进度',
