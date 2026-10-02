@@ -1330,6 +1330,46 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('支出与同日退款相抵时图表说明净额为零', (tester) async {
+    final occurredAt = DateTime(2026, 9, 2, 10).millisecondsSinceEpoch;
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'overview-offset-expense',
+        amountMinor: 5000,
+        transactionDate: '2026-09-02',
+        occurredAt: occurredAt,
+        createdAt: occurredAt,
+      ),
+      FinanceTransaction(
+        uuid: 'overview-offset-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 5000,
+        transactionDate: '2026-09-02',
+        occurredAt: occurredAt,
+        createdAt: occurredAt,
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: _month,
+          summary: FinanceSummary.fromTransactions(transactions),
+          transactions: transactions,
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('支出与退款相抵，净支出为 ¥0.00'), findsOneWidget);
+    expect(find.textContaining('还没有净支出记录'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('历史月份的小结和分类空状态显示所选月份', (tester) async {
     final now = DateTime.now();
     final selectedMonth = DateTime(now.year, now.month - 1);

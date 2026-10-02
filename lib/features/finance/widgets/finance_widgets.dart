@@ -708,9 +708,16 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     _FinanceOverviewPeriod period,
   ) {
     final spendingLabel = period.isPlanned ? '计划净支出' : '净支出';
-    final emptyMessage = period.isPlanned
-        ? '${period.shortTitle}还没有计划净支出记录'
-        : '${period.shortTitle}还没有净支出记录';
+    final hasOutflowTransactions = period.transactions.any(
+      (transaction) => transaction.isExpenseLike,
+    );
+    final emptyMessage = hasOutflowTransactions
+        ? period.isPlanned
+              ? '计划支出与退款相抵，计划净支出为 ${formatFinanceAmount(0)}'
+              : '支出与退款相抵，净支出为 ${formatFinanceAmount(0)}'
+        : period.isPlanned
+            ? '${period.shortTitle}还没有计划净支出记录'
+            : '${period.shortTitle}还没有净支出记录';
     if (_view == _FinanceOverviewView.day) {
       const unknownHourIndex = 24;
       final values = List<int>.filled(unknownHourIndex + 1, 0);
