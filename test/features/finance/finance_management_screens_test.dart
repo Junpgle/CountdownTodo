@@ -991,6 +991,17 @@ void main() {
     expect(find.text('计划使用 ¥20.00 / ¥100.00'), findsOneWidget);
     expect(find.text('计划剩余 ¥80.00'), findsWidgets);
     expect(find.text('已使用 ¥20.00 / ¥100.00'), findsNothing);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is IconButton && widget.tooltip == '录入付款方式余额',
+            ),
+          )
+          .onPressed,
+      isNull,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -1091,6 +1102,17 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     final card = _key('finance-budget-card-future-card-snapshot');
     await _waitFor(tester, () => card.evaluate().isNotEmpty);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is IconButton && widget.tooltip == '录入付款方式余额',
+            ),
+          )
+          .onPressed,
+      isNotNull,
+    );
     await tester.scrollUntilVisible(
       card,
       250,

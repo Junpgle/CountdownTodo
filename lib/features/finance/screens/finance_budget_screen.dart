@@ -570,7 +570,9 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                         const SizedBox(width: 4),
                         IconButton(
                           tooltip: '录入付款方式余额',
-                          onPressed: _choosePaymentMethodForBudget,
+                          onPressed: _isFutureMonth
+                              ? null
+                              : _choosePaymentMethodForBudget,
                           icon: const Icon(Icons.add_circle_outline),
                         ),
                       ],
