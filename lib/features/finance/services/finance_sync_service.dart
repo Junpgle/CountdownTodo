@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../services/api_service.dart';
 import '../../../services/sync_capability_service.dart';
+import 'finance_automation_service.dart';
 import 'finance_storage.dart';
 
 /// The client-side state captured immediately before a finance sync request.
@@ -337,6 +339,10 @@ abstract final class FinanceSyncService {
       cursorAdvanced = true;
     }
 
+    if (remoteChangeCount > 0) {
+      unawaited(_checkBudgetAlertsSafely());
+    }
+
     return FinanceSyncResult(
       supported: true,
       hasChanges: remoteChangeCount > 0,
@@ -349,6 +355,14 @@ abstract final class FinanceSyncService {
           ? List<dynamic>.from(response['finance_conflicts'] as List)
           : const [],
     );
+  }
+
+  static Future<void> _checkBudgetAlertsSafely() async {
+    try {
+      await FinanceAutomationService.checkBudgetAlerts();
+    } catch (_) {
+      // A notification failure must not invalidate the completed sync.
+    }
   }
 
   static bool supports(dynamic rawCapabilities) =>
