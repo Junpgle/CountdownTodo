@@ -99,6 +99,12 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   String get _monthLabel =>
       _isCurrentMonth ? '本月' : DateFormat('yyyy年M月').format(_month);
 
+  String get _paymentBalanceSectionTitle {
+    if (_isCurrentMonth) return '付款方式实时余额';
+    if (_isFutureMonth) return '付款方式余额';
+    return '月末付款方式余额';
+  }
+
   int get _balanceAsOfAt {
     if (_isCurrentMonth) return widget.clock().millisecondsSinceEpoch;
     return DateTime(_month.year, _month.month + 1).millisecondsSinceEpoch - 1;
@@ -552,7 +558,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            '付款方式实时余额',
+                            _paymentBalanceSectionTitle,
                             style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.w700),
                           ),
@@ -736,7 +742,9 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
           if (_paymentBudgets.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
-              '付款方式实时余额单独显示，不计入总额和分类预算。',
+              _isCurrentMonth
+                  ? '付款方式实时余额单独显示，不计入总额和分类预算。'
+                  : '余额按所选月份月末计算，不计入总额和分类预算。',
               style: Theme.of(context).textTheme.bodySmall
                   ?.copyWith(color: foreground.withValues(alpha: 0.75)),
             ),
@@ -889,7 +897,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   Widget _buildPaymentEmptyState(ColorScheme colorScheme) {
     return FinanceEmptyState(
       icon: Icons.account_balance_wallet_outlined,
-      title: '还没有付款方式余额记录',
+      title: _isFutureMonth ? '未来月份不显示余额' : '还没有付款方式余额记录',
       description: _isFutureMonth
           ? '余额对应时间不能在未来；切换回当前月份后再记录。'
           : '填写余额并选择对应的日期和时刻；之后同账户账单会跨月连续更新，支出扣减，收入和退款加回。',

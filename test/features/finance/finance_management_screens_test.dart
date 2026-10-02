@@ -964,7 +964,7 @@ void main() {
       ),
       size: const Size(1100, 1000),
     );
-    expect(find.text('还没有付款方式余额记录'), findsOneWidget);
+    expect(find.text('未来月份不显示余额'), findsOneWidget);
 
     clockNow = DateTime(2026, 11, 1, 0, 0, 2);
     await tester.pump(const Duration(seconds: 3));
@@ -2697,6 +2697,13 @@ void main() {
     final now = DateTime.now();
     final pastMonth = DateTime(now.year, now.month - 1);
     await _pump(tester, FinanceBudgetScreen(initialMonth: pastMonth));
+    await tester.scrollUntilVisible(
+      find.text('月末付款方式余额'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('月末付款方式余额'), findsOneWidget);
+    expect(find.text('付款方式实时余额'), findsNothing);
     await _tap(tester, find.text('选择付款方式并录入余额'));
     await _tap(tester, find.text('历史银行卡'));
     await _waitFor(
