@@ -86,4 +86,25 @@ void main() {
 
     expect(restored.financeActions!.single.amountMinor, amountMinor);
   });
+
+  test('字符串元金额按分精确解析', () {
+    final action = FinanceAiAction.fromJson({
+      'action': 'update_finance',
+      'transactionId': 'large-tx',
+      'amount': '90,071,992,547,409.90',
+    });
+
+    expect(action.amountMinor, maxFinanceAmountMinor - 1);
+  });
+
+  test('AI 记账草案优先使用精确的 amount_minor 字符串', () {
+    final draft = FinanceEntryDraft.fromJson({
+      'type': 'expense',
+      'amount': 90071992547409.91,
+      'amount_minor': '9007199254740990',
+      'date': '2026-10-03',
+    });
+
+    expect(draft.amountMinor, maxFinanceAmountMinor - 1);
+  });
 }

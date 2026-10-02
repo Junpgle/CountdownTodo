@@ -586,7 +586,7 @@ class AiNativeToolDefinitionBuilder {
         'type': 'function',
         'function': {
           'name': 'propose_finance_drafts',
-          'description': '识别新增支出、收入或退款并提交待确认草案。金额单位为元；应用会显示“待确认记账”卡片，用户需点击“编辑并保存”后才会写入账本。聊天中的“确认/确定”不会保存账单，不得声称已保存。分类和付款方式 UUID 只能使用本轮记账上下文中的真实值。',
+          'description': '识别新增支出、收入或退款并提交待确认草案。amount 单位为元；需要精确保存到分时使用 amount_minor 字符串，单位为人民币分，且优先于 amount。应用会显示“待确认记账”卡片，用户需点击“编辑并保存”后才会写入账本。聊天中的“确认/确定”不会保存账单，不得声称已保存。分类和付款方式 UUID 只能使用本轮记账上下文中的真实值。',
           'parameters': {
             'type': 'object',
             'properties': {
@@ -601,6 +601,10 @@ class AiNativeToolDefinitionBuilder {
                       'enum': ['expense', 'income', 'refund'],
                     },
                     'amount': {'type': 'number'},
+                    'amount_minor': {
+                      'type': 'string',
+                      'description': '金额的人民币分，用十进制整数文本表示；精确到分时使用，优先于 amount。',
+                    },
                     'category': {
                       'type': ['string', 'null'],
                     },
@@ -642,7 +646,7 @@ class AiNativeToolDefinitionBuilder {
         'type': 'function',
         'function': {
           'name': 'propose_finance_actions',
-          'description': '提交已有账单的修改或删除草案，等待用户在确认卡中操作；不要直接保存或删除。transactionId 必须来自本轮记账上下文，找不到唯一记录时先追问。',
+          'description': '提交已有账单的修改或删除草案，等待用户在确认卡中操作；不要直接保存或删除。transactionId 必须来自本轮记账上下文，找不到唯一记录时先追问。amount 单位为元；需要精确保存到分时使用 amount_minor 字符串，单位为人民币分，且优先于 amount。',
           'parameters': {
             'type': 'object',
             'properties': {
@@ -665,6 +669,10 @@ class AiNativeToolDefinitionBuilder {
                       'enum': ['expense', 'income', 'refund'],
                     },
                     'amount': {'type': 'number'},
+                    'amount_minor': {
+                      'type': 'string',
+                      'description': '金额的人民币分，用十进制整数文本表示；精确到分时使用，优先于 amount。',
+                    },
                     'category': {
                       'type': ['string', 'null'],
                     },

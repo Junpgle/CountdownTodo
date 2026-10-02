@@ -224,7 +224,7 @@ class AiTodoContextBuilder {
     if (requestsFinanceAction) {
       if (!readOnlyRequest) {
         add(
-          '- 记账草案：回复正文末尾追加 [FINANCE_START]...[FINANCE_END]，其中必须是JSON数组；每笔使用 {"type":"expense|income|refund","amount":28.50,"category":"餐饮","categoryUuid":null,"merchant":"午餐","date":"YYYY-MM-DD","paymentMethod":"微信","paymentMethodUuid":null,"note":"备注"}，金额单位为元，缺失的可选字段用null；若提供本地记账目录，UUID只能复制目录中的真实值；只生成草案并告知用户在应用显示的“待确认记账”卡片中核对后点击“编辑并保存”；聊天中的“确认/确定”不会保存账单，不得承诺收到文字确认后代为保存，也不得声称已保存',
+          '- 记账草案：回复正文末尾追加 [FINANCE_START]...[FINANCE_END]，其中必须是JSON数组；每笔使用 {"type":"expense|income|refund","amount":28.50,"amount_minor":"2850","category":"餐饮","categoryUuid":null,"merchant":"午餐","date":"YYYY-MM-DD","paymentMethod":"微信","paymentMethodUuid":null,"note":"备注"}；amount单位为元，amount_minor是人民币分的十进制整数文本且优先于amount，金额需要精确到分时填写amount_minor；缺失的可选字段用null；若提供本地记账目录，UUID只能复制目录中的真实值；只生成草案并告知用户在应用显示的“待确认记账”卡片中核对后点击“编辑并保存”；聊天中的“确认/确定”不会保存账单，不得承诺收到文字确认后代为保存，也不得声称已保存',
         );
         add(
           '- 记账与取餐码双识别：同一条消息同时包含账单和取餐/取件信息时，两者都保留，记账放FINANCE块，取餐放ACTION块，禁止二选一',
@@ -236,7 +236,7 @@ class AiTodoContextBuilder {
       );
       if (!readOnlyRequest) {
         add(
-          '- update_finance：只允许引用记账上下文里的真实transactionId，使用 {"action":"update_finance","transactionId":"真实ID","type":"expense|income|refund","amount":28.50,"category":"餐饮","merchant":"商家","date":"YYYY-MM-DD","paymentMethod":"微信","note":"备注"}；只填写用户要改的字段，先生成待确认修改，不得直接保存',
+          '- update_finance：只允许引用记账上下文里的真实transactionId，使用 {"action":"update_finance","transactionId":"真实ID","type":"expense|income|refund","amount":28.50,"amount_minor":"2850","category":"餐饮","merchant":"商家","date":"YYYY-MM-DD","paymentMethod":"微信","note":"备注"}；amount单位为元，amount_minor是人民币分的十进制整数文本且优先于amount，金额需要精确到分时填写amount_minor；只填写用户要改的字段，先生成待确认修改，不得直接保存',
         );
         add(
           '- delete_finance：只允许引用记账上下文里的真实transactionId，使用 {"action":"delete_finance","transactionId":"真实ID","reason":"用户要求删除"}；先生成待确认删除，不得直接删除；找不到唯一账单时先追问日期、商家或金额',

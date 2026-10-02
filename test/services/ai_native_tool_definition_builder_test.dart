@@ -7,6 +7,24 @@ import 'package:countdown_todo/services/ai_native_tool_call_parser.dart';
 import 'package:countdown_todo/services/ai_native_tool_definition_builder.dart';
 import 'package:countdown_todo/services/ai_todo_context_builder.dart';
 
+Map<String, dynamic> _financeItemProperties(
+  List<Map<String, dynamic>> tools,
+  String toolName,
+  String arrayName,
+) {
+  final function = Map<String, dynamic>.from(
+    tools.singleWhere(
+      (tool) =>
+          (tool['function'] as Map<String, dynamic>)['name'] == toolName,
+    )['function'] as Map,
+  );
+  final parameters = Map<String, dynamic>.from(function['parameters'] as Map);
+  final properties = Map<String, dynamic>.from(parameters['properties'] as Map);
+  final array = Map<String, dynamic>.from(properties[arrayName] as Map);
+  final items = Map<String, dynamic>.from(array['items'] as Map);
+  return Map<String, dynamic>.from(items['properties'] as Map);
+}
+
 void main() {
   group('AiNativeToolDefinitionBuilder', () {
     test('offers a finance delete tool for colloquial delete wording', () {
@@ -61,6 +79,67 @@ void main() {
           'update_finance',
         }, reason: request);
       }
+    });
+
+    test('记账 AI 工具提供无损分金额字段', () {
+      final draftTools =
+          AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+            '记一笔午餐28元',
+          );
+      final actionTools =
+          AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+            '把上周那笔账单金额改为30元',
+          );
+      final draftProperties = _financeItemProperties(
+        draftTools,
+        'propose_finance_drafts',
+        'drafts',
+      );
+      final actionProperties = _financeItemProperties(
+        actionTools,
+        'propose_finance_actions',
+        'actions',
+      );
+
+      expect(
+        (draftProperties['amount_minor'] as Map<String, dynamic>)['type'],
+        'string',
+      );
+      expect(
+        (actionProperties['amount_minor'] as Map<String, dynamic>)['type'],
+        'string',
+      );
+      expect(
+        AiTodoContextBuilder.buildActionProtocolPrompt('记一笔午餐28元'),
+        contains('amount_minor'),
+      );
+    });
+
+    test('原生记账调用会优先保留精确分金额', () {
+      final request = '记一笔午餐28元';
+      final tools = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+        request,
+      );
+      final reply = AiNativeToolCallParser.appendToAssistantText(
+        '',
+        const [
+          AiChatFunctionCall(
+            id: 'call-large-draft',
+            name: 'propose_finance_drafts',
+            arguments:
+                '{"drafts":[{"type":"expense","amount":90071992547409.91,"amount_minor":"9007199254740990","date":"2026-10-03"}]}',
+          ),
+        ],
+        allowedToolNames: AiNativeToolDefinitionBuilder.allowedToolNames(tools),
+        allowedCdtActionNames:
+            AiNativeToolDefinitionBuilder.allowedCdtActionNames(tools),
+        allowedFinanceActionNames:
+            AiNativeToolDefinitionBuilder.allowedFinanceActionNames(tools),
+      );
+
+      final drafts = FinanceTextParser.extractAssistantDrafts(reply);
+      expect(drafts, hasLength(1));
+      expect(drafts.single.amountMinor, 9007199254740990);
     });
 
     test('keeps finance adjustment questions read-only', () {

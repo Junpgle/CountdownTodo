@@ -263,17 +263,29 @@ class FinanceAiAction {
   }
 
   static int? _parseYuan(dynamic value) {
-    if (value is num) return (value.toDouble().abs() * 100).round();
-    final text = value?.toString().trim();
+    if (value is num && !value.isFinite) return null;
+    final text = (value is num ? value.toString() : value?.toString())?.trim();
     if (text == null || text.isEmpty) return null;
     final normalized = text
         .replaceAll(',', '')
         .replaceAll(RegExp(r'^[¥￥$€£]'), '')
         .replaceAll(RegExp(r'\s*(?:元|块|CNY)\s*$', caseSensitive: false), '')
         .replaceFirst(RegExp(r'^[-+]'), '');
-    final parsed = double.tryParse(normalized);
-    if (parsed == null || parsed <= 0) return null;
-    return (parsed * 100).round();
+    final match = RegExp(r'^(\d*)(?:\.(\d*))?$').firstMatch(normalized);
+    if (match == null) return null;
+    final wholeText = match.group(1) ?? '';
+    final fraction = match.group(2) ?? '';
+    if (wholeText.isEmpty && fraction.isEmpty) return null;
+    final whole = BigInt.tryParse(wholeText.isEmpty ? '0' : wholeText);
+    if (whole == null) return null;
+    var amountMinor =
+        whole * BigInt.from(100) +
+        BigInt.parse(fraction.padRight(2, '0').substring(0, 2));
+    if (fraction.length > 2 && fraction.codeUnitAt(2) >= 53) {
+      amountMinor += BigInt.one;
+    }
+    if (amountMinor > BigInt.from(maxFinanceAmountMinor)) return null;
+    return amountMinor.toInt();
   }
 
   static String? _string(dynamic value) {

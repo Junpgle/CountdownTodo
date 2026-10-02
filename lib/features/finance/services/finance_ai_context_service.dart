@@ -931,7 +931,7 @@ abstract final class FinanceAiContextService {
       }
     }
     lines.add(
-      '安全规则: 查询只读；update_finance/delete_finance 必须引用上面的真实 transactionId，先生成待确认操作，不得直接保存或删除。',
+      '安全规则: 查询只读；update_finance/delete_finance 必须引用上面的真实 transactionId，先生成待确认操作，不得直接保存或删除；修改金额时可用 amount_minor 传人民币分的十进制整数文本，且该字段优先于元单位的 amount。',
     );
     return lines.join('\n');
   }
