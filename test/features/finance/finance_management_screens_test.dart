@@ -1331,6 +1331,42 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('只有收入时不显示不存在的平均净支出', (tester) async {
+    final occurredAt = DateTime(2026, 9, 2, 10).millisecondsSinceEpoch;
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'overview-income-only',
+        type: FinanceTransactionType.income,
+        amountMinor: 5000,
+        transactionDate: '2026-09-02',
+        occurredAt: occurredAt,
+        createdAt: occurredAt,
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: _month,
+          summary: FinanceSummary.fromTransactions(transactions),
+          transactions: transactions,
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    expect(
+      find.text('共 1 笔记录，本期暂无支出或退款记录。'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('平均净支出'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('账单列表将尚未发生的未来账单标记出来', (tester) async {
     final futureAt = DateTime.now().add(const Duration(hours: 1));
     final transaction = FinanceTransaction(

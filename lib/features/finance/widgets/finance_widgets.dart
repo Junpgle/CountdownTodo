@@ -903,7 +903,11 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
         leading: Icon(Icons.lightbulb_outline, color: colorScheme.primary),
         title: Text('${period.shortTitle}小结'),
         subtitle: Text(
-          '共 ${period.summary.transactionCount} 笔记录，支出/退款 $outflowTransactionCount 笔，平均净支出 ${formatFinanceAmount(average)}。',
+          outflowTransactionCount == 0
+              ? '共 ${period.summary.transactionCount} 笔记录，本期暂无支出或退款记录。'
+              : '共 ${period.summary.transactionCount} 笔记录，'
+                    '支出/退款 $outflowTransactionCount 笔，'
+                    '平均净支出 ${formatFinanceAmount(average)}。',
         ),
       ),
     );
