@@ -214,7 +214,7 @@ abstract final class FinanceTextParser {
     r'([一二三四五六日天1-7])',
   );
   static final RegExp _chineseMonthDayPattern = RegExp(
-    r'(?:(?:(\d{4})\s*年|今年|前年|去年|上一年|前一年)\s*)?'
+    r'(?:(?:(\d{4})\s*年|(今年|前年|去年|上一年|前一年))\s*)?'
     r'(十一|十二|十|[一二三四五六七八九]|1[0-2]|0?[1-9])\s*(?:月|/)\s*'
     r'(\d{1,2}|[一二三四五六七八九十廿]{1,3})\s*[日号]?',
   );
@@ -1092,18 +1092,17 @@ abstract final class FinanceTextParser {
     final chineseMonthDay = _chineseMonthDayPattern.firstMatch(text);
     if (chineseMonthDay != null) {
       final yearText = chineseMonthDay.group(1);
+      final relativeYear = chineseMonthDay.group(2);
       final year = int.tryParse(yearText ?? '') ??
-          (text.contains('前年')
-              ? now.year - 2
-              : text.contains('去年') ||
-                    text.contains('上一年') ||
-                    text.contains('前一年')
-              ? now.year - 1
-              : now.year);
+          switch (relativeYear) {
+            '前年' => now.year - 2,
+            '去年' || '上一年' || '前一年' => now.year - 1,
+            _ => now.year,
+          };
       return _safeSentenceDate(
         year,
-        _parseChineseDateNumber(chineseMonthDay.group(2) ?? ''),
         _parseChineseDateNumber(chineseMonthDay.group(3) ?? ''),
+        _parseChineseDateNumber(chineseMonthDay.group(4) ?? ''),
       );
     }
 
