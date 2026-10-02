@@ -1195,6 +1195,96 @@ void main() {
       expect(context, contains('展示 60/62 条，优先用户所选范围'));
     });
 
+    test('过去半年待办按滚动自然月范围筛选到期日期', () {
+      final now = DateTime(2026, 10, 3, 12);
+      final todos = [
+        {
+          'id': 'outside-half-year-todo',
+          'title': '范围外待办',
+          'startTime': '2026-04-02T09:00:00',
+          'dueDate': '2026-04-02T18:00:00',
+          'timeMode': 'deadline',
+        },
+        {
+          'id': 'first-day-half-year-todo',
+          'title': '范围首日待办',
+          'startTime': '2026-04-03T09:00:00',
+          'dueDate': '2026-04-03T18:00:00',
+          'timeMode': 'deadline',
+        },
+        {
+          'id': 'today-half-year-todo',
+          'title': '今天到期待办',
+          'startTime': '2026-10-03T09:00:00',
+          'dueDate': '2026-10-03T18:00:00',
+          'timeMode': 'deadline',
+        },
+        {
+          'id': 'future-half-year-todo',
+          'title': '未来待办',
+          'startTime': '2026-10-04T09:00:00',
+          'dueDate': '2026-10-04T18:00:00',
+          'timeMode': 'deadline',
+        },
+      ];
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '过去半年有哪些待办',
+        courses: const [],
+        timeLogs: const [],
+        todos: todos,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(context, contains('first-day-half-year-todo'));
+      expect(context, contains('today-half-year-todo'));
+      expect(context, isNot(contains('outside-half-year-todo')));
+      expect(context, isNot(contains('future-half-year-todo')));
+    });
+
+    test('最近半年倒计时按滚动自然月范围筛选目标日期', () {
+      final now = DateTime(2026, 10, 3, 12);
+      final countdowns = [
+        CountdownItem(
+          id: 'outside-half-year-countdown',
+          title: '半年范围外倒计时',
+          targetDate: DateTime(2026, 4, 2),
+        ),
+        CountdownItem(
+          id: 'first-day-half-year-countdown',
+          title: '半年范围首日倒计时',
+          targetDate: DateTime(2026, 4, 3),
+        ),
+        CountdownItem(
+          id: 'today-half-year-countdown',
+          title: '今天倒计时',
+          targetDate: DateTime(2026, 10, 3),
+        ),
+        CountdownItem(
+          id: 'future-half-year-countdown',
+          title: '未来倒计时',
+          targetDate: DateTime(2026, 10, 4),
+        ),
+      ];
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '最近半年有哪些倒计时',
+        courses: const [],
+        timeLogs: const [],
+        countdowns: countdowns,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(context, contains('半年范围首日倒计时'));
+      expect(context, contains('今天倒计时'));
+      expect(context, isNot(contains('半年范围外倒计时')));
+      expect(context, isNot(contains('未来倒计时')));
+    });
+
     test('过去半年效率按含今天的滚动自然月范围筛选记录', () {
       final now = DateTime(2026, 10, 3, 12);
       final timeLogs = [

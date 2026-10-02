@@ -1836,9 +1836,39 @@ ${sections.join('\n')}
     }).toList();
   }
 
+  static _DateRange? _resolveRollingMonthRange(
+    String text,
+    DateTime now,
+  ) {
+    final match = _rollingMonthRangePattern.firstMatch(text);
+    if (match == null) return null;
+    final months = _parseRollingMonthCount(match.group(1) ?? '6');
+    if (months == null || months < 1) return null;
+
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final targetMonth = DateTime(todayStart.year, todayStart.month - months);
+    final lastDayOfTargetMonth = DateTime(
+      targetMonth.year,
+      targetMonth.month + 1,
+      0,
+    ).day;
+    final start = DateTime(
+      targetMonth.year,
+      targetMonth.month,
+      now.day > lastDayOfTargetMonth ? lastDayOfTargetMonth : now.day,
+    );
+    return _DateRange(
+      label: '最近$months个月',
+      start: start,
+      end: todayStart.add(const Duration(days: 1)),
+    );
+  }
+
   static _DateRange? _resolveCoursePeriod(String text, DateTime now) {
     final explicit = _resolveExplicitDateRange(text);
     if (explicit != null) return explicit;
+    final rollingMonthRange = _resolveRollingMonthRange(text, now);
+    if (rollingMonthRange != null) return rollingMonthRange;
     final todayStart = DateTime(now.year, now.month, now.day);
     final currentMonthStart = DateTime(now.year, now.month);
     if (text.contains('上个月') || text.contains('上月')) {
@@ -2210,27 +2240,13 @@ ${lines.isEmpty ? '暂无' : lines}''';
       }
     }
     final todayStart = DateTime(now.year, now.month, now.day);
-    final rollingMonthRange = _rollingMonthRangePattern.firstMatch(text);
+    final rollingMonthRange = _resolveRollingMonthRange(text, now);
     if (rollingMonthRange != null) {
-      final months = _parseRollingMonthCount(rollingMonthRange.group(1) ?? '6');
-      if (months != null && months > 0) {
-        final targetMonth = DateTime(todayStart.year, todayStart.month - months);
-        final lastDayOfTargetMonth = DateTime(
-          targetMonth.year,
-          targetMonth.month + 1,
-          0,
-        ).day;
-        final start = DateTime(
-          targetMonth.year,
-          targetMonth.month,
-          now.day < lastDayOfTargetMonth ? now.day : lastDayOfTargetMonth,
-        );
-        return _TimeLogPeriod(
-          label: '最近$months个月',
-          start: start,
-          end: todayStart.add(const Duration(days: 1)),
-        );
-      }
+      return _TimeLogPeriod(
+        label: rollingMonthRange.label,
+        start: rollingMonthRange.start,
+        end: rollingMonthRange.end,
+      );
     }
     _TimeLogPeriod? exactDayPeriod(int year, int month, int day) {
       final start = DateTime(year, month, day);
@@ -2853,6 +2869,8 @@ ${lines.isEmpty ? '暂无' : lines}''';
   static _DateRange? _resolveCountdownPeriod(String text, DateTime now) {
     final explicit = _resolveExplicitDateRange(text);
     if (explicit != null) return explicit;
+    final rollingMonthRange = _resolveRollingMonthRange(text, now);
+    if (rollingMonthRange != null) return rollingMonthRange;
 
     final todayStart = DateTime(now.year, now.month, now.day);
     if (text.contains('今天') || text.contains('今日')) {
