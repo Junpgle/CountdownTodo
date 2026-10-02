@@ -1518,6 +1518,18 @@ class AiTodoActionExecutor {
         : _parseExistingDate(
             existing['recurrenceEndDate'] ?? existing['recurrence_end_date'],
           );
+    if (action.hasRecurrence &&
+        nextRecurrence != RecurrenceType.none &&
+        normalizedTime.start == null) {
+      return null;
+    }
+    if ((action.hasRecurrence || action.hasRecurrenceEndDate || hasTimePatch) &&
+        nextRecurrence != RecurrenceType.none &&
+        nextRecurrenceEnd != null &&
+        normalizedTime.start != null &&
+        _day(nextRecurrenceEnd).isBefore(_day(normalizedTime.start!))) {
+      return null;
+    }
     var recurrenceSeriesId = _nullableString(
         existing['recurrenceSeriesId'] ?? existing['recurrence_series_id']);
     if (nextRecurrence != RecurrenceType.none && recurrenceSeriesId == null) {

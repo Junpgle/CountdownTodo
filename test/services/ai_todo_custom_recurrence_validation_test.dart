@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('AI custom recurrence validation', () {
     test('rejects switching to customDays without a positive interval', () {
+      final anchor = DateTime(2026, 10, 2, 19);
       final action = AiTodoAction(
         type: AiTodoActionType.updateTodo,
         todoId: 'todo-1',
@@ -12,12 +13,15 @@ void main() {
       );
       final result = AiTodoActionExecutor.execute(
         actions: [action],
-        existingTodos: const [
+        existingTodos: [
           {
             'id': 'todo-1',
             'title': '喝水',
             'recurrence': 'weekly',
             'recurrenceSeriesId': 'series-1',
+            'timeMode': 'deadline',
+            'createdDate': anchor.millisecondsSinceEpoch,
+            'dueDate': anchor,
           },
         ],
       );
@@ -29,6 +33,7 @@ void main() {
     test(
       'rejects clearing an interval while keeping customDays recurrence',
       () {
+        final anchor = DateTime(2026, 10, 2, 19);
         final action = AiTodoAction(
           type: AiTodoActionType.updateTodo,
           todoId: 'todo-1',
@@ -36,13 +41,16 @@ void main() {
         );
         final result = AiTodoActionExecutor.execute(
           actions: [action],
-          existingTodos: const [
+          existingTodos: [
             {
               'id': 'todo-1',
               'title': '喝水',
               'recurrence': 'customDays',
               'recurrenceSeriesId': 'series-1',
               'customIntervalDays': 5,
+              'timeMode': 'deadline',
+              'createdDate': anchor.millisecondsSinceEpoch,
+              'dueDate': anchor,
             },
           ],
         );
@@ -53,6 +61,7 @@ void main() {
     );
 
     test('accepts a custom recurrence update with a positive interval', () {
+      final anchor = DateTime(2026, 10, 2, 19);
       final result = AiTodoActionExecutor.execute(
         actions: [
           AiTodoAction(
@@ -62,12 +71,15 @@ void main() {
             customIntervalDays: 5,
           ),
         ],
-        existingTodos: const [
+        existingTodos: [
           {
             'id': 'todo-1',
             'title': '喝水',
             'recurrence': 'weekly',
             'recurrenceSeriesId': 'series-1',
+            'timeMode': 'deadline',
+            'createdDate': anchor.millisecondsSinceEpoch,
+            'dueDate': anchor,
           },
         ],
       );
