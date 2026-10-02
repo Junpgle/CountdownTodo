@@ -310,6 +310,20 @@ void main() {
             goals: const [],
             now: now,
           );
+      final previousYearMonth =
+          HabitAiContextService.buildContextInjectionSummary(
+            userMessage: '查看前一年9月的习惯进度',
+            goals: const [],
+            now: now,
+          );
+      final previousYearMonthFollowUp =
+          HabitAiContextService.buildContextInjectionSummary(
+            userMessage: '那前一年9月呢？',
+            previousUserMessage: '查看2026-06-01至2026-06-30的习惯进度',
+            conversationContext: '习惯进度',
+            goals: const [],
+            now: now,
+          );
       final beforePreviousYear =
           HabitAiContextService.buildContextInjectionSummary(
             userMessage: '查看前年习惯进度',
@@ -319,6 +333,14 @@ void main() {
 
       expect(previousYear, contains('2025-01-01 至 2025-12-31'));
       expect(previousYearDate, contains('2025-09-01'));
+      expect(
+        previousYearMonth,
+        contains('2025-09-01 至 2025-09-30'),
+      );
+      expect(
+        previousYearMonthFollowUp,
+        contains('2025-09-01 至 2025-09-30'),
+      );
       expect(beforePreviousYear, contains('2024-01-01 至 2024-12-31'));
     });
 

@@ -481,7 +481,9 @@ abstract final class HabitAiContextService {
     if (month != null && month >= 1 && month <= 12) {
       year ??= text.contains('前年')
           ? today.year - 2
-          : text.contains('去年') || text.contains('上一年')
+          : text.contains('去年') ||
+                text.contains('上一年') ||
+                text.contains('前一年')
           ? today.year - 1
           : today.year;
       final from = DateTime(year, month);
