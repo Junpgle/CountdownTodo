@@ -318,6 +318,40 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('分期表单改选收入模板后不应把收入保存成分期', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(() => db.insert(
+          'finance_entry_templates',
+          FinanceEntryTemplate(
+            uuid: 'income-template',
+            name: '工资收入',
+            type: FinanceTransactionType.income,
+            amountMinor: 300000,
+          ).toMap(),
+        ));
+    await _pump(tester, const FinanceEntryScreen());
+
+    await _tap(tester, find.text('分期付款'));
+    await _tap(tester, find.text('快捷模板'));
+    await _tap(tester, find.text('工资收入'));
+    expect(find.text('分期付款'), findsNothing);
+
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+    final rows = await tester.runAsync(() => db.query(
+          'finance_transactions',
+          where: 'type = ? AND is_deleted = 0',
+          whereArgs: [FinanceTransactionType.income.name],
+        ));
+    expect(rows, hasLength(1));
+    expect(rows!.single['installment_group_uuid'], isNull);
+    expect(rows.single['installment_count'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('记一笔金额打开内置计算器并回填可编辑计算结果', (tester) async {
     final db = await _seed(tester);
     await _pump(tester, const FinanceEntryScreen());

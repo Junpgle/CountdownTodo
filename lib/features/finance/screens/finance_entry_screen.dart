@@ -2394,6 +2394,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     setState(() {
       _selectedTemplateUuid = selected.uuid;
       _type = selected.type;
+      if (selected.type != FinanceTransactionType.expense) {
+        _installmentEnabled = false;
+      }
       _amountExpression = null;
       _amountController.text = formatFinanceAmount(
         selected.amountMinor,
