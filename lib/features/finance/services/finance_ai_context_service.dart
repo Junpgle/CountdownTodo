@@ -175,6 +175,14 @@ abstract final class FinanceAiContextService {
     r'(?:近|最近|过去)\s*'
     r'(\d+|[零〇○一二三四五六七八九十廿两百千]{1,4})\s*年',
   );
+  static final RegExp _quarterPeriodPattern = RegExp(
+    r'(?:(?:今年|去年|前年)\s*|\d{4}\s*年\s*)?'
+    r'(?:第\s*)?[一二三四1-4]\s*季度',
+  );
+  static final RegExp _numericYearPeriodPattern = RegExp(
+    r'(?<!\d)\d{4}\s*年'
+    r'(?!\s*(?:\d{1,2}\s*月|(?:第\s*)?[一二三四1-4]\s*季度))',
+  );
   static final RegExp _numericYearMonthPattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](\d+)(?!\d|[-/.]\d)',
   );
@@ -294,10 +302,15 @@ abstract final class FinanceAiContextService {
   static bool shouldInjectFor(
     String userMessage, {
     String conversationContext = '',
+    bool hasDateRangeOverride = false,
   }) {
     final text = userMessage.trim();
     if (text.isEmpty) return false;
-    if (_hasInvalidExplicitDateOrPeriod(text)) return false;
+    if (!hasDateRangeOverride &&
+        (_hasInvalidExplicitDateOrPeriod(text) ||
+            _hasMultipleRecognizedDatePeriods(text))) {
+      return false;
+    }
     if (_isPaymentBalanceQuestion(text) &&
         !_containsAny(text, _otherContextDomains)) {
       return true;
@@ -397,10 +410,15 @@ abstract final class FinanceAiContextService {
     final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
     final hasValidRange =
         dateRangeOverride != null ||
-        !_hasInvalidExplicitDateOrPeriod(rangeQueryText);
+        (!_hasInvalidExplicitDateOrPeriod(rangeQueryText) &&
+            !_hasMultipleRecognizedDatePeriods(rangeQueryText));
     final needsLedger =
         hasValidRange &&
-        shouldInjectFor(userMessage, conversationContext: conversationContext);
+        shouldInjectFor(
+          userMessage,
+          conversationContext: conversationContext,
+          hasDateRangeOverride: dateRangeOverride != null,
+        );
     final needsPaymentBalances = _shouldIncludePaymentBalances(
       userMessage: userMessage,
       conversationContext: conversationContext,
@@ -543,11 +561,13 @@ abstract final class FinanceAiContextService {
     final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
     final hasValidRange =
         dateRangeOverride != null ||
-        !_hasInvalidExplicitDateOrPeriod(rangeQueryText);
+        (!_hasInvalidExplicitDateOrPeriod(rangeQueryText) &&
+            !_hasMultipleRecognizedDatePeriods(rangeQueryText));
     if (hasValidRange &&
         shouldInjectFor(
           userMessage,
           conversationContext: conversationContext,
+          hasDateRangeOverride: dateRangeOverride != null,
         )) {
       parts.add(
         '记账明细 ${(dateRangeOverride ?? resolveDateRange(rangeQueryText, now: now)).label}',
@@ -1081,6 +1101,74 @@ abstract final class FinanceAiContextService {
       }
     }
     return false;
+  }
+
+  static bool _hasMultipleRecognizedDatePeriods(String text) {
+    final normalizedText = text.toLowerCase();
+    final spans = <(int, int)>[];
+    void addMatches(RegExp pattern) {
+      spans.addAll(
+        pattern
+            .allMatches(normalizedText)
+            .map((match) => (match.start, match.end)),
+      );
+    }
+
+    for (final phrase in _periodWords) {
+      if (phrase == '最近') continue;
+      var start = normalizedText.indexOf(phrase);
+      while (start != -1) {
+        spans.add((start, start + phrase.length));
+        start = normalizedText.indexOf(phrase, start + phrase.length);
+      }
+    }
+    addMatches(_rollingMonthPeriodPattern);
+    addMatches(_rollingYearPeriodPattern);
+    addMatches(_quarterPeriodPattern);
+    addMatches(_numericYearPeriodPattern);
+
+    final now = _day(DateTime.now());
+    final dateTokens = _explicitDateTokens(normalizedText, now: now);
+    final explicitDateRange = _resolveExplicitDateRange(normalizedText, now);
+    if (dateTokens.length > 1 && explicitDateRange != null) {
+      spans.add((dateTokens.first.start, dateTokens.last.end));
+    } else if (dateTokens.length == 1) {
+      final token = dateTokens.single;
+      final abbreviatedEnd = _abbreviatedDateRangeEndPattern.firstMatch(
+        normalizedText.substring(token.end),
+      );
+      if (abbreviatedEnd != null && explicitDateRange != null) {
+        spans.add((token.start, token.end + abbreviatedEnd.end));
+      } else {
+        spans.add((token.start, token.end));
+      }
+    } else {
+      spans.addAll(dateTokens.map((token) => (token.start, token.end)));
+    }
+
+    final monthTokens = _explicitMonthTokens(normalizedText, now.year);
+    final explicitMonthRange = _resolveExplicitMonthRange(normalizedText, now);
+    if (monthTokens.length > 1 && explicitMonthRange != null) {
+      spans.add((monthTokens.first.start, monthTokens.last.end));
+    } else {
+      spans.addAll(monthTokens.map((token) => (token.start, token.end)));
+    }
+
+    spans.sort((first, second) {
+      final startOrder = first.$1.compareTo(second.$1);
+      return startOrder != 0 ? startOrder : second.$2.compareTo(first.$2);
+    });
+    var distinctPeriods = 0;
+    var currentEnd = -1;
+    for (final span in spans) {
+      if (span.$1 >= currentEnd) {
+        distinctPeriods++;
+        currentEnd = span.$2;
+      } else if (span.$2 > currentEnd) {
+        currentEnd = span.$2;
+      }
+    }
+    return distinctPeriods > 1;
   }
 
   static List<_ExplicitFinanceDateToken> _explicitDateTokens(

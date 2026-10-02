@@ -110,6 +110,61 @@ void main() {
     expect(followUp, '记账明细 2026-08-27 至 2026-09-02');
   });
 
+  test('比较多个相对账期时不静默选择其中一段', () async {
+    final now = DateTime(2026, 9, 2, 23, 59);
+
+    for (final query in [
+      '比较最近7天和上周的账单支出明细',
+      '比较上个月和上周的账单支出明细',
+      '比较本季度和上季度的账单支出明细',
+      '比较去年和今年的账单支出明细',
+      '比较2026-08-01至2026-08-31和上周的账单支出明细',
+    ]) {
+      expect(FinanceAiContextService.shouldInjectFor(query), isFalse);
+      expect(
+        await FinanceAiContextService.buildContext(
+          userMessage: query,
+          now: now,
+        ),
+        isEmpty,
+        reason: query,
+      );
+      expect(
+        FinanceAiContextService.buildContextInjectionSummary(
+          userMessage: query,
+          now: now,
+        ),
+        isNull,
+        reason: query,
+      );
+    }
+  });
+
+  test('自选账期覆盖提示中的多个相对账期', () async {
+    const query = '比较最近7天和上周的账单支出明细';
+    final selectedRange = FinanceDateRange(
+      DateTime(2026, 8, 1),
+      DateTime(2026, 9, 1),
+    );
+    final now = DateTime(2026, 9, 2, 23, 59);
+
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: query,
+      dateRangeOverride: selectedRange,
+      now: now,
+    );
+    final preview = FinanceAiContextService.buildContextInjectionSummary(
+      userMessage: query,
+      dateRangeOverride: selectedRange,
+      now: now,
+    );
+
+    expect(context, contains('查询范围: 2026-08-01 至 2026-08-31'));
+    expect(context, contains('[transactionId: august]'));
+    expect(context, isNot(contains('[transactionId: today]')));
+    expect(preview, contains('记账明细 2026-08-01 至 2026-08-31'));
+  });
+
   test('本季度和上季度查询分别使用完整自然季度', () async {
     await FinanceStorage.saveTransaction(
       FinanceTransaction(
