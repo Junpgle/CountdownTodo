@@ -282,6 +282,18 @@ void main() {
       }
     });
 
+    test('商品到手价不会被误判为收入', () {
+      final draft = FinanceTextParser.parseOneSentence(
+        '今天买手机到手价 5000 元',
+        now: now,
+      );
+
+      expect(draft, isNotNull);
+      expect(draft!.type, FinanceTransactionType.expense);
+      expect(draft.categoryName, '数码');
+      expect(draft.merchant, '手机');
+    });
+
     test('收入语义会归入工资和对应细分类', () {
       final cases = <String, String>{
         '收到工资8000': '工资',
