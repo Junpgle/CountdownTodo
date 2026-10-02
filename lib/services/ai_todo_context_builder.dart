@@ -1463,6 +1463,41 @@ ${lines.isEmpty ? '暂无' : lines}''';
         end: end,
       );
     }
+    final currentQuarterStart = DateTime(
+      now.year,
+      ((now.month - 1) ~/ 3) * 3 + 1,
+    );
+    if (_matchesAny(text, ['上季度', '上一季度', '上个季度', '前一季度'])) {
+      return _TimeLogPeriod(
+        label: '上季度',
+        start: DateTime(
+          currentQuarterStart.year,
+          currentQuarterStart.month - 3,
+        ),
+        end: currentQuarterStart,
+      );
+    }
+    if (_matchesAny(text, ['本季度', '这个季度', '当前季度', '这季度'])) {
+      return _TimeLogPeriod(
+        label: '本季度',
+        start: currentQuarterStart,
+        end: todayStart.add(const Duration(days: 1)),
+      );
+    }
+    if (text.contains('去年')) {
+      return _TimeLogPeriod(
+        label: '去年',
+        start: DateTime(now.year - 1),
+        end: DateTime(now.year),
+      );
+    }
+    if (text.contains('今年')) {
+      return _TimeLogPeriod(
+        label: '今年',
+        start: DateTime(now.year),
+        end: todayStart.add(const Duration(days: 1)),
+      );
+    }
     if (text.contains('本周') || text.contains('这周')) {
       final start = todayStart.subtract(Duration(days: now.weekday - 1));
       return _TimeLogPeriod(

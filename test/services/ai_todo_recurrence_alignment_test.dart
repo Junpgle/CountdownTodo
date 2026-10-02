@@ -936,5 +936,64 @@ void main() {
       expect(thirtyDayContext, isNot(contains('future-log')));
       expect(thirtyDayPreview, contains('专注记录20260903-20261002'));
     });
+    test('效率分析按去年、今年和上一自然季度筛选记录', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('last-year', DateTime(2025, 12, 31, 9)),
+        ('this-year-start', DateTime(2026, 1, 1, 9)),
+        ('previous-quarter', DateTime(2026, 6, 30, 9)),
+        ('last-quarter-start', DateTime(2026, 7, 1, 9)),
+        ('last-quarter-end', DateTime(2026, 9, 30, 9)),
+        ('this-quarter', DateTime(2026, 10, 1, 9)),
+        ('future', DateTime(2026, 10, 3, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final lastQuarter = contextFor('分析上季度的效率');
+      expect(lastQuarter, contains('上季度合计'));
+      expect(lastQuarter, contains('last-quarter-start'));
+      expect(lastQuarter, contains('last-quarter-end'));
+      expect(lastQuarter, isNot(contains('previous-quarter')));
+      expect(lastQuarter, isNot(contains('this-quarter')));
+      expect(lastQuarter, isNot(contains('future')));
+      expect(previewFor('分析上季度的效率'), contains('专注记录20260701-20260930'));
+
+      final thisYear = contextFor('分析今年的效率');
+      expect(thisYear, contains('今年合计'));
+      expect(thisYear, contains('this-year-start'));
+      expect(thisYear, contains('this-quarter'));
+      expect(thisYear, isNot(contains('last-year')));
+      expect(thisYear, isNot(contains('future')));
+      expect(previewFor('分析今年的效率'), contains('专注记录20260101-20261002'));
+
+      final lastYear = contextFor('分析去年效率');
+      expect(lastYear, contains('去年合计'));
+      expect(lastYear, contains('last-year'));
+      expect(lastYear, isNot(contains('this-year-start')));
+      expect(previewFor('分析去年效率'), contains('专注记录20250101-20251231'));
+    });
   });
 }
