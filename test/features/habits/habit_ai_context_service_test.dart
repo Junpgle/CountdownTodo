@@ -58,6 +58,30 @@ void main() {
       expect(summary, contains('2026-04-30 至 2026-10-31'));
     });
 
+    test('recent day follow-up overrides the previous explicit range', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '那最近七天呢？',
+        previousUserMessage: '查看2026-06-01至2026-06-30的习惯进度',
+        conversationContext: '习惯进度',
+        goals: const [],
+        now: DateTime(2026, 10, 3, 12),
+      );
+
+      expect(summary, contains('2026-09-27 至 2026-10-03'));
+    });
+
+    test('recent day follow-up keeps the previous rolling range', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '那进度怎么样呢？',
+        previousUserMessage: '分析最近七天的习惯进度',
+        conversationContext: '习惯进度',
+        goals: const [],
+        now: DateTime(2026, 10, 3, 12),
+      );
+
+      expect(summary, contains('2026-09-27 至 2026-10-03'));
+    });
+
     test('rolling month follow-up overrides the previous explicit range', () {
       final summary = HabitAiContextService.buildContextInjectionSummary(
         userMessage: '那最近六个月呢？',
