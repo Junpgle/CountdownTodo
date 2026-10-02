@@ -5,11 +5,21 @@ import 'package:countdown_todo/features/finance/services/finance_text_parser.dar
 import 'package:countdown_todo/services/ai_chat_service.dart';
 import 'package:countdown_todo/services/ai_native_tool_call_parser.dart';
 import 'package:countdown_todo/services/ai_native_tool_definition_builder.dart';
+import 'package:countdown_todo/services/ai_todo_context_builder.dart';
 
 void main() {
   group('AiNativeToolDefinitionBuilder', () {
     test('offers a finance delete tool for colloquial delete wording', () {
       const request = '把上周那笔账单删了';
+
+      expect(
+        AiTodoContextBuilder.isExplicitlyRequested(request, '删了'),
+        isTrue,
+      );
+      expect(
+        AiTodoContextBuilder.buildActionProtocolPrompt(request),
+        contains('- delete_finance'),
+      );
 
       final tools = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
         request,
@@ -35,15 +45,17 @@ void main() {
     });
 
     test('does not expose finance mutation tools for a read-only query', () {
-      final tools = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
-        '查询上周账单明细',
-      );
+      for (final request in ['查询上周账单明细', '哪些账单需要删除']) {
+        final tools = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+          request,
+        );
 
-      expect(AiNativeToolDefinitionBuilder.allowedToolNames(tools), isEmpty);
-      expect(
-        AiNativeToolDefinitionBuilder.allowedFinanceActionNames(tools),
-        isEmpty,
-      );
+        expect(AiNativeToolDefinitionBuilder.allowedToolNames(tools), isEmpty);
+        expect(
+          AiNativeToolDefinitionBuilder.allowedFinanceActionNames(tools),
+          isEmpty,
+        );
+      }
     });
 
     test(
