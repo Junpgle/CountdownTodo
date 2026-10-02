@@ -315,9 +315,13 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   int _estimateTokensForPendingInput(String text) {
-    if (text.isEmpty) return 0;
+    final estimatedText = AiMultimodalMessageBuilder.requestTextForAttachment(
+      text: text,
+      attachmentKind: _pendingAttachment?.kind,
+    );
+    if (estimatedText.isEmpty) return 0;
     final messages = _buildApiMessages(
-      pendingUserText: text,
+      pendingUserText: estimatedText,
       trackSmartContext: false,
     );
     return _estimateRequestTokens(messages);

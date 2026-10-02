@@ -893,8 +893,14 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                       ),
                       const SizedBox(width: 4),
                       IconButton(
-                        onPressed: () =>
-                            setState(() => _pendingAttachment = null),
+                        onPressed: () {
+                          setState(() {
+                            _pendingAttachment = null;
+                            _liveEstimatedTokens = _estimateTokensForPendingInput(
+                              _inputCtrl.text.trim(),
+                            );
+                          });
+                        },
                         icon: const Icon(Icons.close_rounded, size: 18),
                         tooltip: '移除附件',
                         visualDensity: VisualDensity.compact,

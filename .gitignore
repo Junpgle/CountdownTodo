@@ -104,6 +104,7 @@ todo.md
 !/test/android_delta_service_test.dart
 !/test/coach_mark_overlay_test.dart
 !/test/ai_multimodal_protocol_test.dart
+!/test/ai_attachment_prompt_estimate_test.dart
 !/test/ai_recognition_chat_flow_test.dart
 !/test/llm_config_page_test.dart
 !/test/services/

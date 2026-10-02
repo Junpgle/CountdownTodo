@@ -156,15 +156,10 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
 
     final userMsg = ChatMessage(
       role: ChatRole.user,
-      content: text.isEmpty
-          ? switch (attachment?.kind) {
-              ChatAttachmentKind.image => '请分析图片内容，并提取重要信息、待办与建议。',
-              ChatAttachmentKind.audio => '请理解这段音频，并提取重要信息、待办与建议。',
-              ChatAttachmentKind.video => '请分析这段视频，并提取重要信息、待办与建议。',
-              ChatAttachmentKind.document => '请阅读这份文件，并提取重要信息、待办与建议。',
-              null => '',
-            }
-          : text,
+      content: AiMultimodalMessageBuilder.requestTextForAttachment(
+        text: text,
+        attachmentKind: attachment?.kind,
+      ),
       attachment: attachmentForMessage,
     );
     final requestText = userMsg.content;
@@ -513,6 +508,9 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
       }
       setState(() {
         _pendingAttachment = attachment;
+        _liveEstimatedTokens = _estimateTokensForPendingInput(
+          _inputCtrl.text.trim(),
+        );
       });
     } catch (error) {
       if (mounted) {
