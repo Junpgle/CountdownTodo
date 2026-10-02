@@ -7,6 +7,12 @@ import 'pomodoro_service.dart';
 class AiTodoContextBuilder {
   static const int actionProtocolVersion = 2;
   static const int smartContextProtocolVersion = 2;
+  static final RegExp _explicitIsoDateRangePattern = RegExp(
+    r'(\d{4}-\d{2}-\d{2})\s*(?:至|到|-|~)\s*(\d{4}-\d{2}-\d{2})',
+  );
+  static final RegExp _explicitIsoDatePattern = RegExp(
+    r'(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)',
+  );
 
   static AiContextDateRange? resolveCustomInjectionDateRange({
     DateTime? customStart,
@@ -491,6 +497,7 @@ JSON操作块必须且只能使用以下协议：
     AiContextDateRange? focusRecordPriorityRange,
     DateTime? now,
   }) {
+    if (_hasInvalidExplicitIsoDate(userMessage)) return null;
     final nowValue = now ?? DateTime.now();
     final sections = <String>[];
     final injectCourseContext =
@@ -674,6 +681,7 @@ ${sections.join('\n')}
     bool expandFocusContext = false,
     DateTime? now,
   }) {
+    if (_hasInvalidExplicitIsoDate(userMessage)) return null;
     final nowValue = now ?? DateTime.now();
     final parts = <String>[];
     final injectCourseContext =
@@ -2524,21 +2532,42 @@ ${lines.isEmpty ? '暂无' : lines}''';
   }
 
   static _DateRange? _resolveExplicitDateRange(String text) {
-    final match = RegExp(
-      r'(\d{4}-\d{2}-\d{2})\s*(?:至|到|-|~)\s*(\d{4}-\d{2}-\d{2})',
-    ).firstMatch(text);
+    final match = _explicitIsoDateRangePattern.firstMatch(text);
     if (match == null) return null;
-    final start = DateTime.tryParse(match.group(1)!);
-    final end = DateTime.tryParse(match.group(2)!);
+    final start = _parseStrictIsoDate(match.group(1)!);
+    final end = _parseStrictIsoDate(match.group(2)!);
     if (start == null || end == null) return null;
-    final s = DateTime(start.year, start.month, start.day);
-    final e = DateTime(end.year, end.month, end.day);
-    if (e.isBefore(s)) return null;
+    if (end.isBefore(start)) return null;
     return _DateRange(
       label: '自定义',
-      start: s,
-      end: e.add(const Duration(days: 1)),
+      start: start,
+      end: end.add(const Duration(days: 1)),
     );
+  }
+
+  static bool _hasInvalidExplicitIsoDate(String text) {
+    final range = _explicitIsoDateRangePattern.firstMatch(text);
+    if (range != null) {
+      final start = _parseStrictIsoDate(range.group(1)!);
+      final end = _parseStrictIsoDate(range.group(2)!);
+      if (start == null || end == null || end.isBefore(start)) return true;
+    }
+    return _explicitIsoDatePattern.allMatches(text).any(
+      (match) => _parseStrictIsoDate(match.group(1)!) == null,
+    );
+  }
+
+  static DateTime? _parseStrictIsoDate(String value) {
+    final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value);
+    if (match == null) return null;
+    final year = int.parse(match.group(1)!);
+    final month = int.parse(match.group(2)!);
+    final day = int.parse(match.group(3)!);
+    final date = DateTime(year, month, day);
+    if (date.year != year || date.month != month || date.day != day) {
+      return null;
+    }
+    return date;
   }
 
   static List<Map<String, dynamic>> _scopeTodosByTime(
