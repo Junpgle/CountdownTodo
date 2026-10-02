@@ -77,6 +77,39 @@ void main() {
     expect(context, contains('净支出 ¥60.00'));
   });
 
+  test('过去七天查询按滚动自然日跨月取账单', () async {
+    final range = FinanceAiContextService.resolveDateRange(
+      '过去7天支出',
+      now: DateTime(2026, 9, 2, 23, 59),
+    );
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '过去7天支出多少',
+      now: DateTime(2026, 9, 2, 23, 59),
+    );
+
+    expect(dateKey(range.from), '2026-08-27');
+    expect(dateKey(range.to), '2026-09-03');
+    expect(context, contains('[transactionId: august]'));
+    expect(context, contains('[transactionId: earlier-september]'));
+    expect(context, contains('[transactionId: today]'));
+    expect(context, contains('净支出 ¥60.00'));
+
+    final alternate = FinanceAiContextService.resolveDateRange(
+      '近一周支出',
+      now: DateTime(2026, 9, 2, 23, 59),
+    );
+    expect(dateKey(alternate.from), '2026-08-27');
+    expect(dateKey(alternate.to), '2026-09-03');
+
+    final followUp = FinanceAiContextService.buildContextInjectionSummary(
+      userMessage: '过去七天呢',
+      conversationContext: '查看记账支出情况',
+      previousUserMessage: '本月支出多少',
+      now: DateTime(2026, 9, 2),
+    );
+    expect(followUp, '记账明细 2026-08-27 至 2026-09-02');
+  });
+
   test('夏令时回拨日按自然日计算 AI 账单范围和标签', () {
     final today = FinanceAiContextService.resolveDateRange(
       '今天支出',

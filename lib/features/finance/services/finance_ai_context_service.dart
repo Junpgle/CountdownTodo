@@ -139,6 +139,15 @@ abstract final class FinanceAiContextService {
     '过去三十天',
     '近30天',
     '近三十天',
+    '最近7天',
+    '最近七天',
+    '过去7天',
+    '过去七天',
+    '近7天',
+    '近七天',
+    '最近一周',
+    '过去一周',
+    '近一周',
     '最近',
     '今年',
     '本年',
@@ -471,7 +480,17 @@ abstract final class FinanceAiContextService {
       final from = DateTime(current.year, current.month);
       return FinanceDateRange(from, DateTime(current.year, current.month + 1));
     }
-    if (text.contains('最近7天') || text.contains('最近七天')) {
+    if (_containsAny(text, [
+      '最近7天',
+      '最近七天',
+      '过去7天',
+      '过去七天',
+      '近7天',
+      '近七天',
+      '最近一周',
+      '过去一周',
+      '近一周',
+    ])) {
       final from = financeCalendarDayOffset(current, -6);
       return FinanceDateRange(from, financeCalendarDayOffset(current, 1));
     }
