@@ -271,6 +271,46 @@ void main() {
     }
   });
 
+  test('显式日期范围包含首尾日期', () async {
+    for (final (query, expectedFrom, expectedTo) in [
+      ('2026-09-01至2026-09-30支出多少', '2026-09-01', '2026-10-01'),
+      ('9月1日到9月30日支出多少', '2026-09-01', '2026-10-01'),
+      ('去年9月1日至9月30日支出多少', '2025-09-01', '2025-10-01'),
+      ('12月20日到1月5日支出多少', '2026-12-20', '2027-01-06'),
+    ]) {
+      final range = FinanceAiContextService.resolveDateRange(
+        query,
+        now: DateTime(2026, 10, 2),
+      );
+      expect(dateKey(range.from), expectedFrom, reason: query);
+      expect(dateKey(range.to), expectedTo, reason: query);
+      expect(
+        FinanceAiContextService.shouldInjectFor(query),
+        isTrue,
+        reason: query,
+      );
+    }
+
+    for (final query in [
+      '2026-09-01和2026-09-30支出多少',
+      '2026-09-01至2026-09-31支出多少',
+    ]) {
+      expect(
+        FinanceAiContextService.shouldInjectFor(query),
+        isFalse,
+        reason: query,
+      );
+    }
+
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '2026-09-01至2026-09-02支出多少',
+      now: DateTime(2026, 9, 2, 23, 59),
+    );
+    expect(context, contains('[transactionId: earlier-september]'));
+    expect(context, contains('[transactionId: today]'));
+    expect(context, isNot(contains('[transactionId: august]')));
+  });
+
   test('明确日期和月份的年份由各自的日期前缀决定', () {
     final now = DateTime(2026, 9, 2);
     final dateRange = FinanceAiContextService.resolveDateRange(

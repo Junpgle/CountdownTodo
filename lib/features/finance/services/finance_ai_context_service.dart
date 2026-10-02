@@ -13,6 +13,13 @@ class FinanceDateRange {
       '${dateKey(from)} 至 ${dateKey(financeCalendarDayOffset(to, -1))}';
 }
 
+typedef _ExplicitFinanceDateToken = ({
+  int start,
+  int end,
+  DateTime? date,
+  bool hasExplicitYear,
+});
+
 /// Builds a small, query-scoped finance snapshot for the AI assistant.
 ///
 /// The snapshot is intentionally separate from the generic todo context:
@@ -161,7 +168,10 @@ abstract final class FinanceAiContextService {
     r'(\d+|[零〇○一二三四五六七八九十廿两百千]{1,4})\s*年',
   );
   static final RegExp _numericYearMonthPattern = RegExp(
-    r'(?:^|[^\d])(\d{4})[-/.](\d+)(?![-/.]\d)',
+    r'(?:^|[^\d])(\d{4})[-/.](\d+)(?!\d|[-/.]\d)',
+  );
+  static final RegExp _explicitDateRangeSeparator = RegExp(
+    r'^\s*(?:至|到|~|～|－|–|—|-)\s*$',
   );
 
   static const _periodWords = [
@@ -586,13 +596,8 @@ abstract final class FinanceAiContextService {
   }) {
     final current = _day(now ?? DateTime.now());
     final text = userMessage.trim().toLowerCase();
-    final explicitDate = _parseExplicitDate(text, now: current);
-    if (explicitDate != null) {
-      return FinanceDateRange(
-        explicitDate,
-        financeCalendarDayOffset(explicitDate, 1),
-      );
-    }
+    final explicitDateRange = _resolveExplicitDateRange(text, current);
+    if (explicitDateRange != null) return explicitDateRange;
     FinanceDateRange relativeDayRange(int offset) {
       final day = financeCalendarDayOffset(current, offset);
       return FinanceDateRange(day, financeCalendarDayOffset(day, 1));
@@ -995,10 +1000,13 @@ abstract final class FinanceAiContextService {
   }
 
   static bool _hasInvalidExplicitDateOrPeriod(String text) {
-    final hasExplicitDate =
-        _calendarDatePattern.hasMatch(text) ||
-        _chineseCalendarDatePattern.hasMatch(text);
-    if (hasExplicitDate && _parseExplicitDate(text) == null) return true;
+    final now = _day(DateTime.now());
+    final explicitDateTokens = _explicitDateTokens(text, now: now);
+    if (explicitDateTokens.any((token) => token.date == null)) return true;
+    if (explicitDateTokens.length > 1 &&
+        _resolveExplicitDateRange(text, now) == null) {
+      return true;
+    }
 
     final numericYearMonth = _numericYearMonthPattern.firstMatch(text);
     if (numericYearMonth != null) {
@@ -1038,18 +1046,83 @@ abstract final class FinanceAiContextService {
     return false;
   }
 
-  static DateTime? _parseExplicitDate(String text, {DateTime? now}) {
-    final match = _calendarDatePattern.firstMatch(text);
-    final chineseMatch = match == null
-        ? _chineseCalendarDatePattern.firstMatch(text)
-        : null;
-    if (match == null && chineseMatch == null) return null;
-    final yearText = match?.group(1) ?? chineseMatch?.group(1);
-    final relativeYear = chineseMatch?.group(2);
-    final monthText = match?.group(2) ?? chineseMatch?.group(3);
-    final dayText = match?.group(3) ?? chineseMatch?.group(4);
+  static List<_ExplicitFinanceDateToken> _explicitDateTokens(
+    String text, {
+    required DateTime now,
+  }) {
+    final tokens = <_ExplicitFinanceDateToken>[];
+    for (final match in _calendarDatePattern.allMatches(text)) {
+      tokens.add((
+        start: match.start + match.group(0)!.indexOf(match.group(1)!),
+        end: match.end,
+        date: _parseExplicitDateParts(
+          yearText: match.group(1),
+          monthText: match.group(2),
+          dayText: match.group(3),
+          isNumericMonth: true,
+          now: now,
+        ),
+        hasExplicitYear: true,
+      ));
+    }
+    for (final match in _chineseCalendarDatePattern.allMatches(text)) {
+      tokens.add((
+        start: match.start,
+        end: match.end,
+        date: _parseExplicitDateParts(
+          yearText: match.group(1),
+          relativeYear: match.group(2),
+          monthText: match.group(3),
+          dayText: match.group(4),
+          now: now,
+        ),
+        hasExplicitYear: match.group(1) != null || match.group(2) != null,
+      ));
+    }
+    tokens.sort((left, right) => left.start.compareTo(right.start));
+    return tokens;
+  }
+
+  static FinanceDateRange? _resolveExplicitDateRange(
+    String text,
+    DateTime current,
+  ) {
+    final tokens = _explicitDateTokens(text, now: current);
+    if (tokens.isEmpty || tokens.length > 2) return null;
+    final start = tokens.first.date;
+    if (start == null) return null;
+    if (tokens.length == 1) {
+      return FinanceDateRange(start, financeCalendarDayOffset(start, 1));
+    }
+
+    final endToken = tokens.last;
+    if (!_explicitDateRangeSeparator.hasMatch(
+      text.substring(tokens.first.end, endToken.start),
+    )) {
+      return null;
+    }
+    var end = endToken.date;
+    if (end == null) return null;
+    if (!endToken.hasExplicitYear) {
+      end = DateTime(start.year, end.month, end.day);
+      if (end.isBefore(start)) {
+        end = DateTime(start.year + 1, end.month, end.day);
+      }
+    }
+    if (end.isBefore(start)) return null;
+    return FinanceDateRange(start, financeCalendarDayOffset(end, 1));
+  }
+
+  static DateTime? _parseExplicitDateParts({
+    String? yearText,
+    String? relativeYear,
+    String? monthText,
+    String? dayText,
+    bool isNumericMonth = false,
+    required DateTime now,
+  }) {
     final year = int.tryParse(yearText ?? '');
-    final month = match != null
+    final month = isNumericMonth
         ? int.tryParse(monthText ?? '')
         : _parseMonthNumber(monthText ?? '');
     final day = _parseCalendarDayNumber(dayText ?? '');
@@ -1058,8 +1131,7 @@ abstract final class FinanceAiContextService {
       return null;
     }
     if (month == null || day == null) return null;
-    final current = now ?? DateTime.now();
-    final resolvedYear = _resolveCalendarYear(year, relativeYear, current.year);
+    final resolvedYear = _resolveCalendarYear(year, relativeYear, now.year);
     if (resolvedYear < 1 || month < 1 || month > 12 || day < 1 || day > 31) {
       return null;
     }
