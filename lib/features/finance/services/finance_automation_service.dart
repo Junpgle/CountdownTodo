@@ -43,6 +43,73 @@ abstract final class FinanceAutomationService {
         : financeMonthKey(dueAt);
   }
 
+  /// Returns the next future due time that should materialize an automatic
+  /// bill while the app remains open.
+  static DateTime? nextAutoGenerationDueAfter(
+    Iterable<FinanceRecurringRule> rules, {
+    required DateTime now,
+  }) {
+    DateTime? nextDue;
+    for (final rule in rules) {
+      if (rule.isDeleted || !rule.isEnabled || !rule.autoGenerate) continue;
+
+      final start = dateFromKey(rule.startDate);
+      final lastGenerated = rule.effectiveLastGeneratedPeriod;
+      DateTime? due;
+      if (rule.frequency == FinanceRecurringFrequency.yearly) {
+        var year = now.year > start.year ? now.year : start.year;
+        final lastYear = int.tryParse(lastGenerated ?? '');
+        if (lastYear != null && year <= lastYear) year = lastYear + 1;
+        final endYear = rule.endDate == null
+            ? null
+            : dateFromKey(rule.endDate!).year;
+        var attempts = 0;
+        while (year <= 9999 &&
+            attempts < 2 &&
+            (endYear == null || year <= endYear)) {
+          final candidate = dueDateFor(rule, year, rule.monthOfYear);
+          if (candidate != null && candidate.isAfter(now)) {
+            due = candidate;
+            break;
+          }
+          year++;
+          attempts++;
+        }
+      } else {
+        var cursor = DateTime(now.year, now.month);
+        final startMonth = DateTime(start.year, start.month);
+        if (cursor.isBefore(startMonth)) cursor = startMonth;
+        if (RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(lastGenerated ?? '')) {
+          final parts = lastGenerated!.split('-');
+          final monthAfterLast = DateTime(
+            int.parse(parts[0]),
+            int.parse(parts[1]) + 1,
+          );
+          if (cursor.isBefore(monthAfterLast)) cursor = monthAfterLast;
+        }
+        final end = rule.endDate == null ? null : dateFromKey(rule.endDate!);
+        while (cursor.year <= 9999) {
+          final candidate = dueDateFor(rule, cursor.year, cursor.month);
+          if (candidate != null && candidate.isAfter(now)) {
+            due = candidate;
+            break;
+          }
+          if (end != null &&
+              (cursor.year > end.year ||
+                  (cursor.year == end.year && cursor.month >= end.month))) {
+            break;
+          }
+          cursor = DateTime(cursor.year, cursor.month + 1);
+        }
+      }
+
+      if (due != null && (nextDue == null || due.isBefore(nextDue))) {
+        nextDue = due;
+      }
+    }
+    return nextDue;
+  }
+
   /// 返回当前周期的到期项；尚未到 09:00 时不生成账单。
   static FinanceRecurringDue? currentDueFor(
     FinanceRecurringRule rule, {

@@ -1174,6 +1174,46 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('记账首页保持打开时会在周期账单到期后自动生成', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 9, 15, 8, 59);
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+
+    var rows = (await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'source = ?',
+        whereArgs: [FinanceEntrySource.automation.name],
+      ),
+    ))!;
+    expect(rows, isEmpty);
+
+    clockNow = DateTime(2026, 9, 15, 9, 1);
+    await tester.pump(const Duration(minutes: 2));
+    for (var attempt = 0; attempt < 40 && rows.isEmpty; attempt++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+      rows = (await tester.runAsync(
+        () => db.query(
+          'finance_transactions',
+          where: 'source = ? AND transaction_date = ?',
+          whereArgs: [FinanceEntrySource.automation.name, '2026-09-15'],
+        ),
+      ))!;
+    }
+
+    expect(rows, hasLength(1));
+    expect(rows.single['merchant'], '每月房租');
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('云端同步后已打开的账单列表会刷新', (tester) async {
     await _seed(tester);
     final now = DateTime.now();

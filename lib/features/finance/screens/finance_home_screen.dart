@@ -31,6 +31,7 @@ typedef _FinanceHomeData = ({
   List<FinanceCategory> categories,
   List<FinancePaymentMethod> paymentMethods,
   List<FinanceTransaction> overviewTransactions,
+  List<FinanceRecurringRule> recurringRules,
 });
 
 class FinanceHomeScreen extends StatefulWidget {
@@ -70,6 +71,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   List<FinanceTransaction> _overviewTransactions = const [];
   List<FinanceCategory> _categories = const [];
   List<FinancePaymentMethod> _paymentMethods = const [];
+  List<FinanceRecurringRule> _recurringRules = const [];
   FinanceSummary _summary = const FinanceSummary();
   String _keyword = '';
   FinanceTransactionType? _filterType;
@@ -81,6 +83,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   bool _maintenanceScheduled = false;
   Future<void>? _maintenanceFuture;
   Timer? _upcomingTransactionTimer;
+  Timer? _autoGenerationTimer;
   Timer? _financeChangeRefreshTimer;
   final GlobalKey _overviewAddActionKey = GlobalKey();
   final GlobalKey _bottomAddActionKey = GlobalKey();
@@ -155,7 +158,13 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       _categories = initialData.categories;
       _paymentMethods = initialData.paymentMethods;
       _overviewTransactions = initialData.overviewTransactions;
+      _recurringRules = initialData.recurringRules;
       _isLoading = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _scheduleUpcomingTransactionRefresh();
+        _scheduleNextAutoGeneration();
+      });
     }
     if (widget.openQuickEntry) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -167,6 +176,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   @override
   void dispose() {
     _upcomingTransactionTimer?.cancel();
+    _autoGenerationTimer?.cancel();
     _financeChangeRefreshTimer?.cancel();
     FinanceStorage.revision.removeListener(_onFinanceStorageChanged);
     super.dispose();
@@ -183,6 +193,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   Future<void> _load({bool showLoading = true}) async {
     _upcomingTransactionTimer?.cancel();
     _upcomingTransactionTimer = null;
+    _autoGenerationTimer?.cancel();
+    _autoGenerationTimer = null;
     final generation = ++_loadGeneration;
     if (mounted && showLoading) {
       setState(() {
@@ -199,9 +211,11 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         _categories = data.categories;
         _paymentMethods = data.paymentMethods;
         _overviewTransactions = data.overviewTransactions;
+        _recurringRules = data.recurringRules;
         _isLoading = false;
       });
       _scheduleUpcomingTransactionRefresh();
+      _scheduleNextAutoGeneration();
       if (!_isCategoryLedgerRoute) _startBackgroundMaintenance(generation);
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
@@ -225,6 +239,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       FinanceRepository.getTransactions(from: overviewFrom, to: overviewTo),
       FinanceRepository.getCategories(includeArchived: true),
       FinanceRepository.getPaymentMethods(includeArchived: true),
+      FinanceRepository.getRecurringRules(enabledOnly: true),
     ]);
     final overviewTransactions = values[0] as List<FinanceTransaction>;
     final fromKey = dateKey(from);
@@ -247,6 +262,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       categories: values[1] as List<FinanceCategory>,
       paymentMethods: values[2] as List<FinancePaymentMethod>,
       overviewTransactions: overviewTransactions,
+      recurringRules: values[3] as List<FinanceRecurringRule>,
     );
   }
 
@@ -279,6 +295,37 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     });
   }
 
+  void _scheduleNextAutoGeneration() {
+    _autoGenerationTimer?.cancel();
+    _autoGenerationTimer = null;
+    final now = widget.clock();
+    final dueAt = FinanceAutomationService.nextAutoGenerationDueAfter(
+      _recurringRules,
+      now: now,
+    );
+    if (dueAt == null) return;
+
+    final delayMs =
+        (dueAt.millisecondsSinceEpoch - now.millisecondsSinceEpoch + 1)
+            .clamp(1, const Duration(days: 24).inMilliseconds)
+            .toInt();
+    _autoGenerationTimer = Timer(Duration(milliseconds: delayMs), () {
+      _autoGenerationTimer = null;
+      if (mounted) unawaited(_reconcileAutoGeneration());
+    });
+  }
+
+  Future<void> _reconcileAutoGeneration() async {
+    try {
+      await FinanceAutomationService.reconcileCurrentPeriod(
+        now: widget.clock(),
+      );
+    } catch (error) {
+      // 自动账单补偿失败不应影响已经打开的记账首页。
+    }
+    if (mounted) await _load(showLoading: false);
+  }
+
   void _startBackgroundMaintenance(int generation) {
     if (_maintenanceFuture != null || _maintenanceScheduled) return;
     _maintenanceScheduled = true;
@@ -300,7 +347,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       var needsRefresh = false;
       try {
         needsRefresh =
-            await FinanceAutomationService.reconcileCurrentPeriod() > 0;
+            await FinanceAutomationService.reconcileCurrentPeriod(
+              now: widget.clock(),
+            ) >
+            0;
       } catch (_) {
         // 自动化异常不应阻断已有账单的查看和手动记账。
       }
@@ -578,6 +628,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           categories: _categories,
           paymentMethods: _paymentMethods,
           overviewTransactions: _overviewTransactions,
+          recurringRules: _recurringRules,
         ),
         clock: widget.clock,
       ),

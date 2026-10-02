@@ -46,6 +46,43 @@ void main() {
     );
   });
 
+  test('自动记账调度会找到下一次尚未生成的到期时刻', () {
+    final now = DateTime(2026, 9, 15, 8, 59);
+    final monthly = monthlyRule(day: 15, startDate: '2026-01-01');
+    final yearly = FinanceRecurringRule(
+      uuid: 'rule-yearly-next',
+      name: '年度保险',
+      amountMinor: 120000,
+      frequency: FinanceRecurringFrequency.yearly,
+      monthOfYear: 12,
+      dayOfMonth: 31,
+      startDate: '2026-01-01',
+    );
+
+    expect(
+      FinanceAutomationService.nextAutoGenerationDueAfter([monthly], now: now),
+      DateTime(2026, 9, 15, 9),
+    );
+    expect(
+      FinanceAutomationService.nextAutoGenerationDueAfter([
+        monthly..lastGeneratedPeriod = '2026-09',
+      ], now: now),
+      DateTime(2026, 10, 15, 9),
+    );
+    expect(
+      FinanceAutomationService.nextAutoGenerationDueAfter([
+        yearly,
+      ], now: DateTime(2026, 11, 30)),
+      DateTime(2026, 12, 31, 9),
+    );
+    expect(
+      FinanceAutomationService.nextAutoGenerationDueAfter([
+        monthly..autoGenerate = false,
+      ], now: now),
+      isNull,
+    );
+  });
+
   test('开始日期会过滤掉之前的周期', () {
     final rule = monthlyRule(day: 1, startDate: '2026-08-15');
     final due = FinanceAutomationService.dueDateFor(rule, 2026, 8);
