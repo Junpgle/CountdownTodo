@@ -145,8 +145,8 @@ void main() {
       );
       final triggerTimes = {
         for (final reminder in reminders)
-          reminder['financeRuleUuid'] as String:
-              DateTime.fromMillisecondsSinceEpoch(
+          reminder['financeRuleUuid']
+              as String: DateTime.fromMillisecondsSinceEpoch(
             reminder['triggerAtMs'] as int,
           ),
       };
@@ -791,8 +791,8 @@ void main() {
 
     await FinanceAutomationService.checkBudgetAlerts(now: now);
 
-    final savedBudget =
-        (await FinanceStorage.getBudgets(monthKey: monthKey)).single;
+    final savedBudget = (await FinanceStorage.getBudgets(monthKey: monthKey))
+        .single;
     final alertKey =
         'finance-budget-v1-$accountKey-${savedBudget.uuid}-'
         '${savedBudget.monthKey}-${savedBudget.version}-80';
@@ -870,8 +870,8 @@ void main() {
       ),
     );
 
-    final savedBudget =
-        (await FinanceStorage.getBudgets(monthKey: monthKey)).single;
+    final savedBudget = (await FinanceStorage.getBudgets(monthKey: monthKey))
+        .single;
     final alertKey =
         'finance-budget-v1-$accountKey-${savedBudget.uuid}-'
         '${savedBudget.monthKey}-${savedBudget.version}-80';
@@ -895,7 +895,9 @@ void main() {
     const localNotificationChannel = MethodChannel(
       'dexterous.com/flutter/local_notifications',
     );
-    const macStatusBarChannel = MethodChannel('countdown_todo/macos_status_bar');
+    const macStatusBarChannel = MethodChannel(
+      'countdown_todo/macos_status_bar',
+    );
     final notificationBodies = <String>[];
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -922,7 +924,10 @@ void main() {
       }
       return null;
     });
-    messenger.setMockMethodCallHandler(macStatusBarChannel, (call) async => null);
+    messenger.setMockMethodCallHandler(
+      macStatusBarChannel,
+      (call) async => null,
+    );
     addTearDown(() async {
       await FocusDoNotDisturbService.setActive(false, force: true);
       messenger.setMockMethodCallHandler(localNotificationChannel, null);
@@ -979,6 +984,7 @@ void main() {
       'countdown_todo/macos_status_bar',
     );
     final notificationBodies = <String>[];
+    final notificationShown = Completer<void>();
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
@@ -1000,6 +1006,7 @@ void main() {
         case 'show':
           final arguments = Map<String, dynamic>.from(call.arguments as Map);
           notificationBodies.add(arguments['body'] as String);
+          if (!notificationShown.isCompleted) notificationShown.complete();
           return null;
       }
       return null;
@@ -1049,11 +1056,12 @@ void main() {
         repaymentDay: now.day,
       ),
     );
-    final installment =
-        (await FinanceStorage.getLoanInstallments('loan-interest-budget-loan'))
-            .single;
+    final installment = (await FinanceStorage.getLoanInstallments(
+      'loan-interest-budget-loan',
+    )).single;
 
     await FinanceRepository.setLoanInstallmentPaid(installment.uuid, true);
+    await notificationShown.future.timeout(const Duration(seconds: 5));
 
     expect(installment.interestMinor, 1000);
     expect(notificationBodies, ['本月总支出 ¥800.00 / ¥1,000.00']);
@@ -1225,7 +1233,9 @@ void main() {
     const localNotificationChannel = MethodChannel(
       'dexterous.com/flutter/local_notifications',
     );
-    const macStatusBarChannel = MethodChannel('countdown_todo/macos_status_bar');
+    const macStatusBarChannel = MethodChannel(
+      'countdown_todo/macos_status_bar',
+    );
     var shownNotifications = 0;
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -1251,7 +1261,10 @@ void main() {
       }
       return null;
     });
-    messenger.setMockMethodCallHandler(macStatusBarChannel, (call) async => null);
+    messenger.setMockMethodCallHandler(
+      macStatusBarChannel,
+      (call) async => null,
+    );
     addTearDown(() async {
       await FocusDoNotDisturbService.setActive(false, force: true);
       messenger.setMockMethodCallHandler(localNotificationChannel, null);
@@ -1300,7 +1313,9 @@ void main() {
     const localNotificationChannel = MethodChannel(
       'dexterous.com/flutter/local_notifications',
     );
-    const macStatusBarChannel = MethodChannel('countdown_todo/macos_status_bar');
+    const macStatusBarChannel = MethodChannel(
+      'countdown_todo/macos_status_bar',
+    );
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
@@ -1314,7 +1329,10 @@ void main() {
       }
       return null;
     });
-    messenger.setMockMethodCallHandler(macStatusBarChannel, (call) async => null);
+    messenger.setMockMethodCallHandler(
+      macStatusBarChannel,
+      (call) async => null,
+    );
     addTearDown(() async {
       await FocusDoNotDisturbService.setActive(false, force: true);
       messenger.setMockMethodCallHandler(localNotificationChannel, null);
@@ -1346,9 +1364,7 @@ void main() {
 
     final scheduled = await StorageService.getWindowsScheduledReminders();
     expect(
-      scheduled.any(
-        (reminder) => reminder['financeRuleUuid'] == rule.uuid,
-      ),
+      scheduled.any((reminder) => reminder['financeRuleUuid'] == rule.uuid),
       isTrue,
     );
   });

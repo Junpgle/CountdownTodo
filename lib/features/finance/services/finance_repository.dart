@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:intl/intl.dart';
 
 import '../../../services/browser_file_service.dart';
@@ -79,9 +81,7 @@ abstract final class FinanceRepository {
   static Future<List<FinancePaymentMethod>> getPaymentMethods({
     bool includeArchived = false,
   }) {
-    return FinanceStorage.getPaymentMethods(
-      includeArchived: includeArchived,
-    );
+    return FinanceStorage.getPaymentMethods(includeArchived: includeArchived);
   }
 
   /// Builds the same summary used by the overview from an already loaded list.
@@ -114,8 +114,7 @@ abstract final class FinanceRepository {
       if (paymentMethodUuid == null ||
           paymentMethodUuid.isEmpty ||
           monthOrder > 0 ||
-          (monthOrder == 0 &&
-              snapshotAt > asOfAt + snapshotTimezoneDriftMs) ||
+          (monthOrder == 0 && snapshotAt > asOfAt + snapshotTimezoneDriftMs) ||
           (monthOrder < 0 && snapshotAt > asOfAt) ||
           snapshotAt > nowAt) {
         continue;
@@ -126,7 +125,8 @@ abstract final class FinanceRepository {
         continue;
       }
       final currentMonthOrder = budget.monthKey.compareTo(current.monthKey);
-      final isLaterSnapshotInSameMonth = currentMonthOrder == 0 &&
+      final isLaterSnapshotInSameMonth =
+          currentMonthOrder == 0 &&
           (snapshotAt > current.effectiveBalanceSnapshotAt ||
               (snapshotAt == current.effectiveBalanceSnapshotAt &&
                   budget.updatedAt > current.updatedAt));
@@ -160,9 +160,9 @@ abstract final class FinanceRepository {
       return eventAt > snapshotAt && eventAt <= asOfAt;
     });
     final balanceChange =
-        summarizePaymentMethodBalanceChanges(transactionsAfterSnapshot)[
-          paymentMethodUuid
-        ] ??
+        summarizePaymentMethodBalanceChanges(
+          transactionsAfterSnapshot,
+        )[paymentMethodUuid] ??
         0;
     final repayments = loanRepayments
         .where((item) {
@@ -263,10 +263,8 @@ abstract final class FinanceRepository {
   }
 
   static Future<void> deleteInstallmentGroup(String groupUuid) async {
-    final containsRefund =
-        (await FinanceStorage.getInstallmentGroup(groupUuid)).any(
-          (item) => item.type == FinanceTransactionType.refund,
-        );
+    final containsRefund = (await FinanceStorage.getInstallmentGroup(groupUuid))
+        .any((item) => item.type == FinanceTransactionType.refund);
     await FinanceStorage.deleteInstallmentGroup(groupUuid);
     if (containsRefund) await _checkBudgetAlertsSafely();
   }
@@ -276,9 +274,7 @@ abstract final class FinanceRepository {
     await _checkBudgetAlertsSafely();
   }
 
-  static Future<List<FinanceLoan>> getLoans({
-    bool includeDeleted = false,
-  }) {
+  static Future<List<FinanceLoan>> getLoans({bool includeDeleted = false}) {
     return FinanceStorage.getLoans(includeDeleted: includeDeleted);
   }
 
@@ -299,10 +295,7 @@ abstract final class FinanceRepository {
     );
   }
 
-  static Future<void> saveLoan(
-    FinanceLoan loan, {
-    FinanceLoan? original,
-  }) {
+  static Future<void> saveLoan(FinanceLoan loan, {FinanceLoan? original}) {
     return FinanceStorage.saveLoan(loan, original: original);
   }
 
@@ -322,7 +315,7 @@ abstract final class FinanceRepository {
       paidAt: paidAt,
     );
     if (installment != null && installment.interestMinor > 0) {
-      await _checkBudgetAlertsSafely();
+      unawaited(_checkBudgetAlertsSafely());
     }
   }
 
@@ -494,18 +487,7 @@ abstract final class FinanceRepository {
     required Map<String, FinancePaymentMethod> paymentMethods,
   }) async {
     final rows = <List<String>>[
-      [
-        '日期',
-        '类型',
-        '金额',
-        '分类',
-        '付款方式',
-        '商家',
-        '备注',
-        '来源',
-        '分期',
-        '分期总额',
-      ],
+      ['日期', '类型', '金额', '分类', '付款方式', '商家', '备注', '来源', '分期', '分期总额'],
       ...transactions.map((transaction) {
         final category = categories[transaction.categoryUuid];
         final payment = paymentMethods[transaction.paymentMethodUuid];
@@ -529,8 +511,10 @@ abstract final class FinanceRepository {
           transaction.source.label,
           transaction.installmentLabel ?? '',
           transaction.isInstallment && transaction.installmentTotalMinor != null
-              ? formatFinanceAmount(transaction.installmentTotalMinor!,
-                  withSymbol: false)
+              ? formatFinanceAmount(
+                  transaction.installmentTotalMinor!,
+                  withSymbol: false,
+                )
               : '',
         ];
       }),
@@ -594,9 +578,6 @@ String formatFinanceAmount(int amountMinor, {bool withSymbol = true}) {
   return withSymbol ? '$sign¥$value' : '$sign$value';
 }
 
-String formatSignedFinanceAmount(
-  int amountMinor,
-  FinanceTransactionType type,
-) {
+String formatSignedFinanceAmount(int amountMinor, FinanceTransactionType type) {
   return '${type.signedPrefix}${formatFinanceAmount(amountMinor)}';
 }
