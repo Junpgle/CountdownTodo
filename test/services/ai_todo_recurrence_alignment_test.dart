@@ -1395,5 +1395,52 @@ void main() {
       );
     });
 
+    test('上上季度效率范围不会命中上一季度', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('two-quarters-prior', DateTime(2026, 4, 15, 9)),
+        ('last-quarter', DateTime(2026, 7, 15, 9)),
+        ('this-quarter', DateTime(2026, 10, 1, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      for (final phrase in ['上上季度', '上上个季度']) {
+        final prompt = '分析$phrase效率';
+        final context = contextFor(prompt);
+        expect(context, contains('上上季度合计'), reason: prompt);
+        expect(context, contains('two-quarters-prior'), reason: prompt);
+        expect(context, isNot(contains('last-quarter')), reason: prompt);
+        expect(context, isNot(contains('this-quarter')), reason: prompt);
+        expect(
+          previewFor(prompt),
+          contains('专注记录20260401-20260630'),
+          reason: prompt,
+        );
+      }
+    });
+
   });
 }

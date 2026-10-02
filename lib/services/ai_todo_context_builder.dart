@@ -1687,6 +1687,19 @@ ${lines.isEmpty ? '暂无' : lines}''';
       now.year,
       ((now.month - 1) ~/ 3) * 3 + 1,
     );
+    if (_matchesAny(text, ['上上季度', '上上个季度'])) {
+      return _TimeLogPeriod(
+        label: '上上季度',
+        start: DateTime(
+          currentQuarterStart.year,
+          currentQuarterStart.month - 6,
+        ),
+        end: DateTime(
+          currentQuarterStart.year,
+          currentQuarterStart.month - 3,
+        ),
+      );
+    }
     if (_matchesAny(text, ['上季度', '上一季度', '上个季度', '前一季度'])) {
       return _TimeLogPeriod(
         label: '上季度',
