@@ -2857,7 +2857,10 @@ void main() {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'refund-migration-test',
     });
-    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    final db = await databaseFactoryFfi.openDatabase(
+      inMemoryDatabasePath,
+      options: OpenDatabaseOptions(singleInstance: false),
+    );
     addTearDown(() async {
       FinanceStorage.databaseOverride = null;
       await db.close();
