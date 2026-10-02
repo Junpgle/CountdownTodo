@@ -205,22 +205,29 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   void _scheduleBalanceRefresh() {
     _balanceRefreshTimer?.cancel();
     _balanceRefreshTimer = null;
-    if (!mounted || !_isCurrentMonth) return;
+    if (!mounted) return;
+
+    final currentDate = widget.clock();
+    final currentMonth = DateTime(currentDate.year, currentDate.month);
+    if (_month.isBefore(currentMonth)) return;
 
     final snapshotsByMethod = {
       for (final budget in _paymentBudgets)
         budget.paymentMethodUuid!: budget.effectiveBalanceSnapshotAt,
     };
 
-    final now = widget.clock().millisecondsSinceEpoch;
+    final now = currentDate.millisecondsSinceEpoch;
+    final monthStart = DateTime(_month.year, _month.month);
     final nextMonthAt = DateTime(
       _month.year,
       _month.month + 1,
     ).millisecondsSinceEpoch;
     final monthEndAt = nextMonthAt - 1;
-    // Keep the selected month view in sync when the calendar month rolls over,
-    // even if there are no scheduled finance events to trigger a refresh.
-    int? nextEventAt = nextMonthAt;
+    // Refresh when a future selected month starts, or when the current month
+    // ends, even if there are no scheduled finance events.
+    int? nextEventAt = monthStart.isAfter(currentMonth)
+        ? monthStart.millisecondsSinceEpoch
+        : nextMonthAt;
     for (final transaction in _transactions) {
       final eventAt = _balanceEventTime(transaction);
       if (eventAt <= now ||

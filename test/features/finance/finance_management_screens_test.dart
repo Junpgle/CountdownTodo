@@ -873,6 +873,54 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('未来月份预算在月初切换为实际统计', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 10, 31, 23, 59, 58);
+    final futureMonth = DateTime(2026, 11);
+    final plannedAt = DateTime(2026, 11, 15, 12);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'future-month-rollover-budget',
+          monthKey: financeMonthKey(futureMonth),
+          amountMinor: 10000,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'future-month-rollover-expense',
+          amountMinor: 2500,
+          transactionDate: dateKey(plannedAt),
+          occurredAt: plannedAt.millisecondsSinceEpoch,
+          createdAt: clockNow.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(
+        initialMonth: futureMonth,
+        clock: () => clockNow,
+      ),
+      size: const Size(1100, 1000),
+    );
+    expect(find.text('计划使用 ¥25.00 / ¥100.00'), findsOneWidget);
+
+    clockNow = DateTime(2026, 11, 1, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 3));
+    await _waitFor(
+      tester,
+      () => find.text('已使用 ¥0.00 / ¥100.00').evaluate().isNotEmpty,
+    );
+
+    expect(find.text('计划使用 ¥25.00 / ¥100.00'), findsNothing);
+    expect(find.text('已使用 ¥0.00 / ¥100.00'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('记账概览不提前统计本月未来发生的账单', (tester) async {
     final db = await _seed(tester);
     final now = DateTime.now();
