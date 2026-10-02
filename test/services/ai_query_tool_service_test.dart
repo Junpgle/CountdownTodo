@@ -59,6 +59,13 @@ void main() {
     expect(description, contains('summary、transactions和budgets必须提供日期范围'));
     expect(description, contains('transaction_id可不提供日期'));
     expect(description, contains('catalog和balances不接受日期'));
+
+    final appDataDefinition = AiQueryToolService.buildDefinitions().firstWhere(
+      (tool) => (tool['function'] as Map)['name'] == 'query_app_data',
+    );
+    final appDataDescription =
+        ((appDataDefinition['function'] as Map)['description'] as String);
+    expect(appDataDescription, contains('列表按开始时间倒序'));
   });
 
   test('余额查询从快照扣除后续流水和贷款还款，无快照时保持未知', () async {
@@ -485,6 +492,49 @@ void main() {
       ))['ok'],
       false,
     );
+  });
+
+  test('专注记录列表按开始时间倒序分页', () async {
+    rows = [
+      {
+        'id': 'a-old',
+        'start_time': DateTime(2026, 9, 1, 9).millisecondsSinceEpoch,
+        'duration_seconds': 600,
+      },
+      {
+        'id': 'z-new',
+        'start_time': DateTime(2026, 9, 30, 9).millisecondsSinceEpoch,
+        'duration_seconds': 600,
+      },
+    ];
+
+    final timeLogs = await service.execute(
+      query('query_app_data', {
+        'domain': 'time_logs',
+        'limit': 1,
+      }),
+    );
+    expect((timeLogs['items'] as List).single['id'], 'z-new');
+
+    rows = [
+      {
+        'id': 'a-old',
+        'start_time': DateTime(2026, 9, 1, 9).millisecondsSinceEpoch,
+        'duration_seconds': 600,
+      },
+      {
+        'id': 'z-new',
+        'start_time': DateTime(2026, 9, 30, 9).millisecondsSinceEpoch,
+        'duration_seconds': 600,
+      },
+    ];
+    final pomodoros = await service.execute(
+      query('query_app_data', {
+        'domain': 'pomodoro_records',
+        'limit': 1,
+      }),
+    );
+    expect((pomodoros['items'] as List).single['id'], 'z-new');
   });
 
   test('分类、无日期与记录状态在App筛选，无需拉全量由模型计算', () async {

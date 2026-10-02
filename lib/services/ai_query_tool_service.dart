@@ -156,7 +156,7 @@ class AiQueryToolService {
     ),
     _tool(
       'query_app_data',
-      '只查询与问题相关的一个业务域。统计用summary，不读取明细；列表默认10条简要字段，详情用真实id和detail。日期按业务日期筛选；无日期待办仅在不指定日期时返回。时间日志按与范围重叠查询，专注按开始时间查询。完整数量与分页分开，不得把第一页当作全部数据。',
+      '只查询与问题相关的一个业务域。统计用summary，不读取明细；列表默认10条简要字段，详情用真实id和detail。日期按业务日期筛选；无日期待办仅在不指定日期时返回。时间日志按与范围重叠查询，专注按开始时间查询且列表按开始时间倒序。完整数量与分页分开，不得把第一页当作全部数据。',
       {
         'domain': {'type': 'string', 'enum': domains},
         'view': _viewProperty,
@@ -800,11 +800,19 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
       }
     }
     rows = _keyword(rows, args)
-      ..sort(
-        (a, b) => (a['id'] ?? a['uuid'] ?? '').toString().compareTo(
+      ..sort((a, b) {
+        if (domain == 'time_logs' || domain == 'pomodoro_records') {
+          final leftStart = _parseDateForSort(a['start_time']);
+          final rightStart = _parseDateForSort(b['start_time']);
+          if (leftStart != null && rightStart != null) {
+            final byStartTime = rightStart.compareTo(leftStart);
+            if (byStartTime != 0) return byStartTime;
+          }
+        }
+        return (a['id'] ?? a['uuid'] ?? '').toString().compareTo(
           (b['id'] ?? b['uuid'] ?? '').toString(),
-        ),
-      );
+        );
+      });
     final durations = rows
         .map(
           (row) => row['duration_in_range_seconds'] ?? row['duration_seconds'],
@@ -864,6 +872,12 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
     }
     return !start.isBefore(range.$1) && start.isBefore(range.$2);
   }
+
+  static DateTime? _parseDateForSort(Object? value) => value is num
+      ? DateTime.fromMillisecondsSinceEpoch(value.toInt())
+      : value is String
+      ? DateTime.tryParse(value)?.toLocal()
+      : null;
 
   Future<Map<String, dynamic>> _habits(Map<String, dynamic> args) async {
     final view = args['view'] ?? 'list';
