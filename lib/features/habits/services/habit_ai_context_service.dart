@@ -57,10 +57,16 @@ abstract final class HabitAiContextService {
   static const _weekRangeTerms = [
     '上上周',
     '上上星期',
+    '上上个周',
+    '上上个星期',
     '上上礼拜',
+    '上上个礼拜',
     '上周',
     '上星期',
+    '上个周',
+    '上个星期',
     '上礼拜',
+    '上个礼拜',
     '本周',
     '本星期',
     '本礼拜',
@@ -109,17 +115,17 @@ abstract final class HabitAiContextService {
 
   static final RegExp _relativePeriodPattern = RegExp(
     r'最近(?:30天|三十天|7天|七天)|过去(?:30天|三十天|7天|七天)|近(?:30天|三十天|7天|七天)|'
-    r'最近一周|过去一周|近一周|上上(?:周|星期|礼拜)|上(?:周|星期|礼拜)|本(?:周|星期|礼拜)|这(?:周|星期|礼拜)|'
+    r'最近一周|过去一周|近一周|上上(?:个)?(?:周|星期|礼拜)|上(?:个)?(?:周|星期|礼拜)|本(?:周|星期|礼拜)|这(?:周|星期|礼拜)|'
     r'上上个月|上上月|上个月|上月|本月|这个月|当月|今年|本年|去年|上一年|前年|前一年|'
     r'大前天|大前日|前天|前日|昨天|昨日|今天|今日',
   );
   static final RegExp _quarterPeriodPattern = RegExp(
     r'上上(?:个)?季度|上一个季度|上一季度|上(?:个)?季度|前一季度|'
     r'本季度|本季|这个季度|当前季度|这季度|当季|'
-    r'(?:(?:今年|去年)\s*|\d{4}\s*年\s*)?(?:第\s*)?[一二三四1-4]\s*季度',
+    r'(?:(?:今年|去年|上一年|前一年|前年)\s*|\d{4}\s*年\s*)?(?:第\s*)?[一二三四1-4]\s*季度',
   );
   static final RegExp _explicitQuarterPattern = RegExp(
-    r'(?:(今年|去年)\s*|(\d{4})\s*年\s*)?(?:第\s*)?([一二三四1-4])\s*季度',
+    r'(?:(今年|去年|上一年|前一年|前年)\s*|(\d{4})\s*年\s*)?(?:第\s*)?([一二三四1-4])\s*季度',
   );
   static final RegExp _relativeYearQualifiedMonthPattern = RegExp(
     r'(?:今年|本年|去年|上一年|前年|前一年)\s*'
@@ -543,8 +549,12 @@ abstract final class HabitAiContextService {
             ? int.parse(explicitYear)
             : relativeYear == '今年'
             ? today.year
-            : relativeYear == '去年'
+            : relativeYear == '去年' ||
+                  relativeYear == '上一年' ||
+                  relativeYear == '前一年'
             ? today.year - 1
+            : relativeYear == '前年'
+            ? today.year - 2
             : quarter > currentQuarter
             ? today.year - 1
             : today.year;
@@ -600,13 +610,19 @@ abstract final class HabitAiContextService {
       from = DateTime(day.year);
     } else if (text.contains('上上周') ||
         text.contains('上上星期') ||
-        text.contains('上上礼拜')) {
+        text.contains('上上个周') ||
+        text.contains('上上个星期') ||
+        text.contains('上上礼拜') ||
+        text.contains('上上个礼拜')) {
       final thisMonday = _mondayOf(day);
       from = thisMonday.subtract(const Duration(days: 14));
       to = thisMonday.subtract(const Duration(days: 8));
     } else if (text.contains('上周') ||
         text.contains('上星期') ||
-        text.contains('上礼拜')) {
+        text.contains('上个周') ||
+        text.contains('上个星期') ||
+        text.contains('上礼拜') ||
+        text.contains('上个礼拜')) {
       final thisMonday = _mondayOf(day);
       from = thisMonday.subtract(const Duration(days: 7));
       to = thisMonday.subtract(const Duration(days: 1));

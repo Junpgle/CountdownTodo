@@ -178,6 +178,18 @@ void main() {
             goals: const [],
             now: testNow,
           );
+      final previousYearQuarter =
+          HabitAiContextService.buildContextInjectionSummary(
+            userMessage: '查看前一年第三季度的习惯进度',
+            goals: const [],
+            now: testNow,
+          );
+      final beforePreviousYearQuarter =
+          HabitAiContextService.buildContextInjectionSummary(
+            userMessage: '查看前年第三季度的习惯进度',
+            goals: const [],
+            now: testNow,
+          );
       final comparison = HabitAiContextService.buildContextInjectionSummary(
         userMessage: '比较上季度和本季度的习惯完成率',
         goals: const [],
@@ -185,6 +197,8 @@ void main() {
       );
 
       expect(explicitQuarter, contains('2025-07-01 至 2025-09-30'));
+      expect(previousYearQuarter, contains('2025-07-01 至 2025-09-30'));
+      expect(beforePreviousYearQuarter, contains('2024-07-01 至 2024-09-30'));
       expect(comparison, isNull);
     });
 
@@ -232,11 +246,17 @@ void main() {
         ('这星期', '2026-09-28 至 2026-10-03'),
         ('这礼拜', '2026-09-28 至 2026-10-03'),
         ('上周', '2026-09-21 至 2026-09-27'),
+        ('上个周', '2026-09-21 至 2026-09-27'),
         ('上星期', '2026-09-21 至 2026-09-27'),
+        ('上个星期', '2026-09-21 至 2026-09-27'),
         ('上礼拜', '2026-09-21 至 2026-09-27'),
+        ('上个礼拜', '2026-09-21 至 2026-09-27'),
         ('上上周', '2026-09-14 至 2026-09-20'),
+        ('上上个周', '2026-09-14 至 2026-09-20'),
         ('上上星期', '2026-09-14 至 2026-09-20'),
+        ('上上个星期', '2026-09-14 至 2026-09-20'),
         ('上上礼拜', '2026-09-14 至 2026-09-20'),
+        ('上上个礼拜', '2026-09-14 至 2026-09-20'),
       ]) {
         final direct = HabitAiContextService.buildContextInjectionSummary(
           userMessage: '查看$period习惯进度',
