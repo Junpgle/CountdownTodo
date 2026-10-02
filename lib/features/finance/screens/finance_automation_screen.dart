@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../services/reminder_schedule_service.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
+import '../services/finance_storage.dart';
 import '../widgets/finance_automation_editor.dart';
 import '../widgets/finance_automation_manager.dart';
 import '../widgets/finance_management_widgets.dart';
@@ -27,11 +30,28 @@ class _FinanceAutomationScreenState extends State<FinanceAutomationScreen> {
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
+  Timer? _financeChangeRefreshTimer;
 
   @override
   void initState() {
     super.initState();
+    FinanceStorage.revision.addListener(_onFinanceChanged);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _financeChangeRefreshTimer?.cancel();
+    FinanceStorage.revision.removeListener(_onFinanceChanged);
+    super.dispose();
+  }
+
+  void _onFinanceChanged() {
+    _financeChangeRefreshTimer?.cancel();
+    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
+      _financeChangeRefreshTimer = null;
+      if (mounted) unawaited(_load());
+    });
   }
 
   Future<void> _load() async {
