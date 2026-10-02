@@ -678,6 +678,125 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('编辑大额账单后原样保存不会因金额回填丢一分', (tester) async {
+    final db = await _seed(tester);
+    const amountMinor = maxFinanceAmountMinor - 1;
+    final transaction = FinanceTransaction(
+      uuid: 'edit-large-amount-exact',
+      amountMinor: amountMinor,
+      categoryUuid: 'test-food',
+      transactionDate: dateKey(DateTime.now()),
+    );
+    await tester.runAsync(() => FinanceStorage.saveTransaction(transaction));
+
+    await _pump(
+      tester,
+      Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => FinanceEntryScreen(transaction: transaction),
+              ),
+            ),
+            child: const Text('打开大额账单'),
+          ),
+        ),
+      ),
+      size: const Size(1280, 1000),
+    );
+    await tester.tap(find.text('打开大额账单'));
+    await _waitFor(
+      tester,
+      () =>
+          _key('finance-amount-field').evaluate().isNotEmpty &&
+          find.byType(CircularProgressIndicator).evaluate().isEmpty,
+    );
+
+    final amountField = tester.widget<TextField>(
+      _field('finance-amount-field'),
+    );
+    expect(amountField.controller!.text, '90,071,992,547,409.90');
+    expect(parseFinanceAmount(amountField.controller!.text), amountMinor);
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final row = (await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'uuid = ?',
+        whereArgs: [transaction.uuid],
+      ),
+    ))!.single;
+    expect(row['amount_minor'], amountMinor);
+    expect(row['version'], 2);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('编辑大额预算后原样保存不会因金额回填丢一分', (tester) async {
+    final db = await _seed(tester);
+    const amountMinor = maxFinanceAmountMinor - 1;
+    final month = DateTime.now();
+    final budget = FinanceBudget(
+      uuid: 'edit-large-budget-exact',
+      monthKey: financeMonthKey(month),
+      amountMinor: amountMinor,
+    );
+    await tester.runAsync(() => db.insert('finance_budgets', budget.toMap()));
+
+    await _pump(
+      tester,
+      Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => FinanceBudgetEntryScreen(
+                  month: month,
+                  budget: budget,
+                ),
+              ),
+            ),
+            child: const Text('打开大额预算'),
+          ),
+        ),
+      ),
+      size: const Size(1280, 1000),
+    );
+    await tester.tap(find.text('打开大额预算'));
+    await _waitFor(
+      tester,
+      () =>
+          _key('finance-budget-amount').evaluate().isNotEmpty &&
+          find.byType(CircularProgressIndicator).evaluate().isEmpty,
+    );
+
+    final amountField = tester.widget<TextField>(
+      _field('finance-budget-amount'),
+    );
+    expect(amountField.controller!.text, '90,071,992,547,409.90');
+    expect(parseFinanceAmount(amountField.controller!.text), amountMinor);
+    await _tap(tester, find.text('保存预算'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceBudgetEntryScreen).evaluate().isEmpty,
+    );
+
+    final row = (await tester.runAsync(
+      () => db.query(
+        'finance_budgets',
+        where: 'uuid = ?',
+        whereArgs: [budget.uuid],
+      ),
+    ))!.single;
+    expect(row['amount_minor'], amountMinor);
+    expect(row['version'], 2);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('编辑未分类账单时不自动添加默认分类', (tester) async {
     final db = await _seed(tester);
     final transaction = FinanceTransaction(

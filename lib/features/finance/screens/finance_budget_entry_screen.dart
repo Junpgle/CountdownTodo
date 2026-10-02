@@ -74,9 +74,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
     _amountController = TextEditingController(
       text: budget == null
           ? ''
-          : (budget.amountMinor / 100)
-              .toStringAsFixed(2)
-              .replaceFirst(RegExp(r'\.00$'), ''),
+          : formatFinanceAmountInput(budget.amountMinor),
     );
     _noteController = TextEditingController(text: budget?.note ?? '');
     if (budget?.isPaymentMethod == true) {

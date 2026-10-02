@@ -393,7 +393,10 @@ abstract final class FinanceAutomationService {
   }
 
   static String _formatAmount(int amountMinor) {
-    final value = NumberFormat('#,##0.00', 'zh_CN').format(amountMinor / 100);
-    return '¥$value';
+    final absolute = amountMinor.abs();
+    final whole = NumberFormat('#,##0', 'zh_CN').format(absolute ~/ 100);
+    final cents = (absolute % 100).toString().padLeft(2, '0');
+    final sign = amountMinor < 0 ? '-' : '';
+    return '¥$sign$whole.$cents';
   }
 }

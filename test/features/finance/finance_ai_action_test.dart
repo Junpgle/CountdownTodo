@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:countdown_todo/features/finance/models/finance_ai_action.dart';
+import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/services/finance_text_parser.dart';
 import 'package:countdown_todo/models/chat_message.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -59,5 +62,28 @@ void main() {
     expect(restored.financeActions!.single.transactionId, 'tx-1');
     expect(restored.financeActions!.single.amountMinor, 3000);
     expect(restored.financeActions!.single.isAdded, isFalse);
+  });
+
+  test('大额账单操作写入聊天历史后保留精确分值', () {
+    const amountMinor = maxFinanceAmountMinor - 1;
+    final message = ChatMessage(
+      role: ChatRole.assistant,
+      content: '请确认大额账单操作',
+      financeActions: [
+        FinanceAiAction(
+          type: FinanceAiActionType.update,
+          transactionId: 'large-tx',
+          amountMinor: amountMinor,
+          hasAmount: true,
+        ),
+      ],
+    );
+
+    final serialized = jsonEncode(message.toJson());
+    final restored = ChatMessage.fromJson(
+      jsonDecode(serialized) as Map<String, dynamic>,
+    );
+
+    expect(restored.financeActions!.single.amountMinor, amountMinor);
   });
 }

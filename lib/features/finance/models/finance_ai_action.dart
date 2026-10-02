@@ -90,6 +90,7 @@ class FinanceAiAction {
         'keyword': keyword,
         'type': transactionType?.name,
         'amount': amountMinor == null ? null : amountMinor! / 100,
+        'amount_minor': amountMinor,
         'transactionDate': transactionDate,
         'categoryUuid': categoryUuid,
         'category': categoryName,

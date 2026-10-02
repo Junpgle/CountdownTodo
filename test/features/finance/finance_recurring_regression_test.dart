@@ -121,6 +121,31 @@ void main() {
       );
     });
 
+    test('周期账单提醒保留大额金额的分精度', () async {
+      await FinanceStorage.saveRecurringRule(
+        FinanceRecurringRule(
+          uuid: 'large-amount-reminder',
+          name: '大额周期账单',
+          amountMinor: maxFinanceAmountMinor - 1,
+          dayOfMonth: 2,
+          startDate: '2026-01-01',
+          reminderMinutes: 60,
+          autoGenerate: false,
+        ),
+      );
+
+      final reminders = await FinanceAutomationService.buildRecurringReminders(
+        now: DateTime(2026, 10, 1, 7),
+        limit: DateTime(2026, 10, 3),
+      );
+
+      expect(reminders, hasLength(1));
+      expect(
+        reminders.single['text'],
+        '2026-10-02 · ¥90,071,992,547,409.90 · 请确认是否记账',
+      );
+    });
+
     test('跨夏令时的一天或一周提前提醒保持设定的本地时刻', () async {
       for (final reminder in [
         (uuid: 'dst-one-day-reminder', minutes: 1440),

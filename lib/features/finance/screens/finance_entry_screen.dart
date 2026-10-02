@@ -126,9 +126,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 : template == null
                 ? ''
                 : formatFinanceAmount(template.amountMinor, withSymbol: false)
-          : (transaction.amountMinor / 100)
-                .toStringAsFixed(2)
-                .replaceFirst(RegExp(r'\.00$'), ''),
+          : formatFinanceAmountInput(transaction.amountMinor),
     );
     _merchantController = TextEditingController(
       text:

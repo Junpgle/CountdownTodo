@@ -578,6 +578,11 @@ String formatFinanceAmount(int amountMinor, {bool withSymbol = true}) {
   return withSymbol ? '$sign¥$value' : '$sign$value';
 }
 
+String formatFinanceAmountInput(int amountMinor) => formatFinanceAmount(
+  amountMinor,
+  withSymbol: false,
+).replaceFirst(RegExp(r'\.00$'), '');
+
 String formatSignedFinanceAmount(int amountMinor, FinanceTransactionType type) {
   return '${type.signedPrefix}${formatFinanceAmount(amountMinor)}';
 }
