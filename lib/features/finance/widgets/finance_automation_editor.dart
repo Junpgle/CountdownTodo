@@ -171,9 +171,13 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
   }
 
   Future<void> _pickDate(TextEditingController controller) async {
-    final current = DateTime.tryParse(controller.text.trim()) ??
-        DateTime.tryParse(_start.text.trim()) ??
-        DateTime.now();
+    final controllerDate = controller.text.trim();
+    final startDate = _start.text.trim();
+    final current = isFinanceDateKey(controllerDate)
+        ? dateFromKey(controllerDate)
+        : isFinanceDateKey(startDate)
+            ? dateFromKey(startDate)
+            : DateTime.now();
     final picked = await showAppDatePicker(
       context: context,
       initialDate: current,
