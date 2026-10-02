@@ -1154,6 +1154,60 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('首页记账摘要跨月后自动刷新到新月份', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 10, 31, 23, 59, 58);
+    final nextMonthAt = DateTime(2026, 11);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'today-section-before-month-rollover',
+          amountMinor: 2000,
+          transactionDate: dateKey(clockNow),
+          occurredAt: clockNow.millisecondsSinceEpoch,
+          createdAt: clockNow.millisecondsSinceEpoch,
+          merchant: '十月账单',
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'today-section-after-month-rollover',
+          type: FinanceTransactionType.income,
+          amountMinor: 3000,
+          transactionDate: dateKey(nextMonthAt),
+          occurredAt: nextMonthAt.millisecondsSinceEpoch,
+          createdAt: clockNow.millisecondsSinceEpoch,
+          merchant: '十一月收入',
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceTodaySection(
+          username: 'default',
+          clock: () => clockNow,
+        ),
+      ),
+    );
+    expect(find.text('十月账单'), findsOneWidget);
+    expect(find.text('十一月收入'), findsNothing);
+
+    clockNow = DateTime(2026, 11, 1, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 3));
+    await _waitFor(
+      tester,
+      () => find.text('十一月收入').evaluate().isNotEmpty,
+    );
+
+    expect(find.text('十月账单'), findsNothing);
+    expect(find.text('十一月收入'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('夏令时回拨日以及月底账单在日周月视图中都能显示', (tester) async {
     final spendingLabel = DateTime(2026, 11).isAfter(DateTime.now())
         ? '计划净支出'

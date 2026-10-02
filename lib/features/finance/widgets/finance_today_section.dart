@@ -15,12 +15,14 @@ class FinanceTodaySection extends StatefulWidget {
   final String username;
   final bool isLight;
   final VoidCallback? onTap;
+  final DateTime Function() clock;
 
   const FinanceTodaySection({
     super.key,
     required this.username,
     this.isLight = false,
     this.onTap,
+    this.clock = DateTime.now,
   });
 
   @override
@@ -69,7 +71,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
       _hasError = false;
     });
 
-    final now = DateTime.now();
+    final now = widget.clock();
     final monthStart = DateTime(now.year, now.month);
     final nextMonth = DateTime(now.year, now.month + 1);
     try {
@@ -78,7 +80,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
         to: nextMonth,
       );
       if (!mounted || generation != _loadGeneration) return;
-      final asOfAt = DateTime.now().millisecondsSinceEpoch;
+      final asOfAt = widget.clock().millisecondsSinceEpoch;
       final occurredTransactions = transactions
           .where((transaction) => transaction.balanceEventAt() <= asOfAt)
           .toList(growable: false);
@@ -117,7 +119,9 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
   ) {
     _upcomingTransactionTimer?.cancel();
     _upcomingTransactionTimer = null;
-    int? nextEventAt;
+    final now = DateTime.fromMillisecondsSinceEpoch(asOfAt);
+    int? nextEventAt =
+        DateTime(now.year, now.month + 1).millisecondsSinceEpoch;
     for (final transaction in transactions) {
       final eventAt = transaction.balanceEventAt();
       if (eventAt > asOfAt &&
