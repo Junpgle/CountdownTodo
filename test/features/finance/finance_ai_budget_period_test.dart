@@ -95,6 +95,64 @@ void main() {
     expect(week.label, '2026-10-26 至 2026-11-01');
   });
 
+  test('去年账单查询使用上一完整自然年，不默认本月', () async {
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'last-year',
+        amountMinor: 7700,
+        transactionDate: '2025-05-12',
+        occurredAt: DateTime(2025, 5, 12, 12).millisecondsSinceEpoch,
+      ),
+    );
+
+    final range = FinanceAiContextService.resolveDateRange(
+      '去年支出',
+      now: DateTime(2026, 9, 2, 23, 59),
+    );
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '去年支出多少',
+      now: DateTime(2026, 9, 2, 23, 59),
+    );
+
+    expect(dateKey(range.from), '2025-01-01');
+    expect(dateKey(range.to), '2026-01-01');
+    expect(context, contains('[transactionId: last-year]'));
+    expect(context, isNot(contains('[transactionId: today]')));
+    expect(context, contains('净支出 ¥77.00'));
+  });
+
+  test('前年及上一年也按完整自然年解析', () {
+    for (final query in ['去年支出', '上一年支出', '前一年支出']) {
+      final range = FinanceAiContextService.resolveDateRange(
+        query,
+        now: DateTime(2026, 9, 2),
+      );
+      expect(dateKey(range.from), '2025-01-01', reason: query);
+      expect(dateKey(range.to), '2026-01-01', reason: query);
+    }
+    final twoYearsAgo = FinanceAiContextService.resolveDateRange(
+      '前年支出',
+      now: DateTime(2026, 9, 2),
+    );
+    expect(dateKey(twoYearsAgo.from), '2024-01-01');
+    expect(dateKey(twoYearsAgo.to), '2025-01-01');
+
+    final lastAugust = FinanceAiContextService.resolveDateRange(
+      '去年八月支出',
+      now: DateTime(2026, 9, 2),
+    );
+    expect(dateKey(lastAugust.from), '2025-08-01');
+    expect(dateKey(lastAugust.to), '2025-09-01');
+
+    final followUp = FinanceAiContextService.buildContextInjectionSummary(
+      userMessage: '去年呢',
+      conversationContext: '查看记账支出情况',
+      previousUserMessage: '本月支出多少',
+      now: DateTime(2026, 9, 2),
+    );
+    expect(followUp, '记账明细 2025-01-01 至 2025-12-31');
+  });
+
   test('AI 财务上下文会说明账单和预算明细被截断', () {
     final categories = [
       for (var index = 0; index < 21; index++)

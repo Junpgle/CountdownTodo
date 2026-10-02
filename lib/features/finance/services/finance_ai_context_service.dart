@@ -142,6 +142,10 @@ abstract final class FinanceAiContextService {
     '最近',
     '今年',
     '本年',
+    '去年',
+    '上一年',
+    '前年',
+    '前一年',
   ];
 
   static const _summaryNouns = [
@@ -445,6 +449,16 @@ abstract final class FinanceAiContextService {
     }
     final explicitMonth = _resolveExplicitMonthRange(text, current);
     if (explicitMonth != null) return explicitMonth;
+    if (text.contains('前年')) {
+      final from = DateTime(current.year - 2);
+      return FinanceDateRange(from, DateTime(current.year - 1));
+    }
+    if (text.contains('去年') ||
+        text.contains('上一年') ||
+        text.contains('前一年')) {
+      final from = DateTime(current.year - 1);
+      return FinanceDateRange(from, DateTime(current.year));
+    }
     if (text.contains('上月') || text.contains('上个月')) {
       final from = DateTime(current.year, current.month - 1);
       return FinanceDateRange(from, DateTime(current.year, current.month));
@@ -699,9 +713,14 @@ abstract final class FinanceAiContextService {
       month = _parseMonthNumber(chineseMonth.group(2)!);
     }
     if (month == null || month < 1 || month > 12) return null;
-    year ??= text.contains('前年')
+    final isTwoYearsAgo = text.contains('前年');
+    final isLastYear =
+        text.contains('去年') ||
+        text.contains('上一年') ||
+        text.contains('前一年');
+    year ??= isTwoYearsAgo
         ? current.year - 2
-        : text.contains('去年') || text.contains('上一年')
+        : isLastYear
         ? current.year - 1
         : current.year;
     final from = DateTime(year, month);
