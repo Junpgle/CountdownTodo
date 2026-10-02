@@ -1,5 +1,3 @@
-import '../utils/json_value_parser.dart';
-
 enum AiTodoActionType {
   createTodo,
   createHabit,
@@ -604,7 +602,13 @@ class AiTodoAction {
   }
 
   static int? _parseInt(dynamic value) {
-    return JsonValueParser.toNullableInt(value);
+    if (value is int) return value;
+    if (value is num) {
+      if (!value.isFinite || value % 1 != 0) return null;
+      return value.toInt();
+    }
+    if (value is String) return int.tryParse(value.trim());
+    return null;
   }
 
   static double? _parseDouble(dynamic value) {
