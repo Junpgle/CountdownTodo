@@ -1435,6 +1435,39 @@ ${lines.isEmpty ? '暂无' : lines}''';
         end: DateTime(year, month + 1),
       );
     }
+    final explicitQuarter = RegExp(
+      r'(?:(今年|去年)\s*|(\d{4})\s*年\s*)?(?:第\s*)?([一二三四1-4])\s*季度',
+    ).firstMatch(text);
+    if (explicitQuarter != null) {
+      final quarter = switch (explicitQuarter.group(3)) {
+        '一' || '1' => 1,
+        '二' || '2' => 2,
+        '三' || '3' => 3,
+        '四' || '4' => 4,
+        _ => throw const FormatException('无效季度'),
+      };
+      final currentQuarter = ((now.month - 1) ~/ 3) + 1;
+      final explicitYear = explicitQuarter.group(2);
+      final relativeYear = explicitQuarter.group(1);
+      final year = explicitYear != null
+          ? int.parse(explicitYear)
+          : relativeYear == '今年'
+          ? now.year
+          : relativeYear == '去年'
+          ? now.year - 1
+          : quarter > currentQuarter
+          ? now.year - 1
+          : now.year;
+      final start = DateTime(year, (quarter - 1) * 3 + 1);
+      final end = year == now.year && quarter == currentQuarter
+          ? todayStart.add(const Duration(days: 1))
+          : DateTime(year, start.month + 3);
+      return _TimeLogPeriod(
+        label: '$year年第$quarter季度',
+        start: start,
+        end: end,
+      );
+    }
     final explicitYear = RegExp(
       r'(?:^|[^\d])(\d{4})\s*年(?:份)?(?!\s*(?:\d{1,2}\s*月|第?\s*[一二三四1-4]\s*季度))',
     ).firstMatch(text);

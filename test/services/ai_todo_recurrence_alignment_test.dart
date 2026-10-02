@@ -1143,5 +1143,57 @@ void main() {
       expect(relativeMonth, isNot(contains('before-month')));
       expect(relativeMonth, isNot(contains('after-month')));
     });
+
+    test('自然语言具体季度效率查询筛选正确的季度和年份', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('2025-q2', DateTime(2025, 6, 30, 9)),
+        ('2025-q3-start', DateTime(2025, 7, 1, 9)),
+        ('2025-q3-end', DateTime(2025, 9, 30, 9)),
+        ('2025-q4', DateTime(2025, 10, 1, 9)),
+        ('2026-q3-start', DateTime(2026, 7, 1, 9)),
+        ('2026-q3-end', DateTime(2026, 9, 30, 9)),
+        ('2026-q4', DateTime(2026, 10, 1, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final explicitQuarter = contextFor('分析2025年第三季度效率');
+      expect(explicitQuarter, contains('2025年第3季度合计'));
+      expect(explicitQuarter, contains('2025-q3-start'));
+      expect(explicitQuarter, contains('2025-q3-end'));
+      expect(explicitQuarter, isNot(contains('2025-q2')));
+      expect(explicitQuarter, isNot(contains('2025-q4')));
+      expect(previewFor('分析2025年第三季度效率'), contains('专注记录20250701-20250930'));
+
+      final relativeQuarter = contextFor('分析今年第三季度效率');
+      expect(relativeQuarter, contains('2026年第3季度合计'));
+      expect(relativeQuarter, contains('2026-q3-start'));
+      expect(relativeQuarter, contains('2026-q3-end'));
+      expect(relativeQuarter, isNot(contains('2026-q4')));
+      expect(previewFor('分析第三季度效率'), contains('专注记录20260701-20260930'));
+    });
   });
 }
