@@ -508,6 +508,50 @@ void main() {
     }
   });
 
+  test('跟进问题不会把上一条无效账单范围回退为当前月', () async {
+    const userMessage = '明细呢？';
+    const previousUserMessage = '查询2026-08-31至2026-08-01支出';
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: userMessage,
+      conversationContext: '查询记账支出情况',
+      previousUserMessage: previousUserMessage,
+      now: DateTime(2026, 9, 2, 12),
+    );
+    final summary = FinanceAiContextService.buildContextInjectionSummary(
+      userMessage: userMessage,
+      conversationContext: '查询记账支出情况',
+      previousUserMessage: previousUserMessage,
+      now: DateTime(2026, 9, 2, 12),
+    );
+
+    expect(context, isEmpty);
+    expect(summary, isNull);
+
+    final selectedRange = FinanceDateRange(
+      DateTime(2026, 8, 1),
+      DateTime(2026, 9, 1),
+    );
+    final selectedContext = await FinanceAiContextService.buildContext(
+      userMessage: userMessage,
+      conversationContext: '查询记账支出情况',
+      previousUserMessage: previousUserMessage,
+      dateRangeOverride: selectedRange,
+      now: DateTime(2026, 9, 2, 12),
+    );
+    final selectedSummary =
+        FinanceAiContextService.buildContextInjectionSummary(
+          userMessage: userMessage,
+          conversationContext: '查询记账支出情况',
+          previousUserMessage: previousUserMessage,
+          dateRangeOverride: selectedRange,
+          now: DateTime(2026, 9, 2, 12),
+        );
+
+    expect(selectedContext, contains('查询范围: 2026-08-01 至 2026-08-31'));
+    expect(selectedContext, contains('[transactionId: august]'));
+    expect(selectedSummary, '记账明细 2026-08-01 至 2026-08-31');
+  });
+
   test('AI 查询付款方式余额时提供快照及之后的账户流水', () async {
     final snapshotAt = DateTime(2026, 9, 1, 10);
     await db.insert(

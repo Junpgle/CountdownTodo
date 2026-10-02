@@ -394,10 +394,13 @@ abstract final class FinanceAiContextService {
     FinanceDateRange? dateRangeOverride,
     DateTime? now,
   }) async {
-    final needsLedger = shouldInjectFor(
-      userMessage,
-      conversationContext: conversationContext,
-    );
+    final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
+    final hasValidRange =
+        dateRangeOverride != null ||
+        !_hasInvalidExplicitDateOrPeriod(rangeQueryText);
+    final needsLedger =
+        hasValidRange &&
+        shouldInjectFor(userMessage, conversationContext: conversationContext);
     final needsPaymentBalances = _shouldIncludePaymentBalances(
       userMessage: userMessage,
       conversationContext: conversationContext,
@@ -418,12 +421,7 @@ abstract final class FinanceAiContextService {
     if (!needsLedger) return catalog;
 
     final nowValue = now ?? DateTime.now();
-    final range =
-        dateRangeOverride ??
-        resolveDateRange(
-          _rangeQueryText(userMessage, previousUserMessage),
-          now: nowValue,
-        );
+    final range = dateRangeOverride ?? resolveDateRange(rangeQueryText, now: nowValue);
     final asOfAt = nowValue.millisecondsSinceEpoch;
     final monthFrom = DateTime(range.from.year, range.from.month);
     final lastDay = range.to.subtract(const Duration(microseconds: 1));
@@ -542,12 +540,17 @@ abstract final class FinanceAiContextService {
     DateTime? now,
   }) {
     final parts = <String>[];
-    if (shouldInjectFor(
-      userMessage,
-      conversationContext: conversationContext,
-    )) {
+    final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
+    final hasValidRange =
+        dateRangeOverride != null ||
+        !_hasInvalidExplicitDateOrPeriod(rangeQueryText);
+    if (hasValidRange &&
+        shouldInjectFor(
+          userMessage,
+          conversationContext: conversationContext,
+        )) {
       parts.add(
-        '记账明细 ${(dateRangeOverride ?? resolveDateRange(_rangeQueryText(userMessage, previousUserMessage), now: now)).label}',
+        '记账明细 ${(dateRangeOverride ?? resolveDateRange(rangeQueryText, now: now)).label}',
       );
       if (_shouldIncludePaymentBalances(
         userMessage: userMessage,
