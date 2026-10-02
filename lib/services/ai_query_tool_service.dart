@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../features/finance/models/finance_models.dart';
 import '../features/finance/services/finance_repository.dart';
 import 'ai_chat_service.dart';
+import 'pomodoro_service.dart';
 
 typedef AiAppDataLoader = Future<List<Map<String, dynamic>>> Function(
   String domain,
@@ -334,6 +335,9 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
       'next_offset': next < rows.length ? next : null,
     };
   }
+
+  static int durationSecondsForPomodoro(PomodoroRecord record) =>
+      record.effectiveDuration;
 
   Future<Map<String, dynamic>> _finance(Map<String, dynamic> args) async {
     final view = args['view'];

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/services/ai_chat_service.dart';
 import 'package:countdown_todo/services/ai_query_tool_service.dart';
+import 'package:countdown_todo/services/pomodoro_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 AiChatFunctionCall query(String name, Map<String, dynamic> args) =>
@@ -515,6 +516,32 @@ void main() {
     expect(focus['summary'], containsPair('duration_seconds', 1200));
     expect(focus['total_count'], 1);
     expect(focus, isNot(contains('items')));
+  });
+
+  test('AI 查询沿用旧番茄记录的计划时长', () {
+    final legacyRecord = PomodoroRecord(
+      uuid: 'legacy-pomodoro',
+      startTime: DateTime(2026, 9, 1, 9).millisecondsSinceEpoch,
+      endTime: DateTime(2026, 9, 1, 9, 20).millisecondsSinceEpoch,
+      plannedDuration: 1200,
+      actualDuration: null,
+    );
+
+    expect(
+      AiQueryToolService.durationSecondsForPomodoro(legacyRecord),
+      1200,
+    );
+
+    final currentRecord = PomodoroRecord(
+      uuid: 'current-pomodoro',
+      startTime: DateTime(2026, 9, 1, 9).millisecondsSinceEpoch,
+      plannedDuration: 1200,
+      actualDuration: 600,
+    );
+    expect(
+      AiQueryToolService.durationSecondsForPomodoro(currentRecord),
+      600,
+    );
   });
 
   test('最大支出只返回一笔，商户排行直接汇总退款后的净支出', () async {

@@ -77,7 +77,11 @@ mixin _TodoChatQueries on _TodoChatScreenStateBase {
       case 'pomodoro_records':
         rows = [
           for (final item in await PomodoroService.getRecords())
-            {...item.toJson(), 'duration_seconds': item.actualDuration ?? 0},
+            {
+              ...item.toJson(),
+              'duration_seconds':
+                  AiQueryToolService.durationSecondsForPomodoro(item),
+            },
         ];
       case 'pomodoro_tags':
         rows = [
