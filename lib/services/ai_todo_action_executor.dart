@@ -1322,7 +1322,7 @@ class AiTodoActionExecutor {
     final log = TimeLogItem(
       id: existing?.id,
       title: action.title ?? existing?.title ?? '专注记录',
-      tagUuids: action.tagUuids.isNotEmpty
+      tagUuids: action.hasTagUuids
           ? action.tagUuids
           : existing?.tagUuids ?? [],
       startTime: start.millisecondsSinceEpoch,
