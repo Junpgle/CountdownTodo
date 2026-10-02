@@ -336,12 +336,29 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
   }
 
   Future<Map<String, dynamic>> _finance(Map<String, dynamic> args) async {
-    final asOf = now().millisecondsSinceEpoch;
     final view = args['view'];
     if (args.containsKey('sort_by') && view != 'transactions' ||
         args.containsKey('group_by') && view != 'summary') {
       throw const FormatException('sort_by仅用于transactions，group_by仅用于summary');
     }
+    if (view == 'balances') {
+      if (args.keys.any(
+        (key) => !{
+          'view',
+          'limit',
+          'offset',
+          'keyword',
+          'payment_method_id',
+        }.contains(key),
+      )) {
+        throw const FormatException('balances仅接受付款方式、关键词和分页参数');
+      }
+      final methods = (await loadPaymentMethods())
+          .where((item) => !item.isDeleted)
+          .toList();
+      return _paymentBalances(args, methods);
+    }
+    final asOf = now().millisecondsSinceEpoch;
     final categories = (await loadCategories())
         .where((item) => !item.isDeleted)
         .toList();
@@ -373,20 +390,6 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
           },
       ];
       return {'view': view, ...page(_keyword(rows, args), args)};
-    }
-    if (view == 'balances') {
-      if (args.keys.any(
-        (key) => !{
-          'view',
-          'limit',
-          'offset',
-          'keyword',
-          'payment_method_id',
-        }.contains(key),
-      )) {
-        throw const FormatException('balances仅接受付款方式、关键词和分页参数');
-      }
-      return _paymentBalances(args, methods);
     }
     final transactionId = args['transaction_id'] as String?;
     final range = _range(args, required: transactionId == null);

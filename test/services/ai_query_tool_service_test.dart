@@ -57,11 +57,15 @@ void main() {
     int? requestedSnapshotAt;
     DateTime? requestedBefore;
     Set<String>? requestedMethods;
+    var categoryLoads = 0;
     final finance = AiQueryToolService(
       loadAppData: (_) async => [],
       loadHabitData: (_, _, _) async => [],
       loadFinanceData: (_, _) async => [],
-      loadCategories: () async => [],
+      loadCategories: () async {
+        categoryLoads++;
+        return [];
+      },
       loadPaymentMethods: () async => [
         FinancePaymentMethod(uuid: 'bank', name: '工资卡'),
         FinancePaymentMethod(uuid: 'cash', name: '现金账户'),
@@ -133,6 +137,7 @@ void main() {
 
     expect(result['ok'], true);
     expect(result['amount_unit'], 'CNY_minor');
+    expect(categoryLoads, 0);
     expect(requestedSnapshotAt, snapshotAt);
     expect(requestedBefore, asOf);
     expect(requestedMethods, {'bank'});
