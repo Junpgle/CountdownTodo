@@ -347,6 +347,9 @@ class AiNativeToolDefinitionBuilder {
     final isReadOnlyQuery =
         _matchesAny(message, readOnlyWords) &&
         !_matchesAny(message, writeWords);
+    final hasOnlyNegatedWriteIntent =
+        _matchesAny(message, writeWords) &&
+        !writeWords.any((word) => _isExplicitlyRequested(message, word));
     final isTodoCategorizationRequest =
         _matchesAny(message, ['分类', '归类', '分组', '分个类']) &&
         _matchesAny(message, ['待办', '任务']) &&
@@ -376,7 +379,10 @@ class AiNativeToolDefinitionBuilder {
         })
         .toSet();
     final availableActions =
-        isOnlyInformation || isGenericFallback || isReadOnlyQuery
+        isOnlyInformation ||
+            isGenericFallback ||
+            isReadOnlyQuery ||
+            hasOnlyNegatedWriteIntent
         ? <String>[]
         : isTodoCategorizationRequest &&
               protocolActionNames.contains('categorize_todo')
@@ -524,13 +530,13 @@ class AiNativeToolDefinitionBuilder {
     final wantsFinanceUpdate =
         !isReadOnlyQuery &&
         hasFinanceMutationProtocol &&
-        _matchesAny(message, financeUpdateVerbs);
+        financeUpdateVerbs.any((verb) => _isExplicitlyRequested(message, verb));
     final wantsFinanceDelete =
         !isReadOnlyQuery &&
         hasFinanceMutationProtocol &&
-        _matchesAny(message, financeDeleteVerbs);
+        financeDeleteVerbs.any((verb) => _isExplicitlyRequested(message, verb));
     final wantsFinanceMutation = wantsFinanceUpdate || wantsFinanceDelete;
-    final explicitlyWantsFinanceDraft = _matchesAny(message, [
+    const financeDraftTriggers = [
       '记一笔',
       '新增一笔',
       '添加一笔',
@@ -542,9 +548,16 @@ class AiNativeToolDefinitionBuilder {
       '进账',
       '收款',
       '记账草案',
-    ]);
+    ];
+    final explicitlyWantsFinanceDraft = financeDraftTriggers.any(
+      (trigger) => _isExplicitlyRequested(message, trigger),
+    );
+    final hasOnlyNegatedFinanceDraftIntent =
+        _matchesAny(message, financeDraftTriggers) &&
+        !explicitlyWantsFinanceDraft;
     final wantsFinanceDraft =
         !isReadOnlyQuery &&
+        !hasOnlyNegatedFinanceDraftIntent &&
         (explicitlyWantsFinanceDraft ||
             (hasFinanceAmount && !wantsFinanceMutation));
 
@@ -755,7 +768,9 @@ class AiNativeToolDefinitionBuilder {
       if (index == -1) return false;
       final clauseBoundary = text.lastIndexOf(RegExp(r'[，。；！？,;]'), index);
       final clauseStart = clauseBoundary == -1 ? 0 : clauseBoundary + 1;
-      final prefix = text.substring(clauseStart, index);
+      final prefix = text
+          .substring(clauseStart, index)
+          .replaceAll(RegExp(r'(?:别|不要)忘(?:了|记)?'), '');
       final negations = RegExp(r'不|别|无需|禁止|避免').allMatches(prefix).toList();
       final contrasts = RegExp(r'但是|不过|但|而是').allMatches(prefix).toList();
       final isNegated =

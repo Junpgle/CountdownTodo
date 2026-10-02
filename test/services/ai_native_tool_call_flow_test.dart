@@ -369,8 +369,50 @@ void main() {
             AiNativeToolDefinitionBuilder.buildNativeToolDefinitions('删除这个待办'),
           );
 
+      expect(negatedActions, isEmpty);
       expect(negatedActions, isNot(contains('delete_todo')));
       expect(explicitActions, contains('delete_todo'));
+    });
+
+    test('否定删除不会屏蔽明确修改，也不会误判别忘了删除', () {
+      final updateActions = AiNativeToolDefinitionBuilder.allowedCdtActionNames(
+        AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+          '不要删除这个待办，只把标题改为复习数学',
+        ),
+      );
+      final reminderActions =
+          AiNativeToolDefinitionBuilder.allowedCdtActionNames(
+            AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+              '别忘了删除这个待办',
+            ),
+          );
+
+      expect(updateActions, contains('update_todo'));
+      expect(updateActions, isNot(contains('delete_todo')));
+      expect(reminderActions, contains('delete_todo'));
+    });
+
+    test('否定记账修改、删除和新增不会暴露对应写工具', () {
+      for (final prompt in ['不要删除这笔账单', '不要修改这笔账单', '不要记一笔20元']) {
+        final names = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+          prompt,
+        ).map((tool) => (tool['function'] as Map)['name']).toSet();
+        expect(
+          names,
+          isNot(contains('propose_finance_actions')),
+          reason: prompt,
+        );
+        expect(
+          names,
+          isNot(contains('propose_finance_drafts')),
+          reason: prompt,
+        );
+      }
+      final reminderNames =
+          AiNativeToolDefinitionBuilder.buildNativeToolDefinitions('别忘了记一笔20元')
+              .map((tool) => (tool['function'] as Map)['name'])
+              .toSet();
+      expect(reminderNames, contains('propose_finance_drafts'));
     });
 
     test('周期类型不明确时不向模型提供创建工具', () {
