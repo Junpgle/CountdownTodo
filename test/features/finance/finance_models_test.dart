@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/services/finance_repository.dart';
 import 'package:countdown_todo/features/finance/services/finance_text_parser.dart';
 import 'package:countdown_todo/services/storage/app_settings_storage.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -649,6 +652,41 @@ void main() {
     );
     expect(sanitizeFinanceCsvText('=HYPERLINK("x")'), '\'=HYPERLINK("x")');
     expect(sanitizeFinanceCsvText(' 午餐'), ' 午餐');
+  });
+
+  test('CSV 导出会防护从导入记录读取的公式日期', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final directory = await Directory.systemTemp.createTemp(
+      'finance-csv-export-',
+    );
+    const channel = MethodChannel('plugins.flutter.io/path_provider');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'getApplicationDocumentsDirectory') {
+        return directory.path;
+      }
+      return null;
+    });
+    addTearDown(() async {
+      messenger.setMockMethodCallHandler(channel, null);
+      await directory.delete(recursive: true);
+    });
+
+    final path = await FinanceRepository.exportCsv(
+      transactions: [
+        FinanceTransaction(
+          amountMinor: 100,
+          transactionDate: '=1+1',
+        ),
+      ],
+      categories: const {},
+      paymentMethods: const {},
+    );
+
+    expect(path, isNotNull);
+    final csv = await File(path!).readAsString();
+    expect(csv, contains("\n'=1+1,支出,-1.00"));
   });
 
   test('汇总会将退款从实际支出中扣除', () {

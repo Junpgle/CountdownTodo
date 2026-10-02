@@ -495,7 +495,7 @@ abstract final class FinanceRepository {
             ? -transaction.amountMinor
             : transaction.amountMinor;
         return [
-          transaction.transactionDate,
+          sanitizeFinanceCsvText(transaction.transactionDate),
           transaction.type.label,
           formatFinanceAmount(amount, withSymbol: false),
           sanitizeFinanceCsvText(
