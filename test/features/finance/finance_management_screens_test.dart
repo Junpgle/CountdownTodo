@@ -997,6 +997,7 @@ void main() {
       ),
     );
 
+    expect(find.text('本月结余'), findsOneWidget);
     expect(find.text('1 笔'), findsOneWidget);
     expect(find.text('¥130.00'), findsNothing);
     expect(find.text('过去支出'), findsOneWidget);
@@ -1328,6 +1329,7 @@ void main() {
       find.text('共 5 笔记录，支出/退款 2 笔，平均净支出 ¥40.00。'),
       findsOneWidget,
     );
+    expect(find.text('本期结余'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

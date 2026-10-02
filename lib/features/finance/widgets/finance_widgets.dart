@@ -513,7 +513,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                 Expanded(
                   child: _buildSummaryMetric(
                     context,
-                    label: '结余',
+                    label: '本期结余',
                     value: formatFinanceAmount(period.summary.balanceMinor),
                     color: colorScheme.onPrimaryContainer,
                   ),

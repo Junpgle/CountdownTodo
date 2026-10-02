@@ -268,7 +268,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
             ),
             _buildMetricDivider(dividerColor),
             _buildMetric(
-              label: '结余',
+              label: '本月结余',
               value: formatFinanceAmount(_summary.balanceMinor),
               valueColor: valueColor,
               labelColor: subColor,
