@@ -1,6 +1,8 @@
 import 'package:countdown_todo/features/finance/services/finance_ai_context_service.dart';
 import 'package:countdown_todo/features/habits/services/habit_ai_context_service.dart';
+import 'package:countdown_todo/models/chat_message.dart';
 import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/services/ai_chat_history_window.dart';
 import 'package:countdown_todo/services/ai_native_tool_definition_builder.dart';
 import 'package:countdown_todo/services/ai_todo_context_builder.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -389,5 +391,29 @@ void main() {
     );
 
     expect(habit, contains('2026-08-01 至 2026-10-31'));
+  });
+
+  test('长对话窗口保留重复首问', () {
+    final messages = List.generate(16, (index) {
+      return ChatMessage(
+        id: 'message-$index',
+        role: index.isEven ? ChatRole.user : ChatRole.assistant,
+        content: index == 0 || index == 14
+            ? '分析我上个月的效率'
+            : '对话消息 $index',
+      );
+    });
+
+    final window = AiChatHistoryWindow.selectRecentMessages(
+      messages,
+      maxContextMessages: 15,
+    );
+
+    expect(window.firstUserMessage.id, 'message-0');
+    expect(window.recentMessages, hasLength(13));
+    expect(
+      window.recentMessages.any((message) => message.id == 'message-14'),
+      isTrue,
+    );
   });
 }

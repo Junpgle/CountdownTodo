@@ -21,6 +21,7 @@ import '../services/ai_tool_result_context.dart';
 import '../services/ai_tool_chat_runner.dart';
 import '../services/ai_action_parser.dart';
 import '../services/ai_chat_service.dart';
+import '../services/ai_chat_history_window.dart';
 import '../services/ai_native_tool_call_parser.dart';
 import '../services/ai_native_tool_definition_builder.dart';
 import '../services/ai_multimodal_message_builder.dart';

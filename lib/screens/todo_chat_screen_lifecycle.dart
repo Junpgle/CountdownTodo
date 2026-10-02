@@ -652,10 +652,11 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         apiMessages.add(message);
       }
     } else {
-      final firstUserMsg = sourceMessages.firstWhere(
-        (m) => m.role == ChatRole.user,
-        orElse: () => sourceMessages.first,
+      final historyWindow = AiChatHistoryWindow.selectRecentMessages(
+        sourceMessages,
+        maxContextMessages: _maxContextMessages,
       );
+      final firstUserMsg = historyWindow.firstUserMessage;
       apiMessages.add({
         'role': 'user',
         'content': firstUserMsg.content,
@@ -667,13 +668,7 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
         apiMessages.add({'role': 'assistant', 'content': summaryMsg});
       }
 
-      final recentCount = _maxContextMessages - 2;
-      final startIndex = sourceMessages.length - recentCount;
-      final recentMessages = sourceMessages.sublist(
-        startIndex > 0 ? startIndex : 0,
-      );
-      for (final msg in recentMessages) {
-        if (msg.content == firstUserMsg.content) continue;
+      for (final msg in historyWindow.recentMessages) {
         final message = <String, dynamic>{
           'role': msg.role == ChatRole.user ? 'user' : 'assistant',
           'content': msg.toLLMMessage(
