@@ -2,6 +2,9 @@
 ///
 /// 未登录时保留原始 Key，兼容登录前的全局缓存和历史迁移逻辑。
 abstract final class StorageKeyScope {
+  static bool isChallengeDataKey(String key) =>
+      key.startsWith('thirty_day_self_challenge_v1');
+
   static String scoped(String baseKey, String? username) {
     if (username == null || username.isEmpty) return baseKey;
     return '${baseKey}_$username';

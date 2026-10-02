@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:countdown_todo/services/data_import_service.dart';
+import 'package:countdown_todo/services/storage/storage_key_scope.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -29,5 +30,20 @@ void main() {
     expect(preview.types.single.label, '固定日程');
     expect(preview.types.single.count, 1);
     expect(preview.types.single.teamCount, 1);
+  });
+
+  test('challenge backup keys are scoped to the restored account', () {
+    const challengeKeys = [
+      'thirty_day_self_challenge_v1',
+      'thirty_day_self_challenge_v1_intro_seen',
+      'thirty_day_self_challenge_v1_started',
+      'thirty_day_self_challenge_v1_paused',
+      'thirty_day_self_challenge_v1_habit_center_promotion_dismissed',
+    ];
+
+    for (final key in challengeKeys) {
+      expect(StorageKeyScope.isChallengeDataKey(key), isTrue, reason: key);
+      expect(StorageKeyScope.scoped(key, 'alice'), '${key}_alice');
+    }
   });
 }

@@ -24,6 +24,7 @@ import '../features/habits/services/habit_reminder_service.dart';
 import 'reminder_schedule_service.dart';
 import 'sidebar_menu_service.dart';
 import 'storage/habit_storage.dart';
+import 'storage/storage_key_scope.dart';
 
 class DataImportService {
   static const Map<String, String> _typeLabels = {
@@ -1418,6 +1419,7 @@ class DataImportService {
     };
 
     return keysNeedingSuffix.contains(key) ||
+        StorageKeyScope.isChallengeDataKey(key) ||
         SidebarMenuService.isUserSpecificKey(key);
   }
 }
