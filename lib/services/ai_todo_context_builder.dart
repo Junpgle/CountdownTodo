@@ -1582,6 +1582,30 @@ ${lines.isEmpty ? '暂无' : lines}''';
         end: DateTime(now.year, now.month),
       );
     }
+    _TimeLogPeriod relativeDay(int offset, String label) {
+      final start = todayStart.add(Duration(days: offset));
+      return _TimeLogPeriod(
+        label: label,
+        start: start,
+        end: start.add(const Duration(days: 1)),
+      );
+    }
+
+    if (text.contains('大前天') || text.contains('大前日')) {
+      return relativeDay(-3, '大前天');
+    }
+    if (text.contains('前天') || text.contains('前日')) {
+      return relativeDay(-2, '前天');
+    }
+    if (text.contains('大后天') || text.contains('大后日')) {
+      return relativeDay(3, '大后天');
+    }
+    if (text.contains('后天') || text.contains('后日')) {
+      return relativeDay(2, '后天');
+    }
+    if (text.contains('明天') || text.contains('明日')) {
+      return relativeDay(1, '明天');
+    }
     if (text.contains('今天') || text.contains('今日')) {
       return _TimeLogPeriod(
         label: '今日',

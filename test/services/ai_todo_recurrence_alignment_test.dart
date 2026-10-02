@@ -1286,5 +1286,60 @@ void main() {
       expect(monthDay, isNot(contains('future')));
       expect(previewFor('分析10月1日效率'), contains('专注记录20261001'));
     });
+    test('前后相对日效率范围只筛选对应自然日', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final cases = [
+        ('大前天', DateTime(2026, 9, 29), '大前天'),
+        ('前天', DateTime(2026, 9, 30), '前天'),
+        ('昨天', DateTime(2026, 10, 1), '昨日'),
+        ('今天', DateTime(2026, 10, 2), '今日'),
+        ('明天', DateTime(2026, 10, 3), '明天'),
+        ('后天', DateTime(2026, 10, 4), '后天'),
+        ('大后天', DateTime(2026, 10, 5), '大后天'),
+      ];
+      final timeLogs = [
+        for (final (phrase, date, _) in cases)
+          TimeLogItem(
+            id: 'log-$phrase',
+            title: phrase,
+            startTime: DateTime(date.year, date.month, date.day, 9)
+                .millisecondsSinceEpoch,
+            endTime: DateTime(date.year, date.month, date.day, 10)
+                .millisecondsSinceEpoch,
+          ),
+      ];
+
+      for (final (phrase, date, label) in cases) {
+        final prompt = '分析$phrase的效率';
+        final context = AiTodoContextBuilder.buildContextInjection(
+          userMessage: prompt,
+          courses: const [],
+          timeLogs: timeLogs,
+          conflicts: const [],
+          teams: const [],
+          now: now,
+        )!;
+        final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+          userMessage: prompt,
+          courses: const [],
+          timeLogs: timeLogs,
+          conflicts: const [],
+          teams: const [],
+          now: now,
+        )!;
+
+        expect(context, contains('$label合计'), reason: prompt);
+        expect(context, contains('log-$phrase'), reason: prompt);
+        for (final (otherPhrase, _, _) in cases.where(
+          (item) => item.$1 != phrase,
+        )) {
+          expect(context, isNot(contains('log-$otherPhrase')), reason: prompt);
+        }
+        final month = date.month.toString().padLeft(2, '0');
+        final day = date.day.toString().padLeft(2, '0');
+        final dateKey = '${date.year}$month$day';
+        expect(preview, contains('专注记录$dateKey'), reason: prompt);
+      }
+    });
   });
 }
