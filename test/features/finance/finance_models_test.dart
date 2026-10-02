@@ -290,6 +290,25 @@ void main() {
     );
   });
 
+  test('自然语言快速记账支持带零的逐位中文日期', () {
+    final now = DateTime(2026, 10, 2);
+    final cases = [
+      ('九月〇二日', '2026-09-02'),
+      ('九月零五日', '2026-09-05'),
+      ('九月二〇日', '2026-09-20'),
+    ];
+
+    for (final (dateText, expectedDate) in cases) {
+      expect(
+        FinanceTextParser.parseQuickEntries('$dateText 午餐20元', now: now)
+            .single
+            .transactionDate,
+        expectedDate,
+        reason: dateText,
+      );
+    }
+  });
+
   test('结构化记账拒绝被数字尾缀截短的日期', () {
     final drafts = FinanceTextParser.parse(
       '#记账 | 支出 | 20 | 餐饮 | 午餐 | 2026-09-023',

@@ -1179,6 +1179,9 @@ abstract final class FinanceTextParser {
     final numeric = int.tryParse(value);
     if (numeric != null) return numeric;
     const digits = {
+      '零': 0,
+      '〇': 0,
+      '○': 0,
       '一': 1,
       '二': 2,
       '三': 3,
@@ -1191,6 +1194,19 @@ abstract final class FinanceTextParser {
     };
     final digit = digits[value];
     if (digit != null) return digit;
+    final positionalDigits = value
+        .split('')
+        .map((character) => digits[character])
+        .toList();
+    if (positionalDigits.length > 1 &&
+        positionalDigits.every((digit) => digit != null)) {
+      return int.tryParse(
+        positionalDigits
+            .whereType<int>()
+            .map((digit) => digit.toString())
+            .join(),
+      );
+    }
     if (value == '十') return 10;
     if (value == '廿') return 20;
     if (value.startsWith('廿')) {
