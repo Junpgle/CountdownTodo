@@ -881,6 +881,65 @@ void main() {
     await FinanceRepository.restoreBudget(savedBudget.uuid);
     expect(shownNotifications, 3);
   });
+
+  test('从回收站恢复周期账单后重新调度提醒', () async {
+    final db = await openDatabase();
+    const accountKey = 'finance-recurring-restore-test-user';
+    const localNotificationChannel = MethodChannel(
+      'dexterous.com/flutter/local_notifications',
+    );
+    const macStatusBarChannel = MethodChannel('countdown_todo/macos_status_bar');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    MacOSFlutterLocalNotificationsPlugin.registerWith();
+    messenger.setMockMethodCallHandler(localNotificationChannel, (call) async {
+      switch (call.method) {
+        case 'initialize':
+          return true;
+        case 'zonedSchedule':
+          return null;
+      }
+      return null;
+    });
+    messenger.setMockMethodCallHandler(macStatusBarChannel, (call) async => null);
+    addTearDown(() async {
+      await FocusDoNotDisturbService.setActive(false, force: true);
+      messenger.setMockMethodCallHandler(localNotificationChannel, null);
+      messenger.setMockMethodCallHandler(macStatusBarChannel, null);
+      debugDefaultTargetPlatformOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(StorageService.keyCurrentUser, accountKey);
+    await prefs.setInt('current_user_id', 1);
+    await FocusDoNotDisturbService.setActive(false, force: true);
+    final now = DateTime.now();
+    final dueTomorrow = DateTime(now.year, now.month, now.day + 1, 9);
+    final rule = FinanceRecurringRule(
+      uuid: 'trash-restored-recurring-reminder',
+      name: '恢复后提醒',
+      amountMinor: 10000,
+      dayOfMonth: dueTomorrow.day,
+      startDate: dateKey(now),
+      autoGenerate: false,
+      reminderMinutes: 60,
+    );
+    await FinanceStorage.saveRecurringRule(rule);
+    await FinanceStorage.deleteRecurringRule(rule.uuid);
+
+    await FinanceRepository.restoreRecurringRule(rule.uuid);
+
+    final scheduled = await StorageService.getWindowsScheduledReminders();
+    expect(
+      scheduled.any(
+        (reminder) => reminder['financeRuleUuid'] == rule.uuid,
+      ),
+      isTrue,
+    );
+  });
 }
 
 Future<void> _clearBudgetAlertMarkers(

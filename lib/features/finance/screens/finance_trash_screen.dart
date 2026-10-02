@@ -156,7 +156,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   }
 
   Future<void> _restoreRule(FinanceRecurringRule rule) async {
-    await FinanceStorage.restoreRecurringRule(rule.uuid);
+    await FinanceRepository.restoreRecurringRule(rule.uuid);
     if (!mounted) return;
     AppSnackBars.showSnackBar(
       context,

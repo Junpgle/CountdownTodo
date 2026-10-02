@@ -1,6 +1,7 @@
 import 'package:intl/intl.dart';
 
 import '../../../services/browser_file_service.dart';
+import '../../../services/reminder_schedule_service.dart';
 import '../models/finance_models.dart';
 import 'finance_automation_service.dart';
 import 'finance_storage.dart';
@@ -346,8 +347,13 @@ abstract final class FinanceRepository {
     return FinanceStorage.deleteRecurringRule(uuid);
   }
 
-  static Future<void> restoreRecurringRule(String uuid) {
-    return FinanceStorage.restoreRecurringRule(uuid);
+  static Future<void> restoreRecurringRule(String uuid) async {
+    await FinanceStorage.restoreRecurringRule(uuid);
+    try {
+      await ReminderScheduleService.scheduleCurrentUser();
+    } catch (_) {
+      // Reminder scheduling must not undo a restored recurring rule.
+    }
   }
 
   static Future<void> setRecurringRuleEnabled(String uuid, bool enabled) {
