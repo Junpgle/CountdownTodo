@@ -122,7 +122,7 @@ void main() {
     );
   });
 
-  test('导入不含损坏副本的新备份会清理目标账号的旧副本', () async {
+  test('导入不含损坏副本的新备份会保留目标账号未导出的恢复副本', () async {
     final prefs = await SharedPreferences.getInstance();
     final state = await ThirtyDayChallengeRepository.startNewChallenge(
       title: '新挑战',
@@ -139,7 +139,21 @@ void main() {
     expect(state.challengeTitle, '新挑战');
     expect(
       await ThirtyDayChallengeRepository.getCorruptStateBackup(username: 'bob'),
-      isNull,
+      'stale backup',
+    );
+  });
+
+  test('导入备份拒绝损坏副本字段类型错误', () async {
+    await ThirtyDayChallengeRepository.startNewChallenge(
+      title: '新挑战',
+      taskTitles: ['新任务'],
+    );
+    final bundle = await ThirtyDayChallengeRepository.exportBackup();
+    bundle!['corrupt_state_backup'] = 123;
+
+    await expectLater(
+      ThirtyDayChallengeRepository.importBackup(bundle),
+      throwsA(isA<FormatException>()),
     );
   });
 

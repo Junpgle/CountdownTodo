@@ -120,6 +120,13 @@ abstract final class ThirtyDayChallengeRepository {
       throw const FormatException('thirty_day_challenge.state 必须是对象');
     }
     final stateJson = Map<String, dynamic>.from(rawState);
+    final corruptStateBackup = bundle['corrupt_state_backup'];
+    if (bundle.containsKey('corrupt_state_backup') &&
+        corruptStateBackup is! String) {
+      throw const FormatException(
+        'thirty_day_challenge.corrupt_state_backup 必须是字符串',
+      );
+    }
     final rawTasks = stateJson['tasks'];
     if (rawTasks is! List ||
         rawTasks.isEmpty ||
@@ -127,7 +134,6 @@ abstract final class ThirtyDayChallengeRepository {
       throw const FormatException('thirty_day_challenge.state.tasks 格式无效');
     }
     final state = ThirtyDayChallengeState.fromJson(stateJson);
-    final corruptStateBackup = bundle['corrupt_state_backup'];
     final hasCorruptStateBackup =
         corruptStateBackup is String && corruptStateBackup.isNotEmpty;
     if (state.tasks.length != rawTasks.length ||
@@ -156,8 +162,6 @@ abstract final class ThirtyDayChallengeRepository {
     final corruptBackupKey = await _scopedCorruptBackupKey(username);
     if (corruptStateBackup is String && corruptStateBackup.isNotEmpty) {
       await prefs.setString(corruptBackupKey, corruptStateBackup);
-    } else {
-      await prefs.remove(corruptBackupKey);
     }
     activityRevision.value++;
     return state.tasks.length;
