@@ -320,6 +320,13 @@ abstract final class FinanceStorage {
     FinanceTransaction transaction, {
     FinanceTransaction? original,
   }) async {
+    if (!_hasValidInstallmentFields(transaction)) {
+      throw ArgumentError.value(
+        transaction,
+        'transaction',
+        '分期期数或总金额无效',
+      );
+    }
     if (!isSafeFinanceAmountMinor(transaction.amountMinor) ||
         transaction.amountMinor == 0) {
       throw ArgumentError.value(
@@ -3222,6 +3229,7 @@ abstract final class FinanceStorage {
                 'transactionDate',
               ) &&
               _hasSafeRawFinanceTimestamps(map) &&
+              _hasValidRawInstallmentFields(map) &&
               _isSafeRawFinanceAmount(
                 map['amount_minor'] ?? map['amountMinor'],
               ),
@@ -4076,10 +4084,72 @@ abstract final class FinanceStorage {
     return item.uuid.trim().isNotEmpty &&
         isSafeFinanceAmountMinor(item.amountMinor) &&
         item.amountMinor > 0 &&
+        _hasValidInstallmentFields(item) &&
         (item.installmentTotalMinor == null ||
             (isSafeFinanceAmountMinor(item.installmentTotalMinor!) &&
                 item.installmentTotalMinor! > 0)) &&
         _isDateKey(item.transactionDate);
+  }
+
+  static bool _hasValidInstallmentFields(FinanceTransaction item) {
+    final groupUuid = item.installmentGroupUuid?.trim();
+    final hasInstallmentFields =
+        (groupUuid?.isNotEmpty ?? false) ||
+        item.installmentIndex != null ||
+        item.installmentCount != null ||
+        item.installmentTotalMinor != null;
+    if (!hasInstallmentFields) return true;
+    final index = item.installmentIndex;
+    final count = item.installmentCount;
+    final total = item.installmentTotalMinor;
+    return item.type == FinanceTransactionType.expense &&
+        groupUuid?.isNotEmpty == true &&
+        index != null &&
+        index >= 1 &&
+        count != null &&
+        count >= FinanceInstallmentCalculator.minCount &&
+        count <= FinanceInstallmentCalculator.maxCount &&
+        index <= count &&
+        (total == null ||
+            (isSafeFinanceAmountMinor(total) &&
+                total >= item.amountMinor));
+  }
+
+  static bool _hasValidRawInstallmentFields(Map<String, dynamic> raw) {
+    final groupValue =
+        raw['installment_group_uuid'] ?? raw['installmentGroupUuid'];
+    final indexValue = raw['installment_index'] ?? raw['installmentIndex'];
+    final countValue = raw['installment_count'] ?? raw['installmentCount'];
+    final totalValue =
+        raw['installment_total_minor'] ?? raw['installmentTotalMinor'];
+    final hasGroupValue = groupValue != null &&
+        (groupValue is! String || groupValue.trim().isNotEmpty);
+    if (!hasGroupValue &&
+        indexValue == null &&
+        countValue == null &&
+        totalValue == null) {
+      return true;
+    }
+    if (groupValue is! String || groupValue.trim().isEmpty) return false;
+    final index = _rawFinanceInteger(indexValue);
+    final count = _rawFinanceInteger(countValue);
+    if (index == null ||
+        index < 1 ||
+        count == null ||
+        count < FinanceInstallmentCalculator.minCount ||
+        count > FinanceInstallmentCalculator.maxCount ||
+        index > count) {
+      return false;
+    }
+    if (totalValue == null) return true;
+    final amountValue = raw['amount_minor'] ?? raw['amountMinor'];
+    if (!_isSafeRawFinanceAmount(totalValue) ||
+        !_isSafeRawFinanceAmount(amountValue)) {
+      return false;
+    }
+    final total = _asInt(totalValue);
+    final amount = _asInt(amountValue);
+    return total > 0 && amount > 0 && total >= amount;
   }
 
   /// Linked refunds inherit classification from their original. Repair after
@@ -4212,6 +4282,7 @@ abstract final class FinanceStorage {
         _asInt(rawAmount) > 0 &&
         _isValidRawTransactionType(raw) &&
         _hasSafeRawFinanceTimestamps(raw) &&
+        _hasValidRawInstallmentFields(raw) &&
         _isValidTransaction(item);
   }
 

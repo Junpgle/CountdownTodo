@@ -120,7 +120,67 @@ void main() {
       );
     });
 
+    test('本地账单保存拒绝超过总期数的分期期次', () async {
+      final transaction = FinanceTransaction(
+        uuid: 'local-out-of-range-installment-index',
+        amountMinor: 600,
+        transactionDate: '2026-09-20',
+        installmentGroupUuid: 'local-out-of-range-installment-group',
+        installmentIndex: 3,
+        installmentCount: 2,
+        installmentTotalMinor: 1200,
+      );
+
+      await expectLater(
+        FinanceStorage.saveTransaction(transaction),
+        throwsArgumentError,
+      );
+      expect(await FinanceStorage.getTransaction(transaction.uuid), isNull);
+    });
+
     for (final source in ['backup', 'remote']) {
+      test('$source 拒绝超过期数范围的分期记录', () async {
+        final transaction = FinanceTransaction(
+          uuid: 'out-of-range-$source-installment-index',
+          amountMinor: 600,
+          transactionDate: '2026-09-20',
+          installmentGroupUuid: 'out-of-range-$source-installment-group',
+          installmentIndex: 3,
+          installmentCount: 2,
+          installmentTotalMinor: 1200,
+        );
+        final legacyInstallmentWithoutTotal = FinanceTransaction(
+          uuid: 'valid-$source-installment-without-total',
+          amountMinor: 600,
+          transactionDate: '2026-09-20',
+          installmentGroupUuid: 'valid-$source-installment-group',
+          installmentIndex: 2,
+          installmentCount: 2,
+        );
+        final transactions = [
+          transaction.toMap(),
+          legacyInstallmentWithoutTotal.toMap(),
+        ];
+
+        if (source == 'backup') {
+          await FinanceStorage.importBundle({
+            'transactions': transactions,
+          });
+        } else {
+          await FinanceStorage.mergeRemoteBundle({
+            'transactions': transactions,
+          });
+        }
+
+        expect(await FinanceStorage.getTransaction(transaction.uuid), isNull);
+        expect(
+          (await FinanceStorage.getTransaction(
+            legacyInstallmentWithoutTotal.uuid,
+          ))!.isInstallment,
+          isTrue,
+        );
+      });
+
       test('$source 拒绝负数预算和余额快照', () async {
         final snapshotAt = DateTime(2026, 10, 1).millisecondsSinceEpoch;
         final budgets = [
