@@ -45,6 +45,7 @@ class _FinanceCategoryDetailScreenState
   late List<FinanceTransaction> _transactions;
   late Map<String, FinanceCategory> _categories;
   Timer? _financeChangeRefreshTimer;
+  Timer? _upcomingTransactionTimer;
   int _loadGeneration = 0;
 
   String get periodTitle => widget.periodTitle;
@@ -58,11 +59,19 @@ class _FinanceCategoryDetailScreenState
     _transactions = widget.transactions;
     _categories = widget.categories;
     FinanceStorage.revision.addListener(_onFinanceChanged);
+    unawaited(_reloadPeriodData());
   }
 
   @override
   void didUpdateWidget(covariant FinanceCategoryDetailScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final periodChanged = oldWidget.periodStart != widget.periodStart ||
+        oldWidget.periodEnd != widget.periodEnd;
+    if (periodChanged) {
+      _upcomingTransactionTimer?.cancel();
+      _upcomingTransactionTimer = null;
+      unawaited(_reloadPeriodData());
+    }
     if (!identical(oldWidget.transactions, widget.transactions)) {
       _transactions = widget.transactions;
     }
@@ -74,6 +83,7 @@ class _FinanceCategoryDetailScreenState
   @override
   void dispose() {
     _financeChangeRefreshTimer?.cancel();
+    _upcomingTransactionTimer?.cancel();
     FinanceStorage.revision.removeListener(_onFinanceChanged);
     super.dispose();
   }
@@ -104,6 +114,12 @@ class _FinanceCategoryDetailScreenState
 
       final now = widget.clock();
       final includesNow = !now.isBefore(from) && now.isBefore(to);
+      _scheduleUpcomingTransactionRefresh(
+        allTransactions,
+        now: now,
+        periodEnd: to,
+        enabled: includesNow,
+      );
       final nextTransactions = includesNow
           ? allTransactions
                 .where(
@@ -122,9 +138,45 @@ class _FinanceCategoryDetailScreenState
         _categories = nextCategories;
       });
     } catch (error) {
+      if (!mounted) return;
       debugPrint('刷新支出分类详情失败：$error');
       // Keep the last usable detail visible if refreshing from local storage fails.
     }
+  }
+
+  void _scheduleUpcomingTransactionRefresh(
+    Iterable<FinanceTransaction> values, {
+    required DateTime now,
+    required DateTime periodEnd,
+    required bool enabled,
+  }) {
+    _upcomingTransactionTimer?.cancel();
+    _upcomingTransactionTimer = null;
+    if (!enabled) return;
+
+    final nowAt = now.millisecondsSinceEpoch;
+    final periodEndAt = periodEnd.millisecondsSinceEpoch;
+    int? nextEventAt;
+    for (final transaction in values) {
+      final eventAt = transaction.balanceEventAt();
+      if (eventAt > nowAt &&
+          eventAt < periodEndAt &&
+          (nextEventAt == null || eventAt < nextEventAt)) {
+        nextEventAt = eventAt;
+      }
+    }
+    if (nextEventAt == null) return;
+
+    final delayMs = (nextEventAt - nowAt + 1)
+        .clamp(1, const Duration(days: 24).inMilliseconds)
+        .toInt();
+    _upcomingTransactionTimer = Timer(
+      Duration(milliseconds: delayMs),
+      () {
+        _upcomingTransactionTimer = null;
+        if (mounted) unawaited(_reloadPeriodData());
+      },
+    );
   }
 
   FinanceCategory? get _rootCategory =>

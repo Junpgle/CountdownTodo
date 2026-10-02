@@ -183,4 +183,61 @@ void main() {
     expect(find.text('这个分类已删除或不可用'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('已打开的分类详情会在计划账单发生时刷新', (tester) async {
+    final db = await _openDatabase(tester);
+    _closeDatabase(db);
+    var now = DateTime.now();
+    final dueAt = now.add(const Duration(seconds: 5));
+    final periodStart = DateTime(now.year, now.month);
+    final periodEnd = DateTime(now.year, now.month + 1);
+    final root = FinanceCategory(uuid: 'due-detail-root', name: '固定支出');
+    final child = FinanceCategory(
+      uuid: 'due-detail-child',
+      name: '网络费',
+      parentUuid: root.uuid,
+    );
+    final transaction = FinanceTransaction(
+      uuid: 'due-detail-transaction',
+      amountMinor: 1200,
+      categoryUuid: child.uuid,
+      transactionDate: dateKey(now),
+      occurredAt: dueAt.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: now.timeZoneOffset.inMinutes,
+      createdAt: now.millisecondsSinceEpoch,
+      updatedAt: now.millisecondsSinceEpoch,
+    );
+    await tester.runAsync(() async {
+      await FinanceStorage.saveCategory(root);
+      await FinanceStorage.saveCategory(child);
+      await FinanceStorage.saveTransaction(transaction);
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FinanceCategoryDetailScreen(
+          periodTitle: '${now.year}年${now.month}月',
+          periodStart: periodStart,
+          periodEnd: periodEnd,
+          clock: () => now,
+          rootCategoryUuid: root.uuid,
+          transactions: const [],
+          categories: {root.uuid: root, child.uuid: child},
+        ),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
+    await tester.pump();
+    expect(find.text('网络费'), findsNothing);
+    expect(find.text('这个大类下暂无可展示的小类账单'), findsOneWidget);
+
+    now = dueAt;
+    await tester.pump(const Duration(seconds: 5));
+    await _waitFor(tester, () => find.text('网络费').evaluate().isNotEmpty);
+
+    expect(find.text('¥12.00'), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+  });
 }
