@@ -198,6 +198,79 @@ void main() {
     expect(context, isNot(contains('june-log')));
   });
 
+  test('Chinese numeral date range selects the full focus period', () {
+    final juneStart = DateTime(2026, 6, 15, 9);
+    final julyStart = DateTime(2026, 7, 3, 9);
+    final context = AiTodoContextBuilder.buildContextInjection(
+      userMessage: '分析2026年六月一日至2026年七月五日的效率',
+      courses: const [],
+      timeLogs: [
+        TimeLogItem(
+          id: 'june-log',
+          title: '六月专注',
+          startTime: juneStart.millisecondsSinceEpoch,
+          endTime: juneStart
+              .add(const Duration(minutes: 30))
+              .millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'july-log',
+          title: '七月专注',
+          startTime: julyStart.millisecondsSinceEpoch,
+          endTime: julyStart
+              .add(const Duration(minutes: 30))
+              .millisecondsSinceEpoch,
+        ),
+      ],
+      conflicts: const [],
+      teams: const [],
+      now: DateTime(2026, 10, 2, 12),
+    );
+
+    expect(context, contains('2026-06-01 00:00 至 2026-07-06 00:00'));
+    expect(context, contains('june-log'));
+    expect(context, contains('july-log'));
+  });
+
+  test('selected custom range overrides Chinese numeral dates', () {
+    final query = AiTodoContextBuilder.buildContextQueryText(
+      userMessage: '分析2026年六月一日至2026年六月三十日的效率',
+      customStart: DateTime(2026, 7, 1),
+      customEnd: DateTime(2026, 7, 31),
+      now: DateTime(2026, 10, 2, 12),
+    );
+
+    expect(query, contains('自定义注入范围 2026-07-01 至 2026-07-31'));
+    expect(query, isNot(contains('六月')));
+  });
+
+  test('invalid or reversed Chinese numeral ranges do not inject fallback', () {
+    for (final userMessage in [
+      '分析2026年六月一日至2026年六月三十一日的效率',
+      '分析2026年七月五日至2026年六月一日的效率',
+    ]) {
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: userMessage,
+        courses: const [],
+        timeLogs: const [],
+        conflicts: const [],
+        teams: const [],
+        now: DateTime(2026, 10, 2, 12),
+      );
+      final summary = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: userMessage,
+        courses: const [],
+        timeLogs: const [],
+        conflicts: const [],
+        teams: const [],
+        now: DateTime(2026, 10, 2, 12),
+      );
+
+      expect(context, isNull, reason: userMessage);
+      expect(summary, isNull, reason: userMessage);
+    }
+  });
+
   test('selected custom range overrides month periods in the prompt', () {
     final customStart = DateTime(2026, 8, 1);
     final customEnd = DateTime(2026, 8, 31);

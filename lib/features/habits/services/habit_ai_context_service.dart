@@ -46,13 +46,23 @@ abstract final class HabitAiContextService {
     r'(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})\s*(?:至|到|-|~)\s*(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})',
   );
   static final RegExp _chineseDatePattern = RegExp(
-    r'(?:^|[^\d])(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?(?!\d)',
+    r'(?:^|[^\d])(?:(\d{4})\s*年\s*)?'
+    r'(十一|十二|十|[一二三四五六七八九]|\d{1,2})\s*月\s*'
+    r'(\d{1,2}|[一二三四五六七八九十]{1,3})\s*[日号]?(?!\d)',
   );
   static final RegExp _chineseDateEndpointPattern = RegExp(
-    r'^(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?$',
+    r'^(?:(\d{4})\s*年\s*)?'
+    r'(十一|十二|十|[一二三四五六七八九]|\d{1,2})\s*月\s*'
+    r'(\d{1,2}|[一二三四五六七八九十]{1,3})\s*[日号]?$',
   );
   static final RegExp _chineseDateRangePattern = RegExp(
-    r'((?:\d{4}\s*年\s*)?\d{1,2}\s*月\s*\d{1,2}\s*[日号]?)\s*(?:至|到|-|~|～|—|–)\s*((?:\d{4}\s*年\s*)?\d{1,2}\s*月\s*\d{1,2}\s*[日号]?)',
+    r'((?:\d{4}\s*年\s*)?'
+    r'(?:十一|十二|十|[一二三四五六七八九]|\d{1,2})\s*月\s*'
+    r'(?:\d{1,2}|[一二三四五六七八九十]{1,3})\s*[日号]?)\s*'
+    r'(?:至|到|-|~|～|—|–)\s*'
+    r'((?:\d{4}\s*年\s*)?'
+    r'(?:十一|十二|十|[一二三四五六七八九]|\d{1,2})\s*月\s*'
+    r'(?:\d{1,2}|[一二三四五六七八九十]{1,3})\s*[日号]?)',
   );
   static final RegExp _yearMonthPattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](0?[1-9]|1[0-2])(?![-/.]\d)',
@@ -456,11 +466,10 @@ abstract final class HabitAiContextService {
   ) {
     final match = _chineseDateEndpointPattern.firstMatch(text.trim());
     if (match == null) return null;
-    return (
-      year: int.tryParse(match.group(1) ?? ''),
-      month: int.parse(match.group(2)!),
-      day: int.parse(match.group(3)!),
-    );
+    final month = _parseMonth(match.group(2)!);
+    final day = _parseChineseDay(match.group(3)!);
+    if (month == null || day == null) return null;
+    return (year: int.tryParse(match.group(1) ?? ''), month: month, day: day);
   }
 
   static DateTime? _parseChineseDateMatch(
@@ -468,9 +477,42 @@ abstract final class HabitAiContextService {
     required int defaultYear,
   }) {
     final year = int.tryParse(match.group(1) ?? '') ?? defaultYear;
-    final month = int.parse(match.group(2)!);
-    final day = int.parse(match.group(3)!);
+    final month = _parseMonth(match.group(2)!);
+    final day = _parseChineseDay(match.group(3)!);
+    if (month == null || day == null) return null;
     return _validCalendarDate(year, month, day);
+  }
+
+  static int? _parseChineseDay(String value) {
+    final numeric = int.tryParse(value);
+    if (numeric != null) return numeric;
+    const digits = {
+      '一': 1,
+      '二': 2,
+      '三': 3,
+      '四': 4,
+      '五': 5,
+      '六': 6,
+      '七': 7,
+      '八': 8,
+      '九': 9,
+    };
+    if (value == '十') return 10;
+    if (value.startsWith('十')) {
+      final unit = digits[value.substring(1)];
+      return unit == null ? null : 10 + unit;
+    }
+    if (value.endsWith('十')) {
+      final tens = digits[value.substring(0, value.length - 1)];
+      return tens == null ? null : tens * 10;
+    }
+    final tenIndex = value.indexOf('十');
+    if (tenIndex > 0 && tenIndex < value.length - 1) {
+      final tens = digits[value.substring(0, tenIndex)];
+      final units = digits[value.substring(tenIndex + 1)];
+      if (tens != null && units != null) return tens * 10 + units;
+    }
+    return digits[value];
   }
 
   static DateTime? _validCalendarDate(int year, int month, int day) {

@@ -91,6 +91,37 @@ void main() {
       expect(summary, contains('2026-06-01 至 2026-07-05'));
     });
 
+    test('supports Chinese numeral dates across months', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看2026年六月一日至2026年七月五日的习惯进度',
+        goals: const [],
+        now: now,
+      );
+
+      expect(summary, contains('2026-06-01 至 2026-07-05'));
+    });
+
+    test('uses a single Chinese numeral date instead of its whole month', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看2026年六月一日的习惯进度',
+        goals: const [],
+        now: now,
+      );
+
+      expect(summary, contains('2026-06-01'));
+      expect(summary, isNot(contains('2026-06-30')));
+    });
+
+    test('rejects an impossible Chinese numeral date range', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看2026年六月一日至2026年六月三十一日的习惯进度',
+        goals: const [],
+        now: now,
+      );
+
+      expect(summary, isNull);
+    });
+
     test('does not collapse an invalid Chinese date range to its start', () {
       final summary = HabitAiContextService.buildContextInjectionSummary(
         userMessage: '查看2026年6月1日至2026年6月31日的习惯进度',

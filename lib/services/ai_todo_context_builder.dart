@@ -14,12 +14,18 @@ class AiTodoContextBuilder {
     r'(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)',
   );
   static final RegExp _explicitChineseDateRangePattern = RegExp(
-    r'(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)\s*'
+    r'(?:(\d{4})\s*年\s*)?'
+    r'(\d{1,2}|[一二三四五六七八九十]{1,2})\s*月\s*'
+    r'(\d{1,2}|[一二三四五六七八九十]{1,3})\s*(?:日|号)\s*'
     r'(?:至|到|~|～|－|–|—|-)\s*'
-    r'(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)',
+    r'(?:(\d{4})\s*年\s*)?'
+    r'(\d{1,2}|[一二三四五六七八九十]{1,2})\s*月\s*'
+    r'(\d{1,2}|[一二三四五六七八九十]{1,3})\s*(?:日|号)',
   );
   static final RegExp _explicitChineseDatePattern = RegExp(
-    r'(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)',
+    r'(?:(\d{4})\s*年\s*)?'
+    r'(\d{1,2}|[一二三四五六七八九十]{1,2})\s*月\s*'
+    r'(\d{1,2}|[一二三四五六七八九十]{1,3})\s*(?:日|号)',
   );
   static final RegExp _monthPeriodPattern = RegExp(
     r'(?:(?:\d{4}\s*年|今年|去年)\s*)?(?:0?[1-9]|1[0-2])\s*月(?:份)?'
@@ -2611,10 +2617,16 @@ ${lines.isEmpty ? '暂无' : lines}''';
     RegExpMatch match,
     DateTime now,
   ) {
-    final startMonth = int.parse(match.group(2)!);
-    final startDay = int.parse(match.group(3)!);
-    final endMonth = int.parse(match.group(5)!);
-    final endDay = int.parse(match.group(6)!);
+    final startMonth = _parseChineseOrNumericDateNumber(match.group(2)!);
+    final startDay = _parseChineseOrNumericDateNumber(match.group(3)!);
+    final endMonth = _parseChineseOrNumericDateNumber(match.group(5)!);
+    final endDay = _parseChineseOrNumericDateNumber(match.group(6)!);
+    if (startMonth == null ||
+        startDay == null ||
+        endMonth == null ||
+        endDay == null) {
+      return null;
+    }
     final startYearText = match.group(1);
     final endYearText = match.group(4);
 
@@ -2678,8 +2690,9 @@ ${lines.isEmpty ? '暂无' : lines}''';
     DateTime now,
   ) {
     final yearText = match.group(1);
-    final month = int.parse(match.group(2)!);
-    final day = int.parse(match.group(3)!);
+    final month = _parseChineseOrNumericDateNumber(match.group(2)!);
+    final day = _parseChineseOrNumericDateNumber(match.group(3)!);
+    if (month == null || day == null) return null;
     final year = yearText == null
         ? _inferredChineseDateYear(text, match.start, month, now)
         : int.parse(yearText);
@@ -2777,6 +2790,9 @@ ${lines.isEmpty ? '暂无' : lines}''';
   }
 
   static int? _parseRollingMonthCount(String value) =>
+      int.tryParse(value) ?? _parseSimpleChineseNumber(value);
+
+  static int? _parseChineseOrNumericDateNumber(String value) =>
       int.tryParse(value) ?? _parseSimpleChineseNumber(value);
 
   static DateTime? _parseStrictIsoDate(String value) {
