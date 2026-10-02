@@ -28,6 +28,55 @@ void main() {
       expect(summary, isNot(contains('2026-10-01')));
     });
 
+    test('resolves rolling month requests as a date range', () {
+      for (final period in ['过去6个月', '过去六个月', '最近六个月', '近6个月']) {
+        final summary = HabitAiContextService.buildContextInjectionSummary(
+          userMessage: '查看$period的习惯进度',
+          goals: const [],
+          now: DateTime(2026, 10, 3, 12),
+        );
+
+        expect(summary, contains('2026-04-03 至 2026-10-03'), reason: period);
+      }
+    });
+
+    test('clamps rolling month starts to the target month length', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看过去6个月的习惯进度',
+        goals: const [],
+        now: DateTime(2026, 10, 31, 12),
+      );
+
+      expect(summary, contains('2026-04-30 至 2026-10-31'));
+    });
+
+    test('rolling month follow-up overrides the previous explicit range', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '那最近六个月呢？',
+        previousUserMessage: '查看2026-06-01至2026-06-30的习惯进度',
+        conversationContext: '习惯进度',
+        goals: const [],
+        now: DateTime(2026, 10, 3, 12),
+      );
+
+      expect(summary, contains('2026-04-03 至 2026-10-03'));
+    });
+
+    test(
+      'does not inject a fallback range for an invalid rolling month count',
+      () {
+        for (final period in ['过去0个月', '过去37个月', '过去三十七个月']) {
+          final summary = HabitAiContextService.buildContextInjectionSummary(
+            userMessage: '查看$period的习惯进度',
+            goals: const [],
+            now: now,
+          );
+
+          expect(summary, isNull, reason: period);
+        }
+      },
+    );
+
     test('does not inject today for an invalid explicit date', () {
       final summary = HabitAiContextService.buildContextInjectionSummary(
         userMessage: '查看2026-02-30习惯进度',
@@ -54,6 +103,16 @@ void main() {
     test('does not collapse a reversed date range to its start', () {
       final summary = HabitAiContextService.buildContextInjectionSummary(
         userMessage: '查看2026-06-30至2026-06-01习惯进度',
+        goals: const [],
+        now: now,
+      );
+
+      expect(summary, isNull);
+    });
+
+    test('does not inject only the first of two rolling month ranges', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '比较过去三个月和过去六个月的习惯进度',
         goals: const [],
         now: now,
       );

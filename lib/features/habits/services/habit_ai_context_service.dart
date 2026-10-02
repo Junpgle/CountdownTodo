@@ -67,6 +67,9 @@ abstract final class HabitAiContextService {
   static final RegExp _yearMonthPattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](0?[1-9]|1[0-2])(?![-/.]\d)',
   );
+  static final RegExp _rollingMonthPattern = RegExp(
+    r'(?:近|最近|过去)\s*(\d+|[零〇○一二两三四五六七八九十]{1,3})\s*个?月',
+  );
 
   static bool shouldInjectFor(
     String userMessage, {
@@ -196,6 +199,7 @@ abstract final class HabitAiContextService {
         _calendarDatePattern.hasMatch(text) ||
         _yearMonthPattern.hasMatch(text) ||
         _monthPattern.hasMatch(text) ||
+        _rollingMonthPattern.hasMatch(text) ||
         _containsAny(text, [
           '今天',
           '今日',
@@ -217,6 +221,7 @@ abstract final class HabitAiContextService {
         _calendarDatePattern.hasMatch(previous) ||
         _yearMonthPattern.hasMatch(previous) ||
         _monthPattern.hasMatch(previous) ||
+        _rollingMonthPattern.hasMatch(previous) ||
         _containsAny(previous, [
           '今天',
           '今日',
@@ -333,6 +338,28 @@ abstract final class HabitAiContextService {
       final dateKey = _dateKey(parsedChineseDate);
       return (from: parsedChineseDate, to: parsedChineseDate, label: dateKey);
     }
+    final rollingMonth = _rollingMonthPattern.firstMatch(text);
+    if (rollingMonth != null) {
+      final months = _parseRollingMonthCount(rollingMonth.group(1)!);
+      if (months != null && months >= 1 && months <= 36) {
+        final targetMonth = DateTime(today.year, today.month - months, 1);
+        final lastDay = DateTime(
+          targetMonth.year,
+          targetMonth.month + 1,
+          0,
+        ).day;
+        final from = DateTime(
+          targetMonth.year,
+          targetMonth.month,
+          today.day > lastDay ? lastDay : today.day,
+        );
+        return (
+          from: from,
+          to: today,
+          label: '${_dateKey(from)} 至 ${_dateKey(today)}',
+        );
+      }
+    }
     final numeric = _yearMonthPattern.firstMatch(text);
     final chinese = numeric == null ? _monthPattern.firstMatch(text) : null;
     int? year = int.tryParse(numeric?.group(1) ?? chinese?.group(1) ?? '');
@@ -399,6 +426,12 @@ abstract final class HabitAiContextService {
   }
 
   static bool _hasInvalidExplicitDate(String text, {DateTime? now}) {
+    final rollingMonths = _rollingMonthPattern.allMatches(text).toList();
+    if (rollingMonths.length > 1) return true;
+    for (final rollingMonth in rollingMonths) {
+      final months = _parseRollingMonthCount(rollingMonth.group(1)!);
+      if (months == null || months < 1 || months > 36) return true;
+    }
     final dateMatches = _calendarDatePattern.allMatches(text).toList();
     final chineseDateMatches = _chineseDatePattern.allMatches(text).toList();
     if (dateMatches.isEmpty && chineseDateMatches.isEmpty) return false;
@@ -481,6 +514,42 @@ abstract final class HabitAiContextService {
     final day = _parseChineseDay(match.group(3)!);
     if (month == null || day == null) return null;
     return _validCalendarDate(year, month, day);
+  }
+
+  static int? _parseRollingMonthCount(String value) {
+    final numeric = int.tryParse(value);
+    if (numeric != null) return numeric;
+    const digits = {
+      '零': 0,
+      '〇': 0,
+      '○': 0,
+      '一': 1,
+      '二': 2,
+      '两': 2,
+      '三': 3,
+      '四': 4,
+      '五': 5,
+      '六': 6,
+      '七': 7,
+      '八': 8,
+      '九': 9,
+    };
+    if (value == '十') return 10;
+    if (value.startsWith('十')) {
+      final unit = digits[value.substring(1)];
+      return unit == null ? null : 10 + unit;
+    }
+    if (value.endsWith('十')) {
+      final tens = digits[value.substring(0, value.length - 1)];
+      return tens == null ? null : tens * 10;
+    }
+    final tenIndex = value.indexOf('十');
+    if (tenIndex > 0 && tenIndex < value.length - 1) {
+      final tens = digits[value.substring(0, tenIndex)];
+      final units = digits[value.substring(tenIndex + 1)];
+      if (tens != null && units != null) return tens * 10 + units;
+    }
+    return digits[value];
   }
 
   static int? _parseChineseDay(String value) {
