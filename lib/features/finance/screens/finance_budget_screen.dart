@@ -109,21 +109,37 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     int asOfAt,
   ) {
     final now = widget.clock().millisecondsSinceEpoch;
+    final asOfMonthKey = financeMonthKey(
+      DateTime.fromMillisecondsSinceEpoch(asOfAt),
+    );
+    // The month key comes from the source device's wall calendar; its epoch
+    // can cross a local month edge after sync to a device in another timezone.
+    const snapshotTimezoneDriftMs = 28 * 60 * 60 * 1000;
     final latestByMethod = <String, FinanceBudget>{};
     for (final budget in budgets) {
       final paymentMethodUuid = budget.paymentMethodUuid;
       final snapshotAt = budget.effectiveBalanceSnapshotAt;
+      final monthOrder = budget.monthKey.compareTo(asOfMonthKey);
       if (paymentMethodUuid == null ||
           paymentMethodUuid.isEmpty ||
-          snapshotAt > asOfAt ||
+          monthOrder > 0 ||
+          (monthOrder == 0 &&
+              snapshotAt > asOfAt + snapshotTimezoneDriftMs) ||
+          (monthOrder < 0 && snapshotAt > asOfAt) ||
           snapshotAt > now) {
         continue;
       }
       final current = latestByMethod[paymentMethodUuid];
-      if (current == null ||
-          snapshotAt > current.effectiveBalanceSnapshotAt ||
-          (snapshotAt == current.effectiveBalanceSnapshotAt &&
-              budget.updatedAt > current.updatedAt)) {
+      if (current == null) {
+        latestByMethod[paymentMethodUuid] = budget;
+        continue;
+      }
+      final currentMonthOrder = budget.monthKey.compareTo(current.monthKey);
+      final isLaterSnapshotInSameMonth = currentMonthOrder == 0 &&
+          (snapshotAt > current.effectiveBalanceSnapshotAt ||
+              (snapshotAt == current.effectiveBalanceSnapshotAt &&
+                  budget.updatedAt > current.updatedAt));
+      if (currentMonthOrder > 0 || isLaterSnapshotInSameMonth) {
         latestByMethod[paymentMethodUuid] = budget;
       }
     }

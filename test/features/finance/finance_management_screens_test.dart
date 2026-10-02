@@ -1953,6 +1953,58 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('跨时区付款余额按快照月份归属避免污染前月', (tester) async {
+    final db = await _seed(tester);
+    final actualNow = DateTime.now();
+    final clockNow = DateTime(actualNow.year, actualNow.month, 15, 12);
+    final previousMonth = DateTime(clockNow.year, clockNow.month - 1);
+    final nextMonth = DateTime(previousMonth.year, previousMonth.month + 1);
+    final previousMonthEnd = nextMonth.subtract(
+      const Duration(milliseconds: 1),
+    );
+    final previousSnapshotAt = nextMonth.add(const Duration(hours: 20));
+    final nextSnapshotAt = previousMonthEnd.subtract(const Duration(hours: 10));
+
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'timezone-card', name: '跨时区银行卡').toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'timezone-card-previous-month',
+          monthKey: financeMonthKey(previousMonth),
+          paymentMethodUuid: 'timezone-card',
+          amountMinor: 10000,
+          balanceSnapshotAt: previousSnapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'timezone-card-next-month',
+          monthKey: financeMonthKey(nextMonth),
+          paymentMethodUuid: 'timezone-card',
+          amountMinor: 20000,
+          balanceSnapshotAt: nextSnapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(
+        initialMonth: previousMonth,
+        clock: () => clockNow,
+      ),
+      size: const Size(1100, 1000),
+    );
+    expect(find.text('该月余额 ¥100.00'), findsOneWidget);
+    expect(find.text('该月余额 ¥200.00'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('历史月份余额必须选择实际对应时间并保存到快照', (tester) async {
     final db = await _seed(tester);
     await tester.runAsync(() => db.insert(
