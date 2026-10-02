@@ -181,6 +181,13 @@ abstract final class FinanceAiContextService {
   static final RegExp _explicitDateRangeSeparator = RegExp(
     r'^\s*(?:至|到|~|～|－|–|—|-)\s*$',
   );
+  static final RegExp _explicitDateRangePrefix = RegExp(
+    r'^\s*(?:至|到|~|～|－|–|—|-)',
+  );
+  static final RegExp _abbreviatedDateRangeEndPattern = RegExp(
+    r'^\s*(?:至|到|~|～|－|–|—|-)\s*'
+    r'(\d+|[零〇○一二三四五六七八九十廿百千]{1,4})\s*[日号]',
+  );
 
   static const _periodWords = [
     '本月',
@@ -1011,6 +1018,18 @@ abstract final class FinanceAiContextService {
     final now = _day(DateTime.now());
     final explicitDateTokens = _explicitDateTokens(text, now: now);
     if (explicitDateTokens.any((token) => token.date == null)) return true;
+    if (explicitDateTokens.length == 1) {
+      final suffix = text.substring(explicitDateTokens.single.end);
+      final abbreviatedEnd = _abbreviatedDateRangeEndPattern.firstMatch(
+        suffix,
+      );
+      if (_explicitDateRangePrefix.hasMatch(suffix) && abbreviatedEnd == null) {
+        return true;
+      }
+      if (abbreviatedEnd != null && _resolveExplicitDateRange(text, now) == null) {
+        return true;
+      }
+    }
     if (explicitDateTokens.length > 1 &&
         _resolveExplicitDateRange(text, now) == null) {
       return true;
@@ -1104,9 +1123,31 @@ abstract final class FinanceAiContextService {
   ) {
     final tokens = _explicitDateTokens(text, now: current);
     if (tokens.isEmpty || tokens.length > 2) return null;
-    final start = tokens.first.date;
+    final first = tokens.first;
+    final start = first.date;
     if (start == null) return null;
     if (tokens.length == 1) {
+      final abbreviatedEnd = _abbreviatedDateRangeEndPattern.firstMatch(
+        text.substring(first.end),
+      );
+      if (abbreviatedEnd != null) {
+        final endDay = _parseCalendarDayNumber(abbreviatedEnd.group(1)!);
+        if (endDay == null || endDay < 1 || endDay > 31) return null;
+        var endYear = start.year;
+        var endMonth = start.month;
+        if (endDay < start.day) {
+          if (endMonth == 12) {
+            endYear++;
+            endMonth = 1;
+          } else {
+            endMonth++;
+          }
+        }
+        final lastDayOfEndMonth = DateTime(endYear, endMonth + 1, 0).day;
+        if (endDay > lastDayOfEndMonth) return null;
+        final end = DateTime(endYear, endMonth, endDay);
+        return FinanceDateRange(start, financeCalendarDayOffset(end, 1));
+      }
       return FinanceDateRange(start, financeCalendarDayOffset(start, 1));
     }
 
