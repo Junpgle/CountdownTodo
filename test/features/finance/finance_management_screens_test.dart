@@ -965,6 +965,53 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('概览在选中月份开始时切换到实际统计', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 10, 31, 23, 59, 58);
+    final plannedAt = DateTime(2026, 11, 15, 12);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'overview-next-month-planned-expense',
+          amountMinor: 2500,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(plannedAt),
+          occurredAt: plannedAt.millisecondsSinceEpoch,
+          createdAt: clockNow.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('finance-overview-period-next')),
+    );
+    await _waitFor(
+      tester,
+      () => find.text('2026年11月').evaluate().isNotEmpty,
+    );
+    expect(find.text('计划净支出'), findsOneWidget);
+
+    clockNow = DateTime(2026, 11, 1, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 3));
+    await _waitFor(
+      tester,
+      () =>
+          find.text('计划净支出').evaluate().isEmpty &&
+          find.text('净支出').evaluate().isNotEmpty,
+    );
+
+    expect(find.text('计划净支出'), findsNothing);
+    expect(find.text('净支出'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('导出菜单按所选月份命名账单', (tester) async {
     await _seed(tester);
     final now = DateTime.now();

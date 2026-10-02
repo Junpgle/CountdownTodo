@@ -242,14 +242,15 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     _upcomingTransactionTimer = null;
     final currentDate = widget.clock();
     final now = currentDate.millisecondsSinceEpoch;
-    if (_month.year != currentDate.year || _month.month != currentDate.month) {
+    final currentMonth = DateTime(currentDate.year, currentDate.month);
+    if (_month.isBefore(currentMonth)) {
       return;
     }
 
-    var nextEventAt = DateTime(
-      currentDate.year,
-      currentDate.month + 1,
-    ).millisecondsSinceEpoch;
+    final monthStart = DateTime(_month.year, _month.month);
+    var nextEventAt = monthStart.isAfter(currentMonth)
+        ? monthStart.millisecondsSinceEpoch
+        : DateTime(_month.year, _month.month + 1).millisecondsSinceEpoch;
     for (final transaction in _overviewTransactions) {
       final eventAt = transaction.balanceEventAt();
       if (eventAt > now && eventAt < nextEventAt) {
