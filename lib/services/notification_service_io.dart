@@ -305,6 +305,7 @@ class NotificationService {
       return false;
     }
     await ensureInitialized();
+    if (!await _hasFinanceBudgetAlertPermission()) return false;
     final id = _stableNotificationId(alertKey, base: 52000, range: 9000);
 
     if (_isDesktopSupported) {
@@ -347,6 +348,35 @@ class NotificationService {
       return true;
     }
     return false;
+  }
+
+  static Future<bool> _hasFinanceBudgetAlertPermission() async {
+    if (Platform.isAndroid) {
+      final platformPlugin = _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      return await platformPlugin?.areNotificationsEnabled() ?? false;
+    }
+    if (Platform.isIOS) {
+      final platformPlugin = _plugin
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >();
+      final permissions = await platformPlugin?.checkPermissions();
+      return permissions?.isEnabled == true ||
+          permissions?.isProvisionalEnabled == true;
+    }
+    if (Platform.isMacOS) {
+      final platformPlugin = _plugin
+          .resolvePlatformSpecificImplementation<
+            MacOSFlutterLocalNotificationsPlugin
+          >();
+      final permissions = await platformPlugin?.checkPermissions();
+      return permissions?.isEnabled == true ||
+          permissions?.isProvisionalEnabled == true;
+    }
+    return true;
   }
 
   static int _stableNotificationId(
