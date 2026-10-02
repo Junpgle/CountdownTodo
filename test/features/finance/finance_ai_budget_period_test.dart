@@ -201,6 +201,42 @@ void main() {
     expect(context, contains('净支出 ¥77.00'));
   });
 
+  test('中文年月日查询按单日过滤并拒绝无效日期', () async {
+    final now = DateTime(2026, 9, 2, 23, 59);
+    final range = FinanceAiContextService.resolveDateRange(
+      '2026年9月2日支出',
+      now: now,
+    );
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '2026年9月2日支出多少',
+      now: now,
+    );
+
+    expect(dateKey(range.from), '2026-09-02');
+    expect(dateKey(range.to), '2026-09-03');
+    expect(context, contains('[transactionId: today]'));
+    expect(context, isNot(contains('[transactionId: earlier-september]')));
+
+    final previousYearRange = FinanceAiContextService.resolveDateRange(
+      '去年9月2日支出',
+      now: now,
+    );
+    expect(dateKey(previousYearRange.from), '2025-09-02');
+    expect(dateKey(previousYearRange.to), '2025-09-03');
+
+    expect(
+      FinanceAiContextService.shouldInjectFor('2026年9月31日支出多少'),
+      isFalse,
+    );
+    expect(
+      await FinanceAiContextService.buildContext(
+        userMessage: '2026年9月31日支出多少',
+        now: now,
+      ),
+      isEmpty,
+    );
+  });
+
   test('前年及上一年也按完整自然年解析', () {
     for (final query in ['去年支出', '上一年支出', '前一年支出']) {
       final range = FinanceAiContextService.resolveDateRange(

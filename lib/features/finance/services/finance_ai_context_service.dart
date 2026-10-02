@@ -139,6 +139,9 @@ abstract final class FinanceAiContextService {
   static final RegExp _calendarDatePattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)',
   );
+  static final RegExp _chineseCalendarDatePattern = RegExp(
+    r'(?:(\d{4})\s*年\s*)?(十一|十二|十|[一二三四五六七八九]|1[0-2]|0?[1-9])\s*月\s*(\d{1,2})\s*[日号]',
+  );
   static final RegExp _numericYearMonthPattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](0?[1-9]|1[0-2])(?![-/.]\d)',
   );
@@ -559,7 +562,7 @@ abstract final class FinanceAiContextService {
   }) {
     final current = _day(now ?? DateTime.now());
     final text = userMessage.trim().toLowerCase();
-    final explicitDate = _parseExplicitDate(text);
+    final explicitDate = _parseExplicitDate(text, now: current);
     if (explicitDate != null) {
       return FinanceDateRange(
         explicitDate,
@@ -931,17 +934,42 @@ abstract final class FinanceAiContextService {
       _numericYearMonthPattern.hasMatch(text);
 
   static bool _hasInvalidExplicitDate(String text) =>
-      _calendarDatePattern.hasMatch(text) && _parseExplicitDate(text) == null;
+      (_calendarDatePattern.hasMatch(text) ||
+          _chineseCalendarDatePattern.hasMatch(text)) &&
+      _parseExplicitDate(text) == null;
 
-  static DateTime? _parseExplicitDate(String text) {
+  static DateTime? _parseExplicitDate(String text, {DateTime? now}) {
     final match = _calendarDatePattern.firstMatch(text);
-    if (match == null) return null;
-    final year = int.parse(match.group(1)!);
-    final month = int.parse(match.group(2)!);
-    final day = int.parse(match.group(3)!);
-    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-    final value = DateTime(year, month, day);
-    if (value.year != year || value.month != month || value.day != day) {
+    final chineseMatch = match == null
+        ? _chineseCalendarDatePattern.firstMatch(text)
+        : null;
+    if (match == null && chineseMatch == null) return null;
+    final yearText = match?.group(1) ?? chineseMatch?.group(1);
+    final monthText = match?.group(2) ?? chineseMatch?.group(2);
+    final dayText = match?.group(3) ?? chineseMatch?.group(3);
+    final year = int.tryParse(yearText ?? '');
+    final month = match != null
+        ? int.tryParse(monthText ?? '')
+        : _parseMonthNumber(monthText ?? '');
+    final day = int.tryParse(dayText ?? '');
+    if (month == null || day == null) return null;
+    final current = now ?? DateTime.now();
+    final resolvedYear =
+        year ??
+        (text.contains('前年')
+            ? current.year - 2
+            : text.contains('去年') ||
+                  text.contains('上一年') ||
+                  text.contains('前一年')
+            ? current.year - 1
+            : current.year);
+    if (resolvedYear < 1 || month < 1 || month > 12 || day < 1 || day > 31) {
+      return null;
+    }
+    final value = DateTime(resolvedYear, month, day);
+    if (value.year != resolvedYear ||
+        value.month != month ||
+        value.day != day) {
       return null;
     }
     return value;
