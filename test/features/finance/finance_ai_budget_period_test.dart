@@ -246,6 +246,29 @@ void main() {
       ),
       isEmpty,
     );
+    for (final query in [
+      '19月2日支出多少',
+      '119月2日支出多少',
+      '9月230日支出多少',
+      '十三月二日支出多少',
+      '九月二百日支出多少',
+      '13月账单多少',
+      '十三月账单多少',
+    ]) {
+      expect(
+        FinanceAiContextService.shouldInjectFor(query),
+        isFalse,
+        reason: query,
+      );
+      expect(
+        await FinanceAiContextService.buildContext(
+          userMessage: query,
+          now: now,
+        ),
+        isEmpty,
+        reason: query,
+      );
+    }
   });
 
   test('明确日期和月份的年份由各自的日期前缀决定', () {
@@ -305,6 +328,8 @@ void main() {
       ('近两个月支出', '2026-08-02'),
       ('最近三个月支出', '2026-07-02'),
       ('近3个月支出', '2026-07-02'),
+      ('近13月支出', '2025-09-02'),
+      ('近13个月支出', '2025-09-02'),
       ('近一年支出', '2025-10-02'),
       ('过去两年支出', '2024-10-02'),
     ]) {

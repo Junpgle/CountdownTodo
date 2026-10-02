@@ -138,15 +138,19 @@ abstract final class FinanceAiContextService {
 
   static final RegExp _chineseMonthPattern = RegExp(
     r'(?:(\d{4})\s*年\s*|(今年|前年|去年|上一年|前一年)\s*)?'
-    r'(十一|十二|十|[一二三四五六七八九]|\d{1,2})\s*月(?:份)?',
+    r'(?<![\d零〇○一二三四五六七八九十廿百千])'
+    r'(\d+|[零〇○一二三四五六七八九十廿百千]{1,4})\s*月(?:份)?'
+    r'(?![\d零〇○一二三四五六七八九十廿百千])',
   );
   static final RegExp _calendarDatePattern = RegExp(
-    r'(?:^|[^\d])(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)',
+    r'(?:^|[^\d])(\d{4})[-/.](\d+)[-/.](\d+)(?!\d)',
   );
   static final RegExp _chineseCalendarDatePattern = RegExp(
     r'(?:(\d{4})\s*年\s*|(今年|前年|去年|上一年|前一年)\s*)?'
-    r'(十一|十二|十|[一二三四五六七八九]|1[0-2]|0?[1-9])\s*月\s*'
-    r'(\d{1,2}|[一二三四五六七八九十廿]{1,3})\s*[日号]',
+    r'(?<![\d零〇○一二三四五六七八九十廿百千])'
+    r'(\d+|[零〇○一二三四五六七八九十廿百千]{1,4})\s*月\s*'
+    r'(\d+|[零〇○一二三四五六七八九十廿百千]{1,4})'
+    r'\s*[日号]',
   );
   static final RegExp _rollingMonthPeriodPattern = RegExp(
     r'(?:近|最近|过去)\s*(\d{1,2}|十一|十二|十|两|[二三四五六七八九])\s*个?月',
@@ -155,7 +159,7 @@ abstract final class FinanceAiContextService {
     r'(?:近|最近|过去)\s*(\d{1,2}|十一|十二|十|两|[一二三四五六七八九])\s*年',
   );
   static final RegExp _numericYearMonthPattern = RegExp(
-    r'(?:^|[^\d])(\d{4})[-/.](0?[1-9]|1[0-2])(?![-/.]\d)',
+    r'(?:^|[^\d])(\d{4})[-/.](\d+)(?![-/.]\d)',
   );
 
   static const _periodWords = [
@@ -988,10 +992,40 @@ abstract final class FinanceAiContextService {
     return FinanceDateRange(from, financeCalendarDayOffset(current, 1));
   }
 
-  static bool _hasInvalidExplicitDate(String text) =>
-      (_calendarDatePattern.hasMatch(text) ||
-          _chineseCalendarDatePattern.hasMatch(text)) &&
-      _parseExplicitDate(text) == null;
+  static bool _hasInvalidExplicitDate(String text) {
+    final hasExplicitDate =
+        _calendarDatePattern.hasMatch(text) ||
+        _chineseCalendarDatePattern.hasMatch(text);
+    if (hasExplicitDate && _parseExplicitDate(text) == null) return true;
+
+    final numericYearMonth = _numericYearMonthPattern.firstMatch(text);
+    if (numericYearMonth != null) {
+      final rawMonth = numericYearMonth.group(2)!;
+      final month = int.tryParse(rawMonth);
+      if (rawMonth.length > 2 || month == null || month < 1 || month > 12) {
+        return true;
+      }
+    }
+
+    for (final chineseMonth in _chineseMonthPattern.allMatches(text)) {
+      final month = _parseMonthNumber(chineseMonth.group(3)!);
+      if (month != null && month >= 1 && month <= 12) continue;
+
+      var isValidRollingPeriod = false;
+      for (final rollingMonth in _rollingMonthPeriodPattern.allMatches(text)) {
+        if (chineseMonth.start < rollingMonth.start ||
+            chineseMonth.end > rollingMonth.end) {
+          continue;
+        }
+        final rawCount = rollingMonth.group(1)!;
+        final count = int.tryParse(rawCount) ?? _parseMonthNumber(rawCount);
+        isValidRollingPeriod = count != null && count > 0 && count <= 36;
+        break;
+      }
+      if (!isValidRollingPeriod) return true;
+    }
+    return false;
+  }
 
   static DateTime? _parseExplicitDate(String text, {DateTime? now}) {
     final match = _calendarDatePattern.firstMatch(text);
@@ -1008,6 +1042,10 @@ abstract final class FinanceAiContextService {
         ? int.tryParse(monthText ?? '')
         : _parseMonthNumber(monthText ?? '');
     final day = _parseCalendarDayNumber(dayText ?? '');
+    if (_isOverlongNumericDatePart(monthText) ||
+        _isOverlongNumericDatePart(dayText)) {
+      return null;
+    }
     if (month == null || day == null) return null;
     final current = now ?? DateTime.now();
     final resolvedYear = _resolveCalendarYear(year, relativeYear, current.year);
@@ -1033,7 +1071,9 @@ abstract final class FinanceAiContextService {
     String? relativeYear;
     if (numericYearMonth != null) {
       year = int.tryParse(numericYearMonth.group(1)!);
-      month = int.tryParse(numericYearMonth.group(2)!);
+      final rawMonth = numericYearMonth.group(2)!;
+      if (rawMonth.length > 2) return null;
+      month = int.tryParse(rawMonth);
     } else {
       final chineseMonth = _chineseMonthPattern.firstMatch(text);
       if (chineseMonth == null) return null;
@@ -1059,6 +1099,9 @@ abstract final class FinanceAiContextService {
       _ => currentYear,
     };
   }
+
+  static bool _isOverlongNumericDatePart(String? value) =>
+      value != null && value.length > 2 && RegExp(r'^\d+$').hasMatch(value);
 
   static int? _parseMonthNumber(String value) {
     final numeric = int.tryParse(value);
