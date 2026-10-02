@@ -753,5 +753,63 @@ void main() {
       expect(prompt, contains('没有明确待办或日程时返回[]'));
       expect(prompt, isNot(contains('{now}')));
     });
+
+    test('注入更多不覆盖明确的上个月效率范围', () {
+      final now = DateTime(2026, 10, 1, 12);
+      final timeLogs = [
+        for (var day in [7, 14, 21])
+          TimeLogItem(
+            id: 'last-month-log-$day',
+            title: '上月专注 $day 日',
+            startTime: DateTime(2026, 9, day, 9).millisecondsSinceEpoch,
+            endTime: DateTime(2026, 9, day, 10).millisecondsSinceEpoch,
+          ),
+        TimeLogItem(
+          id: 'future-log',
+          title: '未来专注记录',
+          startTime: DateTime(2026, 10, 5, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 5, 10).millisecondsSinceEpoch,
+        ),
+      ];
+      final planBlocks = [
+        for (var day in [7, 14, 21])
+          TodoPlanBlock(
+            id: 'last-month-plan-$day',
+            todoId: 'todo-$day',
+            titleSnapshot: '上月计划任务 $day 日',
+            startTime: DateTime(2026, 9, day, 9).millisecondsSinceEpoch,
+            endTime: DateTime(2026, 9, day, 10).millisecondsSinceEpoch,
+            plannedMinutes: 60,
+          ),
+        TodoPlanBlock(
+          id: 'future-plan',
+          todoId: 'todo-future',
+          titleSnapshot: '未来计划任务',
+          startTime: DateTime(2026, 10, 5, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 5, 10).millisecondsSinceEpoch,
+          plannedMinutes: 60,
+        ),
+      ];
+
+      String buildContext(String userMessage) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: userMessage,
+            courses: const [],
+            timeLogs: timeLogs,
+            planBlocks: planBlocks,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final regular = buildContext('分析我上个月的效率');
+      final expanded = buildContext('分析我上个月的效率，并扩大到未来30天范围');
+
+      expect(regular, contains('last-month-log-7'));
+      expect(regular, contains('last-month-plan-7'));
+      expect(regular, isNot(contains('future-log')));
+      expect(regular, isNot(contains('future-plan')));
+      expect(expanded, equals(regular));
+    });
   });
 }

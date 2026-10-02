@@ -1162,6 +1162,21 @@ ${sections.join('\n')}
     final explicit = _resolveExplicitDateRange(text);
     if (explicit != null) return explicit;
     final todayStart = DateTime(now.year, now.month, now.day);
+    final currentMonthStart = DateTime(now.year, now.month);
+    if (text.contains('上个月') || text.contains('上月')) {
+      return _DateRange(
+        label: '上个月',
+        start: DateTime(now.year, now.month - 1),
+        end: currentMonthStart,
+      );
+    }
+    if (text.contains('本月') || text.contains('这个月')) {
+      return _DateRange(
+        label: '本月',
+        start: currentMonthStart,
+        end: DateTime(now.year, now.month + 1),
+      );
+    }
     final futureDays = _parseFutureDays(text);
     if (futureDays != null) {
       return _DateRange(
@@ -1222,13 +1237,6 @@ ${sections.join('\n')}
         label: '本周',
         start: start,
         end: start.add(const Duration(days: 7)),
-      );
-    }
-    if (text.contains('本月') || text.contains('这个月')) {
-      return _DateRange(
-        label: '本月',
-        start: DateTime(now.year, now.month),
-        end: DateTime(now.year, now.month + 1),
       );
     }
     return null;
@@ -1389,6 +1397,13 @@ ${lines.isEmpty ? '暂无' : lines}''';
       );
     }
     final todayStart = DateTime(now.year, now.month, now.day);
+    if (text.contains('上个月') || text.contains('上月')) {
+      return _TimeLogPeriod(
+        label: '上个月',
+        start: DateTime(now.year, now.month - 1),
+        end: DateTime(now.year, now.month),
+      );
+    }
     if (text.contains('今天') || text.contains('今日')) {
       return _TimeLogPeriod(
         label: '今日',
