@@ -606,6 +606,7 @@ JSON操作块必须且只能使用以下协议：
           todos,
           userMessage: userMessage,
           now: nowValue,
+          priorityRange: focusRecordPriorityRange,
         ),
       );
     }
@@ -630,6 +631,7 @@ JSON操作块必须且只能使用以下协议：
             todos,
             userMessage: userMessage,
             now: nowValue,
+            priorityRange: focusRecordPriorityRange,
           ),
         );
       }
@@ -1581,6 +1583,7 @@ ${sections.join('\n')}
     List<Map<String, dynamic>> todos, {
     String? userMessage,
     DateTime? now,
+    AiContextDateRange? priorityRange,
   }) {
     final active = _scopePlanBlocksByTime(
       blocks,
@@ -1588,6 +1591,11 @@ ${sections.join('\n')}
       now: now,
     )..sort((a, b) => a.startTime.compareTo(b.startTime));
     if (active.isEmpty) return '待办规划: 暂无匹配时间范围的规划块';
+    final blocksToFormat = _limitPlanBlocks(
+      active,
+      limit: 60,
+      priorityRange: priorityRange,
+    );
 
     String todoTitle(String id) {
       final match = todos.where((t) => t['id']?.toString() == id).toList();
@@ -1596,12 +1604,46 @@ ${sections.join('\n')}
       return title == null || title.isEmpty ? id : title;
     }
 
-    return '待办规划（按时间范围筛选）:\n${active.take(60).map((b) {
+    final selectedRangeNotice = priorityRange == null ? '' : '，优先用户所选范围';
+    return '待办规划（按时间范围筛选，展示 ${blocksToFormat.length}/${active.length} 条$selectedRangeNotice）:\n${blocksToFormat.map((b) {
       final start = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(b.startTime));
       final end = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(b.endTime));
       final actualMinutes = b.actualFocusSeconds ~/ 60;
       return '- [ID: ${b.id}] 待办ID: ${b.todoId} | 标题: ${b.titleSnapshot ?? todoTitle(b.todoId)} | 时间: $start-$end | 计划: ${b.plannedMinutes}分钟 | 实际专注: $actualMinutes分钟 | 状态: ${b.status.name} | 提醒: 提前${b.reminderMinutes}分钟';
     }).join('\n')}';
+  }
+
+  static List<TodoPlanBlock> _limitPlanBlocks(
+    List<TodoPlanBlock> blocks, {
+    required int limit,
+    AiContextDateRange? priorityRange,
+  }) {
+    if (blocks.length <= limit || priorityRange == null) {
+      return blocks.take(limit).toList();
+    }
+
+    bool isInPriorityRange(TodoPlanBlock block) {
+      final start = DateTime.fromMillisecondsSinceEpoch(block.startTime);
+      final end = DateTime.fromMillisecondsSinceEpoch(block.endTime);
+      return _dateRangeOverlaps(
+        priorityRange.start,
+        priorityRange.endExclusive,
+        start,
+        end,
+      );
+    }
+
+    final selected = blocks.where(isInPriorityRange).take(limit).toList();
+    final remainingLimit = limit - selected.length;
+    if (remainingLimit > 0) {
+      selected.addAll(
+        blocks
+            .where((block) => !isInPriorityRange(block))
+            .take(remainingLimit),
+      );
+    }
+    selected.sort((left, right) => left.startTime.compareTo(right.startTime));
+    return selected;
   }
 
   static String _formatFixedSchedules(

@@ -1128,10 +1128,71 @@ void main() {
       )!;
 
       expect(
-        context.split('待办规划（按时间范围筛选）:').length - 1,
+        context.split('待办规划（按时间范围筛选').length - 1,
         1,
       );
       expect(preview.split('规划块').length - 1, 1);
+    });
+
+    test('注入更多优先保留自选未来范围内的计划块', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final customStart = DateTime(2026, 11, 15);
+      final customEnd = DateTime(2026, 11, 20);
+      final selectedRange = AiTodoContextBuilder.resolveCustomInjectionDateRange(
+        customStart: customStart,
+        customEnd: customEnd,
+        now: now,
+      )!;
+      final expandedQuery = AiTodoContextBuilder.buildContextQueryText(
+        userMessage: '分析我上个月的效率',
+        customStart: customStart,
+        customEnd: customEnd,
+        injectMoreContext: true,
+        now: now,
+      );
+      final planBlocks = [
+        for (var index = 0; index < 61; index++)
+          TodoPlanBlock(
+            id: 'expanded-plan-$index',
+            todoId: 'todo-$index',
+            titleSnapshot: '扩展期计划 $index',
+            startTime: DateTime(
+              2026,
+              10,
+              2 + index ~/ 3,
+              8 + (index % 3) * 2,
+            ).millisecondsSinceEpoch,
+            endTime: DateTime(
+              2026,
+              10,
+              2 + index ~/ 3,
+              9 + (index % 3) * 2,
+            ).millisecondsSinceEpoch,
+            plannedMinutes: 60,
+          ),
+        TodoPlanBlock(
+          id: 'selected-plan',
+          todoId: 'selected-todo',
+          titleSnapshot: '用户所选范围计划',
+          startTime: DateTime(2026, 11, 17, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 11, 17, 10).millisecondsSinceEpoch,
+          plannedMinutes: 60,
+        ),
+      ];
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: expandedQuery,
+        courses: const [],
+        timeLogs: const [],
+        planBlocks: planBlocks,
+        focusRecordPriorityRange: selectedRange,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(context, contains('selected-plan'));
+      expect(context, contains('展示 60/62 条，优先用户所选范围'));
     });
 
     test('上周效率只汇总上一自然周，不混入本周记录', () {
