@@ -1315,7 +1315,13 @@ class AiTodoActionExecutor {
         : (start != null && action.durationMinutes != null
             ? start.add(Duration(minutes: action.durationMinutes!))
             : (existing != null
-                ? DateTime.fromMillisecondsSinceEpoch(existing.endTime)
+                ? action.startTime != null && start != null
+                    ? start.add(
+                        Duration(
+                          milliseconds: existing.endTime - existing.startTime,
+                        ),
+                      )
+                    : DateTime.fromMillisecondsSinceEpoch(existing.endTime)
                 : null));
     if (start == null || end == null || !end.isAfter(start)) return null;
 
