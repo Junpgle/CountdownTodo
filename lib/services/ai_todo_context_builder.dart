@@ -865,10 +865,16 @@ ${sections.join('\n')}
           RegExp(r'^(?:率|情况|数量|进度|状态)').hasMatch(
             text.substring(index + trigger.length),
           );
+      final descriptiveStatus = RegExp(
+        r'(?:哪些|什么|需要|应该|尚未|未|待)\s*$',
+      ).hasMatch(prefix);
       final howToQuestion = RegExp(
         r'(?:为什么|怎么|如何|怎样|是否|能不能|可不可以)[^，。；！？,;]*$',
       ).hasMatch(prefix);
-      if (completedStatus || completionMetric || howToQuestion) {
+      if (completedStatus ||
+          completionMetric ||
+          descriptiveStatus ||
+          howToQuestion) {
         searchFrom = index + trigger.length;
         continue;
       }
@@ -1222,6 +1228,10 @@ ${sections.join('\n')}
   ];
   static const _focusMutationKeywords = [
     '补记',
+    '记录专注',
+    '记录这次专注',
+    '记录一下专注',
+    '记录我今天专注',
     '新增专注',
     '创建专注',
     '开始专注',

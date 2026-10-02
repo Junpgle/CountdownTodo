@@ -422,6 +422,7 @@ void main() {
       '分析我上个月的效率',
       '今天有哪些待办？',
       '有哪些已完成待办？',
+      '哪些任务需要删除？',
       '有哪些待办？不要删除其中一条',
       '分析最近效率，不要补记专注记录',
       '明天有哪些固定日程？',
@@ -459,5 +460,9 @@ void main() {
       '帮我补记一条专注记录',
     );
     expect(explicitFocusRequest, contains('create_time_log'));
+    final explicitFocusLog = AiTodoContextBuilder.buildActionProtocolPrompt(
+      '帮我记录这次专注25分钟',
+    );
+    expect(explicitFocusLog, contains('create_time_log'));
   });
 }
