@@ -44,6 +44,19 @@ class AiTodoContextBuilder {
   static final RegExp _relativeWeekPeriodPattern = RegExp(
     r'上上(?:周|星期|礼拜)|上(?:周|星期|礼拜)|本(?:周|星期|礼拜)|这(?:周|星期|礼拜)',
   );
+  static final RegExp _relativeQuarterPeriodPattern = RegExp(
+    r'上上(?:个)?季度|上(?:个)?季度|上一季度|前一季度|本季度|这个季度|当前季度|这季度|'
+    r'(?:(?:今年|去年)\s*|\d{4}\s*年\s*)?(?:第\s*)?[一二三四1-4]\s*季度',
+  );
+  static final RegExp _relativeYearPeriodPattern = RegExp(
+    r'(?:最近|过去|近)(?:一年|1年|12个月)|今年|去年|\d{4}\s*年',
+  );
+  static final RegExp _relativeYearQualifiedDatePattern = RegExp(
+    r'(?:今年|去年)\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*(?:日|号))?',
+  );
+  static final RegExp _relativeSingleDayPeriodPattern = RegExp(
+    r'大前天|大前日|前天|前日|昨天|昨日|今天|今日|明天|明日|大后天|大后日|后天|后日',
+  );
 
   static AiContextDateRange? resolveCustomInjectionDateRange({
     DateTime? customStart,
@@ -542,7 +555,7 @@ JSON操作块必须且只能使用以下协议：
     final nowValue = now ?? DateTime.now();
     if (_hasUnsupportedExplicitDate(userMessage, now: nowValue) ||
         _hasAmbiguousMonthPeriods(userMessage) ||
-        _hasAmbiguousRelativeDayPeriods(userMessage)) {
+        _hasMultipleRecognizedDatePeriods(userMessage)) {
       return null;
     }
     final sections = <String>[];
@@ -730,7 +743,7 @@ ${sections.join('\n')}
     final nowValue = now ?? DateTime.now();
     if (_hasUnsupportedExplicitDate(userMessage, now: nowValue) ||
         _hasAmbiguousMonthPeriods(userMessage) ||
-        _hasAmbiguousRelativeDayPeriods(userMessage)) {
+        _hasMultipleRecognizedDatePeriods(userMessage)) {
       return null;
     }
     final parts = <String>[];
@@ -2850,12 +2863,42 @@ ${lines.isEmpty ? '暂无' : lines}''';
     return monthPeriods + rollingMonthCount + explicitDays > 1;
   }
 
-  static bool _hasAmbiguousRelativeDayPeriods(String text) {
-    final recentDayPeriodCount = _relativeDayRangePattern.allMatches(text).length;
-    final relativeWeekPeriodCount = _relativeWeekPeriodPattern
-        .allMatches(text)
-        .length;
-    return recentDayPeriodCount + relativeWeekPeriodCount > 1;
+  static bool _hasMultipleRecognizedDatePeriods(String text) {
+    final spans = <(int, int)>[];
+    for (final pattern in [
+      _explicitIsoDateRangePattern,
+      _explicitChineseDateRangePattern,
+      _explicitIsoDatePattern,
+      _explicitChineseDatePattern,
+      _monthPeriodPattern,
+      _rollingMonthRangePattern,
+      _relativeDayRangePattern,
+      _relativeWeekPeriodPattern,
+      _relativeQuarterPeriodPattern,
+      _relativeYearPeriodPattern,
+      _relativeYearQualifiedDatePattern,
+      _relativeSingleDayPeriodPattern,
+    ]) {
+      spans.addAll(
+        pattern.allMatches(text).map((match) => (match.start, match.end)),
+      );
+    }
+    spans.sort((first, second) {
+      final startOrder = first.$1.compareTo(second.$1);
+      return startOrder != 0 ? startOrder : second.$2.compareTo(first.$2);
+    });
+
+    var distinctPeriods = 0;
+    var currentEnd = -1;
+    for (final span in spans) {
+      if (span.$1 >= currentEnd) {
+        distinctPeriods++;
+        currentEnd = span.$2;
+      } else if (span.$2 > currentEnd) {
+        currentEnd = span.$2;
+      }
+    }
+    return distinctPeriods > 1;
   }
 
   static int? _parseRollingMonthCount(String value) =>
