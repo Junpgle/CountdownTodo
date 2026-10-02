@@ -320,7 +320,7 @@ abstract final class FinanceStorage {
     FinanceTransaction transaction, {
     FinanceTransaction? original,
   }) async {
-    if (!_hasValidInstallmentFields(transaction)) {
+    if (!transaction.isDeleted && !_hasValidInstallmentFields(transaction)) {
       throw ArgumentError.value(
         transaction,
         'transaction',
@@ -384,6 +384,9 @@ abstract final class FinanceStorage {
           ..deviceId = existing.deviceId;
       } else if (original != null) {
         throw StateError('账单已不存在，请重新加载后再保存');
+      }
+      if (await _hasInstallmentIndexConflict(txn, transaction)) {
+        throw StateError('该分期组已存在相同期号的账单');
       }
       await _validateLoanInterestEdit(txn, transaction);
       await _validateTransactionRefundState(txn, transaction);
@@ -646,6 +649,12 @@ abstract final class FinanceStorage {
 
       for (final transaction in restorable) {
         transaction.isDeleted = false;
+        if (!_hasValidInstallmentFields(transaction)) {
+          throw StateError('分期记录无效，无法恢复整组分期');
+        }
+        if (await _hasInstallmentIndexConflict(txn, transaction)) {
+          throw StateError('同一期已存在账单，无法恢复整组分期');
+        }
         transaction.markAsChanged();
         await _validateLoanInterestEdit(txn, transaction);
         await _validateTransactionRefundState(txn, transaction);
@@ -2908,10 +2917,30 @@ abstract final class FinanceStorage {
       }
       pendingTransactions.add(item);
     }
+    final duplicateInstallmentKeys = _duplicateInstallmentIndexKeys(
+      pendingTransactions,
+    );
+    final skippedDuplicateInstallments = pendingTransactions.where((item) {
+      final key = _installmentIndexKey(item);
+      return !item.isDeleted &&
+          key != null &&
+          duplicateInstallmentKeys.contains(key);
+    }).length;
+    skipped += skippedDuplicateInstallments;
+    pendingTransactions.removeWhere((item) {
+      final key = _installmentIndexKey(item);
+      return !item.isDeleted &&
+          key != null &&
+          duplicateInstallmentKeys.contains(key);
+    });
     while (pendingTransactions.isNotEmpty) {
       final deferred = <FinanceTransaction>[];
       var applied = 0;
       for (final item in pendingTransactions) {
+        if (await _hasInstallmentIndexConflict(db, item)) {
+          skipped++;
+          continue;
+        }
         final existing = await _findByUuid(db, 'finance_transactions', item.uuid);
         if (existing != null &&
             item.updatedAt <= FinanceTransaction.fromMap(existing).updatedAt) {
@@ -3731,7 +3760,15 @@ abstract final class FinanceStorage {
   }) async {
     var changed = 0;
     final changedOriginalUuids = <String>{};
-    final orderedItems = [...items]
+    final duplicateInstallmentKeys = _duplicateInstallmentIndexKeys(items);
+    final orderedItems = items
+      .where((item) {
+        final key = _installmentIndexKey(item);
+        return item.isDeleted ||
+            key == null ||
+            !duplicateInstallmentKeys.contains(key);
+      })
+      .toList()
       ..sort((left, right) {
         // Create/restore originals before active refunds, but remove refunds
         // before deleting or changing the type of their originals.
@@ -3743,6 +3780,7 @@ abstract final class FinanceStorage {
       final deferred = <FinanceTransaction>[];
       final changedBeforeRound = changed;
       for (final item in pending) {
+        if (await _hasInstallmentIndexConflict(db, item)) continue;
         final existing = await _findByUuid(db, 'finance_transactions', item.uuid);
         if (existing != null) {
           final current = FinanceTransaction.fromMap(existing);
@@ -4084,7 +4122,7 @@ abstract final class FinanceStorage {
     return item.uuid.trim().isNotEmpty &&
         isSafeFinanceAmountMinor(item.amountMinor) &&
         item.amountMinor > 0 &&
-        _hasValidInstallmentFields(item) &&
+        (item.isDeleted || _hasValidInstallmentFields(item)) &&
         (item.installmentTotalMinor == null ||
             (isSafeFinanceAmountMinor(item.installmentTotalMinor!) &&
                 item.installmentTotalMinor! > 0)) &&
@@ -4108,7 +4146,7 @@ abstract final class FinanceStorage {
         index >= 1 &&
         count != null &&
         count >= FinanceInstallmentCalculator.minCount &&
-        count <= FinanceInstallmentCalculator.maxCount &&
+        count <= FinanceLoanCalculator.maxTermMonths &&
         index <= count &&
         (total == null ||
             (isSafeFinanceAmountMinor(total) &&
@@ -4116,6 +4154,8 @@ abstract final class FinanceStorage {
   }
 
   static bool _hasValidRawInstallmentFields(Map<String, dynamic> raw) {
+    final isDeleted = raw['is_deleted'] ?? raw['isDeleted'];
+    if (isDeleted == true || isDeleted == 1 || isDeleted == '1') return true;
     final groupValue =
         raw['installment_group_uuid'] ?? raw['installmentGroupUuid'];
     final indexValue = raw['installment_index'] ?? raw['installmentIndex'];
@@ -4137,7 +4177,7 @@ abstract final class FinanceStorage {
         index < 1 ||
         count == null ||
         count < FinanceInstallmentCalculator.minCount ||
-        count > FinanceInstallmentCalculator.maxCount ||
+        count > FinanceLoanCalculator.maxTermMonths ||
         index > count) {
       return false;
     }
@@ -4150,6 +4190,50 @@ abstract final class FinanceStorage {
     final total = _asInt(totalValue);
     final amount = _asInt(amountValue);
     return total > 0 && amount > 0 && total >= amount;
+  }
+
+  static String? _installmentIndexKey(FinanceTransaction item) {
+    if (!item.isInstallment) return null;
+    return '${item.installmentGroupUuid}\u0000${item.installmentIndex}';
+  }
+
+  static Set<String> _duplicateInstallmentIndexKeys(
+    Iterable<FinanceTransaction> items,
+  ) {
+    final uuidsByKey = <String, Set<String>>{};
+    for (final item in items) {
+      if (item.isDeleted) continue;
+      final key = _installmentIndexKey(item);
+      if (key == null) continue;
+      uuidsByKey.putIfAbsent(key, () => <String>{}).add(item.uuid);
+    }
+    return uuidsByKey.entries
+        .where((entry) => entry.value.length > 1)
+        .map((entry) => entry.key)
+        .toSet();
+  }
+
+  static Future<bool> _hasInstallmentIndexConflict(
+    DatabaseExecutor db,
+    FinanceTransaction item,
+  ) async {
+    final groupUuid = item.installmentGroupUuid;
+    final installmentIndex = item.installmentIndex;
+    if (item.isDeleted ||
+        !item.isInstallment ||
+        groupUuid == null ||
+        installmentIndex == null) {
+      return false;
+    }
+    final rows = await db.query(
+      'finance_transactions',
+      columns: ['uuid'],
+      where: 'installment_group_uuid = ? AND installment_index = ? '
+          'AND uuid != ? AND is_deleted = 0',
+      whereArgs: [groupUuid, installmentIndex, item.uuid],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
   }
 
   /// Linked refunds inherit classification from their original. Repair after

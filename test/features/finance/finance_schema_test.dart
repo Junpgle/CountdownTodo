@@ -138,7 +138,104 @@ void main() {
       expect(await FinanceStorage.getTransaction(transaction.uuid), isNull);
     });
 
+    test('本地保存和整组恢复都拒绝产生重复期号', () async {
+      final first = FinanceTransaction(
+        uuid: 'local-unique-installment-first',
+        amountMinor: 600,
+        transactionDate: '2026-09-20',
+        installmentGroupUuid: 'local-unique-installment-group',
+        installmentIndex: 1,
+        installmentCount: 2,
+        installmentTotalMinor: 1200,
+      );
+      await FinanceStorage.saveTransaction(first);
+      final duplicate = FinanceTransaction(
+        uuid: 'local-duplicate-installment-second',
+        amountMinor: 600,
+        transactionDate: '2026-09-20',
+        installmentGroupUuid: first.installmentGroupUuid,
+        installmentIndex: 1,
+        installmentCount: 2,
+        installmentTotalMinor: 1200,
+      );
+      await expectLater(
+        FinanceStorage.saveTransaction(duplicate),
+        throwsStateError,
+      );
+
+      const deletedGroup = 'deleted-duplicate-installment-group';
+      for (var index = 1; index <= 2; index++) {
+        await db.insert(
+          'finance_transactions',
+          FinanceTransaction(
+            uuid: 'deleted-duplicate-installment-$index',
+            amountMinor: 600,
+            transactionDate: '2026-09-20',
+            installmentGroupUuid: deletedGroup,
+            installmentIndex: 1,
+            installmentCount: 2,
+            isDeleted: true,
+          ).toMap(),
+        );
+      }
+      await expectLater(
+        FinanceStorage.restoreInstallmentGroup(deletedGroup),
+        throwsStateError,
+      );
+      expect(
+        (await FinanceStorage.getInstallmentGroup(
+          deletedGroup,
+          includeDeleted: true,
+        )).every((item) => item.isDeleted),
+        isTrue,
+      );
+    });
+
     for (final source in ['backup', 'remote']) {
+      test('$source 拒绝同组重复期号', () async {
+        final groupUuid = 'duplicate-$source-installment-group';
+        final transactions = [
+          for (var duplicate = 1; duplicate <= 2; duplicate++)
+            FinanceTransaction(
+              uuid: 'duplicate-$source-installment-$duplicate',
+              amountMinor: 600,
+              transactionDate: '2026-09-20',
+              installmentGroupUuid: groupUuid,
+              installmentIndex: 1,
+              installmentCount: 2,
+              installmentTotalMinor: 1200,
+            ).toMap(),
+        ];
+        Future<void> importTransactions(
+          List<Map<String, dynamic>> values,
+        ) async {
+          if (source == 'backup') {
+            await FinanceStorage.importBundle({'transactions': values});
+          } else {
+            await FinanceStorage.mergeRemoteBundle({'transactions': values});
+          }
+        }
+
+        await importTransactions(transactions);
+
+        expect(
+          await FinanceStorage.getInstallmentGroup(
+            groupUuid,
+            includeDeleted: true,
+          ),
+          isEmpty,
+        );
+
+        await importTransactions([transactions.first]);
+        await importTransactions([transactions.last]);
+        final group = await FinanceStorage.getInstallmentGroup(
+          groupUuid,
+          includeDeleted: true,
+        );
+        expect(group, hasLength(1));
+        expect(group.single.uuid, transactions.first['uuid']);
+      });
+
       test('$source 拒绝超过期数范围的分期记录', () async {
         final transaction = FinanceTransaction(
           uuid: 'out-of-range-$source-installment-index',
@@ -154,8 +251,8 @@ void main() {
           amountMinor: 600,
           transactionDate: '2026-09-20',
           installmentGroupUuid: 'valid-$source-installment-group',
-          installmentIndex: 2,
-          installmentCount: 2,
+          installmentIndex: FinanceLoanCalculator.maxTermMonths,
+          installmentCount: FinanceLoanCalculator.maxTermMonths,
         );
         final transactions = [
           transaction.toMap(),
