@@ -415,6 +415,27 @@ void main() {
       expect(reminderNames, contains('propose_finance_drafts'));
     });
 
+    test('效率分析只提供查询，明确补记才提供专注记录写工具', () {
+      final analysisTools =
+          AiNativeToolDefinitionBuilder.buildNativeToolDefinitions('分析我上个月的效率');
+      final makeUpTools =
+          AiNativeToolDefinitionBuilder.buildNativeToolDefinitions('补记昨天专注1小时');
+      final completedTodoAnalysisTools =
+          AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+            '分析已完成待办有多少',
+          );
+
+      expect(
+        analysisTools.map((tool) => (tool['function'] as Map)['name']).toSet(),
+        isEmpty,
+      );
+      expect(
+        AiNativeToolDefinitionBuilder.allowedCdtActionNames(makeUpTools),
+        contains('create_time_log'),
+      );
+      expect(completedTodoAnalysisTools, isEmpty);
+    });
+
     test('周期类型不明确时不向模型提供创建工具', () {
       final tools = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
         '每天跑步',

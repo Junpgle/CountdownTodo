@@ -322,6 +322,7 @@ class AiNativeToolDefinitionBuilder {
       '查询',
       '统计',
       '汇总',
+      '分析',
       '排行',
       '占比',
       '多少',
@@ -347,7 +348,7 @@ class AiNativeToolDefinitionBuilder {
     final isReadOnlyQuery =
         _matchesAny(message, readOnlyWords) &&
         !_matchesAny(message, writeWords);
-    final hasOnlyNegatedWriteIntent =
+    final hasNoPositiveWriteIntent =
         _matchesAny(message, writeWords) &&
         !writeWords.any((word) => _isExplicitlyRequested(message, word));
     final isTodoCategorizationRequest =
@@ -382,7 +383,7 @@ class AiNativeToolDefinitionBuilder {
         isOnlyInformation ||
             isGenericFallback ||
             isReadOnlyQuery ||
-            hasOnlyNegatedWriteIntent
+            hasNoPositiveWriteIntent
         ? <String>[]
         : isTodoCategorizationRequest &&
               protocolActionNames.contains('categorize_todo')
@@ -771,6 +772,12 @@ class AiNativeToolDefinitionBuilder {
       final prefix = text
           .substring(clauseStart, index)
           .replaceAll(RegExp(r'(?:别|不要)忘(?:了|记)?'), '');
+      final completedStatus =
+          trigger == '完成' && RegExp(r'(?:已|已经|已被|已经被)\s*$').hasMatch(prefix);
+      if (completedStatus) {
+        searchFrom = index + trigger.length;
+        continue;
+      }
       final negations = RegExp(r'不|别|无需|禁止|避免').allMatches(prefix).toList();
       final contrasts = RegExp(r'但是|不过|但|而是').allMatches(prefix).toList();
       final isNegated =
