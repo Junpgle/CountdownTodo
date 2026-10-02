@@ -338,6 +338,25 @@ void main() {
     );
   });
 
+  test('单笔账单中的原价优惠和实付金额不会拆成多笔', () {
+    final drafts = FinanceTextParser.parseQuickEntries(
+      '今天午餐原价 30 元，优惠 5 元，实付 25 元',
+      now: fixedNow,
+    );
+
+    expect(drafts, hasLength(1));
+    expect(drafts.single.amountMinor, 2500);
+    expect(drafts.single.categoryName, '午餐');
+
+    final incomeDrafts = FinanceTextParser.parseQuickEntries(
+      '今天工资应发 1000 元，实收 980 元',
+      now: fixedNow,
+    );
+    expect(incomeDrafts, hasLength(1));
+    expect(incomeDrafts.single.type, FinanceTransactionType.income);
+    expect(incomeDrafts.single.amountMinor, 98000);
+  });
+
   test('逗号分隔字段时保留每笔账单的分类和付款方式', () {
     final drafts = FinanceTextParser.parseQuickEntries(
       '今天早餐，8元，微信；中午午餐，25元，支付宝',

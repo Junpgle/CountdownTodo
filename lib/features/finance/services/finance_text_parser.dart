@@ -635,7 +635,8 @@ abstract final class FinanceTextParser {
           amountMatch != null &&
           current.trim().isNotEmpty &&
           _findSentenceAmountMatch(current) != null &&
-          clause.substring(0, amountMatch.start).trim().isNotEmpty;
+          clause.substring(0, amountMatch.start).trim().isNotEmpty &&
+          !_isAmountClarificationClause(clause);
       if (startsEntry && current.trim().isNotEmpty) {
         groups.add(current.trim());
         current = clause;
@@ -648,6 +649,11 @@ abstract final class FinanceTextParser {
     if (current.trim().isNotEmpty) groups.add(current.trim());
     return groups.length > 1 ? groups : [text];
   }
+
+  static bool _isAmountClarificationClause(String value) => RegExp(
+    r'^(?:原价|优惠|折扣|减免|立减|满减|实付|实际支付|实际付款|现付|'
+    r'实收|实际收款|实际到账|到账|到手|省下|抵扣)',
+  ).hasMatch(value.trim());
 
   static Map<String, String> _parseFields(String block) {
     final fields = <String, String>{};
@@ -784,6 +790,12 @@ abstract final class FinanceTextParser {
 
   static RegExpMatch? _findSentenceAmountMatch(String text) {
     final patterns = [
+      RegExp(
+        r'(?:实际支付|实际付款|实付|现付|净付|实际收款|实收金额|实收|实际到账|到账|到手)'
+        r'\s*[:=]?\s*(?:¥|￥)?\s*'
+        r'(\d+(?:[,.]\d+)*)(?=\s*(?:元|块钱?|人民币|CNY|RMB|[,，。；;]|$))',
+        caseSensitive: false,
+      ),
       RegExp(r'(?:¥|￥)\s*(\d+(?:[,.]\d+)*)', caseSensitive: false),
       RegExp(
         r'(\d+(?:[,.]\d+)*)\s*(?:元|块钱?|人民币|CNY|RMB)(?![A-Za-z])',
@@ -957,6 +969,16 @@ abstract final class FinanceTextParser {
       value = _removeSentenceDate(value);
       value = value.replaceAll(
         RegExp(
+          r'(?:原价|优惠|折扣|减免|立减|满减|实付|实际支付|实际付款|现付|'
+          r'实收|实际收款|实际到账|到账|到手|省下|抵扣)\s*[:=]?\s*'
+          r'(?:¥|￥)?\s*\d+(?:[,.]\d+)*\s*'
+          r'(?:元|块钱?|人民币|CNY|RMB)?',
+          caseSensitive: false,
+        ),
+        '',
+      );
+      value = value.replaceAll(
+        RegExp(
           r'记一笔|记账|记录|一共|合计|实付|金额|支出|收入|退款|消费|花(?:了|费)?|'
           r'用了?|支付了?|付款了?|付了|买了?|购买了?|收到|入账|进账|收款|赚到?|'
           r'用于|在|于|给|为',
@@ -1100,6 +1122,9 @@ abstract final class FinanceTextParser {
         value.contains('收款') ||
         value.contains('收到') ||
         value.contains('到账') ||
+        value.contains('实收') ||
+        value.contains('实际收款') ||
+        value.contains('到手') ||
         value.contains('赚到') ||
         value.contains('income') ||
         value.contains('入账')) {
