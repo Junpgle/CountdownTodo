@@ -385,4 +385,62 @@ void main() {
     expect(context, contains('整体: 额度 ¥100.00 | 已用 ¥50.00 | 剩余 ¥50.00'));
     expect(context, contains('净支出 ¥60.00'));
   });
+
+  test('财务 AI 前后相对日查询使用单日范围', () {
+    final now = DateTime(2026, 10, 2, 12);
+    final cases = [
+      ('大前天', '2026-09-29'),
+      ('前天', '2026-09-30'),
+      ('昨天', '2026-10-01'),
+      ('今天', '2026-10-02'),
+      ('明天', '2026-10-03'),
+      ('后天', '2026-10-04'),
+      ('大后天', '2026-10-05'),
+    ];
+
+    for (final (phrase, expectedDay) in cases) {
+      final range = FinanceAiContextService.resolveDateRange(
+        '$phrase支出',
+        now: now,
+      );
+      final expectedEnd = financeCalendarDayOffset(
+        DateTime.parse(expectedDay),
+        1,
+      );
+      expect(dateKey(range.from), expectedDay, reason: phrase);
+      expect(dateKey(range.to), dateKey(expectedEnd), reason: phrase);
+    }
+
+    final followUp = FinanceAiContextService.buildContextInjectionSummary(
+      userMessage: '明天呢',
+      conversationContext: '查看记账支出情况',
+      previousUserMessage: '上个月支出多少',
+      now: now,
+    );
+    expect(followUp, '记账明细 2026-10-03 至 2026-10-03');
+  });
+
+  test('财务 AI 上上期查询不会匹配上一期', () {
+    final now = DateTime(2026, 10, 2, 12);
+    final cases = [
+      ('上上周', '2026-09-14', '2026-09-21'),
+      ('上上星期', '2026-09-14', '2026-09-21'),
+      ('上上个星期', '2026-09-14', '2026-09-21'),
+      ('上上礼拜', '2026-09-14', '2026-09-21'),
+      ('上上个礼拜', '2026-09-14', '2026-09-21'),
+      ('上上个月', '2026-08-01', '2026-09-01'),
+      ('上上月', '2026-08-01', '2026-09-01'),
+      ('上上季度', '2026-04-01', '2026-07-01'),
+      ('上上个季度', '2026-04-01', '2026-07-01'),
+    ];
+
+    for (final (phrase, expectedFrom, expectedTo) in cases) {
+      final range = FinanceAiContextService.resolveDateRange(
+        '$phrase支出',
+        now: now,
+      );
+      expect(dateKey(range.from), expectedFrom, reason: phrase);
+      expect(dateKey(range.to), expectedTo, reason: phrase);
+    }
+  });
 }

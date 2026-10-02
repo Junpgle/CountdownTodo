@@ -151,8 +151,33 @@ abstract final class FinanceAiContextService {
     '这周',
     '今天',
     '今日',
+    'today',
     '昨天',
+    '昨日',
+    'yesterday',
     '前天',
+    '前日',
+    '大前天',
+    '大前日',
+    '明天',
+    '明日',
+    'tomorrow',
+    '后天',
+    '后日',
+    '大后天',
+    '大后日',
+    '上上周',
+    '上上星期',
+    '上上个星期',
+    '上上礼拜',
+    '上上个礼拜',
+    '上周',
+    '上星期',
+    '上礼拜',
+    '上上月',
+    '上上个月',
+    '上上季度',
+    '上上个季度',
     '上月',
     '上个月',
     '这一个月',
@@ -541,18 +566,38 @@ abstract final class FinanceAiContextService {
         financeCalendarDayOffset(explicitDate, 1),
       );
     }
-    if (text.contains('前天')) {
-      final day = financeCalendarDayOffset(current, -2);
+    FinanceDateRange relativeDayRange(int offset) {
+      final day = financeCalendarDayOffset(current, offset);
       return FinanceDateRange(day, financeCalendarDayOffset(day, 1));
     }
-    if (text.contains('昨天') || text.contains('yesterday')) {
-      final day = financeCalendarDayOffset(current, -1);
-      return FinanceDateRange(day, financeCalendarDayOffset(day, 1));
+
+    if (_containsAny(text, ['大前天', '大前日'])) {
+      return relativeDayRange(-3);
     }
-    if (text.contains('今天') || text.contains('今日') || text.contains('today')) {
-      return FinanceDateRange(current, financeCalendarDayOffset(current, 1));
+    if (_containsAny(text, ['前天', '前日'])) {
+      return relativeDayRange(-2);
     }
-    if (text.contains('上周') || text.contains('上星期')) {
+    if (_containsAny(text, ['昨天', '昨日', 'yesterday'])) {
+      return relativeDayRange(-1);
+    }
+    if (_containsAny(text, ['今天', '今日', 'today'])) {
+      return relativeDayRange(0);
+    }
+    if (_containsAny(text, ['大后天', '大后日'])) {
+      return relativeDayRange(3);
+    }
+    if (_containsAny(text, ['后天', '后日'])) {
+      return relativeDayRange(2);
+    }
+    if (_containsAny(text, ['明天', '明日', 'tomorrow'])) {
+      return relativeDayRange(1);
+    }
+    if (_containsAny(text, ['上上周', '上上星期', '上上个星期', '上上礼拜', '上上个礼拜'])) {
+      final thisMonday = _mondayOf(current);
+      final end = financeCalendarDayOffset(thisMonday, -7);
+      return FinanceDateRange(financeCalendarDayOffset(end, -7), end);
+    }
+    if (_containsAny(text, ['上周', '上星期', '上礼拜'])) {
       final thisMonday = _mondayOf(current);
       final from = financeCalendarDayOffset(thisMonday, -7);
       return FinanceDateRange(from, thisMonday);
@@ -581,6 +626,17 @@ abstract final class FinanceAiContextService {
     if (explicitMonth != null) return explicitMonth;
     final currentQuarterMonth = ((current.month - 1) ~/ 3) * 3 + 1;
     final currentQuarterStart = DateTime(current.year, currentQuarterMonth);
+    if (_containsAny(text, ['上上季度', '上上个季度'])) {
+      final end = DateTime(
+        currentQuarterStart.year,
+        currentQuarterStart.month - 3,
+      );
+      final from = DateTime(
+        currentQuarterStart.year,
+        currentQuarterStart.month - 6,
+      );
+      return FinanceDateRange(from, end);
+    }
     if (_containsAny(text, [
       '上季度',
       '上个季度',
@@ -608,6 +664,10 @@ abstract final class FinanceAiContextService {
         text.contains('前一年')) {
       final from = DateTime(current.year - 1);
       return FinanceDateRange(from, DateTime(current.year));
+    }
+    if (_containsAny(text, ['上上月', '上上个月'])) {
+      final from = DateTime(current.year, current.month - 2);
+      return FinanceDateRange(from, DateTime(current.year, current.month - 1));
     }
     if (text.contains('上月') || text.contains('上个月')) {
       final from = DateTime(current.year, current.month - 1);
