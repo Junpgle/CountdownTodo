@@ -155,4 +155,72 @@ void main() {
     FinanceAutomationService.cancelScheduledAutoGeneration();
     expect(tester.takeException(), isNull);
   });
+
+  test('自动生成多次写入失败后仍会重试当前周期', () async {
+    SharedPreferences.setMockInitialValues({});
+    final db = await (() async {
+      final opened = await databaseFactoryFfi.openDatabase(
+        inMemoryDatabasePath,
+        options: OpenDatabaseOptions(singleInstance: false),
+      );
+      await DatabaseHelper.ensureFinanceSchema(opened);
+      FinanceStorage.databaseOverride = opened;
+      await FinanceStorage.ensureReady();
+      await AppSettingsStorage.setFinanceBudgetAlertEnabled(false);
+      await FinanceStorage.saveRecurringRule(
+        FinanceRecurringRule(
+          uuid: 'retry-auto-rule',
+          name: '反复失败房租',
+          amountMinor: 250000,
+          dayOfMonth: 15,
+          startDate: '2026-01-01',
+        ),
+      );
+      await opened.execute('''
+        CREATE TRIGGER fail_auto_generation
+        BEFORE INSERT ON finance_transactions
+        WHEN NEW.source = 'automation'
+        BEGIN
+          SELECT RAISE(ABORT, 'forced auto-generation failure');
+        END
+      ''');
+      return opened;
+    })();
+    addTearDown(() async {
+      FinanceAutomationService.cancelScheduledAutoGeneration();
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+
+    var clockNow = DateTime(2026, 9, 15, 9, 1);
+    final rules = await FinanceStorage.getRecurringRules(enabledOnly: true);
+    FinanceAutomationService.scheduleAutoGenerationForRules(
+      rules,
+      now: DateTime(2026, 9, 15, 8, 59, 59, 999),
+      clock: () => clockNow,
+      retryBaseDelay: const Duration(milliseconds: 100),
+    );
+
+    // Allow the initial attempt and its 1/2/4x retries to fail. The exhausted
+    // retry is delayed long enough to remove the simulated database failure.
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    expect(
+      await db.query(
+        'finance_transactions',
+        where: 'source = ?',
+        whereArgs: [FinanceEntrySource.automation.name],
+      ),
+      isEmpty,
+    );
+
+    await db.execute('DROP TRIGGER fail_auto_generation');
+    await Future<void>.delayed(const Duration(seconds: 2));
+    final rows = await db.query(
+      'finance_transactions',
+      where: 'source = ? AND transaction_date = ?',
+      whereArgs: [FinanceEntrySource.automation.name, '2026-09-15'],
+    );
+    expect(rows, hasLength(1));
+    expect(rows.single['merchant'], '反复失败房租');
+  });
 }

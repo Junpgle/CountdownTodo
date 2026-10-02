@@ -155,6 +155,7 @@ abstract final class FinanceAutomationService {
     Iterable<FinanceRecurringRule> rules, {
     required DateTime now,
     DateTime Function()? clock,
+    Duration retryBaseDelay = const Duration(minutes: 1),
   }) {
     final revision = ++_autoGenerationTimerRevision;
     _autoGenerationTimer?.cancel();
@@ -164,12 +165,16 @@ abstract final class FinanceAutomationService {
 
     final delayMs =
         (dueAt.millisecondsSinceEpoch - now.millisecondsSinceEpoch + 1)
-        .clamp(1, const Duration(days: 24).inMilliseconds)
-        .toInt();
+            .clamp(1, const Duration(days: 24).inMilliseconds)
+            .toInt();
     _autoGenerationTimer = Timer(Duration(milliseconds: delayMs), () {
       _autoGenerationTimer = null;
       if (revision != _autoGenerationTimerRevision) return;
-      unawaited(_runScheduledAutoGeneration(revision, clock: clock));
+      unawaited(_runScheduledAutoGeneration(
+        revision,
+        clock: clock,
+        retryBaseDelay: retryBaseDelay,
+      ));
     });
   }
 
@@ -181,10 +186,11 @@ abstract final class FinanceAutomationService {
 
   static void _scheduleAutoGenerationRetry({
     DateTime Function()? clock,
+    Duration delay = const Duration(minutes: 1),
   }) {
     final revision = ++_autoGenerationTimerRevision;
     _autoGenerationTimer?.cancel();
-    _autoGenerationTimer = Timer(const Duration(minutes: 1), () {
+    _autoGenerationTimer = Timer(delay, () {
       _autoGenerationTimer = null;
       if (revision != _autoGenerationTimerRevision) return;
       unawaited(resumeAutoGenerationSchedule(clock: clock));
@@ -195,6 +201,7 @@ abstract final class FinanceAutomationService {
     int revision, {
     DateTime Function()? clock,
     int retryAttempt = 0,
+    Duration retryBaseDelay = const Duration(minutes: 1),
   }) async {
     try {
       await reconcileCurrentPeriod(now: clock?.call());
@@ -202,21 +209,28 @@ abstract final class FinanceAutomationService {
       if (revision != _autoGenerationTimerRevision) return;
       if (retryAttempt < 3) {
         _autoGenerationTimer = Timer(
-          Duration(minutes: 1 << retryAttempt),
+          retryBaseDelay * (1 << retryAttempt),
           () {
             _autoGenerationTimer = null;
             if (revision != _autoGenerationTimerRevision) return;
-            unawaited(
-              _runScheduledAutoGeneration(
-                revision,
-                clock: clock,
-                retryAttempt: retryAttempt + 1,
-              ),
-            );
+            unawaited(_runScheduledAutoGeneration(
+              revision,
+              clock: clock,
+              retryAttempt: retryAttempt + 1,
+              retryBaseDelay: retryBaseDelay,
+            ));
           },
         );
         return;
       }
+      // Keep the current due period pending after transient failures. Scheduling
+      // only the next future due here would otherwise skip this period until
+      // the app is opened again.
+      _scheduleAutoGenerationRetry(
+        clock: clock,
+        delay: retryBaseDelay * 15,
+      );
+      return;
     }
     if (revision != _autoGenerationTimerRevision) return;
     await scheduleNextAutoGeneration(now: clock?.call(), clock: clock);
