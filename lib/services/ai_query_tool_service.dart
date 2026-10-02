@@ -118,7 +118,7 @@ class AiQueryToolService {
   static List<Map<String, dynamic>> buildDefinitions() => [
     _tool(
       'query_finance',
-      '统计收支用summary，无账单明细；列表用transactions，默认10条，不返回长备注；读单笔完整详情及备注用transaction_id。账户当前余额用balances，按最近有效快照和后续流水计算；没有快照时明确返回未知。也可查询分类/付款方式catalog及budgets。金额为人民币分。summary和transactions必须提供日期；分页不影响完整汇总，未来账单不计入已发生收支。',
+      '统计收支用summary，无账单明细；列表用transactions，默认10条，不返回长备注；读单笔完整详情及备注用transaction_id。账户当前余额用balances，按最近有效快照和后续流水计算；没有快照时明确返回未知。也可查询分类/付款方式catalog及budgets。金额为人民币分。summary、transactions和budgets必须提供日期范围；单笔transactions提供transaction_id可不提供日期；catalog和balances不接受日期。分页不影响完整汇总，未来账单不计入已发生收支。',
       {
         'view': {
           'type': 'string',

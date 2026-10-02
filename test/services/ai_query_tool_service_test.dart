@@ -48,6 +48,18 @@ void main() {
     expect(view['enum'], contains('balances'));
   });
 
+  test('财务工具说明覆盖各视图的日期参数边界', () {
+    final financeDefinition = AiQueryToolService.buildDefinitions().firstWhere(
+      (tool) => (tool['function'] as Map)['name'] == 'query_finance',
+    );
+    final description =
+        ((financeDefinition['function'] as Map)['description'] as String);
+
+    expect(description, contains('summary、transactions和budgets必须提供日期范围'));
+    expect(description, contains('transaction_id可不提供日期'));
+    expect(description, contains('catalog和balances不接受日期'));
+  });
+
   test('余额查询从快照扣除后续流水和贷款还款，无快照时保持未知', () async {
     final asOf = DateTime(2026, 10, 2, 12);
     final snapshotAt = DateTime(2026, 10, 2, 9).millisecondsSinceEpoch;
