@@ -1370,6 +1370,53 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('记账概览月份箭头遵守日期选择器范围', (tester) async {
+    Future<void> pumpMonth(DateTime month) => _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: month,
+          summary: const FinanceSummary(),
+          transactions: const [],
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    await pumpMonth(DateTime(2000));
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const ValueKey('finance-overview-period-previous')),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const ValueKey('finance-overview-period-next')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+
+    final lastAllowedDate = DateTime.now().add(const Duration(days: 3650));
+    await pumpMonth(DateTime(lastAllowedDate.year, lastAllowedDate.month));
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const ValueKey('finance-overview-period-next')),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('历史月份的小结和分类空状态显示所选月份', (tester) async {
     final now = DateTime.now();
     final selectedMonth = DateTime(now.year, now.month - 1);

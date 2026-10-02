@@ -330,7 +330,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     final canShiftNext = _canShiftFocusedPeriod(1);
     final VoidCallback? previousAction;
     if (isMonthView) {
-      previousAction = () => _shiftMonth(-1);
+      previousAction = canShiftPrevious ? () => _shiftMonth(-1) : null;
     } else if (canShiftPrevious) {
       previousAction = () => _shiftFocusedPeriod(-1);
     } else {
@@ -338,7 +338,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     }
     final VoidCallback? nextAction;
     if (isMonthView) {
-      nextAction = () => _shiftMonth(1);
+      nextAction = canShiftNext ? () => _shiftMonth(1) : null;
     } else if (canShiftNext) {
       nextAction = () => _shiftFocusedPeriod(1);
     } else {
@@ -415,6 +415,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   }
 
   void _shiftMonth(int delta) {
+    if (!_canShiftFocusedPeriod(delta)) return;
     onMonthChanged?.call(DateTime(month.year, month.month + delta));
   }
 
@@ -464,7 +465,15 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   }
 
   bool _canShiftFocusedPeriod(int delta) {
-    if (_view == _FinanceOverviewView.month) return true;
+    if (_view == _FinanceOverviewView.month) {
+      final nextMonth = DateTime(month.year, month.month + delta);
+      final firstAllowedMonth = DateTime(2000);
+      final lastAllowedDate = DateTime.now().add(const Duration(days: 3650));
+      final lastAllowedMonth =
+          DateTime(lastAllowedDate.year, lastAllowedDate.month);
+      return !nextMonth.isBefore(firstAllowedMonth) &&
+          !nextMonth.isAfter(lastAllowedMonth);
+    }
     final days = _view == _FinanceOverviewView.week ? delta * 7 : delta;
     final next = _clampToSelectedMonth(
       financeCalendarDayOffset(_focusedDate, days),
