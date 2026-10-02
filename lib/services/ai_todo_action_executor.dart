@@ -923,6 +923,18 @@ class AiTodoActionExecutor {
       nextEnd = DateTime.fromMillisecondsSinceEpoch(nextStart)
           .add(Duration(minutes: action.durationMinutes!))
           .millisecondsSinceEpoch;
+    } else if (action.hasStartTime) {
+      if (suppliedStart != null &&
+          existing.startTime != null &&
+          existing.endTime != null) {
+        nextEnd = suppliedStart
+            .add(
+              Duration(
+                milliseconds: existing.endTime! - existing.startTime!,
+              ),
+            )
+            .millisecondsSinceEpoch;
+      }
     } else if (action.hasDate && oldDate != null && existing.endTime != null) {
       nextEnd = _moveEpochToDate(existing.endTime!, nextDate);
     }
