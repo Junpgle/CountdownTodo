@@ -623,7 +623,7 @@ JSON操作块必须且只能使用以下协议：
           priorityRange: focusRecordPriorityRange,
         ),
       );
-      if (planBlocks.isNotEmpty) {
+      if (planBlocks.isNotEmpty && !injectPlanContext) {
         sections.add(
           _formatPlanBlocks(
             planBlocks,
@@ -830,8 +830,13 @@ ${sections.join('\n')}
             : recordLimit;
         parts.add('明细$displayedCount/$focusRecordCount条');
       }
-      if (planBlocks.isNotEmpty) {
-        parts.add('规划块');
+      if (planBlocks.isNotEmpty && !injectPlanContext) {
+        final scoped = _scopePlanBlocksByTime(
+          planBlocks,
+          userMessage: userMessage,
+          now: nowValue,
+        );
+        parts.add('规划块${scoped.length}个');
       }
     }
 

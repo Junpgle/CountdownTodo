@@ -1097,6 +1097,43 @@ void main() {
       expect(preview, contains('明细60/61条'));
     });
 
+    test('效率和时间块共享一份计划块上下文', () {
+      final planBlocks = [
+        TodoPlanBlock(
+          id: 'monthly-plan-block',
+          todoId: 'todo-1',
+          titleSnapshot: '月度计划',
+          startTime: DateTime(2026, 9, 15, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 15, 10).millisecondsSinceEpoch,
+          plannedMinutes: 60,
+        ),
+      ];
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析上个月的效率并查看时间块',
+        courses: const [],
+        timeLogs: const [],
+        planBlocks: planBlocks,
+        conflicts: const [],
+        teams: const [],
+        now: DateTime(2026, 10, 2, 12),
+      )!;
+      final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析上个月的效率并查看时间块',
+        courses: const [],
+        timeLogs: const [],
+        planBlocks: planBlocks,
+        conflicts: const [],
+        teams: const [],
+        now: DateTime(2026, 10, 2, 12),
+      )!;
+
+      expect(
+        context.split('待办规划（按时间范围筛选）:').length - 1,
+        1,
+      );
+      expect(preview.split('规划块').length - 1, 1);
+    });
+
     test('上周效率只汇总上一自然周，不混入本周记录', () {
       final now = DateTime(2026, 10, 2, 12);
       final timeLogs = [
