@@ -21,6 +21,11 @@ class AiTodoContextBuilder {
   static final RegExp _explicitChineseDatePattern = RegExp(
     r'(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)',
   );
+  static final RegExp _monthPeriodPattern = RegExp(
+    r'(?:(?:\d{4}\s*年|今年|去年)\s*)?(?:0?[1-9]|1[0-2])\s*月(?:份)?'
+    r'(?!\s*(?:\d{1,2}\s*(?:日|号)|个))|'
+    r'上上个月|上上月|上个月|上月|本月|这个月',
+  );
 
   static AiContextDateRange? resolveCustomInjectionDateRange({
     DateTime? customStart,
@@ -81,6 +86,7 @@ class AiTodoContextBuilder {
           .replaceAll(_explicitIsoDatePattern, '')
           .replaceAll(_explicitChineseDateRangePattern, '')
           .replaceAll(_explicitChineseDatePattern, '')
+          .replaceAll(_monthPeriodPattern, '')
           .trim();
       final rangeInstruction = '使用自定义注入范围 $start 至 $end';
       return queryText.isEmpty
@@ -515,7 +521,10 @@ JSON操作块必须且只能使用以下协议：
     DateTime? now,
   }) {
     final nowValue = now ?? DateTime.now();
-    if (_hasUnsupportedExplicitDate(userMessage, now: nowValue)) return null;
+    if (_hasUnsupportedExplicitDate(userMessage, now: nowValue) ||
+        _hasAmbiguousMonthPeriods(userMessage)) {
+      return null;
+    }
     final sections = <String>[];
     final injectCourseContext =
         _shouldInjectCourseContext(userMessage) ||
@@ -699,7 +708,10 @@ ${sections.join('\n')}
     DateTime? now,
   }) {
     final nowValue = now ?? DateTime.now();
-    if (_hasUnsupportedExplicitDate(userMessage, now: nowValue)) return null;
+    if (_hasUnsupportedExplicitDate(userMessage, now: nowValue) ||
+        _hasAmbiguousMonthPeriods(userMessage)) {
+      return null;
+    }
     final parts = <String>[];
     final injectCourseContext =
         _shouldInjectCourseContext(userMessage) ||
@@ -2713,6 +2725,18 @@ ${lines.isEmpty ? '暂无' : lines}''';
     return standaloneIsoDates.any(
       (match) => _parseStrictIsoDate(match.group(1)!) == null,
     );
+  }
+
+  static bool _hasAmbiguousMonthPeriods(String text) {
+    final monthPeriods = _monthPeriodPattern.allMatches(text).length;
+    if (_explicitIsoDateRangePattern.hasMatch(text) ||
+        _explicitChineseDateRangePattern.hasMatch(text)) {
+      return monthPeriods > 0;
+    }
+    final explicitDays =
+        _explicitIsoDatePattern.allMatches(text).length +
+        _explicitChineseDatePattern.allMatches(text).length;
+    return monthPeriods + explicitDays > 1;
   }
 
   static DateTime? _parseStrictIsoDate(String value) {

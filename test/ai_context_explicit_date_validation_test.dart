@@ -198,6 +198,49 @@ void main() {
     expect(context, isNot(contains('june-log')));
   });
 
+  test('selected custom range overrides month periods in the prompt', () {
+    final customStart = DateTime(2026, 8, 1);
+    final customEnd = DateTime(2026, 8, 31);
+    final contextQuery = AiTodoContextBuilder.buildContextQueryText(
+      userMessage: '比较2026年6月和2026年7月的效率',
+      customStart: customStart,
+      customEnd: customEnd,
+      now: DateTime(2026, 10, 2, 12),
+    );
+    final augustStart = DateTime(2026, 8, 15, 9);
+    final context = AiTodoContextBuilder.buildContextInjection(
+      userMessage: contextQuery,
+      courses: const [],
+      timeLogs: [
+        for (final month in [6, 7])
+          TimeLogItem(
+            id: 'month-$month-log',
+            title: '$month 月记录',
+            startTime: DateTime(2026, month, 15, 9).millisecondsSinceEpoch,
+            endTime: DateTime(2026, month, 15, 9, 30).millisecondsSinceEpoch,
+          ),
+        TimeLogItem(
+          id: 'august-log',
+          title: '八月记录',
+          startTime: augustStart.millisecondsSinceEpoch,
+          endTime: augustStart
+              .add(const Duration(minutes: 30))
+              .millisecondsSinceEpoch,
+        ),
+      ],
+      conflicts: const [],
+      teams: const [],
+      now: DateTime(2026, 10, 2, 12),
+    );
+
+    expect(contextQuery, contains('自定义注入范围 2026-08-01 至 2026-08-31'));
+    expect(contextQuery, isNot(contains('2026年6月')));
+    expect(contextQuery, isNot(contains('2026年7月')));
+    expect(context, contains('august-log'));
+    expect(context, isNot(contains('month-6-log')));
+    expect(context, isNot(contains('month-7-log')));
+  });
+
   test('Chinese explicit date ranges include both endpoints', () {
     final juneStart = DateTime(2026, 6, 15, 9);
     final juneEnd = DateTime(2026, 6, 30, 23, 30);
@@ -260,6 +303,58 @@ void main() {
       for (final userMessage in [
         '分析2026年6月31日至2026年7月5日的效率',
         '分析2026年7月5日至2026年6月30日的效率',
+      ]) {
+        final context = AiTodoContextBuilder.buildContextInjection(
+          userMessage: userMessage,
+          courses: const [],
+          timeLogs: timeLogs,
+          conflicts: const [],
+          teams: const [],
+          now: DateTime(2026, 10, 2, 12),
+        );
+        final summary = AiTodoContextBuilder.buildContextInjectionSummary(
+          userMessage: userMessage,
+          courses: const [],
+          timeLogs: timeLogs,
+          conflicts: const [],
+          teams: const [],
+          now: DateTime(2026, 10, 2, 12),
+        );
+
+        expect(context, isNull, reason: userMessage);
+        expect(summary, isNull, reason: userMessage);
+      }
+    },
+  );
+
+  test(
+    'comparison of explicit Chinese months does not inject only one month',
+    () {
+      final juneStart = DateTime(2026, 6, 15, 9);
+      final julyStart = DateTime(2026, 7, 15, 9);
+      final timeLogs = [
+        TimeLogItem(
+          id: 'june-log',
+          title: '六月记录',
+          startTime: juneStart.millisecondsSinceEpoch,
+          endTime: juneStart
+              .add(const Duration(minutes: 30))
+              .millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'july-log',
+          title: '七月记录',
+          startTime: julyStart.millisecondsSinceEpoch,
+          endTime: julyStart
+              .add(const Duration(minutes: 30))
+              .millisecondsSinceEpoch,
+        ),
+      ];
+
+      for (final userMessage in [
+        '比较2026年6月和2026年7月的效率',
+        '比较上个月和本月的效率',
+        '比较2026-06-01至2026-06-30和2026年7月的效率',
       ]) {
         final context = AiTodoContextBuilder.buildContextInjection(
           userMessage: userMessage,
