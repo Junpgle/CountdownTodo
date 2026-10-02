@@ -851,6 +851,36 @@ void main() {
       expect(expanded, equals(regular));
     });
 
+    test('日期范围待办上下文仅按截止日期筛选', () {
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '查看上个月的待办',
+        courses: const [],
+        timeLogs: const [],
+        todos: [
+          {
+            'id': 'due-last-month',
+            'title': '上个月到期的待办',
+            'startTime': '2026-10-01T09:00:00',
+            'dueDate': '2026-09-15T18:00:00',
+            'timeMode': 'deadline',
+          },
+          {
+            'id': 'created-last-month-unscheduled',
+            'title': '上个月创建但未安排的待办',
+            'startTime': '2026-09-15T09:00:00',
+            'dueDate': null,
+            'timeMode': 'unscheduled',
+          },
+        ],
+        conflicts: const [],
+        teams: const [],
+        now: DateTime(2026, 10, 2, 12),
+      )!;
+
+      expect(context, contains('due-last-month'));
+      expect(context, isNot(contains('created-last-month-unscheduled')));
+    });
+
     test('上周效率只汇总上一自然周，不混入本周记录', () {
       final now = DateTime(2026, 10, 2, 12);
       final timeLogs = [

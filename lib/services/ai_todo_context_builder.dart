@@ -2055,20 +2055,14 @@ ${lines.isEmpty ? '暂无' : lines}''';
     final period = _resolveCoursePeriod(message, nowValue);
     if (period == null) return base;
     return base.where((t) {
-      final start = _parseFlexibleDateTime(
-        t['startTime'] ??
-            t['start_time'] ??
-            t['createdDate'] ??
-            t['created_date'],
+      // Todo maps expose startTime as the creation timestamp for legacy
+      // action snapshots. Date-scoped queries describe scheduled work, so
+      // only a due/end date can place a todo in the requested range.
+      final dueDate = _parseFlexibleDateTime(
+        t['dueDate'] ?? t['due_date'] ?? t['endTime'] ?? t['end_time'],
       );
-      final end = _parseFlexibleDateTime(
-        t['endTime'] ?? t['end_time'] ?? t['dueDate'] ?? t['due_date'],
-      );
-      final fallback = start ?? end;
-      if (start == null && end == null) return false;
-      final s = start ?? fallback!;
-      final e = end ?? s.add(const Duration(minutes: 1));
-      return _dateRangeOverlaps(period.start, period.end, s, e);
+      if (dueDate == null) return false;
+      return !dueDate.isBefore(period.start) && dueDate.isBefore(period.end);
     }).toList();
   }
 
