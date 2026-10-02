@@ -213,6 +213,11 @@ abstract final class FinanceTextParser {
     r'(上周|上星期|上礼拜|本周|这周|本星期|这星期|本礼拜|这礼拜)\s*'
     r'([一二三四五六日天1-7])',
   );
+  static final RegExp _chineseMonthDayPattern = RegExp(
+    r'(?:(?:(\d{4})\s*年|前年|去年|上一年|前一年)\s*)?'
+    r'(十一|十二|十|[一二三四五六七八九]|1[0-2]|0?[1-9])\s*月\s*'
+    r'(\d{1,2}|[一二三四五六七八九十廿]{1,3})\s*[日号]?',
+  );
 
   static final RegExp _blockMarker = RegExp(
     r'^[ \t]*(?:#[ \t]*)?(?:\[[ \t]*)?记账(?:[ \t]*#?[ \t]*\d+)?(?:[ \t]*\])?(?=[ \t]*(?:\||$))',
@@ -1054,6 +1059,7 @@ abstract final class FinanceTextParser {
           ),
           '',
         )
+        .replaceAll(_chineseMonthDayPattern, '')
         .replaceAll(RegExp(r'\d{1,2}\s*月\s*\d{1,2}\s*日?'), '')
         .replaceAll(RegExp(r'\d{1,2}\s*/\s*\d{1,2}'), '');
   }
@@ -1087,6 +1093,24 @@ abstract final class FinanceTextParser {
       );
     }
 
+    final chineseMonthDay = _chineseMonthDayPattern.firstMatch(text);
+    if (chineseMonthDay != null) {
+      final yearText = chineseMonthDay.group(1);
+      final year = int.tryParse(yearText ?? '') ??
+          (text.contains('前年')
+              ? now.year - 2
+              : text.contains('去年') ||
+                    text.contains('上一年') ||
+                    text.contains('前一年')
+              ? now.year - 1
+              : now.year);
+      return _safeSentenceDate(
+        year,
+        _parseChineseDateNumber(chineseMonthDay.group(2) ?? ''),
+        _parseChineseDateNumber(chineseMonthDay.group(3) ?? ''),
+      );
+    }
+
     final slashMonthDay = RegExp(
       r'(?<!\d)(\d{1,2})\s*/\s*(\d{1,2})(?!\d)',
     ).firstMatch(text);
@@ -1109,6 +1133,41 @@ abstract final class FinanceTextParser {
       return null;
     }
     return _day(candidate);
+  }
+
+  static int? _parseChineseDateNumber(String value) {
+    final numeric = int.tryParse(value);
+    if (numeric != null) return numeric;
+    const digits = {
+      '一': 1,
+      '二': 2,
+      '三': 3,
+      '四': 4,
+      '五': 5,
+      '六': 6,
+      '七': 7,
+      '八': 8,
+      '九': 9,
+    };
+    final digit = digits[value];
+    if (digit != null) return digit;
+    if (value == '十') return 10;
+    if (value == '廿') return 20;
+    if (value.startsWith('廿')) {
+      final ones = digits[value.substring(1)];
+      return ones == null ? null : 20 + ones;
+    }
+    if (value.startsWith('十')) {
+      final ones = digits[value.substring(1)];
+      return ones == null ? null : 10 + ones;
+    }
+    final tenIndex = value.indexOf('十');
+    if (tenIndex < 0) return null;
+    final tens = tenIndex == 0 ? 1 : digits[value.substring(0, tenIndex)];
+    final ones = tenIndex == value.length - 1
+        ? 0
+        : digits[value.substring(tenIndex + 1)];
+    return tens == null || ones == null ? null : tens * 10 + ones;
   }
 
   static DateTime? _parseRelativeWeekdayDate(String text, DateTime now) {

@@ -186,6 +186,10 @@ void main() {
       isEmpty,
     );
     expect(
+      FinanceTextParser.parseQuickEntries('九月三十一日 午餐20元', now: now),
+      isEmpty,
+    );
+    expect(
       FinanceTextParser.parseQuickEntries('2026-02-28 午餐20元', now: now)
           .single
           .transactionDate,
@@ -196,6 +200,19 @@ void main() {
           .single
           .transactionDate,
       '2026-10-02',
+    );
+
+    expect(
+      FinanceTextParser.parseQuickEntries('九月二十一日 午餐20元', now: now)
+          .single
+          .transactionDate,
+      '2026-09-21',
+    );
+    expect(
+      FinanceTextParser.parseQuickEntries('去年九月二日 午餐20元', now: now)
+          .single
+          .transactionDate,
+      '2025-09-02',
     );
   });
 
