@@ -26,6 +26,10 @@ class AiTodoContextBuilder {
     r'(?!\s*(?:\d{1,2}\s*(?:日|号)|个))|'
     r'上上个月|上上月|上个月|上月|本月|这个月',
   );
+  static final RegExp _rollingMonthRangePattern = RegExp(
+    r'(?<![\d一二两三四五六七八九十])(?:最近|过去|近)?\s*'
+    r'(\d{1,2}|[一二两三四五六七八九十]{1,3})\s*个月',
+  );
 
   static AiContextDateRange? resolveCustomInjectionDateRange({
     DateTime? customStart,
@@ -87,6 +91,7 @@ class AiTodoContextBuilder {
           .replaceAll(_explicitChineseDateRangePattern, '')
           .replaceAll(_explicitChineseDatePattern, '')
           .replaceAll(_monthPeriodPattern, '')
+          .replaceAll(_rollingMonthRangePattern, '')
           .trim();
       final rangeInstruction = '使用自定义注入范围 $start 至 $end';
       return queryText.isEmpty
@@ -2199,6 +2204,28 @@ ${lines.isEmpty ? '暂无' : lines}''';
       }
     }
     final todayStart = DateTime(now.year, now.month, now.day);
+    final rollingMonthRange = _rollingMonthRangePattern.firstMatch(text);
+    if (rollingMonthRange != null) {
+      final months = _parseRollingMonthCount(rollingMonthRange.group(1)!);
+      if (months != null && months > 0) {
+        final targetMonth = DateTime(todayStart.year, todayStart.month - months);
+        final lastDayOfTargetMonth = DateTime(
+          targetMonth.year,
+          targetMonth.month + 1,
+          0,
+        ).day;
+        final start = DateTime(
+          targetMonth.year,
+          targetMonth.month,
+          now.day < lastDayOfTargetMonth ? now.day : lastDayOfTargetMonth,
+        );
+        return _TimeLogPeriod(
+          label: '最近$months个月',
+          start: start,
+          end: todayStart.add(const Duration(days: 1)),
+        );
+      }
+    }
     _TimeLogPeriod? exactDayPeriod(int year, int month, int day) {
       final start = DateTime(year, month, day);
       if (start.year != year || start.month != month || start.day != day) {
@@ -2729,15 +2756,28 @@ ${lines.isEmpty ? '暂无' : lines}''';
 
   static bool _hasAmbiguousMonthPeriods(String text) {
     final monthPeriods = _monthPeriodPattern.allMatches(text).length;
+    final rollingMonthRanges = _rollingMonthRangePattern.allMatches(text);
+    if (rollingMonthRanges.any(
+      (match) {
+        final months = _parseRollingMonthCount(match.group(1)!);
+        return months == null || months < 1;
+      },
+    )) {
+      return true;
+    }
+    final rollingMonthCount = rollingMonthRanges.length;
     if (_explicitIsoDateRangePattern.hasMatch(text) ||
         _explicitChineseDateRangePattern.hasMatch(text)) {
-      return monthPeriods > 0;
+      return monthPeriods > 0 || rollingMonthCount > 0;
     }
     final explicitDays =
         _explicitIsoDatePattern.allMatches(text).length +
         _explicitChineseDatePattern.allMatches(text).length;
-    return monthPeriods + explicitDays > 1;
+    return monthPeriods + rollingMonthCount + explicitDays > 1;
   }
+
+  static int? _parseRollingMonthCount(String value) =>
+      int.tryParse(value) ?? _parseSimpleChineseNumber(value);
 
   static DateTime? _parseStrictIsoDate(String value) {
     final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value);

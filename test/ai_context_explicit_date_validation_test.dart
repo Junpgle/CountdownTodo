@@ -379,6 +379,95 @@ void main() {
     },
   );
 
+  test('relative six-month focus query covers a rolling six-month period', () {
+    final aprilStart = DateTime(2026, 4, 2, 9);
+    final octoberStart = DateTime(2026, 10, 2, 22);
+    for (final userMessage in ['分析过去6个月的效率', '分析过去六个月的效率']) {
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: userMessage,
+        courses: const [],
+        timeLogs: [
+          TimeLogItem(
+            id: 'before-six-month-window',
+            title: '范围外记录',
+            startTime: DateTime(2026, 4, 1, 23).millisecondsSinceEpoch,
+            endTime: DateTime(2026, 4, 2).millisecondsSinceEpoch,
+          ),
+          TimeLogItem(
+            id: 'six-month-boundary',
+            title: '六个月起点记录',
+            startTime: aprilStart.millisecondsSinceEpoch,
+            endTime: aprilStart
+                .add(const Duration(minutes: 30))
+                .millisecondsSinceEpoch,
+          ),
+          TimeLogItem(
+            id: 'today-record',
+            title: '今日记录',
+            startTime: octoberStart.millisecondsSinceEpoch,
+            endTime: octoberStart
+                .add(const Duration(minutes: 30))
+                .millisecondsSinceEpoch,
+          ),
+          TimeLogItem(
+            id: 'tomorrow-record',
+            title: '明日记录',
+            startTime: DateTime(2026, 10, 3, 9).millisecondsSinceEpoch,
+            endTime: DateTime(2026, 10, 3, 9, 30).millisecondsSinceEpoch,
+          ),
+        ],
+        conflicts: const [],
+        teams: const [],
+        now: DateTime(2026, 10, 2, 12),
+      );
+
+      expect(
+        context,
+        contains('最近6个月范围: 2026-04-02 00:00 至 2026-10-03 00:00'),
+        reason: userMessage,
+      );
+      expect(context, contains('six-month-boundary'), reason: userMessage);
+      expect(context, contains('today-record'), reason: userMessage);
+      expect(
+        context,
+        isNot(contains('before-six-month-window')),
+        reason: userMessage,
+      );
+      expect(context, isNot(contains('tomorrow-record')), reason: userMessage);
+    }
+  });
+
+  test('rolling month period clamps to the last day of a shorter month', () {
+    final februaryEnd = DateTime(2026, 2, 28, 9);
+    final context = AiTodoContextBuilder.buildContextInjection(
+      userMessage: '分析最近6个月的效率',
+      courses: const [],
+      timeLogs: [
+        TimeLogItem(
+          id: 'february-boundary',
+          title: '二月末记录',
+          startTime: februaryEnd.millisecondsSinceEpoch,
+          endTime: februaryEnd
+              .add(const Duration(minutes: 30))
+              .millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'before-clamped-period',
+          title: '范围外记录',
+          startTime: DateTime(2026, 2, 27, 23).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 2, 28).millisecondsSinceEpoch,
+        ),
+      ],
+      conflicts: const [],
+      teams: const [],
+      now: DateTime(2026, 8, 31, 12),
+    );
+
+    expect(context, contains('最近6个月范围: 2026-02-28 00:00 至 2026-09-01 00:00'));
+    expect(context, contains('february-boundary'));
+    expect(context, isNot(contains('before-clamped-period')));
+  });
+
   test('impossible explicit single date does not fall back to recent logs', () {
     final start = DateTime(2026, 10, 1, 9);
     final context = AiTodoContextBuilder.buildContextInjection(
