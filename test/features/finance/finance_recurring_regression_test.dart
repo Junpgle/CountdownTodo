@@ -805,7 +805,9 @@ void main() {
     const localNotificationChannel = MethodChannel(
       'dexterous.com/flutter/local_notifications',
     );
-    const macStatusBarChannel = MethodChannel('countdown_todo/macos_status_bar');
+    const macStatusBarChannel = MethodChannel(
+      'countdown_todo/macos_status_bar',
+    );
     var shownNotifications = 0;
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -831,7 +833,10 @@ void main() {
       }
       return null;
     });
-    messenger.setMockMethodCallHandler(macStatusBarChannel, (call) async => null);
+    messenger.setMockMethodCallHandler(
+      macStatusBarChannel,
+      (call) async => null,
+    );
     addTearDown(() async {
       await FocusDoNotDisturbService.setActive(false, force: true);
       messenger.setMockMethodCallHandler(localNotificationChannel, null);
@@ -882,6 +887,86 @@ void main() {
     await _clearBudgetAlertMarkers(prefs, accountKey);
     await FinanceRepository.restoreBudget(savedBudget.uuid);
     expect(shownNotifications, 3);
+  });
+
+  test('删除退款使净支出重新达到预算阈值时立即提醒', () async {
+    final db = await openDatabase();
+    const accountKey = 'finance-refund-delete-alert-test-user';
+    const localNotificationChannel = MethodChannel(
+      'dexterous.com/flutter/local_notifications',
+    );
+    const macStatusBarChannel = MethodChannel('countdown_todo/macos_status_bar');
+    final notificationBodies = <String>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    MacOSFlutterLocalNotificationsPlugin.registerWith();
+    messenger.setMockMethodCallHandler(localNotificationChannel, (call) async {
+      switch (call.method) {
+        case 'initialize':
+          return true;
+        case 'checkPermissions':
+          return {
+            'isEnabled': true,
+            'isAlertEnabled': true,
+            'isBadgeEnabled': true,
+            'isSoundEnabled': true,
+            'isProvisionalEnabled': false,
+            'isCriticalEnabled': false,
+            'isProvidesAppNotificationSettingsEnabled': false,
+          };
+        case 'show':
+          final arguments = Map<String, dynamic>.from(call.arguments as Map);
+          notificationBodies.add(arguments['body'] as String);
+          return null;
+      }
+      return null;
+    });
+    messenger.setMockMethodCallHandler(macStatusBarChannel, (call) async => null);
+    addTearDown(() async {
+      await FocusDoNotDisturbService.setActive(false, force: true);
+      messenger.setMockMethodCallHandler(localNotificationChannel, null);
+      messenger.setMockMethodCallHandler(macStatusBarChannel, null);
+      debugDefaultTargetPlatformOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(StorageService.keyCurrentUser, accountKey);
+    await AppSettingsStorage.setFinanceBudgetAlertEnabled(true);
+    await AppSettingsStorage.setNormalNotificationEnabled(true);
+    await FocusDoNotDisturbService.setActive(false, force: true);
+    final now = DateTime.now();
+    await FinanceStorage.saveBudget(
+      FinanceBudget(
+        uuid: 'refund-delete-budget',
+        monthKey: financeMonthKey(now),
+        amountMinor: 10000,
+      ),
+    );
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'refund-delete-expense',
+        amountMinor: 8000,
+        transactionDate: dateKey(now),
+        occurredAt: now.millisecondsSinceEpoch,
+      ),
+    );
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'refund-delete-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 1000,
+        transactionDate: dateKey(now),
+        occurredAt: now.millisecondsSinceEpoch,
+        relatedTransactionUuid: 'refund-delete-expense',
+      ),
+    );
+
+    await FinanceRepository.deleteTransaction('refund-delete-refund');
+
+    expect(notificationBodies, ['本月总支出 ¥80.00 / ¥100.00']);
   });
 
   test('大额预算提醒不会截断已使用金额', () async {

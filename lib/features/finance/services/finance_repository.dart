@@ -262,8 +262,13 @@ abstract final class FinanceRepository {
     );
   }
 
-  static Future<void> deleteInstallmentGroup(String groupUuid) {
-    return FinanceStorage.deleteInstallmentGroup(groupUuid);
+  static Future<void> deleteInstallmentGroup(String groupUuid) async {
+    final containsRefund =
+        (await FinanceStorage.getInstallmentGroup(groupUuid)).any(
+          (item) => item.type == FinanceTransactionType.refund,
+        );
+    await FinanceStorage.deleteInstallmentGroup(groupUuid);
+    if (containsRefund) await _checkBudgetAlertsSafely();
   }
 
   static Future<void> restoreInstallmentGroup(String groupUuid) async {
@@ -327,8 +332,14 @@ abstract final class FinanceRepository {
     return FinanceStorage.restoreLoan(uuid);
   }
 
-  static Future<void> deleteTransaction(String uuid) {
-    return FinanceStorage.deleteTransaction(uuid);
+  static Future<void> deleteTransaction(String uuid) async {
+    final transaction = await FinanceStorage.getTransaction(uuid);
+    await FinanceStorage.deleteTransaction(uuid);
+    if (transaction != null &&
+        !transaction.isDeleted &&
+        transaction.type == FinanceTransactionType.refund) {
+      await _checkBudgetAlertsSafely();
+    }
   }
 
   static Future<void> saveCategory(
