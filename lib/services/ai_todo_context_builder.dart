@@ -766,7 +766,8 @@ ${sections.join('\n')}
         userMessage: userMessage,
         now: nowValue,
       );
-      parts.add('日程${scoped.length}条');
+      final displayedCount = scoped.length < 50 ? scoped.length : 50;
+      parts.add('日程$displayedCount/${scoped.length}条');
     }
     if (injectTodoContext && todos.isNotEmpty) {
       final scoped = _scopeTodosByTime(
@@ -774,7 +775,8 @@ ${sections.join('\n')}
         userMessage: userMessage,
         now: nowValue,
       );
-      parts.add('待办${scoped.length}条');
+      final displayedCount = scoped.length < 80 ? scoped.length : 80;
+      parts.add('待办$displayedCount/${scoped.length}条');
       if (todoGroups.isNotEmpty) {
         parts.add('分类${todoGroups.length}个');
       }
@@ -788,10 +790,13 @@ ${sections.join('\n')}
         userMessage: userMessage,
         now: nowValue,
       );
-      parts.add('倒计时${scoped.length}个');
+      final displayedCount = scoped.length < 40 ? scoped.length : 40;
+      parts.add('倒计时$displayedCount/${scoped.length}个');
     }
     if (injectPomodoroTagContext && pomodoroTags.isNotEmpty) {
-      parts.add('番茄标签${pomodoroTags.where((t) => !t.isDeleted).length}个');
+      final count = pomodoroTags.where((tag) => !tag.isDeleted).length;
+      final displayedCount = count < 40 ? count : 40;
+      parts.add('番茄标签$displayedCount/$count个');
     }
     if (injectPlanContext && planBlocks.isNotEmpty) {
       final scoped = _scopePlanBlocksByTime(
@@ -799,7 +804,8 @@ ${sections.join('\n')}
         userMessage: userMessage,
         now: nowValue,
       );
-      parts.add('规划块${scoped.length}个');
+      final displayedCount = scoped.length < 60 ? scoped.length : 60;
+      parts.add('规划块$displayedCount/${scoped.length}个');
     }
 
     if (injectFocusContext &&
@@ -843,10 +849,12 @@ ${sections.join('\n')}
     }
 
     if (injectConflictContext && conflicts.isNotEmpty) {
-      parts.add('冲突信息');
+      final displayedCount = conflicts.length < 20 ? conflicts.length : 20;
+      parts.add('冲突信息$displayedCount/${conflicts.length}条');
     }
     if (injectTeamContext && teams.isNotEmpty) {
-      parts.add('团队信息');
+      final displayedCount = teams.length < 20 ? teams.length : 20;
+      parts.add('团队信息$displayedCount/${teams.length}个');
     }
 
     if (parts.isEmpty) return null;
@@ -1512,7 +1520,8 @@ ${sections.join('\n')}
     if (todos.isEmpty) return '暂无待办';
     final scoped = _scopeTodosByTime(todos, userMessage: userMessage, now: now);
     if (scoped.isEmpty) return '待办列表: 暂无匹配时间范围的待办';
-    return '待办列表（按时间范围筛选，最多80条）:\n${scoped.take(80).map((t) {
+    final displayed = scoped.take(80).toList();
+    return '待办列表（按时间范围筛选，展示 ${displayed.length}/${scoped.length} 条）:\n${displayed.map((t) {
       final id = t['id'] ?? 'unknown';
       final title = t['title'] ?? '';
       final remark = t['remark'] ?? '';
@@ -1563,7 +1572,10 @@ ${sections.join('\n')}
       now: now,
     );
     if (active.isEmpty) return '倒计时: 暂无匹配时间范围的记录';
-    return '倒计时（按时间范围筛选）:\n${active.take(40).map((c) {
+    final ordered = active.toList()
+      ..sort((left, right) => left.targetDate.compareTo(right.targetDate));
+    final displayed = ordered.take(40).toList();
+    return '倒计时（按目标时间升序，展示 ${displayed.length}/${ordered.length} 条）:\n${displayed.map((c) {
       final target = DateFormat('yyyy-MM-dd HH:mm').format(c.targetDate);
       final status = c.isCompleted ? '已达成' : '进行中';
       return '- [ID: ${c.id}] 标题: ${c.title} | 目标: $target | 状态: $status';
@@ -1571,11 +1583,10 @@ ${sections.join('\n')}
   }
 
   static String _formatPomodoroTags(List<PomodoroTag> tags) {
-    final active = tags.where((t) => !t.isDeleted).take(40).toList();
+    final allActive = tags.where((tag) => !tag.isDeleted).toList();
+    final active = allActive.take(40).toList();
     if (active.isEmpty) return '暂无番茄标签';
-    return active
-        .map((t) => '- [ID: ${t.uuid}] 名称: ${t.name} | 颜色: ${t.color}')
-        .join('\n');
+    return '番茄标签（展示 ${active.length}/${allActive.length} 个）:\n${active.map((t) => '- [ID: ${t.uuid}] 名称: ${t.name} | 颜色: ${t.color}').join('\n')}';
   }
 
   static String _formatPlanBlocks(
@@ -1677,7 +1688,8 @@ ${sections.join('\n')}
           return '- [日程ID: ${item.id}] ${item.date} $time ${item.title} | 状态: ${item.status.name}$location$remark$series';
         })
         .join('\n');
-    return '固定日程（外部时间硬约束；每条使用自己的日程ID）:\n$lines';
+    final displayedCount = scoped.length < 50 ? scoped.length : 50;
+    return '固定日程（外部时间硬约束；展示 $displayedCount/${scoped.length} 条；每条使用自己的日程ID）:\n$lines';
   }
 
   static List<FixedScheduleItem> _scopeFixedSchedulesByTime(
@@ -1700,15 +1712,12 @@ ${sections.join('\n')}
             date.isBefore(period.end);
       }).toList();
     }
-    if (userMessage.trim().isEmpty) return active.take(50).toList();
+    if (userMessage.trim().isEmpty) return active;
     final today = DateTime(now.year, now.month, now.day);
-    return active
-        .where((item) {
-          final date = DateTime.tryParse(item.date);
-          return date != null && !date.isBefore(today);
-        })
-        .take(50)
-        .toList();
+    return active.where((item) {
+      final date = DateTime.tryParse(item.date);
+      return date != null && !date.isBefore(today);
+    }).toList();
   }
 
   static String _formatCourses(
@@ -1739,7 +1748,7 @@ ${sections.join('\n')}
     final period = _resolveCoursePeriod(userMessage, now);
     final scopedCourses = _selectCoursesForPeriod(activeCourses, period, now);
     final selectedCourses = period == null
-        ? scopedCourses.take(30)
+        ? scopedCourses.take(30).toList()
         : scopedCourses;
     final lines = selectedCourses
         .map(
@@ -1748,8 +1757,8 @@ ${sections.join('\n')}
         )
         .join('\n');
     final header = period == null
-        ? '课程表（当前时间: ${_formatDateTime(now)}，今日起最近30节）'
-        : '课程表（当前时间: ${_formatDateTime(now)}，${period.label}范围: ${_formatDate(period.start)} 至 ${_formatDate(period.end.subtract(const Duration(days: 1)))})';
+        ? '课程表（当前时间: ${_formatDateTime(now)}，今日起展示 ${selectedCourses.length}/${scopedCourses.length} 节）'
+        : '课程表（当前时间: ${_formatDateTime(now)}，${period.label}范围: ${_formatDate(period.start)} 至 ${_formatDate(period.end.subtract(const Duration(days: 1)))}，共${selectedCourses.length}节）';
     final rangeLine = availableRange == null
         ? ''
         : '\n${availableRange.label}: ${_formatDate(availableRange.start)} 至 ${_formatDate(availableRange.end.subtract(const Duration(days: 1)))}';
@@ -2085,8 +2094,8 @@ ${lines.isEmpty ? '暂无' : lines}''';
 
   static String _formatConflicts(List<ConflictInfo> conflicts) {
     if (conflicts.isEmpty) return '冲突信息: 暂无';
-    final lines = conflicts
-        .take(20)
+    final displayed = conflicts.take(20).toList();
+    final lines = displayed
         .map((c) {
           final title =
               c.item['title'] ?? c.item['content'] ?? c.item['id'] ?? '';
@@ -2098,16 +2107,16 @@ ${lines.isEmpty ? '暂无' : lines}''';
           return '- ${c.type}: $title <-> $other';
         })
         .join('\n');
-    return '冲突信息:\n$lines';
+    return '冲突信息（展示 ${displayed.length}/${conflicts.length} 条）:\n$lines';
   }
 
   static String _formatTeams(List<Team> teams) {
     if (teams.isEmpty) return '团队协作: 暂无';
-    final lines = teams
-        .take(20)
+    final displayed = teams.take(20).toList();
+    final lines = displayed
         .map((t) => '- ${t.name} | ID: ${t.uuid} | 成员: ${t.memberCount}')
         .join('\n');
-    return '团队协作:\n$lines';
+    return '团队协作（展示 ${displayed.length}/${teams.length} 个）:\n$lines';
   }
 
   static String _formatTimeZone(DateTime value) {
