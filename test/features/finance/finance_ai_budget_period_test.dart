@@ -285,8 +285,11 @@ void main() {
     for (final (query, expectedFrom) in [
       ('近半年支出', '2026-04-02'),
       ('过去6个月支出', '2026-04-02'),
+      ('近两个月支出', '2026-08-02'),
       ('最近三个月支出', '2026-07-02'),
       ('近3个月支出', '2026-07-02'),
+      ('近一年支出', '2025-10-02'),
+      ('过去两年支出', '2024-10-02'),
     ]) {
       final range = FinanceAiContextService.resolveDateRange(
         query,
@@ -307,6 +310,13 @@ void main() {
         now: now,
       ),
       '记账明细 2026-04-02 至 2026-10-02',
+    );
+    expect(
+      FinanceAiContextService.buildContextInjectionSummary(
+        userMessage: '近一年支出',
+        now: now,
+      ),
+      '记账明细 2025-10-02 至 2026-10-02',
     );
     final context = await FinanceAiContextService.buildContext(
       userMessage: '近半年支出',

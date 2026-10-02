@@ -143,7 +143,10 @@ abstract final class FinanceAiContextService {
     r'(?:(\d{4})\s*年\s*)?(十一|十二|十|[一二三四五六七八九]|1[0-2]|0?[1-9])\s*月\s*(\d{1,2}|[一二三四五六七八九十廿]{1,3})\s*[日号]',
   );
   static final RegExp _rollingMonthPeriodPattern = RegExp(
-    r'(?:近|最近|过去)\s*(\d{1,2}|十一|十二|十|[二三四五六七八九])\s*个?月',
+    r'(?:近|最近|过去)\s*(\d{1,2}|十一|十二|十|两|[二三四五六七八九])\s*个?月',
+  );
+  static final RegExp _rollingYearPeriodPattern = RegExp(
+    r'(?:近|最近|过去)\s*(\d{1,2}|十一|十二|十|两|[一二三四五六七八九])\s*年',
   );
   static final RegExp _numericYearMonthPattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](0?[1-9]|1[0-2])(?![-/.]\d)',
@@ -267,7 +270,8 @@ abstract final class FinanceAiContextService {
     final hasPeriod =
         _containsAny(text, _periodWords) ||
         hasExplicitMonth ||
-        _hasRollingMonthPeriod(text);
+        _hasRollingMonthPeriod(text) ||
+        _hasRollingYearPeriod(text);
     final followsFinanceConversation =
         !hasFinanceNoun &&
         !_containsAny(text, _otherContextDomains) &&
@@ -532,6 +536,7 @@ abstract final class FinanceAiContextService {
     bool hasDateScope(String text) =>
         _containsAny(text, _periodWords) ||
         _hasRollingMonthPeriod(text) ||
+        _hasRollingYearPeriod(text) ||
         _hasExplicitMonth(text) ||
         _calendarDatePattern.hasMatch(text) ||
         _numericYearMonthPattern.hasMatch(text);
@@ -641,6 +646,14 @@ abstract final class FinanceAiContextService {
       final monthCount = int.tryParse(monthValue) ?? _parseMonthNumber(monthValue);
       if (monthCount != null && monthCount > 0 && monthCount <= 36) {
         return _rollingMonthRange(current, monthCount);
+      }
+    }
+    final rollingYears = _rollingYearPeriodPattern.firstMatch(text);
+    if (rollingYears != null) {
+      final yearValue = rollingYears.group(1) ?? '';
+      final yearCount = int.tryParse(yearValue) ?? _parseMonthNumber(yearValue);
+      if (yearCount != null && yearCount > 0 && yearCount <= 10) {
+        return _rollingMonthRange(current, yearCount * 12);
       }
     }
     final explicitMonth = _resolveExplicitMonthRange(text, current);
@@ -955,6 +968,9 @@ abstract final class FinanceAiContextService {
       _containsAny(text, ['近半年', '最近半年', '过去半年']) ||
       _rollingMonthPeriodPattern.hasMatch(text);
 
+  static bool _hasRollingYearPeriod(String text) =>
+      _rollingYearPeriodPattern.hasMatch(text);
+
   static FinanceDateRange _rollingMonthRange(DateTime current, int months) {
     final targetMonth = DateTime(current.year, current.month - months, 1);
     final lastDay = DateTime(targetMonth.year, targetMonth.month + 1, 0).day;
@@ -1052,6 +1068,7 @@ abstract final class FinanceAiContextService {
       '七': 7,
       '八': 8,
       '九': 9,
+      '两': 2,
       '十': 10,
       '十一': 11,
       '十二': 12,
