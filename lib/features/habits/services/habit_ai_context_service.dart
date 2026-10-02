@@ -79,10 +79,9 @@ abstract final class HabitAiContextService {
       (goal) => !goal.isDeleted && !goal.isArchived,
     );
     final count = activeGoals.length;
-    final range = _resolveRange(
-      _rangeQueryText(userMessage, previousUserMessage),
-      _day(now ?? DateTime.now()),
-    );
+    final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
+    if (_hasInvalidExplicitDate(rangeQueryText)) return null;
+    final range = _resolveRange(rangeQueryText, _day(now ?? DateTime.now()));
     return count == 0
         ? '习惯数据（暂无启用目标，${range.label}）'
         : '习惯目标及进度$count项（${range.label}）';
@@ -113,10 +112,9 @@ abstract final class HabitAiContextService {
         .take(40)
         .toList();
     final today = _day(now ?? DateTime.now());
-    final range = _resolveRange(
-      _rangeQueryText(userMessage, previousUserMessage),
-      today,
-    );
+    final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
+    if (_hasInvalidExplicitDate(rangeQueryText)) return null;
+    final range = _resolveRange(rangeQueryText, today);
     final lines = <String>[
       '【用户习惯数据｜只读快照】',
       '查询范围: ${range.label}',
@@ -173,7 +171,7 @@ abstract final class HabitAiContextService {
   ) {
     final text = userMessage.toLowerCase();
     final hasCurrentRange =
-        _parseExplicitDate(text) != null ||
+        _calendarDatePattern.hasMatch(text) ||
         _yearMonthPattern.hasMatch(text) ||
         _monthPattern.hasMatch(text) ||
         _containsAny(text, [
@@ -194,7 +192,7 @@ abstract final class HabitAiContextService {
         ]);
     final previous = previousUserMessage.toLowerCase();
     final hasPreviousRange =
-        _parseExplicitDate(previous) != null ||
+        _calendarDatePattern.hasMatch(previous) ||
         _yearMonthPattern.hasMatch(previous) ||
         _monthPattern.hasMatch(previous) ||
         _containsAny(previous, [
@@ -359,12 +357,27 @@ abstract final class HabitAiContextService {
     );
   }
 
-  static bool _hasInvalidExplicitDate(String text) =>
-      _calendarDatePattern.hasMatch(text) && _parseExplicitDate(text) == null;
+  static bool _hasInvalidExplicitDate(String text) {
+    final dateMatches = _calendarDatePattern.allMatches(text).toList();
+    if (dateMatches.isEmpty) return false;
+    if (dateMatches.any((match) => _parseCalendarDateMatch(match) == null)) {
+      return true;
+    }
+    for (final rangeMatch in _calendarDateRangePattern.allMatches(text)) {
+      final from = _parseExplicitDate(rangeMatch.group(1)!);
+      final to = _parseExplicitDate(rangeMatch.group(2)!);
+      if (from == null || to == null || to.isBefore(from)) return true;
+    }
+    return false;
+  }
 
   static DateTime? _parseExplicitDate(String text) {
     final match = _calendarDatePattern.firstMatch(text);
     if (match == null) return null;
+    return _parseCalendarDateMatch(match);
+  }
+
+  static DateTime? _parseCalendarDateMatch(RegExpMatch match) {
     final year = int.parse(match.group(1)!);
     final month = int.parse(match.group(2)!);
     final day = int.parse(match.group(3)!);
