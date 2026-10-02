@@ -515,6 +515,49 @@ void main() {
       });
     }
 
+    test('缺少发生时刻的未来分期按到期日才计入付款余额', () async {
+      final now = DateTime.now();
+      final startDate = DateTime(now.year, now.month - 1, 1);
+      final createdAt = DateTime(
+        startDate.year,
+        startDate.month,
+        startDate.day,
+        12,
+      ).millisecondsSinceEpoch;
+      final first = FinanceTransaction(
+        uuid: 'future-installment-no-time-first',
+        amountMinor: 1000,
+        paymentMethodUuid: _cash,
+        transactionDate: dateKey(startDate),
+        occurredAt: null,
+        installmentGroupUuid: 'future-installment-no-time-group',
+        installmentIndex: 1,
+        installmentCount: 2,
+        installmentTotalMinor: 2000,
+        createdAt: createdAt,
+        updatedAt: createdAt,
+      )..occurredAt = null;
+      await FinanceStorage.saveTransaction(first);
+
+      final saved = await FinanceStorage.saveInstallmentPlan(
+        transaction: first,
+        original: first,
+        totalAmountMinor: 3000,
+        installmentCount: 3,
+        startDate: startDate,
+        existingInstallments: [first],
+      );
+      final futureInstallment = saved.last;
+      final dueDate = DateTime(now.year, now.month + 1, 1);
+
+      expect(futureInstallment.transactionDate, dateKey(dueDate));
+      expect(futureInstallment.occurredAt, isNull);
+      expect(
+        futureInstallment.balanceEventAt(),
+        greaterThanOrEqualTo(dueDate.millisecondsSinceEpoch),
+      );
+    });
+
     test('贷款利息拒绝直接修改现金流、删除和拆分，备注仍可修改', () async {
       final paid = await _payLoan();
       final interest = (await FinanceStorage.getTransaction(

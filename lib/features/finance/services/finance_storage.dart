@@ -499,6 +499,7 @@ abstract final class FinanceStorage {
               (allocation.index == 1 ? transaction.updatedAt : now),
           deviceId: transaction.deviceId,
         );
+        if (occurrenceAt == null) item.occurredAt = null;
         if (old != null) item.markAsChanged();
         item.pendingSync = true;
         await _validateLoanInterestEdit(txn, item);
