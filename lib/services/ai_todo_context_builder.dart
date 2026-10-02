@@ -833,7 +833,7 @@ ${sections.join('\n')}
   }
 
   static bool _isReadOnlyRequest(String text) {
-    if (_hasExplicitFinanceUpdateIntent(text)) return false;
+    if (hasExplicitFinanceUpdateIntent(text)) return false;
     final asksInformation =
         _matchesAny(text, _readOnlyRequestKeywords) ||
         _looksLikeInformationQuestion(text) ||
@@ -847,20 +847,69 @@ ${sections.join('\n')}
     );
   }
 
-  static bool _hasExplicitFinanceUpdateIntent(String text) {
+  static bool hasExplicitFinanceUpdateIntent(String text) {
     if (!_matchesAny(text, _financeKeywords)) return false;
-    final commandPrefix = RegExp(
-      r'^(?:(?:请|帮我|替我|给我)\s*)*(?:把|将)',
-    );
+    final commandPrefix = RegExp(r'^(?:(?:请|帮我|替我|给我)\s*)*(?:把|将)');
+    final updateVerbPrefix = RegExp(r'^(?:(?:请|帮我|替我|给我)\s*)*(?:更正|调整)');
+    const readOnlyFinanceQueryKeywords = [
+      '查询',
+      '查看',
+      '分析',
+      '统计',
+      '汇总',
+      '列出',
+      '明细',
+      '情况',
+      '记录',
+      '影响',
+      '效果',
+      '结果',
+      '趋势',
+      '建议',
+      '是否',
+      '有没有',
+    ];
+    final hasReadOnlyQuestion =
+        _looksLikeInformationQuestion(text) ||
+        _matchesAny(text, readOnlyFinanceQueryKeywords);
     for (final clause in text.split(RegExp(r'[，。；！？,;]'))) {
       final normalizedClause = clause.trim();
-      if (!commandPrefix.hasMatch(normalizedClause)) continue;
+      final startsWithCommand =
+          commandPrefix.hasMatch(normalizedClause) ||
+          updateVerbPrefix.hasMatch(normalizedClause);
       for (final verb in ['更正', '调整']) {
         if (!isExplicitlyRequested(normalizedClause, verb)) continue;
         final suffix = normalizedClause.substring(
           normalizedClause.indexOf(verb) + verb.length,
         );
-        if (RegExp(r'^\s*(?:为|成|到|至|一下|下|$)').hasMatch(suffix)) {
+        final directAssignment = RegExp(r'^\s*(?:为|成|到|至)\s*\S+\s*$')
+            .hasMatch(suffix);
+        final propertyAssignment = RegExp(
+          r'(?:金额|数额|价格|日期|时间|类别|分类|备注|账户|支付方式)\s*'
+          r'(?:更正|调整)?\s*(?:为|成|到|至)\s*\S+\s*$',
+        ).hasMatch(suffix);
+        final readOnlyTail = _matchesAny(suffix, const [
+          '影响',
+          '效果',
+          '结果',
+          '情况',
+          '记录',
+          '明细',
+          '建议',
+          '趋势',
+          '变化',
+          '分析',
+          '查询',
+          '统计',
+        ]);
+        final assignsNewValue =
+            (directAssignment || propertyAssignment) && !readOnlyTail;
+        final shortCommand =
+            suffix.trim().isEmpty ||
+            suffix.trim() == '一下' ||
+            suffix.trim() == '下';
+        if ((startsWithCommand || !hasReadOnlyQuestion) &&
+            (assignsNewValue || shortCommand)) {
           return true;
         }
       }

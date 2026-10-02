@@ -48,6 +48,10 @@ void main() {
       for (final request in [
         '把上周那笔账单更正为30元',
         '把上周那笔账单金额调整为30元',
+        '上周那笔账单更正为30元',
+        '上周那笔账单金额调整到50元',
+        '帮我调整上周那笔账单金额为30元',
+        '帮我调整上周那笔账单金额为30元，并分析对预算的影响',
       ]) {
         final tools = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
           request,
@@ -62,7 +66,11 @@ void main() {
     test('keeps finance adjustment questions read-only', () {
       for (final request in [
         '查询上周账单调整情况',
+        '查询上周账单调整为30元的记录',
         '分析把上周账单调整为30元后的预算影响',
+        '分析上周账单调整为30元后的预算影响',
+        '把上周账单调整为30元后的预算影响',
+        '把上周账单调整情况分析一下',
       ]) {
         final tools = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
           request,

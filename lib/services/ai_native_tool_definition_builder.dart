@@ -327,6 +327,15 @@ class AiNativeToolDefinitionBuilder {
       '占比',
       '多少',
       '明细',
+      '影响',
+      '效果',
+      '情况',
+      '记录',
+      '结果',
+      '趋势',
+      '建议',
+      '是否',
+      '有没有',
       '今天什么',
       '明天什么',
     ];
@@ -347,7 +356,8 @@ class AiNativeToolDefinitionBuilder {
     ];
     final isReadOnlyQuery =
         _matchesAny(message, readOnlyWords) &&
-        !_matchesAny(message, writeWords);
+        !_matchesAny(message, writeWords) &&
+        !AiTodoContextBuilder.hasExplicitFinanceUpdateIntent(message);
     final hasNoPositiveWriteIntent =
         _matchesAny(message, writeWords) &&
         !writeWords.any(
@@ -770,5 +780,4 @@ class AiNativeToolDefinitionBuilder {
   static bool _matchesAny(String text, List<String> keywords) {
     return keywords.any((keyword) => text.contains(keyword));
   }
-
 }
