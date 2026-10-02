@@ -125,7 +125,7 @@ abstract final class FinanceStorage {
 
   static Future<void> _repairLegacyRefundCategories(Database db) async {
     final migrationNow = DateTime.now().millisecondsSinceEpoch;
-    await db.rawUpdate(
+    final repairedCount = await db.rawUpdate(
       '''
       UPDATE finance_transactions
       SET category_uuid = ?,
@@ -142,6 +142,7 @@ abstract final class FinanceStorage {
       ''',
       ['finance-system-category-refund', migrationNow, migrationNow],
     );
+    if (repairedCount > 0) _notifyChanged();
   }
 
   static Future<List<FinanceTransaction>> getTransactions({

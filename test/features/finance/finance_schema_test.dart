@@ -2838,7 +2838,9 @@ void main() {
       'pending_sync': 0,
     });
 
+    final revisionBeforeRepair = FinanceStorage.revision.value;
     final transactions = await FinanceStorage.getTransactions();
+    expect(FinanceStorage.revision.value, revisionBeforeRepair + 1);
     final refundCategory = await db.query(
       'finance_categories',
       where: 'uuid = ?',
@@ -2848,6 +2850,9 @@ void main() {
     expect(transactions.single.categoryUuid, 'finance-system-category-refund');
     expect(transactions.single.pendingSync, isTrue);
     expect(refundCategory.single['type'], 'expense');
+
+    await FinanceStorage.getTransactions();
+    expect(FinanceStorage.revision.value, revisionBeforeRepair + 1);
   });
 
   test('贷款保存还款计划，已还利息进入支出并支持删除恢复', () async {
