@@ -29,7 +29,15 @@ void main() {
     });
 
     test('resolves rolling month requests as a date range', () {
-      for (final period in ['过去6个月', '过去六个月', '最近六个月', '近6个月']) {
+      for (final period in [
+        '过去6个月',
+        '过去六个月',
+        '最近六个月',
+        '近6个月',
+        '过去半年',
+        '最近半年',
+        '近半年',
+      ]) {
         final summary = HabitAiContextService.buildContextInjectionSummary(
           userMessage: '查看$period的习惯进度',
           goals: const [],

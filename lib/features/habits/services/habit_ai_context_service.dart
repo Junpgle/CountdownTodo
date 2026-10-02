@@ -68,7 +68,7 @@ abstract final class HabitAiContextService {
     r'(?:^|[^\d])(\d{4})[-/.](0?[1-9]|1[0-2])(?![-/.]\d)',
   );
   static final RegExp _rollingMonthPattern = RegExp(
-    r'(?:近|最近|过去)\s*(\d+|[零〇○一二两三四五六七八九十]{1,3})\s*个?月',
+    r'(?:近|最近|过去)\s*(?:(\d+|[零〇○一二两三四五六七八九十]{1,3})\s*个?月|半年)',
   );
 
   static bool shouldInjectFor(
@@ -340,7 +340,7 @@ abstract final class HabitAiContextService {
     }
     final rollingMonth = _rollingMonthPattern.firstMatch(text);
     if (rollingMonth != null) {
-      final months = _parseRollingMonthCount(rollingMonth.group(1)!);
+      final months = _parseRollingMonthCount(rollingMonth.group(1) ?? '6');
       if (months != null && months >= 1 && months <= 36) {
         final targetMonth = DateTime(today.year, today.month - months, 1);
         final lastDay = DateTime(
@@ -429,7 +429,7 @@ abstract final class HabitAiContextService {
     final rollingMonths = _rollingMonthPattern.allMatches(text).toList();
     if (rollingMonths.length > 1) return true;
     for (final rollingMonth in rollingMonths) {
-      final months = _parseRollingMonthCount(rollingMonth.group(1)!);
+      final months = _parseRollingMonthCount(rollingMonth.group(1) ?? '6');
       if (months == null || months < 1 || months > 36) return true;
     }
     final dateMatches = _calendarDatePattern.allMatches(text).toList();
