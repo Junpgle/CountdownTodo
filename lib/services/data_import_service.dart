@@ -58,8 +58,10 @@ class DataImportService {
     if (_uuidRemap.containsKey(oldUuid)) {
       return _uuidRemap[oldUuid]!;
     }
-    final newUuid =
-        const Uuid().v5(Namespace.url.value, '$_uuidNamespaceSalt|$oldUuid');
+    final newUuid = const Uuid().v5(
+      Namespace.url.value,
+      '$_uuidNamespaceSalt|$oldUuid',
+    );
     _uuidRemap[oldUuid] = newUuid;
     return newUuid;
   }
@@ -93,6 +95,12 @@ class DataImportService {
           throw const FormatException('thirty_day_challenge 必须是对象');
         }
         final bundle = Map<String, dynamic>.from(entry.value as Map);
+        if (bundle.containsKey('corrupt_state_backup') &&
+            bundle['corrupt_state_backup'] is! String) {
+          throw const FormatException(
+            'thirty_day_challenge.corrupt_state_backup 必须是字符串',
+          );
+        }
         final rawState = bundle['state'];
         if (rawState is! Map) {
           throw const FormatException('thirty_day_challenge.state 必须是对象');
@@ -102,9 +110,7 @@ class DataImportService {
         if (tasks is! List ||
             tasks.isEmpty ||
             tasks.any((task) => task is! Map)) {
-          throw const FormatException(
-            'thirty_day_challenge.state.tasks 格式无效',
-          );
+          throw const FormatException('thirty_day_challenge.state.tasks 格式无效');
         }
         continue;
       }
@@ -147,7 +153,7 @@ class DataImportService {
           .where((uuid) => uuid.isNotEmpty)
           .toSet();
     } catch (e) {
-//       debugPrint('⚠️ 获取团队列表失败: $e');
+      //       debugPrint('⚠️ 获取团队列表失败: $e');
       return {};
     }
   }
@@ -169,28 +175,27 @@ class DataImportService {
       int.tryParse(json['exportedAt']?.toString() ?? '') ?? 0,
     );
     final data = json['data'] as Map<String, dynamic>? ?? {};
+    _validateImportPayload(data);
 
     final types = <ImportTypePreview>[];
     for (final entry in data.entries) {
       final key = entry.key;
       // settings 是 Map 类型，单独处理
       if (key == 'settings') {
-        types.add(ImportTypePreview(
-          key: key,
-          label: '偏好设置',
-          count: 1,
-        ));
+        types.add(ImportTypePreview(key: key, label: '偏好设置', count: 1));
         continue;
       }
       if (key == 'thirty_day_challenge' && entry.value is Map) {
         final bundle = Map<String, dynamic>.from(entry.value as Map);
         final state = bundle['state'];
         final tasks = state is Map ? state['tasks'] : null;
-        types.add(ImportTypePreview(
-          key: key,
-          label: _typeLabels[key] ?? key,
-          count: tasks is List ? tasks.length : 0,
-        ));
+        types.add(
+          ImportTypePreview(
+            key: key,
+            label: _typeLabels[key] ?? key,
+            count: tasks is List ? tasks.length : 0,
+          ),
+        );
         continue;
       }
       if (key == 'finance' && entry.value is Map) {
@@ -201,16 +206,19 @@ class DataImportService {
         final templates = finance['templates'];
         final loans = finance['loans'];
         final loanInstallments = finance['loan_installments'];
-        types.add(ImportTypePreview(
-          key: key,
-          label: _typeLabels[key] ?? key,
-          count: (transactions is List ? transactions.length : 0) +
-              (budgets is List ? budgets.length : 0) +
-              (recurringRules is List ? recurringRules.length : 0) +
-              (templates is List ? templates.length : 0) +
-              (loans is List ? loans.length : 0) +
-              (loanInstallments is List ? loanInstallments.length : 0),
-        ));
+        types.add(
+          ImportTypePreview(
+            key: key,
+            label: _typeLabels[key] ?? key,
+            count:
+                (transactions is List ? transactions.length : 0) +
+                (budgets is List ? budgets.length : 0) +
+                (recurringRules is List ? recurringRules.length : 0) +
+                (templates is List ? templates.length : 0) +
+                (loans is List ? loans.length : 0) +
+                (loanInstallments is List ? loanInstallments.length : 0),
+          ),
+        );
         continue;
       }
       if (key == 'habits' && entry.value is Map) {
@@ -219,14 +227,17 @@ class DataImportService {
         final rules = habits['rules'];
         final checkIns = habits['check_ins'];
         final sleepPlans = habits['sleep_coaching_plans'];
-        types.add(ImportTypePreview(
-          key: key,
-          label: _typeLabels[key] ?? key,
-          count: (goals is List ? goals.length : 0) +
-              (rules is List ? rules.length : 0) +
-              (checkIns is List ? checkIns.length : 0) +
-              (sleepPlans is List ? sleepPlans.length : 0),
-        ));
+        types.add(
+          ImportTypePreview(
+            key: key,
+            label: _typeLabels[key] ?? key,
+            count:
+                (goals is List ? goals.length : 0) +
+                (rules is List ? rules.length : 0) +
+                (checkIns is List ? checkIns.length : 0) +
+                (sleepPlans is List ? sleepPlans.length : 0),
+          ),
+        );
         continue;
       }
       // 其他数据类型应该是 List
@@ -241,12 +252,14 @@ class DataImportService {
             }
           }
         }
-        types.add(ImportTypePreview(
-          key: key,
-          label: _typeLabels[key] ?? key,
-          count: items.length,
-          teamCount: teamCount,
-        ));
+        types.add(
+          ImportTypePreview(
+            key: key,
+            label: _typeLabels[key] ?? key,
+            count: items.length,
+            teamCount: teamCount,
+          ),
+        );
       }
     }
 
@@ -302,7 +315,7 @@ class DataImportService {
 
       // 获取用户当前加入的团队列表
       final joinedTeamUuids = await _getJoinedTeamUuids();
-//       debugPrint('📋 用户已加入的团队: $joinedTeamUuids');
+      //       debugPrint('📋 用户已加入的团队: $joinedTeamUuids');
 
       // 如果调用方没有显式指定 uuidStrategy，则自动检测
       UuidStrategy uuidStrategy = options.uuidStrategy;
@@ -335,10 +348,10 @@ class DataImportService {
             : UuidStrategy.keepOriginal;
 
         if (needRegenerate) {
-//           debugPrint(
-//               '⚠️ 检测到不同账号 (userId: $fileUserId -> $currentUserId)，将重新生成 UUID');
+          //           debugPrint(
+          //               '⚠️ 检测到不同账号 (userId: $fileUserId -> $currentUserId)，将重新生成 UUID');
         } else if (fileDeviceId != null && fileDeviceId != currentDeviceId) {
-//           debugPrint('ℹ️ 检测到同账号不同设备，保留原始 UUID');
+          //           debugPrint('ℹ️ 检测到同账号不同设备，保留原始 UUID');
         }
       }
 
@@ -519,7 +532,7 @@ class DataImportService {
         updatedCount: updatedCount,
       );
     } catch (e) {
-//       debugPrint('❌ DataImportService: importData error: $e');
+      //       debugPrint('❌ DataImportService: importData error: $e');
       if (rollbackSnapshot != null) {
         try {
           await rollbackSnapshot.restore();
@@ -544,8 +557,10 @@ class DataImportService {
     TeamDataStrategy teamStrategy,
     UuidStrategy uuidStrategy,
   ) async {
-    final localGroups =
-        await StorageService.getTodoGroups(username, includeDeleted: true);
+    final localGroups = await StorageService.getTodoGroups(
+      username,
+      includeDeleted: true,
+    );
     final localMap = {for (var g in localGroups) g.id: g};
     final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
 
@@ -610,8 +625,10 @@ class DataImportService {
     TeamDataStrategy teamStrategy,
     UuidStrategy uuidStrategy,
   ) async {
-    final localTodos =
-        await StorageService.getTodos(username, includeDeleted: true);
+    final localTodos = await StorageService.getTodos(
+      username,
+      includeDeleted: true,
+    );
     final localMap = {for (var t in localTodos) t.id: t};
     final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
 
@@ -692,8 +709,10 @@ class DataImportService {
     TeamDataStrategy teamStrategy,
     UuidStrategy uuidStrategy,
   ) async {
-    final localCds =
-        await StorageService.getCountdowns(username, includeDeleted: true);
+    final localCds = await StorageService.getCountdowns(
+      username,
+      includeDeleted: true,
+    );
     final localMap = {for (var c in localCds) c.id: c};
     final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
 
@@ -835,8 +854,10 @@ class DataImportService {
     List<dynamic> items,
     UuidStrategy uuidStrategy,
   ) async {
-    final localBlocks =
-        await StorageService.getPlanBlocks(username, includeDeleted: true);
+    final localBlocks = await StorageService.getPlanBlocks(
+      username,
+      includeDeleted: true,
+    );
     final localMap = {for (var b in localBlocks) b.id: b};
     final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
 
@@ -1095,8 +1116,9 @@ class DataImportService {
       await HabitStorage.saveHabitGoals(localGoals);
     }
 
-    final localRules =
-        await HabitStorage.getRuleRevisions(includeDeleted: true);
+    final localRules = await HabitStorage.getRuleRevisions(
+      includeDeleted: true,
+    );
     final localRulesById = {for (final rule in localRules) rule.uuid: rule};
     for (final raw in rawRules) {
       final rule = HabitGoalRuleRevision.fromJson(
@@ -1179,8 +1201,9 @@ class DataImportService {
       await HabitStorage.saveCheckIns(localCheckIns);
     }
 
-    final localSleepPlans =
-        await HabitStorage.getSleepCoachingPlans(includeDeleted: true);
+    final localSleepPlans = await HabitStorage.getSleepCoachingPlans(
+      includeDeleted: true,
+    );
     final localSleepPlansById = {
       for (final plan in localSleepPlans) plan.uuid: plan,
     };
@@ -1338,35 +1361,32 @@ class DataImportService {
     final db = await DatabaseHelper.instance.database;
     final batch = db.batch();
     for (final r in records) {
-      batch.insert(
-        'pomodoro_records',
-        {
-          'uuid': r.uuid,
-          'todo_uuid': r.todoUuid,
-          'todo_title': r.todoTitle,
-          'tag_uuids': jsonEncode(r.tagUuids),
-          'start_time': r.startTime,
-          'end_time': r.endTime,
-          'planned_duration': r.plannedDuration,
-          'actual_duration': r.actualDuration,
-          'status': r.status == PomodoroRecordStatus.completed
-              ? 'completed'
-              : r.status == PomodoroRecordStatus.interrupted
-                  ? 'interrupted'
-                  : 'switched',
-          'device_id': r.deviceId,
-          'plan_block_id': r.planBlockId,
-          'note': r.note,
-          'is_deleted': r.isDeleted ? 1 : 0,
-          'version': r.version,
-          'created_at': r.createdAt,
-          'updated_at': r.updatedAt,
-          'has_conflict': r.hasConflict ? 1 : 0,
-          'conflict_data':
-              r.conflictData != null ? jsonEncode(r.conflictData) : null,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      batch.insert('pomodoro_records', {
+        'uuid': r.uuid,
+        'todo_uuid': r.todoUuid,
+        'todo_title': r.todoTitle,
+        'tag_uuids': jsonEncode(r.tagUuids),
+        'start_time': r.startTime,
+        'end_time': r.endTime,
+        'planned_duration': r.plannedDuration,
+        'actual_duration': r.actualDuration,
+        'status': r.status == PomodoroRecordStatus.completed
+            ? 'completed'
+            : r.status == PomodoroRecordStatus.interrupted
+            ? 'interrupted'
+            : 'switched',
+        'device_id': r.deviceId,
+        'plan_block_id': r.planBlockId,
+        'note': r.note,
+        'is_deleted': r.isDeleted ? 1 : 0,
+        'version': r.version,
+        'created_at': r.createdAt,
+        'updated_at': r.updatedAt,
+        'has_conflict': r.hasConflict ? 1 : 0,
+        'conflict_data': r.conflictData != null
+            ? jsonEncode(r.conflictData)
+            : null,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     if (records.isNotEmpty) {
       await batch.commit(noResult: true);
