@@ -311,13 +311,19 @@ abstract final class FinanceRepository {
     bool paid, {
     String? paymentMethodUuid,
     DateTime? paidAt,
-  }) {
-    return FinanceStorage.setLoanInstallmentPaid(
+  }) async {
+    final installment = paid
+        ? await FinanceStorage.getLoanInstallment(installmentUuid)
+        : null;
+    await FinanceStorage.setLoanInstallmentPaid(
       installmentUuid,
       paid,
       paymentMethodUuid: paymentMethodUuid,
       paidAt: paidAt,
     );
+    if (installment != null && installment.interestMinor > 0) {
+      await _checkBudgetAlertsSafely();
+    }
   }
 
   static Future<List<FinanceLoanInstallment>> getPaidLoanInstallments() {
