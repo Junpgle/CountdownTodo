@@ -460,6 +460,17 @@ abstract final class FinanceStorage {
       if (staleGroup || staleEditedItem) {
         throw StateError('分期组已同步更新，请重新打开整组编辑后再保存');
       }
+      final activeInstallmentCounts = currentByUuid.values
+          .where((item) => !item.isDeleted)
+          .map((item) => item.installmentCount)
+          .whereType<int>()
+          .where((count) => count > 1)
+          .toList();
+      final currentActiveInstallmentCount = activeInstallmentCounts.isEmpty
+          ? null
+          : activeInstallmentCounts.reduce(
+              (left, right) => left < right ? left : right,
+            );
       for (final allocation in allocations) {
         final old = existingByIndex[allocation.index];
         final previousOccurrence =
@@ -494,7 +505,11 @@ abstract final class FinanceStorage {
           installmentIndex: allocation.index,
           installmentCount: allocation.count,
           installmentTotalMinor: totalAmountMinor,
-          isDeleted: false,
+          // 保留组内单独删除的期次。若该期次仅因旧计划缩短而删除，
+          // 当前有效期数会小于它的序号；扩期时再将它恢复。
+          isDeleted: old?.isDeleted == true &&
+              (currentActiveInstallmentCount == null ||
+                  allocation.index <= currentActiveInstallmentCount),
           version: old?.version ?? 1,
           createdAt:
               old?.createdAt ??

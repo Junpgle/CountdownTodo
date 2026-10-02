@@ -1014,7 +1014,12 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       }
       if (!mounted) return;
       _saveCompleted = true;
-      Navigator.of(context).pop(saved.first);
+      final activeSaved = saved.where((item) => !item.isDeleted).toList();
+      final result = activeSaved.firstWhere(
+        (item) => item.uuid == old?.uuid,
+        orElse: () => activeSaved.isEmpty ? saved.first : activeSaved.first,
+      );
+      Navigator.of(context).pop(result);
     } catch (error) {
       if (!mounted) return;
       setState(() => _isSaving = false);

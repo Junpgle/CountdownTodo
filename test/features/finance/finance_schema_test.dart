@@ -3073,6 +3073,117 @@ void main() {
     expect(await FinanceStorage.getInstallmentGroup(groupUuid), hasLength(2));
   });
 
+  test('编辑分期组不会恢复单独删除的期次', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'installment-edit-deleted-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final saved = await FinanceStorage.saveInstallmentPlan(
+      transaction: FinanceTransaction(
+        uuid: 'installment-edit-deleted-first',
+        amountMinor: 12000,
+        transactionDate: '2026-01-31',
+        merchant: '分期账单',
+      ),
+      totalAmountMinor: 12000,
+      installmentCount: 3,
+      startDate: DateTime(2026, 1, 31),
+    );
+    final groupUuid = saved.first.installmentGroupUuid!;
+    await FinanceStorage.deleteTransaction(saved[1].uuid);
+    final existing = await FinanceStorage.getInstallmentGroup(
+      groupUuid,
+      includeDeleted: true,
+    );
+    final original = (await FinanceStorage.getTransaction(saved.first.uuid))!;
+    final edited = FinanceTransaction.fromMap(original.toMap())
+      ..note = '更新整组备注'
+      ..markAsChanged();
+
+    await FinanceStorage.saveInstallmentPlan(
+      transaction: edited,
+      original: original,
+      totalAmountMinor: 12000,
+      installmentCount: 3,
+      startDate: DateTime(2026, 1, 31),
+      existingInstallments: existing,
+    );
+
+    expect(
+      (await FinanceStorage.getTransaction(saved[1].uuid))!.isDeleted,
+      isTrue,
+    );
+  });
+
+  test('扩展已缩短的分期计划会恢复超出旧期数的期次', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'installment-expand-shortened-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final saved = await FinanceStorage.saveInstallmentPlan(
+      transaction: FinanceTransaction(
+        uuid: 'installment-expand-shortened-first',
+        amountMinor: 12000,
+        transactionDate: '2026-01-31',
+        merchant: '分期账单',
+      ),
+      totalAmountMinor: 12000,
+      installmentCount: 3,
+      startDate: DateTime(2026, 1, 31),
+    );
+    final groupUuid = saved.first.installmentGroupUuid!;
+    var existing = await FinanceStorage.getInstallmentGroup(
+      groupUuid,
+      includeDeleted: true,
+    );
+    var original = (await FinanceStorage.getTransaction(saved.first.uuid))!;
+    final reduced = await FinanceStorage.saveInstallmentPlan(
+      transaction: original,
+      original: original,
+      totalAmountMinor: 12000,
+      installmentCount: 2,
+      startDate: DateTime(2026, 1, 31),
+      existingInstallments: existing,
+    );
+    expect(
+      (await FinanceStorage.getTransaction(saved.last.uuid))!.isDeleted,
+      isTrue,
+    );
+
+    existing = await FinanceStorage.getInstallmentGroup(
+      groupUuid,
+      includeDeleted: true,
+    );
+    original = (await FinanceStorage.getTransaction(reduced.first.uuid))!;
+    final extended = await FinanceStorage.saveInstallmentPlan(
+      transaction: original,
+      original: original,
+      totalAmountMinor: 12000,
+      installmentCount: 3,
+      startDate: DateTime(2026, 1, 31),
+      existingInstallments: existing,
+    );
+
+    expect(
+      extended.singleWhere((item) => item.installmentIndex == 3).isDeleted,
+      isFalse,
+    );
+  });
+
   test('旧内置Flash价格缓存迁移到新价且设置只保留用户覆盖', () async {
     const oldFlashPrice = AiUsagePricing(
       provider: 'deepseek',
