@@ -921,6 +921,79 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('未来月份开始后重新载入账户流水', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 10, 31, 23, 59, 58);
+    final snapshotAt = DateTime(2026, 10, 1, 9);
+    final plannedAt = DateTime(2026, 11, 15, 12);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'future-card', name: '跨月银行卡').toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'future-card-snapshot',
+          monthKey: financeMonthKey(snapshotAt),
+          paymentMethodUuid: 'future-card',
+          amountMinor: 10000,
+          balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+          createdAt: snapshotAt.millisecondsSinceEpoch,
+          updatedAt: snapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'future-card-expense',
+          amountMinor: 2500,
+          paymentMethodUuid: 'future-card',
+          transactionDate: dateKey(plannedAt),
+          occurredAt: plannedAt.millisecondsSinceEpoch,
+          createdAt: clockNow.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(
+        initialMonth: DateTime(2026, 11),
+        clock: () => clockNow,
+      ),
+      size: const Size(1100, 1000),
+    );
+    expect(find.text('还没有付款方式余额记录'), findsOneWidget);
+
+    clockNow = DateTime(2026, 11, 1, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 3));
+    final card = _key('finance-budget-card-future-card-snapshot');
+    await _waitFor(tester, () => card.evaluate().isNotEmpty);
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    clockNow = DateTime(2026, 11, 15, 12, 0, 2);
+    await tester.pump(const Duration(days: 15));
+    await _waitFor(
+      tester,
+      () =>
+          find
+              .descendant(of: card, matching: find.text('当前余额 ¥75.00'))
+              .evaluate()
+              .isNotEmpty,
+    );
+
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥75.00')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('记账概览不提前统计本月未来发生的账单', (tester) async {
     final db = await _seed(tester);
     final now = DateTime.now();

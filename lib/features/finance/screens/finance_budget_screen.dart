@@ -225,7 +225,8 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     final monthEndAt = nextMonthAt - 1;
     // Refresh when a future selected month starts, or when the current month
     // ends, even if there are no scheduled finance events.
-    int? nextEventAt = monthStart.isAfter(currentMonth)
+    final refreshDataAtMonthStart = monthStart.isAfter(currentMonth);
+    int? nextEventAt = refreshDataAtMonthStart
         ? monthStart.millisecondsSinceEpoch
         : nextMonthAt;
     for (final transaction in _transactions) {
@@ -274,6 +275,10 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     );
     _balanceRefreshTimer = Timer(delay, () {
       if (!mounted) return;
+      if (refreshDataAtMonthStart) {
+        unawaited(_load(showLoading: false));
+        return;
+      }
       setState(() => _summary = _summaryForCurrentView());
       _scheduleBalanceRefresh();
     });
