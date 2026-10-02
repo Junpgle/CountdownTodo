@@ -13,6 +13,14 @@ class AiTodoContextBuilder {
   static final RegExp _explicitIsoDatePattern = RegExp(
     r'(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)',
   );
+  static final RegExp _explicitChineseDateRangePattern = RegExp(
+    r'(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)\s*'
+    r'(?:至|到|~|～|－|–|—|-)\s*'
+    r'(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)',
+  );
+  static final RegExp _explicitChineseDatePattern = RegExp(
+    r'(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)',
+  );
 
   static AiContextDateRange? resolveCustomInjectionDateRange({
     DateTime? customStart,
@@ -71,6 +79,8 @@ class AiTodoContextBuilder {
       final queryText = userMessage
           .replaceAll(_explicitIsoDateRangePattern, '')
           .replaceAll(_explicitIsoDatePattern, '')
+          .replaceAll(_explicitChineseDateRangePattern, '')
+          .replaceAll(_explicitChineseDatePattern, '')
           .trim();
       final rangeInstruction = '使用自定义注入范围 $start 至 $end';
       return queryText.isEmpty
@@ -504,8 +514,8 @@ JSON操作块必须且只能使用以下协议：
     AiContextDateRange? focusRecordPriorityRange,
     DateTime? now,
   }) {
-    if (_hasUnsupportedExplicitIsoDate(userMessage)) return null;
     final nowValue = now ?? DateTime.now();
+    if (_hasUnsupportedExplicitDate(userMessage, now: nowValue)) return null;
     final sections = <String>[];
     final injectCourseContext =
         _shouldInjectCourseContext(userMessage) ||
@@ -688,8 +698,8 @@ ${sections.join('\n')}
     bool expandFocusContext = false,
     DateTime? now,
   }) {
-    if (_hasUnsupportedExplicitIsoDate(userMessage)) return null;
     final nowValue = now ?? DateTime.now();
+    if (_hasUnsupportedExplicitDate(userMessage, now: nowValue)) return null;
     final parts = <String>[];
     final injectCourseContext =
         _shouldInjectCourseContext(userMessage) ||
@@ -2153,6 +2163,12 @@ ${lines.isEmpty ? '暂无' : lines}''';
         end: explicit.end,
       );
     }
+    final explicitChineseRange = _explicitChineseDateRangePattern.firstMatch(
+      text,
+    );
+    if (explicitChineseRange != null) {
+      return _parseExplicitChineseDateRange(explicitChineseRange, now);
+    }
     final dateMatches = RegExp(
       r'(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)',
     ).allMatches(text).toList();
@@ -2552,22 +2568,149 @@ ${lines.isEmpty ? '暂无' : lines}''';
     );
   }
 
-  static bool _hasUnsupportedExplicitIsoDate(String text) {
-    final dateMatches = _explicitIsoDatePattern.allMatches(text).toList();
-    final ranges = _explicitIsoDateRangePattern.allMatches(text).toList();
-    // Focus context supports a single date range; reject comparisons instead
-    // of silently injecting only the first period's data.
-    if (ranges.length > 1 ||
-        dateMatches.length > 2 ||
-        (ranges.isEmpty && dateMatches.length > 1)) {
+  static _TimeLogPeriod? _parseExplicitChineseDateRange(
+    RegExpMatch match,
+    DateTime now,
+  ) {
+    final startMonth = int.parse(match.group(2)!);
+    final startDay = int.parse(match.group(3)!);
+    final endMonth = int.parse(match.group(5)!);
+    final endDay = int.parse(match.group(6)!);
+    final startYearText = match.group(1);
+    final endYearText = match.group(4);
+
+    int startYear;
+    if (startYearText != null) {
+      startYear = int.parse(startYearText);
+    } else if (endYearText != null) {
+      final endYear = int.parse(endYearText);
+      startYear = _monthDayIsAfter(
+        startMonth,
+        startDay,
+        endMonth,
+        endDay,
+      )
+          ? endYear - 1
+          : endYear;
+    } else {
+      startYear = startMonth > now.month ? now.year - 1 : now.year;
+    }
+
+    final start = _parseStrictCalendarDate(startYear, startMonth, startDay);
+    if (start == null) return null;
+
+    final endYear = endYearText == null
+        ? startYear +
+              (_monthDayIsAfter(startMonth, startDay, endMonth, endDay) ? 1 : 0)
+        : int.parse(endYearText);
+    final inclusiveEnd = _parseStrictCalendarDate(endYear, endMonth, endDay);
+    if (inclusiveEnd == null || inclusiveEnd.isBefore(start)) return null;
+
+    return _TimeLogPeriod(
+      label: '自定义',
+      start: start,
+      end: inclusiveEnd.add(const Duration(days: 1)),
+    );
+  }
+
+  static bool _monthDayIsAfter(
+    int leftMonth,
+    int leftDay,
+    int rightMonth,
+    int rightDay,
+  ) =>
+      leftMonth > rightMonth ||
+      (leftMonth == rightMonth && leftDay > rightDay);
+
+  static DateTime? _parseStrictCalendarDate(int year, int month, int day) {
+    if (year < 1 || month < 1 || month > 12 || day < 1 || day > 31) {
+      return null;
+    }
+    final date = DateTime(year, month, day);
+    if (date.year != year || date.month != month || date.day != day) {
+      return null;
+    }
+    return date;
+  }
+
+  static DateTime? _parseExplicitChineseDate(
+    RegExpMatch match,
+    String text,
+    DateTime now,
+  ) {
+    final yearText = match.group(1);
+    final month = int.parse(match.group(2)!);
+    final day = int.parse(match.group(3)!);
+    final year = yearText == null
+        ? _inferredChineseDateYear(text, match.start, month, now)
+        : int.parse(yearText);
+    return _parseStrictCalendarDate(year, month, day);
+  }
+
+  static int _inferredChineseDateYear(
+    String text,
+    int dateStart,
+    int month,
+    DateTime now,
+  ) {
+    final prefix = text.substring(0, dateStart);
+    if (RegExp(r'去年\s*$').hasMatch(prefix)) return now.year - 1;
+    if (RegExp(r'今年\s*$').hasMatch(prefix)) return now.year;
+    return month > now.month ? now.year - 1 : now.year;
+  }
+
+  static bool _hasUnsupportedExplicitDate(String text, {DateTime? now}) {
+    final current = now ?? DateTime.now();
+    final isoDateMatches = _explicitIsoDatePattern.allMatches(text).toList();
+    final isoRanges = _explicitIsoDateRangePattern.allMatches(text).toList();
+    final chineseDateMatches = _explicitChineseDatePattern
+        .allMatches(text)
+        .toList();
+    final chineseRanges = _explicitChineseDateRangePattern
+        .allMatches(text)
+        .toList();
+    final ranges = isoRanges.length + chineseRanges.length;
+
+    bool isInsideRange(RegExpMatch date, Iterable<RegExpMatch> candidates) =>
+        candidates.any(
+          (range) => range.start <= date.start && range.end >= date.end,
+        );
+
+    final standaloneIsoDates = isoDateMatches
+        .where((date) => !isInsideRange(date, isoRanges))
+        .toList();
+    final standaloneChineseDates = chineseDateMatches
+        .where((date) => !isInsideRange(date, chineseRanges))
+        .toList();
+
+    // Focus context supports one explicit date/range. Reject comparisons
+    // instead of silently injecting only the first period's data.
+    if (ranges > 1 ||
+        (ranges == 1 &&
+            (standaloneIsoDates.isNotEmpty ||
+                standaloneChineseDates.isNotEmpty)) ||
+        (ranges == 0 &&
+            standaloneIsoDates.length + standaloneChineseDates.length > 1)) {
       return true;
     }
-    for (final range in ranges) {
+
+    for (final range in isoRanges) {
       final start = _parseStrictIsoDate(range.group(1)!);
       final end = _parseStrictIsoDate(range.group(2)!);
       if (start == null || end == null || end.isBefore(start)) return true;
     }
-    return dateMatches.any(
+
+    for (final range in chineseRanges) {
+      if (_parseExplicitChineseDateRange(range, current) == null) return true;
+    }
+
+    if (standaloneChineseDates.any(
+      (match) => _parseExplicitChineseDate(match, text, current) == null,
+    )) {
+      return true;
+    }
+
+    return standaloneIsoDates.any(
       (match) => _parseStrictIsoDate(match.group(1)!) == null,
     );
   }

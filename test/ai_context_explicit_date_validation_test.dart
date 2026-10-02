@@ -153,6 +153,137 @@ void main() {
     expect(context, isNot(contains('june-log')));
   });
 
+  test('selected custom range overrides Chinese dates in the prompt', () {
+    final customStart = DateTime(2026, 7, 1);
+    final customEnd = DateTime(2026, 7, 31);
+    final contextQuery = AiTodoContextBuilder.buildContextQueryText(
+      userMessage: '分析2026年6月1日至2026年6月30日的效率',
+      customStart: customStart,
+      customEnd: customEnd,
+      now: DateTime(2026, 10, 2, 12),
+    );
+
+    expect(contextQuery, contains('自定义注入范围 2026-07-01 至 2026-07-31'));
+    expect(contextQuery, isNot(contains('2026年6月')));
+
+    final juneStart = DateTime(2026, 6, 15, 9);
+    final julyStart = DateTime(2026, 7, 15, 9);
+    final context = AiTodoContextBuilder.buildContextInjection(
+      userMessage: contextQuery,
+      courses: const [],
+      timeLogs: [
+        TimeLogItem(
+          id: 'june-log',
+          title: '六月记录',
+          startTime: juneStart.millisecondsSinceEpoch,
+          endTime: juneStart
+              .add(const Duration(minutes: 30))
+              .millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'july-log',
+          title: '七月记录',
+          startTime: julyStart.millisecondsSinceEpoch,
+          endTime: julyStart
+              .add(const Duration(minutes: 30))
+              .millisecondsSinceEpoch,
+        ),
+      ],
+      conflicts: const [],
+      teams: const [],
+      now: DateTime(2026, 10, 2, 12),
+    );
+
+    expect(context, contains('july-log'));
+    expect(context, isNot(contains('june-log')));
+  });
+
+  test('Chinese explicit date ranges include both endpoints', () {
+    final juneStart = DateTime(2026, 6, 15, 9);
+    final juneEnd = DateTime(2026, 6, 30, 23, 30);
+    final julyStart = DateTime(2026, 7, 1, 9);
+    final context = AiTodoContextBuilder.buildContextInjection(
+      userMessage: '分析2026年6月1日至2026年6月30日的效率',
+      courses: const [],
+      timeLogs: [
+        TimeLogItem(
+          id: 'june-mid-month',
+          title: '六月中旬记录',
+          startTime: juneStart.millisecondsSinceEpoch,
+          endTime: juneStart
+              .add(const Duration(minutes: 30))
+              .millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'june-end-boundary',
+          title: '六月末记录',
+          startTime: juneEnd.millisecondsSinceEpoch,
+          endTime: juneEnd
+              .add(const Duration(minutes: 30))
+              .millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'july-record',
+          title: '七月记录',
+          startTime: julyStart.millisecondsSinceEpoch,
+          endTime: julyStart
+              .add(const Duration(minutes: 30))
+              .millisecondsSinceEpoch,
+        ),
+      ],
+      conflicts: const [],
+      teams: const [],
+      now: DateTime(2026, 10, 2, 12),
+    );
+
+    expect(context, contains('2026-06-01 00:00 至 2026-07-01 00:00'));
+    expect(context, contains('june-mid-month'));
+    expect(context, contains('june-end-boundary'));
+    expect(context, isNot(contains('july-record')));
+  });
+
+  test(
+    'invalid or reversed Chinese date ranges do not inject fallback data',
+    () {
+      final start = DateTime(2026, 7, 2, 9);
+      final timeLogs = [
+        TimeLogItem(
+          id: 'july-log',
+          title: '七月记录',
+          startTime: start.millisecondsSinceEpoch,
+          endTime: start
+              .add(const Duration(minutes: 30))
+              .millisecondsSinceEpoch,
+        ),
+      ];
+
+      for (final userMessage in [
+        '分析2026年6月31日至2026年7月5日的效率',
+        '分析2026年7月5日至2026年6月30日的效率',
+      ]) {
+        final context = AiTodoContextBuilder.buildContextInjection(
+          userMessage: userMessage,
+          courses: const [],
+          timeLogs: timeLogs,
+          conflicts: const [],
+          teams: const [],
+          now: DateTime(2026, 10, 2, 12),
+        );
+        final summary = AiTodoContextBuilder.buildContextInjectionSummary(
+          userMessage: userMessage,
+          courses: const [],
+          timeLogs: timeLogs,
+          conflicts: const [],
+          teams: const [],
+          now: DateTime(2026, 10, 2, 12),
+        );
+
+        expect(context, isNull, reason: userMessage);
+        expect(summary, isNull, reason: userMessage);
+      }
+    },
+  );
+
   test('impossible explicit single date does not fall back to recent logs', () {
     final start = DateTime(2026, 10, 1, 9);
     final context = AiTodoContextBuilder.buildContextInjection(
