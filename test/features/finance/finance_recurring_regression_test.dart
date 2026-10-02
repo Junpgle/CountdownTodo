@@ -505,6 +505,83 @@ void main() {
       });
     }
 
+    test('把每月到期日改到本月已过日期不会补记倒签账单', () async {
+      final now = DateTime.now();
+      final currentPeriod = financeMonthKey(now);
+      final previousPeriod = financeMonthKey(DateTime(now.year, now.month - 1));
+      final original = FinanceRecurringRule(
+        uuid: 'move-recurring-day-into-past',
+        name: '调整到期日的月费',
+        amountMinor: 10000,
+        dayOfMonth: 25,
+        startDate: dateKey(DateTime(now.year, now.month, 1)),
+        lastGeneratedPeriod: previousPeriod,
+      );
+      await FinanceStorage.saveRecurringRule(original);
+
+      final edited = FinanceRecurringRule.fromMap(original.toMap())
+        ..dayOfMonth = 1;
+      edited.markAsChanged();
+      await FinanceStorage.saveRecurringRule(edited);
+
+      expect(
+        (await FinanceStorage.getRecurringRule(original.uuid))!
+            .lastGeneratedPeriod,
+        currentPeriod,
+      );
+      expect(
+        await FinanceAutomationService.reconcileCurrentPeriod(
+          now: DateTime(now.year, now.month, now.day, 12),
+        ),
+        0,
+      );
+      expect(await FinanceStorage.getTransactions(), isEmpty);
+    });
+
+    for (final source in ['backup', 'remote']) {
+      test('$source 同步把每月到期日改到本月已过日期不会倒签', () async {
+        final now = DateTime.now();
+        final currentPeriod = financeMonthKey(now);
+        final previousPeriod = financeMonthKey(
+          DateTime(now.year, now.month - 1),
+        );
+        final original = FinanceRecurringRule(
+          uuid: 'synced-recurring-day-into-past-$source',
+          name: '同步调整到期日的月费',
+          amountMinor: 10000,
+          dayOfMonth: 25,
+          startDate: dateKey(DateTime(now.year, now.month, 1)),
+          lastGeneratedPeriod: previousPeriod,
+        );
+        await FinanceStorage.saveRecurringRule(original);
+        final incoming = FinanceRecurringRule.fromMap(original.toMap())
+          ..dayOfMonth = 1;
+        incoming.markAsChanged();
+        final bundle = {
+          'recurring_rules': [incoming.toMap()],
+        };
+
+        if (source == 'backup') {
+          await FinanceStorage.importBundle(bundle);
+        } else {
+          await FinanceStorage.mergeRemoteBundle(bundle);
+        }
+
+        expect(
+          (await FinanceStorage.getRecurringRule(original.uuid))!
+              .lastGeneratedPeriod,
+          currentPeriod,
+        );
+        expect(
+          await FinanceAutomationService.reconcileCurrentPeriod(
+            now: DateTime(now.year, now.month, now.day, 12),
+          ),
+          0,
+        );
+        expect(await FinanceStorage.getTransactions(), isEmpty);
+      });
+    }
+
     test('年度到期月份修改后拒绝旧调度，并在新月份正常生成', () async {
       final old = FinanceRecurringRule(
         uuid: 'stale-yearly-schedule',

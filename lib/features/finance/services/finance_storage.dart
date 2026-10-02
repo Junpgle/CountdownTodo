@@ -2245,30 +2245,98 @@ abstract final class FinanceStorage {
     FinanceRecurringRule incoming,
   ) {
     if (current.frequency != incoming.frequency) {
-      return incoming.effectiveLastGeneratedPeriod ??
-          incoming.generationPeriodBefore(
-            DateTime.fromMillisecondsSinceEpoch(incoming.updatedAt),
-          );
+      final marker = incoming.effectiveLastGeneratedPeriod;
+      final barrier = _recurringProgressBeforeCurrentCycle(
+        incoming,
+        DateTime.now(),
+      );
+      if (marker == null) return barrier;
+      return _latestGeneratedPeriod(marker, barrier);
     }
     // Generation progress cannot be rolled back by a stale edit or backup.
-    return _latestGeneratedPeriod(
+    final latest = _latestGeneratedPeriod(
       current.effectiveLastGeneratedPeriod,
       incoming.effectiveLastGeneratedPeriod,
     );
+    if (!_hasRecurringScheduleChanged(current, incoming)) return latest;
+    // A schedule change must not create a bill dated earlier this period just
+    // because the previous rule had not yet been materialized.
+    final passedPeriod = _recurringPastDueCurrentPeriod(
+      incoming,
+      DateTime.now(),
+    );
+    if (passedPeriod == null) return latest;
+    return _latestGeneratedPeriod(latest, passedPeriod);
   }
 
   static String? _editedRecurringGenerationPeriod(
     FinanceRecurringRule current,
     FinanceRecurringRule incoming,
   ) {
-    if (current.frequency != incoming.frequency ||
-        current.isEnabled != incoming.isEnabled ||
+    if (current.frequency != incoming.frequency) {
+      return _recurringProgressBeforeCurrentCycle(incoming, DateTime.now());
+    }
+    final latest = _mergeRecurringGenerationPeriod(current, incoming);
+    if (current.isEnabled != incoming.isEnabled ||
         current.autoGenerate != incoming.autoGenerate ||
         current.isDeleted != incoming.isDeleted) {
-      return incoming.generationPeriodBefore(DateTime.now());
+      return _latestGeneratedPeriod(
+        latest,
+        incoming.generationPeriodBefore(DateTime.now()),
+      );
     }
-    return _mergeRecurringGenerationPeriod(current, incoming);
+    return latest;
   }
+
+  static bool _hasRecurringScheduleChanged(
+    FinanceRecurringRule current,
+    FinanceRecurringRule incoming,
+  ) =>
+      current.frequency != incoming.frequency ||
+      current.dayOfMonth != incoming.dayOfMonth ||
+      current.monthOfYear != incoming.monthOfYear ||
+      current.startDate != incoming.startDate ||
+      current.endDate != incoming.endDate;
+
+  static String _recurringProgressBeforeCurrentCycle(
+    FinanceRecurringRule rule,
+    DateTime now,
+  ) {
+    final due = rule.dueDateFor(
+      now.year,
+      rule.frequency == FinanceRecurringFrequency.yearly
+          ? rule.monthOfYear
+          : now.month,
+    );
+    if (due != null && !due.isAfter(now)) {
+      return _recurringPeriodKeyFor(rule, due);
+    }
+    return rule.frequency == FinanceRecurringFrequency.yearly
+        ? '${now.year - 1}'
+        : financeMonthKey(DateTime(now.year, now.month - 1));
+  }
+
+  static String? _recurringPastDueCurrentPeriod(
+    FinanceRecurringRule rule,
+    DateTime now,
+  ) {
+    final due = rule.dueDateFor(
+      now.year,
+      rule.frequency == FinanceRecurringFrequency.yearly
+          ? rule.monthOfYear
+          : now.month,
+    );
+    if (due == null || due.isAfter(now)) return null;
+    return _recurringPeriodKeyFor(rule, due);
+  }
+
+  static String _recurringPeriodKeyFor(
+    FinanceRecurringRule rule,
+    DateTime dueAt,
+  ) =>
+      rule.frequency == FinanceRecurringFrequency.yearly
+          ? dueAt.year.toString()
+          : financeMonthKey(dueAt);
 
   static FinanceRecurringRule _mergeRecurringRuleEdits(
     FinanceRecurringRule current,
