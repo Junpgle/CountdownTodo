@@ -1414,8 +1414,58 @@ ${lines.isEmpty ? '暂无' : lines}''';
       }
     }
     final todayStart = DateTime(now.year, now.month, now.day);
+    _TimeLogPeriod? exactDayPeriod(int year, int month, int day) {
+      final start = DateTime(year, month, day);
+      if (start.year != year || start.month != month || start.day != day) {
+        return null;
+      }
+      return _TimeLogPeriod(
+        label: DateFormat('yyyy-MM-dd').format(start),
+        start: start,
+        end: start.add(const Duration(days: 1)),
+      );
+    }
+
+    final explicitChineseDay = RegExp(
+      r'(?:^|[^\d])(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)',
+    ).firstMatch(text);
+    if (explicitChineseDay != null) {
+      final period = exactDayPeriod(
+        int.parse(explicitChineseDay.group(1)!),
+        int.parse(explicitChineseDay.group(2)!),
+        int.parse(explicitChineseDay.group(3)!),
+      );
+      if (period != null) return period;
+    }
+    final relativeMonthDay = RegExp(
+      r'(今年|去年)\s*(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)',
+    ).firstMatch(text);
+    if (relativeMonthDay != null) {
+      final year = relativeMonthDay.group(1) == '去年'
+          ? now.year - 1
+          : now.year;
+      final period = exactDayPeriod(
+        year,
+        int.parse(relativeMonthDay.group(2)!),
+        int.parse(relativeMonthDay.group(3)!),
+      );
+      if (period != null) return period;
+    }
+    final monthDay = RegExp(
+      r'(?:^|[^\d])(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|号)',
+    ).firstMatch(text);
+    if (monthDay != null) {
+      final month = int.parse(monthDay.group(1)!);
+      final year = month > now.month ? now.year - 1 : now.year;
+      final period = exactDayPeriod(
+        year,
+        month,
+        int.parse(monthDay.group(2)!),
+      );
+      if (period != null) return period;
+    }
     final explicitYearMonth = RegExp(
-      r'(?:^|[^\d])(\d{4})\s*年\s*(0?[1-9]|1[0-2])\s*月(?:份)?',
+      r'(?:^|[^\d])(\d{4})\s*年\s*(0?[1-9]|1[0-2])\s*月(?:份)?(?!\s*\d{1,2}\s*(?:日|号))',
     ).firstMatch(text);
     if (explicitYearMonth != null) {
       final year = int.parse(explicitYearMonth.group(1)!);
@@ -1427,7 +1477,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
       );
     }
     final relativeYearMonth = RegExp(
-      r'(今年|去年)\s*(0?[1-9]|1[0-2])\s*月(?:份)?',
+      r'(今年|去年)\s*(0?[1-9]|1[0-2])\s*月(?:份)?(?!\s*\d{1,2}\s*(?:日|号))',
     ).firstMatch(text);
     if (relativeYearMonth != null) {
       final year = relativeYearMonth.group(1) == '去年'
@@ -1441,7 +1491,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
       );
     }
     final monthOnly = RegExp(
-      r'(?:^|[^\d])(0?[1-9]|1[0-2])\s*月(?:份)?',
+      r'(?:^|[^\d])(0?[1-9]|1[0-2])\s*月(?:份)?(?!\s*\d{1,2}\s*(?:日|号))',
     ).firstMatch(text);
     if (monthOnly != null) {
       final month = int.parse(monthOnly.group(1)!);

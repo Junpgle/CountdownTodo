@@ -1234,5 +1234,57 @@ void main() {
       expect(context, isNot(contains('future-day')));
       expect(preview, contains('专注记录20261001'));
     });
+
+    test('具体年月日和月日效率范围优先于整月匹配', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('last-year-september-first', DateTime(2025, 9, 1, 9)),
+        ('last-year-september-last', DateTime(2025, 9, 30, 9)),
+        ('current-october-first', DateTime(2026, 10, 1, 9)),
+        ('today', DateTime(2026, 10, 2, 9)),
+        ('future', DateTime(2026, 10, 3, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final explicitDay = contextFor('分析2025年9月1日效率');
+      expect(explicitDay, contains('2025-09-01合计'));
+      expect(explicitDay, contains('last-year-september-first'));
+      expect(explicitDay, isNot(contains('last-year-september-last')));
+      expect(previewFor('分析2025年9月1日效率'), contains('专注记录20250901'));
+
+      final relativeDay = contextFor('分析去年9月1日效率');
+      expect(relativeDay, contains('last-year-september-first'));
+      expect(relativeDay, isNot(contains('last-year-september-last')));
+
+      final monthDay = contextFor('分析10月1日效率');
+      expect(monthDay, contains('2026-10-01合计'));
+      expect(monthDay, contains('current-october-first'));
+      expect(monthDay, isNot(contains('today')));
+      expect(monthDay, isNot(contains('future')));
+      expect(previewFor('分析10月1日效率'), contains('专注记录20261001'));
+    });
   });
 }
