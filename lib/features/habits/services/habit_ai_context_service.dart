@@ -45,6 +45,15 @@ abstract final class HabitAiContextService {
   static final RegExp _calendarDateRangePattern = RegExp(
     r'(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})\s*(?:至|到|-|~)\s*(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})',
   );
+  static final RegExp _chineseDatePattern = RegExp(
+    r'(?:^|[^\d])(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?(?!\d)',
+  );
+  static final RegExp _chineseDateEndpointPattern = RegExp(
+    r'^(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?$',
+  );
+  static final RegExp _chineseDateRangePattern = RegExp(
+    r'((?:\d{4}\s*年\s*)?\d{1,2}\s*月\s*\d{1,2}\s*[日号]?)\s*(?:至|到|-|~|～|—|–)\s*((?:\d{4}\s*年\s*)?\d{1,2}\s*月\s*\d{1,2}\s*[日号]?)',
+  );
   static final RegExp _yearMonthPattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](0?[1-9]|1[0-2])(?![-/.]\d)',
   );
@@ -52,10 +61,11 @@ abstract final class HabitAiContextService {
   static bool shouldInjectFor(
     String userMessage, {
     String conversationContext = '',
+    DateTime? now,
   }) {
     final text = userMessage.trim().toLowerCase();
     if (text.isEmpty) return false;
-    if (_hasInvalidExplicitDate(text)) return false;
+    if (_hasInvalidExplicitDate(text, now: now)) return false;
     if (_containsAny(text, _habitKeywords)) return true;
     return _containsAny(conversationContext.toLowerCase(), _habitKeywords) &&
         _containsAny(text, _followUpWords) &&
@@ -72,6 +82,7 @@ abstract final class HabitAiContextService {
     if (!shouldInjectFor(
       userMessage,
       conversationContext: conversationContext,
+      now: now,
     )) {
       return null;
     }
@@ -80,7 +91,7 @@ abstract final class HabitAiContextService {
     );
     final count = activeGoals.length;
     final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
-    if (_hasInvalidExplicitDate(rangeQueryText)) return null;
+    if (_hasInvalidExplicitDate(rangeQueryText, now: now)) return null;
     final range = _resolveRange(rangeQueryText, _day(now ?? DateTime.now()));
     return count == 0
         ? '习惯数据（暂无启用目标，${range.label}）'
@@ -97,6 +108,7 @@ abstract final class HabitAiContextService {
     if (!shouldInjectFor(
       userMessage,
       conversationContext: conversationContext,
+      now: now,
     )) {
       return null;
     }
@@ -113,7 +125,7 @@ abstract final class HabitAiContextService {
         .toList();
     final today = _day(now ?? DateTime.now());
     final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
-    if (_hasInvalidExplicitDate(rangeQueryText)) return null;
+    if (_hasInvalidExplicitDate(rangeQueryText, now: now)) return null;
     final range = _resolveRange(rangeQueryText, today);
     final lines = <String>[
       '【用户习惯数据｜只读快照】',
@@ -275,6 +287,17 @@ abstract final class HabitAiContextService {
     String text,
     DateTime today,
   ) {
+    final chineseRange = _chineseDateRangePattern.firstMatch(text);
+    if (chineseRange != null) {
+      final resolved = _parseChineseDateRange(chineseRange, today);
+      if (resolved != null) {
+        return (
+          from: resolved.from,
+          to: resolved.to,
+          label: '${_dateKey(resolved.from)} 至 ${_dateKey(resolved.to)}',
+        );
+      }
+    }
     final explicitRange = _calendarDateRangePattern.firstMatch(text);
     if (explicitRange != null) {
       final from = _parseExplicitDate(explicitRange.group(1)!);
@@ -291,6 +314,14 @@ abstract final class HabitAiContextService {
     if (explicitDate != null) {
       final dateKey = _dateKey(explicitDate);
       return (from: explicitDate, to: explicitDate, label: dateKey);
+    }
+    final chineseDate = _chineseDatePattern.firstMatch(text);
+    final parsedChineseDate = chineseDate == null
+        ? null
+        : _parseChineseDateMatch(chineseDate, defaultYear: today.year);
+    if (parsedChineseDate != null) {
+      final dateKey = _dateKey(parsedChineseDate);
+      return (from: parsedChineseDate, to: parsedChineseDate, label: dateKey);
     }
     final numeric = _yearMonthPattern.firstMatch(text);
     final chinese = numeric == null ? _monthPattern.firstMatch(text) : null;
@@ -357,16 +388,31 @@ abstract final class HabitAiContextService {
     );
   }
 
-  static bool _hasInvalidExplicitDate(String text) {
+  static bool _hasInvalidExplicitDate(String text, {DateTime? now}) {
     final dateMatches = _calendarDatePattern.allMatches(text).toList();
-    if (dateMatches.isEmpty) return false;
+    final chineseDateMatches = _chineseDatePattern.allMatches(text).toList();
+    if (dateMatches.isEmpty && chineseDateMatches.isEmpty) return false;
     final ranges = _calendarDateRangePattern.allMatches(text).toList();
-    if (ranges.length > 1 ||
-        (ranges.isEmpty && dateMatches.length > 1) ||
-        (ranges.length == 1 && dateMatches.length > 2)) {
+    final chineseRanges = _chineseDateRangePattern.allMatches(text).toList();
+    final rangeCount = ranges.length + chineseRanges.length;
+    final dateCount = dateMatches.length + chineseDateMatches.length;
+    if (rangeCount > 1 ||
+        (rangeCount == 0 && dateCount > 1) ||
+        (rangeCount == 1 && dateCount > 2)) {
       return true;
     }
     if (dateMatches.any((match) => _parseCalendarDateMatch(match) == null)) {
+      return true;
+    }
+    if (chineseRanges.isEmpty &&
+        chineseDateMatches.any(
+          (match) =>
+              _parseChineseDateMatch(
+                match,
+                defaultYear: (now ?? DateTime.now()).year,
+              ) ==
+              null,
+        )) {
       return true;
     }
     for (final rangeMatch in ranges) {
@@ -374,7 +420,66 @@ abstract final class HabitAiContextService {
       final to = _parseExplicitDate(rangeMatch.group(2)!);
       if (from == null || to == null || to.isBefore(from)) return true;
     }
+    final today = _day(now ?? DateTime.now());
+    for (final rangeMatch in chineseRanges) {
+      if (_parseChineseDateRange(rangeMatch, today) == null) return true;
+    }
     return false;
+  }
+
+  static ({DateTime from, DateTime to})? _parseChineseDateRange(
+    RegExpMatch match,
+    DateTime today,
+  ) {
+    final fromParts = _parseChineseDateParts(match.group(1)!);
+    final toParts = _parseChineseDateParts(match.group(2)!);
+    if (fromParts == null || toParts == null) return null;
+    final endIsEarlier =
+        toParts.month < fromParts.month ||
+        (toParts.month == fromParts.month && toParts.day < fromParts.day);
+    final fromYear =
+        fromParts.year ??
+        (toParts.year == null
+            ? today.year
+            : endIsEarlier
+            ? toParts.year! - 1
+            : toParts.year!);
+    final toYear = toParts.year ?? (endIsEarlier ? fromYear + 1 : fromYear);
+    final from = _validCalendarDate(fromYear, fromParts.month, fromParts.day);
+    final to = _validCalendarDate(toYear, toParts.month, toParts.day);
+    if (from == null || to == null || to.isBefore(from)) return null;
+    return (from: from, to: to);
+  }
+
+  static ({int? year, int month, int day})? _parseChineseDateParts(
+    String text,
+  ) {
+    final match = _chineseDateEndpointPattern.firstMatch(text.trim());
+    if (match == null) return null;
+    return (
+      year: int.tryParse(match.group(1) ?? ''),
+      month: int.parse(match.group(2)!),
+      day: int.parse(match.group(3)!),
+    );
+  }
+
+  static DateTime? _parseChineseDateMatch(
+    RegExpMatch match, {
+    required int defaultYear,
+  }) {
+    final year = int.tryParse(match.group(1) ?? '') ?? defaultYear;
+    final month = int.parse(match.group(2)!);
+    final day = int.parse(match.group(3)!);
+    return _validCalendarDate(year, month, day);
+  }
+
+  static DateTime? _validCalendarDate(int year, int month, int day) {
+    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+    final value = DateTime(year, month, day);
+    if (value.year != year || value.month != month || value.day != day) {
+      return null;
+    }
+    return value;
   }
 
   static DateTime? _parseExplicitDate(String text) {

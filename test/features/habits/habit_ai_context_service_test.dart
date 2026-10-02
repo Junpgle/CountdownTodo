@@ -81,6 +81,57 @@ void main() {
       expect(summary, contains('2026-06-01 至 2026-07-05'));
     });
 
+    test('supports Chinese explicit date ranges across months', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看2026年6月1日至2026年7月5日的习惯进度',
+        goals: const [],
+        now: now,
+      );
+
+      expect(summary, contains('2026-06-01 至 2026-07-05'));
+    });
+
+    test('does not collapse an invalid Chinese date range to its start', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看2026年6月1日至2026年6月31日的习惯进度',
+        goals: const [],
+        now: now,
+      );
+
+      expect(summary, isNull);
+    });
+
+    test('does not collapse a reversed Chinese date range to its start', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看2026年6月30日至2026年6月1日的习惯进度',
+        goals: const [],
+        now: now,
+      );
+
+      expect(summary, isNull);
+    });
+
+    test('does not inject only the first of two Chinese comparison ranges', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '比较2026年6月1日至2026年6月30日和2026年7月1日至2026年7月31日的习惯进度',
+        goals: const [],
+        now: now,
+      );
+
+      expect(summary, isNull);
+    });
+
+    test('uses a single Chinese explicit date instead of its whole month', () {
+      final summary = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看2026年6月1日的习惯进度',
+        goals: const [],
+        now: now,
+      );
+
+      expect(summary, contains('2026-06-01'));
+      expect(summary, isNot(contains('2026-06-30')));
+    });
+
     test('does not reuse an invalid range from the previous message', () {
       final summary = HabitAiContextService.buildContextInjectionSummary(
         userMessage: '习惯进度如何？',
