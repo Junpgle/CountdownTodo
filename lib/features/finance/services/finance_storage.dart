@@ -470,6 +470,18 @@ abstract final class FinanceStorage {
       if (staleGroup || staleEditedItem) {
         throw StateError('分期组已同步更新，请重新打开整组编辑后再保存');
       }
+      final activeInstallmentIndexes = <int>{};
+      for (final current in currentByUuid.values.where(
+        (item) => !item.isDeleted,
+      )) {
+        if (!_hasValidInstallmentFields(current)) {
+          throw StateError('分期组包含无效期次，请先删除无效记录后再编辑');
+        }
+        final index = current.installmentIndex;
+        if (index != null && !activeInstallmentIndexes.add(index)) {
+          throw StateError('分期组存在重复期号，请先删除重复账单后再编辑');
+        }
+      }
       final activeInstallmentCounts = currentByUuid.values
           .where((item) => !item.isDeleted)
           .map((item) => item.installmentCount)

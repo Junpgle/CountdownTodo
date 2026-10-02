@@ -3279,6 +3279,65 @@ void main() {
     );
   });
 
+  test('已存在重复期号的分期组编辑会安全失败', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'installment-edit-duplicate-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+
+    final saved = await FinanceStorage.saveInstallmentPlan(
+      transaction: FinanceTransaction(
+        uuid: 'installment-edit-duplicate-first',
+        amountMinor: 12000,
+        transactionDate: '2026-01-31',
+        merchant: '分期账单',
+      ),
+      totalAmountMinor: 12000,
+      installmentCount: 3,
+      startDate: DateTime(2026, 1, 31),
+    );
+    final duplicate = FinanceTransaction.fromMap(saved.first.toMap())
+      ..uuid = 'installment-edit-duplicate-copy'
+      ..markAsChanged();
+    await db.insert('finance_transactions', duplicate.toMap());
+
+    final groupUuid = saved.first.installmentGroupUuid!;
+    final existing = await FinanceStorage.getInstallmentGroup(
+      groupUuid,
+      includeDeleted: true,
+    );
+    final original = (await FinanceStorage.getTransaction(saved.first.uuid))!;
+    final edited = FinanceTransaction.fromMap(original.toMap())
+      ..note = '更新整组备注'
+      ..markAsChanged();
+    await expectLater(
+      FinanceStorage.saveInstallmentPlan(
+        transaction: edited,
+        original: original,
+        totalAmountMinor: 12000,
+        installmentCount: 3,
+        startDate: DateTime(2026, 1, 31),
+        existingInstallments: existing,
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    expect(
+      (await FinanceStorage.getInstallmentGroup(groupUuid)).length,
+      4,
+    );
+    expect(
+      (await FinanceStorage.getTransaction(saved.first.uuid))!.note,
+      isNull,
+    );
+  });
+
   test('扩展已缩短的分期计划会恢复超出旧期数的期次', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'installment-expand-shortened-test',
