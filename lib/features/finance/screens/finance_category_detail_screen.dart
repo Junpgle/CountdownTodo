@@ -1,11 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
+import '../services/finance_storage.dart';
 
 class FinanceCategoryDetailScreen extends StatefulWidget {
   final String periodTitle;
+  final DateTime? periodStart;
+  final DateTime? periodEnd;
+  final DateTime Function() clock;
   final String? rootCategoryUuid;
   final List<FinanceTransaction> transactions;
   final Map<String, FinanceCategory> categories;
@@ -18,6 +24,9 @@ class FinanceCategoryDetailScreen extends StatefulWidget {
   const FinanceCategoryDetailScreen({
     super.key,
     required this.periodTitle,
+    this.periodStart,
+    this.periodEnd,
+    this.clock = DateTime.now,
     required this.rootCategoryUuid,
     required this.transactions,
     required this.categories,
@@ -33,11 +42,90 @@ class _FinanceCategoryDetailScreenState
     extends State<FinanceCategoryDetailScreen> {
   final Map<String, GlobalKey> _itemSourceKeys = {};
   bool _openingCategoryLedger = false;
+  late List<FinanceTransaction> _transactions;
+  late Map<String, FinanceCategory> _categories;
+  Timer? _financeChangeRefreshTimer;
+  int _loadGeneration = 0;
 
   String get periodTitle => widget.periodTitle;
   String? get rootCategoryUuid => widget.rootCategoryUuid;
-  List<FinanceTransaction> get transactions => widget.transactions;
-  Map<String, FinanceCategory> get categories => widget.categories;
+  List<FinanceTransaction> get transactions => _transactions;
+  Map<String, FinanceCategory> get categories => _categories;
+
+  @override
+  void initState() {
+    super.initState();
+    _transactions = widget.transactions;
+    _categories = widget.categories;
+    FinanceStorage.revision.addListener(_onFinanceChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant FinanceCategoryDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.transactions, widget.transactions)) {
+      _transactions = widget.transactions;
+    }
+    if (!identical(oldWidget.categories, widget.categories)) {
+      _categories = widget.categories;
+    }
+  }
+
+  @override
+  void dispose() {
+    _financeChangeRefreshTimer?.cancel();
+    FinanceStorage.revision.removeListener(_onFinanceChanged);
+    super.dispose();
+  }
+
+  void _onFinanceChanged() {
+    _financeChangeRefreshTimer?.cancel();
+    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
+      _financeChangeRefreshTimer = null;
+      if (mounted) unawaited(_reloadPeriodData());
+    });
+  }
+
+  Future<void> _reloadPeriodData() async {
+    final from = widget.periodStart;
+    final to = widget.periodEnd;
+    if (from == null || to == null || !from.isBefore(to)) return;
+
+    final generation = ++_loadGeneration;
+    try {
+      final allTransactions = await FinanceRepository.getTransactions(
+        from: from,
+        to: to,
+      );
+      final refreshedCategories = await FinanceRepository.getCategories(
+        includeArchived: true,
+      );
+      if (!mounted || generation != _loadGeneration) return;
+
+      final now = widget.clock();
+      final includesNow = !now.isBefore(from) && now.isBefore(to);
+      final nextTransactions = includesNow
+          ? allTransactions
+                .where(
+                  (transaction) =>
+                      transaction.balanceEventAt() <=
+                      now.millisecondsSinceEpoch,
+                )
+                .toList(growable: false)
+          : allTransactions;
+      final nextCategories = {
+        for (final category in refreshedCategories) category.uuid: category,
+      };
+
+      setState(() {
+        _transactions = nextTransactions;
+        _categories = nextCategories;
+      });
+    } catch (error) {
+      debugPrint('刷新支出分类详情失败：$error');
+      // Keep the last usable detail visible if refreshing from local storage fails.
+    }
+  }
 
   FinanceCategory? get _rootCategory =>
       rootCategoryUuid == null ? null : categories[rootCategoryUuid];

@@ -701,16 +701,19 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     final colorScheme = theme.colorScheme;
     final detailPage = FinanceCategoryDetailScreen(
       periodTitle: period.title,
+      periodStart: period.from,
+      periodEnd: period.to,
+      clock: clock,
       rootCategoryUuid: entry.categoryUuid,
       transactions: period.transactions,
       categories: categories,
       onCategorySelected: onCategorySelected == null
           ? null
-          : (categoryUuid, sourceKey, _) => onCategorySelected!(
-              categoryUuid,
-              sourceKey,
-              period.transactions,
-            ),
+          : (categoryUuid, sourceKey, periodTransactions) => onCategorySelected!(
+                  categoryUuid,
+                  sourceKey,
+                  periodTransactions,
+                ),
     );
     await PageTransitions.pushFromRect<String>(
       context: context,
