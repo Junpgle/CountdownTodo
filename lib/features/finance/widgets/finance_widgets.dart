@@ -1340,30 +1340,45 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              formatSignedFinanceAmount(
-                transaction.amountMinor,
-                transaction.type,
+        trailing: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: (MediaQuery.sizeOf(context).width - 120).clamp(
+              0.0,
+              double.infinity,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  formatSignedFinanceAmount(
+                    transaction.amountMinor,
+                    transaction.type,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: amountColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
-              style: TextStyle(color: amountColor, fontWeight: FontWeight.w700),
-            ),
-            PopupMenuButton<String>(
-              onSelected: (value) {
-                if (value == 'refund') onRefund(transaction);
-                if (value == 'edit') onEdit(transaction);
-                if (value == 'delete') onDelete(transaction);
-              },
-              itemBuilder: (context) => [
-                if (transaction.type == FinanceTransactionType.expense)
-                  const PopupMenuItem(value: 'refund', child: Text('退款')),
-                const PopupMenuItem(value: 'edit', child: Text('编辑')),
-                const PopupMenuItem(value: 'delete', child: Text('删除')),
-              ],
-            ),
-          ],
+              PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'refund') onRefund(transaction);
+                  if (value == 'edit') onEdit(transaction);
+                  if (value == 'delete') onDelete(transaction);
+                },
+                itemBuilder: (context) => [
+                  if (transaction.type == FinanceTransactionType.expense)
+                    const PopupMenuItem(value: 'refund', child: Text('退款')),
+                  const PopupMenuItem(value: 'edit', child: Text('编辑')),
+                  const PopupMenuItem(value: 'delete', child: Text('删除')),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

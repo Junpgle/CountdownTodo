@@ -1946,6 +1946,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('窄屏账单列表中的大额金额不会挤出卡片', (tester) async {
+    final transaction = FinanceTransaction(
+      uuid: 'ledger-large-amount-narrow-screen',
+      amountMinor: maxFinanceAmountMinor,
+      transactionDate: '2026-09-04',
+      merchant: '大额账单',
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          transactions: [transaction],
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+      size: const Size(320, 740),
+    );
+
+    expect(find.text('大额账单'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('未分类账单筛选只显示未关联分类的账单', (tester) async {
     final uncategorized = FinanceTransaction(
       uuid: 'ledger-uncategorized',
