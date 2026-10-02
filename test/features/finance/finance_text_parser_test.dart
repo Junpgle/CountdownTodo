@@ -362,6 +362,20 @@ void main() {
     expect(paymentPromotionDrafts, hasLength(1));
     expect(paymentPromotionDrafts.single.amountMinor, 2500);
 
+    final redPacketDrafts = FinanceTextParser.parseQuickEntries(
+      '今天午餐原价 30 元，支付宝红包抵扣 5 元，实付 25 元',
+      now: fixedNow,
+    );
+    expect(redPacketDrafts, hasLength(1));
+    expect(redPacketDrafts.single.amountMinor, 2500);
+
+    final couponDrafts = FinanceTextParser.parseQuickEntries(
+      '今天午餐原价 30 元，平台使用优惠券抵扣 5 元，实付 25 元',
+      now: fixedNow,
+    );
+    expect(couponDrafts, hasLength(1));
+    expect(couponDrafts.single.amountMinor, 2500);
+
     final incomeDrafts = FinanceTextParser.parseQuickEntries(
       '今天工资应发 1000 元，实收 980 元',
       now: fixedNow,
