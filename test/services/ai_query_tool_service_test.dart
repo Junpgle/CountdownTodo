@@ -65,7 +65,8 @@ void main() {
     );
     final appDataDescription =
         ((appDataDefinition['function'] as Map)['description'] as String);
-    expect(appDataDescription, contains('列表按开始时间倒序'));
+    expect(appDataDescription, contains('专注按开始时间倒序'));
+    expect(appDataDescription, contains('计划、日程、课程和倒计时按业务时间升序'));
   });
 
   test('余额查询从快照扣除后续流水和贷款还款，无快照时保持未知', () async {
@@ -535,6 +536,76 @@ void main() {
       }),
     );
     expect((pomodoros['items'] as List).single['id'], 'z-new');
+  });
+
+  test('日期型业务列表按业务时间升序分页并将无日期记录排后', () async {
+    Future<String> firstId(String domain) async {
+      final result = await service.execute(
+        query('query_app_data', {'domain': domain, 'limit': 1}),
+      );
+      return ((result['items'] as List).single as Map)['id'].toString();
+    }
+
+    rows = [
+      {
+        'id': 'z-later',
+        'start_time': DateTime(2026, 10, 10, 9).millisecondsSinceEpoch,
+      },
+      {
+        'id': 'a-sooner',
+        'start_time': DateTime(2026, 10, 3, 9).millisecondsSinceEpoch,
+      },
+      {'id': '0-undated', 'start_time': null},
+    ];
+    expect(await firstId('plan_blocks'), 'a-sooner');
+
+    rows = [
+      {
+        'id': 'z-later',
+        'start_time': DateTime(2026, 10, 10, 9).millisecondsSinceEpoch,
+        'date': '2026-10-10',
+      },
+      {
+        'id': 'a-sooner',
+        'start_time': DateTime(2026, 10, 3, 9).millisecondsSinceEpoch,
+        'date': '2026-10-03',
+      },
+      {'id': '0-undated', 'start_time': null, 'date': null},
+    ];
+    expect(await firstId('fixed_schedules'), 'a-sooner');
+
+    rows = [
+      {
+        'id': 'z-later',
+        'date': '2026-10-10',
+        'start_time': '2026-10-10T09:00:00',
+      },
+      {
+        'id': 'a-sooner',
+        'date': '2026-10-03',
+        'start_time': '2026-10-03T09:00:00',
+      },
+    ];
+    expect(await firstId('courses'), 'a-sooner');
+
+    rows = [
+      {
+        'id': 'z-later',
+        'target_time': DateTime(2026, 10, 10).millisecondsSinceEpoch,
+      },
+      {
+        'id': 'a-sooner',
+        'target_time': DateTime(2026, 10, 3).millisecondsSinceEpoch,
+      },
+    ];
+    expect(await firstId('countdowns'), 'a-sooner');
+
+    rows = [
+      {'id': 'z-later', 'due_date': '2026-10-10'},
+      {'id': 'a-sooner', 'due_date': '2026-10-03'},
+      {'id': '0-undated', 'due_date': null},
+    ];
+    expect(await firstId('todos'), 'a-sooner');
   });
 
   test('分类、无日期与记录状态在App筛选，无需拉全量由模型计算', () async {
