@@ -140,7 +140,7 @@ abstract final class FinanceAiContextService {
     r'(?:^|[^\d])(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)',
   );
   static final RegExp _chineseCalendarDatePattern = RegExp(
-    r'(?:(\d{4})\s*年\s*)?(十一|十二|十|[一二三四五六七八九]|1[0-2]|0?[1-9])\s*月\s*(\d{1,2})\s*[日号]',
+    r'(?:(\d{4})\s*年\s*)?(十一|十二|十|[一二三四五六七八九]|1[0-2]|0?[1-9])\s*月\s*(\d{1,2}|[一二三四五六七八九十廿]{1,3})\s*[日号]',
   );
   static final RegExp _numericYearMonthPattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](0?[1-9]|1[0-2])(?![-/.]\d)',
@@ -951,7 +951,7 @@ abstract final class FinanceAiContextService {
     final month = match != null
         ? int.tryParse(monthText ?? '')
         : _parseMonthNumber(monthText ?? '');
-    final day = int.tryParse(dayText ?? '');
+    final day = _parseCalendarDayNumber(dayText ?? '');
     if (month == null || day == null) return null;
     final current = now ?? DateTime.now();
     final resolvedYear =
@@ -1023,6 +1023,36 @@ abstract final class FinanceAiContextService {
       '十一': 11,
       '十二': 12,
     }[value];
+  }
+
+  static int? _parseCalendarDayNumber(String value) {
+    final numeric = int.tryParse(value);
+    if (numeric != null) return numeric;
+    if (value == '廿') return 20;
+    if (value.startsWith('廿')) {
+      final ones = _parseMonthNumber(value.substring(1));
+      return ones == null ? null : 20 + ones;
+    }
+    if (value == '十') return 10;
+    if (value.startsWith('十')) {
+      final ones = _parseMonthNumber(value.substring(1));
+      return ones == null ? null : 10 + ones;
+    }
+    if (value.endsWith('十')) {
+      final tens = _parseMonthNumber(value.substring(0, value.length - 1));
+      return tens == null ? null : tens * 10;
+    }
+    final tenIndex = value.indexOf('十');
+    if (tenIndex >= 0) {
+      final tens = tenIndex == 0
+          ? 1
+          : _parseMonthNumber(value.substring(0, tenIndex));
+      final ones = tenIndex == value.length - 1
+          ? 0
+          : _parseMonthNumber(value.substring(tenIndex + 1));
+      return tens == null || ones == null ? null : tens * 10 + ones;
+    }
+    return _parseMonthNumber(value);
   }
 
   static DateTime _day(DateTime value) =>

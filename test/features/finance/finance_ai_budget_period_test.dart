@@ -224,8 +224,19 @@ void main() {
     expect(dateKey(previousYearRange.from), '2025-09-02');
     expect(dateKey(previousYearRange.to), '2025-09-03');
 
+    final chineseNumeralRange = FinanceAiContextService.resolveDateRange(
+      '九月二十一日支出',
+      now: now,
+    );
+    expect(dateKey(chineseNumeralRange.from), '2026-09-21');
+    expect(dateKey(chineseNumeralRange.to), '2026-09-22');
+
     expect(
       FinanceAiContextService.shouldInjectFor('2026年9月31日支出多少'),
+      isFalse,
+    );
+    expect(
+      FinanceAiContextService.shouldInjectFor('九月三十一日支出多少'),
       isFalse,
     );
     expect(
