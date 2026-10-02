@@ -169,6 +169,39 @@ void main() {
     });
   });
 
+  test('恢复记账草案时拒绝溢出日期并规范有效日期', () {
+    final now = DateTime(2026, 10, 2);
+
+    expect(
+      FinanceEntryDraft.fromJson(
+        {'transaction_date': '2026-02-30'},
+        now: now,
+      ).transactionDate,
+      '2026-10-02',
+    );
+    expect(
+      FinanceEntryDraft.fromJson(
+        {'transaction_date': '2026/10/01'},
+        now: now,
+      ).transactionDate,
+      '2026-10-01',
+    );
+    expect(
+      FinanceEntryDraft.fromJson(
+        {'transaction_date': '2026年10月1日'},
+        now: now,
+      ).transactionDate,
+      '2026-10-01',
+    );
+    expect(
+      FinanceEntryDraft.fromJson(
+        {'transaction_date': '2026-10-01T23:30:00-05:00'},
+        now: now,
+      ).transactionDate,
+      '2026-10-01',
+    );
+  });
+
   test('自然语言快速记账不会把商品数量拆成金额', () {
     final drafts = FinanceTextParser.parseQuickEntries(
       '买了2个苹果，共20元；买了3个橙子，共30元',
@@ -381,6 +414,30 @@ void main() {
     expect(assistant.single.transactionDate, '2026-10-02');
     expect(undatedRecognition.single.transactionDate, '2026-10-02');
     expect(undatedAssistant.single.transactionDate, '2026-10-02');
+  });
+
+  test('识别草案仍接受中文和斜杠日期', () {
+    final now = DateTime(2026, 10, 2);
+    final recognized = FinanceTextParser.fromRecognitionResults(
+      [
+        {
+          'isFinance': true,
+          'type': 'expense',
+          'amount': 12.34,
+          'date': '2026/09/02',
+        },
+      ],
+      now: now,
+    );
+    final assistant = FinanceTextParser.extractAssistantDrafts(
+      '[FINANCE_START]\n'
+      '[{"type":"expense","amount":12.34,"date":"2026年9月2日"}]\n'
+      '[FINANCE_END]',
+      now: now,
+    );
+
+    expect(recognized.single.transactionDate, '2026-09-02');
+    expect(assistant.single.transactionDate, '2026-09-02');
   });
 
   test('流式AI回复隐藏完整和未完成的记账协议块', () {

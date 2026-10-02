@@ -1734,6 +1734,7 @@ class FinanceEntryDraft {
   factory FinanceEntryDraft.fromJson(
     Map<String, dynamic> map, {
     DateTime? now,
+    bool preserveRawDate = false,
   }) {
     final minorValue = map['amount_minor'] ?? map['amountMinor'];
     final amountMinor = minorValue == null
@@ -1753,14 +1754,14 @@ class FinanceEntryDraft {
         map['type'] ?? map['transaction_type'] ?? map['transactionType'],
       ),
       amountMinor: amountMinor,
-      transactionDate:
-          _string(
-            map['transaction_date'] ??
-                map['transactionDate'] ??
-                map['date'] ??
-                map['transaction_day'],
-          ) ??
-          dateKey(now ?? DateTime.now()),
+      transactionDate: _draftTransactionDate(
+        map['transaction_date'] ??
+            map['transactionDate'] ??
+            map['date'] ??
+            map['transaction_day'],
+        now: now,
+        preserveRawDate: preserveRawDate,
+      ),
       categoryUuid: _string(map['category_uuid'] ?? map['categoryUuid']),
       categoryName: _string(
         map['category_name'] ?? map['categoryName'] ?? map['category'],
@@ -1781,6 +1782,37 @@ class FinanceEntryDraft {
       isAdded: _bool(map['is_added'] ?? map['isAdded']),
       isIgnored: _bool(map['is_ignored'] ?? map['isIgnored']),
     );
+  }
+
+  static String _draftTransactionDate(
+    dynamic value, {
+    DateTime? now,
+    required bool preserveRawDate,
+  }) {
+    final fallback = dateKey(now ?? DateTime.now());
+    final raw = _string(value)?.trim();
+    if (raw == null || raw.isEmpty) return fallback;
+    if (preserveRawDate) return raw;
+
+    final normalized = raw
+        .replaceAll('年', '-')
+        .replaceAll('月', '-')
+        .replaceAll('日', '')
+        .replaceAll('/', '-')
+        .replaceAll('.', '-');
+    final match = RegExp(
+      r'^(\d{4})-(\d{1,2})-(\d{1,2})(?=$|[Tt ])',
+    ).firstMatch(normalized);
+    if (match == null) return fallback;
+
+    final year = int.parse(match.group(1)!);
+    final month = int.parse(match.group(2)!);
+    final day = int.parse(match.group(3)!);
+    final parsed = DateTime(year, month, day);
+    if (parsed.year != year || parsed.month != month || parsed.day != day) {
+      return fallback;
+    }
+    return dateKey(parsed);
   }
 
   static int _draftAmountMinor(dynamic value) {

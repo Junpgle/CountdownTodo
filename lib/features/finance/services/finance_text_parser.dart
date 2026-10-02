@@ -429,7 +429,11 @@ abstract final class FinanceTextParser {
       if (normalized['originalText'] == null && originalText != null) {
         normalized['originalText'] = originalText;
       }
-      final draft = FinanceEntryDraft.fromJson(normalized, now: now)
+      final draft = FinanceEntryDraft.fromJson(
+        normalized,
+        now: now,
+        preserveRawDate: true,
+      )
         ..source = source
         ..originalText ??= originalText;
       if (draft.amountMinor > 0) {
@@ -456,7 +460,11 @@ abstract final class FinanceTextParser {
     for (final match in marker.allMatches(content)) {
       final payload = _decodeMaps(match.group(1) ?? '');
       for (final map in payload) {
-        final draft = FinanceEntryDraft.fromJson(map, now: now)
+        final draft = FinanceEntryDraft.fromJson(
+          map,
+          now: now,
+          preserveRawDate: true,
+        )
           ..source = FinanceEntrySource.ai;
         if (draft.amountMinor > 0) {
           _normalizeDraftDate(draft, now: now);
