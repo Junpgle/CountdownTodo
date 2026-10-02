@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_automation_service.dart';
 import '../services/finance_repository.dart';
+import '../services/finance_storage.dart';
 import '../widgets/finance_catalog_editor.dart';
 import '../widgets/finance_catalog_manager.dart';
 import 'finance_automation_screen.dart';
@@ -33,15 +35,34 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
   bool _cloudSyncEnabled = false;
   bool _isLoading = true;
   String? _loadError;
+  int _loadGeneration = 0;
+  Timer? _financeChangeRefreshTimer;
   _FinanceSettingsSection _section = _FinanceSettingsSection.catalog;
 
   @override
   void initState() {
     super.initState();
+    FinanceStorage.revision.addListener(_onFinanceChanged);
     _load();
   }
 
+  @override
+  void dispose() {
+    _financeChangeRefreshTimer?.cancel();
+    FinanceStorage.revision.removeListener(_onFinanceChanged);
+    super.dispose();
+  }
+
+  void _onFinanceChanged() {
+    _financeChangeRefreshTimer?.cancel();
+    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
+      _financeChangeRefreshTimer = null;
+      if (mounted) unawaited(_load());
+    });
+  }
+
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     try {
       final values = await Future.wait<dynamic>([
         FinanceRepository.getCategories(includeArchived: true),
@@ -50,7 +71,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
         AppSettingsStorage.isFinanceRecurringReminderEnabled(),
         AppSettingsStorage.isFinanceCloudSyncEnabled(widget.username),
       ]);
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _categories = values[0] as List<FinanceCategory>;
         _paymentMethods = values[1] as List<FinancePaymentMethod>;
@@ -62,7 +83,7 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
       });
     } catch (error) {
       debugPrint('读取记账设置失败：$error');
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _isLoading = false;
         if (_categories.isEmpty && _paymentMethods.isEmpty) {

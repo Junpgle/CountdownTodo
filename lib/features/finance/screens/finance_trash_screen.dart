@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -27,11 +29,28 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
+  Timer? _financeChangeRefreshTimer;
 
   @override
   void initState() {
     super.initState();
+    FinanceStorage.revision.addListener(_onFinanceChanged);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _financeChangeRefreshTimer?.cancel();
+    FinanceStorage.revision.removeListener(_onFinanceChanged);
+    super.dispose();
+  }
+
+  void _onFinanceChanged() {
+    _financeChangeRefreshTimer?.cancel();
+    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
+      _financeChangeRefreshTimer = null;
+      if (mounted) unawaited(_load());
+    });
   }
 
   Future<void> _load() async {
@@ -114,7 +133,6 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
       context,
       const SnackBar(content: Text('账单已恢复')),
     );
-    await _load();
   }
 
   Future<void> _restoreBudget(FinanceBudget budget) async {
@@ -133,7 +151,6 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
       context,
       const SnackBar(content: Text('预算已恢复')),
     );
-    await _load();
   }
 
   Future<void> _restoreLoan(FinanceLoan loan) async {
@@ -152,7 +169,6 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
       context,
       const SnackBar(content: Text('贷款已恢复')),
     );
-    await _load();
   }
 
   Future<void> _restoreRule(FinanceRecurringRule rule) async {
@@ -162,7 +178,6 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
       context,
       const SnackBar(content: Text('周期账单已恢复')),
     );
-    await _load();
   }
 
   Future<void> _restoreTemplate(FinanceEntryTemplate template) async {
@@ -172,7 +187,6 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
       context,
       const SnackBar(content: Text('快捷模板已恢复')),
     );
-    await _load();
   }
 
   List<FinanceTrashEntry> get _entries {
