@@ -505,8 +505,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                 Expanded(
                   child: _buildSummaryMetric(
                     context,
-                    label: '实际支出',
-                    value: formatFinanceAmount(period.summary.netExpenseMinor),
+                    label: '总支出',
+                    value: formatFinanceAmount(period.summary.expenseMinor),
                     color: colorScheme.onPrimaryContainer,
                   ),
                 ),

@@ -1333,6 +1333,58 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('概览卡片分别显示净支出与总支出', (tester) async {
+    final occurredAt = DateTime(2026, 9, 2, 10).millisecondsSinceEpoch;
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'overview-gross-expense',
+        amountMinor: 10000,
+        transactionDate: '2026-09-02',
+        occurredAt: occurredAt,
+        createdAt: occurredAt,
+      ),
+      FinanceTransaction(
+        uuid: 'overview-gross-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 2000,
+        transactionDate: '2026-09-02',
+        occurredAt: occurredAt,
+        createdAt: occurredAt,
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: _month,
+          summary: FinanceSummary.fromTransactions(transactions),
+          transactions: transactions,
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+
+    expect(find.text('净支出'), findsOneWidget);
+    expect(find.text('总支出'), findsOneWidget);
+    final summaryCard = find
+        .ancestor(of: find.text('总支出'), matching: find.byType(Card))
+        .first;
+    expect(
+      find.descendant(of: summaryCard, matching: find.text('¥80.00')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: summaryCard, matching: find.text('¥100.00')),
+      findsOneWidget,
+    );
+    expect(find.text('实际支出'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('只有收入时不显示不存在的平均净支出', (tester) async {
     final occurredAt = DateTime(2026, 9, 2, 10).millisecondsSinceEpoch;
     final transactions = [
