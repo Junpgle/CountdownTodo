@@ -97,6 +97,51 @@ void main() {
       }
     });
 
+    test('resolves quarter ranges and rejects quarter comparisons', () {
+      final testNow = DateTime(2026, 10, 3, 12);
+      for (final (period, expectedRange) in [
+        ('上上季度', '2026-04-01 至 2026-06-30'),
+        ('上上个季度', '2026-04-01 至 2026-06-30'),
+        ('上季度', '2026-07-01 至 2026-09-30'),
+        ('上一季度', '2026-07-01 至 2026-09-30'),
+        ('上一个季度', '2026-07-01 至 2026-09-30'),
+        ('本季度', '2026-10-01 至 2026-10-03'),
+        ('当前季度', '2026-10-01 至 2026-10-03'),
+        ('这季度', '2026-10-01 至 2026-10-03'),
+      ]) {
+        final direct = HabitAiContextService.buildContextInjectionSummary(
+          userMessage: '查看$period的习惯进度',
+          goals: const [],
+          now: testNow,
+        );
+        final followUp = HabitAiContextService.buildContextInjectionSummary(
+          userMessage: '那$period呢？',
+          previousUserMessage: '查看2026-06-01至2026-06-30的习惯进度',
+          conversationContext: '习惯进度',
+          goals: const [],
+          now: testNow,
+        );
+
+        expect(direct, contains(expectedRange), reason: period);
+        expect(followUp, contains(expectedRange), reason: period);
+      }
+
+      final explicitQuarter =
+          HabitAiContextService.buildContextInjectionSummary(
+            userMessage: '查看2025年第三季度的习惯进度',
+            goals: const [],
+            now: testNow,
+          );
+      final comparison = HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '比较上季度和本季度的习惯完成率',
+        goals: const [],
+        now: testNow,
+      );
+
+      expect(explicitQuarter, contains('2025-07-01 至 2025-09-30'));
+      expect(comparison, isNull);
+    });
+
     test('clamps rolling month starts to the target month length', () {
       final summary = HabitAiContextService.buildContextInjectionSummary(
         userMessage: '查看过去6个月的习惯进度',

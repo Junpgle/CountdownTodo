@@ -110,6 +110,14 @@ abstract final class HabitAiContextService {
     r'上上个月|上上月|上个月|上月|本月|这个月|当月|今年|本年|去年|上一年|前年|前一年|'
     r'大前天|大前日|前天|前日|昨天|昨日|今天|今日',
   );
+  static final RegExp _quarterPeriodPattern = RegExp(
+    r'上上(?:个)?季度|上一个季度|上一季度|上(?:个)?季度|前一季度|'
+    r'本季度|本季|这个季度|当前季度|这季度|当季|'
+    r'(?:(?:今年|去年)\s*|\d{4}\s*年\s*)?(?:第\s*)?[一二三四1-4]\s*季度',
+  );
+  static final RegExp _explicitQuarterPattern = RegExp(
+    r'(?:(今年|去年)\s*|(\d{4})\s*年\s*)?(?:第\s*)?([一二三四1-4])\s*季度',
+  );
   static final RegExp _relativeYearQualifiedMonthPattern = RegExp(
     r'(?:今年|本年|去年|上一年|前年|前一年)\s*'
     r'(?:十一|十二|十|[一二三四五六七八九]|\d{1,2})\s*月'
@@ -254,6 +262,7 @@ abstract final class HabitAiContextService {
         _yearMonthPattern.hasMatch(text) ||
         _monthPattern.hasMatch(text) ||
         _rollingMonthPattern.hasMatch(text) ||
+        _quarterPeriodPattern.hasMatch(text) ||
         _containsAny(text, [
           '今天',
           '今日',
@@ -285,6 +294,7 @@ abstract final class HabitAiContextService {
         _yearMonthPattern.hasMatch(previous) ||
         _monthPattern.hasMatch(previous) ||
         _rollingMonthPattern.hasMatch(previous) ||
+        _quarterPeriodPattern.hasMatch(previous) ||
         _containsAny(previous, [
           '今天',
           '今日',
@@ -464,6 +474,70 @@ abstract final class HabitAiContextService {
             '${_dateKey(from)} 至 ${_dateKey(endExclusive.subtract(const Duration(days: 1)))}',
       );
     }
+    if (_quarterPeriodPattern.hasMatch(text)) {
+      final currentQuarterMonth = ((today.month - 1) ~/ 3) * 3 + 1;
+      final currentQuarterStart = DateTime(today.year, currentQuarterMonth);
+      late final DateTime from;
+      late final DateTime to;
+      if (text.contains('上上季度') || text.contains('上上个季度')) {
+        from = DateTime(
+          currentQuarterStart.year,
+          currentQuarterStart.month - 6,
+        );
+        to = DateTime(
+          currentQuarterStart.year,
+          currentQuarterStart.month - 3,
+        ).subtract(const Duration(days: 1));
+      } else if (text.contains('上季度') ||
+          text.contains('上个季度') ||
+          text.contains('上一季度') ||
+          text.contains('上一个季度') ||
+          text.contains('前一季度')) {
+        from = DateTime(
+          currentQuarterStart.year,
+          currentQuarterStart.month - 3,
+        );
+        to = currentQuarterStart.subtract(const Duration(days: 1));
+      } else if (text.contains('本季度') ||
+          text.contains('本季') ||
+          text.contains('这个季度') ||
+          text.contains('当前季度') ||
+          text.contains('这季度') ||
+          text.contains('当季')) {
+        from = currentQuarterStart;
+        to = today;
+      } else {
+        final explicitQuarter = _explicitQuarterPattern.firstMatch(text)!;
+        final quarter = switch (explicitQuarter.group(3)) {
+          '一' || '1' => 1,
+          '二' || '2' => 2,
+          '三' || '3' => 3,
+          '四' || '4' => 4,
+          _ => throw const FormatException('无效季度'),
+        };
+        final currentQuarter = ((today.month - 1) ~/ 3) + 1;
+        final explicitYear = explicitQuarter.group(2);
+        final relativeYear = explicitQuarter.group(1);
+        final year = explicitYear != null
+            ? int.parse(explicitYear)
+            : relativeYear == '今年'
+            ? today.year
+            : relativeYear == '去年'
+            ? today.year - 1
+            : quarter > currentQuarter
+            ? today.year - 1
+            : today.year;
+        from = DateTime(year, (quarter - 1) * 3 + 1);
+        to = DateTime(year, from.month + 3).subtract(
+          const Duration(days: 1),
+        );
+      }
+      return (
+        from: from,
+        to: to,
+        label: '${_dateKey(from)} 至 ${_dateKey(to)}',
+      );
+    }
     final day = _day(today);
     DateTime from = day;
     DateTime to = day;
@@ -590,6 +664,7 @@ abstract final class HabitAiContextService {
     }
 
     addMatches(_relativePeriodPattern);
+    addMatches(_quarterPeriodPattern);
     addMatches(_relativeYearQualifiedMonthPattern);
     addMatches(_rollingMonthPattern);
     addMatches(_yearMonthPattern);
