@@ -243,11 +243,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
           if (shouldReplace != true || !mounted) return;
         }
 
-        final builtInState = ThirtyDayChallengeState.initial();
-        final state = await ThirtyDayChallengeRepository.startNewChallenge(
-          title: builtInState.challengeTitle,
-          taskTitles: builtInState.tasks.map((task) => task.title),
-        );
+        final state = await ThirtyDayChallengeRepository.startBuiltInChallenge();
         if (!mounted) return;
         setState(() {
           _state = state;

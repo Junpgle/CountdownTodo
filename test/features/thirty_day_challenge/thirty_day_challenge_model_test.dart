@@ -1,7 +1,13 @@
 import 'package:countdown_todo/features/thirty_day_challenge/models/thirty_day_challenge.dart';
+import 'package:countdown_todo/features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   test('只有内置任务清单会被标记为内置挑战', () {
     final startedAt = DateTime(2026, 10, 2);
     final builtIn = ThirtyDayChallengeState.initial(startedAt: startedAt);
@@ -31,5 +37,13 @@ void main() {
     expect(custom.isBuiltIn, isFalse);
     expect(customWithClassicTasks.isBuiltIn, isFalse);
     expect(restoredCustomWithClassicTasks.isBuiltIn, isFalse);
+  });
+
+  test('开始并重载经典挑战后仍保留内置类型', () async {
+    final started = await ThirtyDayChallengeRepository.startBuiltInChallenge();
+    final restored = await ThirtyDayChallengeRepository.load();
+
+    expect(started.isBuiltIn, isTrue);
+    expect(restored.isBuiltIn, isTrue);
   });
 }

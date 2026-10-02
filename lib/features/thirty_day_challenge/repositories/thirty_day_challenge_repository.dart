@@ -101,12 +101,27 @@ abstract final class ThirtyDayChallengeRepository {
       taskTitles: taskTitles,
     );
     final prefs = await SharedPreferences.getInstance();
+    await _activateChallenge(prefs, state);
+    return state;
+  }
+
+  /// 开启经典挑战，并保留其类型标记以便后续恢复正确的页面说明。
+  static Future<ThirtyDayChallengeState> startBuiltInChallenge() async {
+    final state = ThirtyDayChallengeState.initial();
+    final prefs = await SharedPreferences.getInstance();
+    await _activateChallenge(prefs, state);
+    return state;
+  }
+
+  static Future<void> _activateChallenge(
+    SharedPreferences prefs,
+    ThirtyDayChallengeState state,
+  ) async {
     await _save(prefs, state);
     await prefs.setBool(await _scopedIntroKey(), true);
     await prefs.setBool(await _scopedStartedKey(), true);
     await prefs.setBool(await _scopedPausedKey(), false);
     activityRevision.value++;
-    return state;
   }
 
   static Future<void> updateTask(
