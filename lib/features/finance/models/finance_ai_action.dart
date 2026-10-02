@@ -136,6 +136,15 @@ class FinanceAiAction {
         json['paymentMethodName'];
     final dateValue =
         json['transactionDate'] ?? json['transaction_date'] ?? json['date'];
+    final rawTransactionDate = _string(dateValue)?.trim();
+    final hasDateValue = json['hasDate'] is bool
+        ? json['hasDate'] as bool
+        : json.containsKey('transactionDate') ||
+              json.containsKey('transaction_date') ||
+              json.containsKey('date');
+    final hasDate = hasDateValue &&
+        rawTransactionDate != null &&
+        isFinanceDateKey(rawTransactionDate);
 
     return FinanceAiAction(
       type: type,
@@ -151,7 +160,7 @@ class FinanceAiAction {
       keyword: _string(json['keyword'] ?? json['query']),
       transactionType: _parseTransactionType(rawTransactionType),
       amountMinor: amountValue,
-      transactionDate: _string(dateValue),
+      transactionDate: hasDate ? rawTransactionDate : null,
       categoryUuid: _string(json['categoryUuid'] ?? json['category_uuid']),
       categoryName: _string(categoryValue),
       paymentMethodUuid: _string(
@@ -163,11 +172,7 @@ class FinanceAiAction {
       reason: _string(json['reason']),
       hasType: hasType,
       hasAmount: hasAmount,
-      hasDate: json['hasDate'] is bool
-          ? json['hasDate'] as bool
-          : json.containsKey('transactionDate') ||
-              json.containsKey('transaction_date') ||
-              json.containsKey('date'),
+      hasDate: hasDate,
       hasCategory: json['hasCategory'] is bool
           ? json['hasCategory'] as bool
           : json.containsKey('category') ||

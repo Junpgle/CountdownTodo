@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:countdown_todo/features/finance/models/finance_ai_action.dart';
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/services/finance_repository.dart';
 import 'package:countdown_todo/features/finance/services/finance_text_parser.dart';
@@ -319,6 +320,29 @@ void main() {
     );
 
     expect(drafts, isEmpty);
+  });
+
+  test('AI 修改账单草案忽略不存在的日期并保留有效金额', () {
+    final action = FinanceAiAction.tryParse({
+      'action': 'update_finance',
+      'transactionId': 'transaction-1',
+      'amount_minor': '1234',
+      'date': '2026-02-30',
+    });
+
+    expect(action, isNotNull);
+    expect(action!.amountMinor, 1234);
+    expect(action.hasAmount, isTrue);
+    expect(action.hasDate, isFalse);
+    expect(action.transactionDate, isNull);
+
+    final validAction = FinanceAiAction.tryParse({
+      'action': 'update_finance',
+      'transactionId': 'transaction-1',
+      'date': '2026-02-28',
+    });
+    expect(validAction?.hasDate, isTrue);
+    expect(validAction?.transactionDate, '2026-02-28');
   });
 
   test('流式AI回复隐藏完整和未完成的记账协议块', () {

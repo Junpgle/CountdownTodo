@@ -606,8 +606,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
     final transactionDate =
         action.hasDate &&
             requestedDate != null &&
-            RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(requestedDate) &&
-            DateTime.tryParse(requestedDate) != null
+            isFinanceDateKey(requestedDate)
         ? requestedDate
         : existing.transactionDate;
 

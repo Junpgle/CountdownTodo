@@ -321,6 +321,14 @@ abstract final class FinanceStorage {
     FinanceTransaction transaction, {
     FinanceTransaction? original,
   }) async {
+    if (!transaction.isDeleted &&
+        !isFinanceDateKey(transaction.transactionDate)) {
+      throw ArgumentError.value(
+        transaction.transactionDate,
+        'transactionDate',
+        '账单日期无效',
+      );
+    }
     if (!transaction.isDeleted && !_hasValidInstallmentFields(transaction)) {
       throw ArgumentError.value(
         transaction,
@@ -2611,8 +2619,7 @@ abstract final class FinanceStorage {
   }
 
   static bool _isDateKey(String value) {
-    final parsed = DateTime.tryParse(value);
-    return parsed != null && dateKey(parsed) == value;
+    return isFinanceDateKey(value);
   }
 
   static Future<FinanceSummary> getSummary({

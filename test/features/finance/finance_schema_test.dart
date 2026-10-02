@@ -49,6 +49,20 @@ void main() {
       await db.close();
     });
 
+    test('直接保存拒绝不存在的账单日期', () async {
+      final transaction = FinanceTransaction(
+        uuid: 'invalid-finance-date',
+        amountMinor: 100,
+        transactionDate: '2026-02-30',
+      );
+
+      await expectLater(
+        FinanceStorage.saveTransaction(transaction),
+        throwsArgumentError,
+      );
+      expect(await db.query('finance_transactions'), isEmpty);
+    });
+
     test('余额流水查询只读取有快照账户，支持大量账户并跳过已删除流水', () async {
       final snapshotAt = DateTime(2026, 9, 1).millisecondsSinceEpoch;
       for (final transaction in [

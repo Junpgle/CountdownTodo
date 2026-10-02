@@ -2420,6 +2420,11 @@ String financeMonthKey(DateTime date) =>
     '${date.year.toString().padLeft(4, '0')}-'
     '${date.month.toString().padLeft(2, '0')}';
 
+bool isFinanceDateKey(String value) {
+  final parsed = DateTime.tryParse(value);
+  return parsed != null && dateKey(parsed) == value;
+}
+
 String financeTimezoneLabel(int offsetMinutes) =>
     'UTC${offsetMinutes < 0 ? '-' : '+'}'
     '${(offsetMinutes.abs() ~/ 60).toString().padLeft(2, '0')}:'
