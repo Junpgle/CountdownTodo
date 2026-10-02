@@ -121,17 +121,15 @@ class FinanceAiAction {
         : json.containsKey('transactionType') ||
             json.containsKey('transaction_type') ||
             (isMutationType && json.containsKey('type'));
-    final amountValue = json.containsKey('amount_minor')
-        ? _parseMinor(json['amount_minor'])
-        : json.containsKey('amountMinor')
-            ? _parseMinor(json['amountMinor'])
-            : _parseYuan(json['amount'] ?? json['amount_yuan']);
+    final amountMinorValue = json['amount_minor'] ?? json['amountMinor'];
+    final amountValue = amountMinorValue != null
+        ? _parseMinor(amountMinorValue)
+        : _parseYuan(json['amount'] ?? json['amount_yuan']);
     final hasAmount = json['hasAmount'] is bool
         ? json['hasAmount'] as bool
         : json.containsKey('amount') ||
             json.containsKey('amount_yuan') ||
-            json.containsKey('amount_minor') ||
-            json.containsKey('amountMinor');
+            amountMinorValue != null;
     final categoryValue = json['category'] ?? json['categoryName'];
     final paymentValue = json['paymentMethod'] ??
         json['payment_method'] ??
@@ -195,6 +193,10 @@ class FinanceAiAction {
 
   /// Parses only the finance operations understood by the app.
   static FinanceAiAction? tryParse(Map<String, dynamic> json) {
+    final amountMinorValue = json['amount_minor'] ?? json['amountMinor'];
+    if (amountMinorValue != null && _parseMinor(amountMinorValue) == null) {
+      return null;
+    }
     final action = FinanceAiAction.fromJson(json);
     if (action.type == FinanceAiActionType.unknown) return null;
     if (action.isMutation && (action.transactionId?.isNotEmpty != true)) {
@@ -257,9 +259,21 @@ class FinanceAiAction {
   }
 
   static int? _parseMinor(dynamic value) {
-    if (value is num) return value.toInt().abs();
-    final parsed = int.tryParse(value?.toString().trim() ?? '');
-    return parsed?.abs();
+    BigInt? parsed;
+    if (value is int) {
+      parsed = BigInt.from(value);
+    } else if (value is num &&
+        value.isFinite &&
+        value.abs() <= maxFinanceAmountMinor &&
+        value == value.roundToDouble()) {
+      parsed = BigInt.from(value.toInt());
+    } else if (value is String) {
+      parsed = BigInt.tryParse(value.trim());
+    }
+    if (parsed == null) return null;
+    final amountMinor = parsed.abs();
+    if (amountMinor > BigInt.from(maxFinanceAmountMinor)) return null;
+    return amountMinor.toInt();
   }
 
   static int? _parseYuan(dynamic value) {

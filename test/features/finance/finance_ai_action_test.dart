@@ -97,6 +97,27 @@ void main() {
     expect(action.amountMinor, maxFinanceAmountMinor - 1);
   });
 
+  test('无效的 amount_minor 不截断也不接受超上限金额', () {
+    for (final amountMinor in [2850.5, maxFinanceAmountMinor + 1]) {
+      final action = FinanceAiAction.tryParse({
+        'action': 'update_finance',
+        'transactionId': 'tx-1',
+        'amount_minor': amountMinor,
+        'amount': 30.00,
+      });
+
+      expect(action, isNull, reason: '$amountMinor');
+    }
+
+    final yuanFallback = FinanceAiAction.tryParse({
+      'action': 'update_finance',
+      'transactionId': 'tx-1',
+      'amount_minor': null,
+      'amount': 30.00,
+    });
+    expect(yuanFallback?.amountMinor, 3000);
+  });
+
   test('AI 记账草案优先使用精确的 amount_minor 字符串', () {
     final draft = FinanceEntryDraft.fromJson({
       'type': 'expense',
