@@ -1508,6 +1508,11 @@ class AiTodoActionExecutor {
     final nextCustomInterval = action.hasCustomIntervalDays
         ? action.customIntervalDays
         : existingCustomInterval;
+    if ((action.hasRecurrence || action.hasCustomIntervalDays) &&
+        nextRecurrence == RecurrenceType.customDays &&
+        (nextCustomInterval == null || nextCustomInterval <= 0)) {
+      return null;
+    }
     final nextRecurrenceEnd = action.hasRecurrenceEndDate
         ? _parseExistingDate(action.recurrenceEndDate)
         : _parseExistingDate(
