@@ -2546,8 +2546,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
   }
 
   static bool _hasInvalidExplicitIsoDate(String text) {
-    final range = _explicitIsoDateRangePattern.firstMatch(text);
-    if (range != null) {
+    for (final range in _explicitIsoDateRangePattern.allMatches(text)) {
       final start = _parseStrictIsoDate(range.group(1)!);
       final end = _parseStrictIsoDate(range.group(2)!);
       if (start == null || end == null || end.isBefore(start)) return true;
