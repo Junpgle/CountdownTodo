@@ -192,6 +192,52 @@ void main() {
     });
 
     for (final source in ['backup', 'remote']) {
+      test('$source 拒绝会被截断的周期日期和提醒字段', () async {
+        final rules = [
+          FinanceRecurringRule(
+            uuid: 'fractional-$source-recurring-day',
+            name: '小数日期周期',
+            amountMinor: 100,
+            startDate: '2026-09-01',
+          ).toMap()
+            ..['day_of_month'] = 1.5,
+          FinanceRecurringRule(
+            uuid: 'fractional-$source-recurring-month',
+            name: '小数月份周期',
+            amountMinor: 100,
+            frequency: FinanceRecurringFrequency.yearly,
+            startDate: '2026-09-01',
+          ).toMap()
+            ..['month_of_year'] = 6.5,
+          FinanceRecurringRule(
+            uuid: 'fractional-$source-recurring-reminder',
+            name: '小数提醒周期',
+            amountMinor: 100,
+            startDate: '2026-09-01',
+          ).toMap()
+            ..['reminder_minutes'] = 60.5,
+        ];
+
+        if (source == 'backup') {
+          final result = await FinanceStorage.importBundle({
+            'recurring_rules': rules,
+          });
+          expect(result['skipped'], 3);
+        } else {
+          expect(
+            await FinanceStorage.mergeRemoteBundle({
+              'recurring_rules': rules,
+            }),
+            0,
+          );
+        }
+
+        expect(
+          await FinanceStorage.getRecurringRules(includeDeleted: true),
+          isEmpty,
+        );
+      });
+
       test('$source 拒绝同组重复期号', () async {
         final groupUuid = 'duplicate-$source-installment-group';
         final transactions = [

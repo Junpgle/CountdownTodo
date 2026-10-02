@@ -2799,6 +2799,7 @@ abstract final class FinanceStorage {
           !_hasValidRawFinanceName(map) ||
           !_hasValidRawOptionalTransactionType(map) ||
           !_hasValidRawRecurringFrequency(map) ||
+          !_hasValidRawRecurringScheduleFields(map) ||
           !_hasValidRawFinanceDateKey(map, 'start_date', 'startDate') ||
           !_hasSafeRawFinanceTimestamps(map)) {
         skipped++;
@@ -3300,6 +3301,7 @@ abstract final class FinanceStorage {
               _hasSafeRawFinanceAmount(map, 'amount_minor', 'amountMinor') &&
               _hasValidRawOptionalTransactionType(map) &&
               _hasValidRawRecurringFrequency(map) &&
+              _hasValidRawRecurringScheduleFields(map) &&
               _hasValidRawFinanceDateKey(map, 'start_date', 'startDate') &&
               _hasSafeRawFinanceTimestamps(map),
         )
@@ -4579,6 +4581,50 @@ abstract final class FinanceStorage {
     final value = map[snakeCaseKey] ?? map[camelCaseKey];
     final parsed = _rawFinanceInteger(value);
     return parsed != null && parsed >= minimum && parsed <= maximum;
+  }
+
+  static bool _hasValidRawRecurringScheduleFields(
+    Map<String, dynamic> map,
+  ) {
+    return _hasSafeOptionalRawIntegerRange(
+          map,
+          'day_of_month',
+          'dayOfMonth',
+          1,
+          31,
+        ) &&
+        _hasSafeOptionalRawIntegerRange(
+          map,
+          'month_of_year',
+          'monthOfYear',
+          1,
+          12,
+        ) &&
+        _hasSafeOptionalRawIntegerRange(
+          map,
+          'reminder_minutes',
+          'reminderMinutes',
+          0,
+          10080,
+        );
+  }
+
+  static bool _hasSafeOptionalRawIntegerRange(
+    Map<String, dynamic> map,
+    String snakeCaseKey,
+    String camelCaseKey,
+    int minimum,
+    int maximum,
+  ) {
+    final value = map[snakeCaseKey] ?? map[camelCaseKey];
+    return value == null ||
+        _hasSafeRawIntegerRange(
+          map,
+          snakeCaseKey,
+          camelCaseKey,
+          minimum,
+          maximum,
+        );
   }
 
   static bool _hasValidRawLoanInstallmentScheduleFields(
