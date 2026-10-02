@@ -1397,6 +1397,46 @@ ${lines.isEmpty ? '暂无' : lines}''';
       );
     }
     final todayStart = DateTime(now.year, now.month, now.day);
+    final explicitYear = RegExp(
+      r'(?:^|[^\d])(\d{4})\s*年(?:份)?(?!\s*(?:\d{1,2}\s*月|第?\s*[一二三四1-4]\s*季度))',
+    ).firstMatch(text);
+    if (explicitYear != null) {
+      final year = int.parse(explicitYear.group(1)!);
+      return _TimeLogPeriod(
+        label: '$year年',
+        start: DateTime(year),
+        end: year == now.year
+            ? todayStart.add(const Duration(days: 1))
+            : DateTime(year + 1),
+      );
+    }
+    if (_matchesAny(text, [
+      '最近一年',
+      '最近1年',
+      '最近12个月',
+      '过去一年',
+      '过去1年',
+      '过去12个月',
+      '近一年',
+      '近1年',
+      '近12个月',
+    ])) {
+      final previousYear = todayStart.year - 1;
+      final previousYearMonthEnd =
+          DateTime(previousYear, todayStart.month + 1, 0).day;
+      final start = DateTime(
+        previousYear,
+        todayStart.month,
+        todayStart.day > previousYearMonthEnd
+            ? previousYearMonthEnd
+            : todayStart.day,
+      );
+      return _TimeLogPeriod(
+        label: '最近一年',
+        start: start,
+        end: todayStart.add(const Duration(days: 1)),
+      );
+    }
     if (text.contains('上个月') || text.contains('上月')) {
       return _TimeLogPeriod(
         label: '上个月',

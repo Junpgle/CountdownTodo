@@ -1041,5 +1041,59 @@ void main() {
       expect(thisMonth, isNot(contains('future')));
       expect(previewFor('分析本月的效率'), contains('专注记录20261001-20261002'));
     });
+
+    test('指定年份和最近一年效率查询使用完整对应日期范围', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        ('year-2024', DateTime(2024, 12, 31, 9)),
+        ('year-2025-start', DateTime(2025, 1, 1, 9)),
+        ('rolling-outside', DateTime(2025, 10, 1, 9)),
+        ('rolling-start', DateTime(2025, 10, 2, 9)),
+        ('year-2025-end', DateTime(2025, 12, 31, 9)),
+        ('year-2026', DateTime(2026, 1, 1, 9)),
+        ('future', DateTime(2026, 10, 3, 9)),
+      ].map((entry) => TimeLogItem(
+        id: entry.$1,
+        title: entry.$1,
+        startTime: entry.$2.millisecondsSinceEpoch,
+        endTime: entry.$2.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      )).toList();
+
+      String contextFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjection(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+      String previewFor(String prompt) =>
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: prompt,
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      final year2025 = contextFor('分析2025年效率');
+      expect(year2025, contains('2025年合计'));
+      expect(year2025, contains('year-2025-start'));
+      expect(year2025, contains('year-2025-end'));
+      expect(year2025, isNot(contains('year-2024')));
+      expect(year2025, isNot(contains('year-2026')));
+      expect(previewFor('分析2025年效率'), contains('专注记录20250101-20251231'));
+
+      final recentYear = contextFor('分析最近一年的效率');
+      expect(recentYear, contains('最近一年合计'));
+      expect(recentYear, contains('rolling-start'));
+      expect(recentYear, contains('year-2025-end'));
+      expect(recentYear, isNot(contains('rolling-outside')));
+      expect(recentYear, isNot(contains('year-2024')));
+      expect(recentYear, isNot(contains('future')));
+      expect(previewFor('分析最近一年的效率'), contains('专注记录20251002-20261002'));
+    });
   });
 }
