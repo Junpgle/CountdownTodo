@@ -137,13 +137,16 @@ abstract final class FinanceAiContextService {
   ];
 
   static final RegExp _chineseMonthPattern = RegExp(
-    r'(?:(\d{4})\s*年\s*)?(十一|十二|十|[一二三四五六七八九]|\d{1,2})\s*月(?:份)?',
+    r'(?:(\d{4})\s*年\s*|(今年|前年|去年|上一年|前一年)\s*)?'
+    r'(十一|十二|十|[一二三四五六七八九]|\d{1,2})\s*月(?:份)?',
   );
   static final RegExp _calendarDatePattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)',
   );
   static final RegExp _chineseCalendarDatePattern = RegExp(
-    r'(?:(\d{4})\s*年\s*)?(十一|十二|十|[一二三四五六七八九]|1[0-2]|0?[1-9])\s*月\s*(\d{1,2}|[一二三四五六七八九十廿]{1,3})\s*[日号]',
+    r'(?:(\d{4})\s*年\s*|(今年|前年|去年|上一年|前一年)\s*)?'
+    r'(十一|十二|十|[一二三四五六七八九]|1[0-2]|0?[1-9])\s*月\s*'
+    r'(\d{1,2}|[一二三四五六七八九十廿]{1,3})\s*[日号]',
   );
   static final RegExp _rollingMonthPeriodPattern = RegExp(
     r'(?:近|最近|过去)\s*(\d{1,2}|十一|十二|十|两|[二三四五六七八九])\s*个?月',
@@ -997,8 +1000,9 @@ abstract final class FinanceAiContextService {
         : null;
     if (match == null && chineseMatch == null) return null;
     final yearText = match?.group(1) ?? chineseMatch?.group(1);
-    final monthText = match?.group(2) ?? chineseMatch?.group(2);
-    final dayText = match?.group(3) ?? chineseMatch?.group(3);
+    final relativeYear = chineseMatch?.group(2);
+    final monthText = match?.group(2) ?? chineseMatch?.group(3);
+    final dayText = match?.group(3) ?? chineseMatch?.group(4);
     final year = int.tryParse(yearText ?? '');
     final month = match != null
         ? int.tryParse(monthText ?? '')
@@ -1006,15 +1010,7 @@ abstract final class FinanceAiContextService {
     final day = _parseCalendarDayNumber(dayText ?? '');
     if (month == null || day == null) return null;
     final current = now ?? DateTime.now();
-    final resolvedYear =
-        year ??
-        (text.contains('前年')
-            ? current.year - 2
-            : text.contains('去年') ||
-                  text.contains('上一年') ||
-                  text.contains('前一年')
-            ? current.year - 1
-            : current.year);
+    final resolvedYear = _resolveCalendarYear(year, relativeYear, current.year);
     if (resolvedYear < 1 || month < 1 || month > 12 || day < 1 || day > 31) {
       return null;
     }
@@ -1034,6 +1030,7 @@ abstract final class FinanceAiContextService {
     final numericYearMonth = _numericYearMonthPattern.firstMatch(text);
     int? year;
     int? month;
+    String? relativeYear;
     if (numericYearMonth != null) {
       year = int.tryParse(numericYearMonth.group(1)!);
       month = int.tryParse(numericYearMonth.group(2)!);
@@ -1041,21 +1038,26 @@ abstract final class FinanceAiContextService {
       final chineseMonth = _chineseMonthPattern.firstMatch(text);
       if (chineseMonth == null) return null;
       year = int.tryParse(chineseMonth.group(1) ?? '');
-      month = _parseMonthNumber(chineseMonth.group(2)!);
+      relativeYear = chineseMonth.group(2);
+      month = _parseMonthNumber(chineseMonth.group(3)!);
     }
     if (month == null || month < 1 || month > 12) return null;
-    final isTwoYearsAgo = text.contains('前年');
-    final isLastYear =
-        text.contains('去年') ||
-        text.contains('上一年') ||
-        text.contains('前一年');
-    year ??= isTwoYearsAgo
-        ? current.year - 2
-        : isLastYear
-        ? current.year - 1
-        : current.year;
+    year = _resolveCalendarYear(year, relativeYear, current.year);
     final from = DateTime(year, month);
     return FinanceDateRange(from, DateTime(year, month + 1));
+  }
+
+  static int _resolveCalendarYear(
+    int? year,
+    String? relativeYear,
+    int currentYear,
+  ) {
+    if (year != null) return year;
+    return switch (relativeYear) {
+      '前年' => currentYear - 2,
+      '去年' || '上一年' || '前一年' => currentYear - 1,
+      _ => currentYear,
+    };
   }
 
   static int? _parseMonthNumber(String value) {

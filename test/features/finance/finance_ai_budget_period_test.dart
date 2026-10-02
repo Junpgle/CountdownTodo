@@ -248,6 +248,23 @@ void main() {
     );
   });
 
+  test('明确日期和月份的年份由各自的日期前缀决定', () {
+    final now = DateTime(2026, 9, 2);
+    final dateRange = FinanceAiContextService.resolveDateRange(
+      '去年9月2日支出，前年同期是多少',
+      now: now,
+    );
+    final monthRange = FinanceAiContextService.resolveDateRange(
+      '去年9月支出，前年同期是多少',
+      now: now,
+    );
+
+    expect(dateKey(dateRange.from), '2025-09-02');
+    expect(dateKey(dateRange.to), '2025-09-03');
+    expect(dateKey(monthRange.from), '2025-09-01');
+    expect(dateKey(monthRange.to), '2025-10-01');
+  });
+
   test('前年及上一年也按完整自然年解析', () {
     for (final query in ['去年支出', '上一年支出', '前一年支出']) {
       final range = FinanceAiContextService.resolveDateRange(
