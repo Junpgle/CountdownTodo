@@ -350,7 +350,9 @@ class AiNativeToolDefinitionBuilder {
         !_matchesAny(message, writeWords);
     final hasNoPositiveWriteIntent =
         _matchesAny(message, writeWords) &&
-        !writeWords.any((word) => _isExplicitlyRequested(message, word));
+        !writeWords.any(
+          (word) => AiTodoContextBuilder.isExplicitlyRequested(message, word),
+        );
     final isTodoCategorizationRequest =
         _matchesAny(message, ['分类', '归类', '分组', '分个类']) &&
         _matchesAny(message, ['待办', '任务']) &&
@@ -375,7 +377,10 @@ class AiNativeToolDefinitionBuilder {
           final triggers = _explicitCdtActionTriggers[action];
           return triggers == null ||
               triggers.any(
-                (trigger) => _isExplicitlyRequested(message, trigger),
+                (trigger) => AiTodoContextBuilder.isExplicitlyRequested(
+                  message,
+                  trigger,
+                ),
               );
         })
         .toSet();
@@ -531,11 +536,15 @@ class AiNativeToolDefinitionBuilder {
     final wantsFinanceUpdate =
         !isReadOnlyQuery &&
         hasFinanceMutationProtocol &&
-        financeUpdateVerbs.any((verb) => _isExplicitlyRequested(message, verb));
+        financeUpdateVerbs.any(
+          (verb) => AiTodoContextBuilder.isExplicitlyRequested(message, verb),
+        );
     final wantsFinanceDelete =
         !isReadOnlyQuery &&
         hasFinanceMutationProtocol &&
-        financeDeleteVerbs.any((verb) => _isExplicitlyRequested(message, verb));
+        financeDeleteVerbs.any(
+          (verb) => AiTodoContextBuilder.isExplicitlyRequested(message, verb),
+        );
     final wantsFinanceMutation = wantsFinanceUpdate || wantsFinanceDelete;
     const financeDraftTriggers = [
       '记一笔',
@@ -551,7 +560,7 @@ class AiNativeToolDefinitionBuilder {
       '记账草案',
     ];
     final explicitlyWantsFinanceDraft = financeDraftTriggers.any(
-      (trigger) => _isExplicitlyRequested(message, trigger),
+      (trigger) => AiTodoContextBuilder.isExplicitlyRequested(message, trigger),
     );
     final hasOnlyNegatedFinanceDraftIntent =
         _matchesAny(message, financeDraftTriggers) &&
@@ -762,30 +771,4 @@ class AiNativeToolDefinitionBuilder {
     return keywords.any((keyword) => text.contains(keyword));
   }
 
-  static bool _isExplicitlyRequested(String text, String trigger) {
-    var searchFrom = 0;
-    while (searchFrom < text.length) {
-      final index = text.indexOf(trigger, searchFrom);
-      if (index == -1) return false;
-      final clauseBoundary = text.lastIndexOf(RegExp(r'[，。；！？,;]'), index);
-      final clauseStart = clauseBoundary == -1 ? 0 : clauseBoundary + 1;
-      final prefix = text
-          .substring(clauseStart, index)
-          .replaceAll(RegExp(r'(?:别|不要)忘(?:了|记)?'), '');
-      final completedStatus =
-          trigger == '完成' && RegExp(r'(?:已|已经|已被|已经被)\s*$').hasMatch(prefix);
-      if (completedStatus) {
-        searchFrom = index + trigger.length;
-        continue;
-      }
-      final negations = RegExp(r'不|别|无需|禁止|避免').allMatches(prefix).toList();
-      final contrasts = RegExp(r'但是|不过|但|而是').allMatches(prefix).toList();
-      final isNegated =
-          negations.isNotEmpty &&
-          (contrasts.isEmpty || negations.last.start > contrasts.last.start);
-      if (!isNegated) return true;
-      searchFrom = index + trigger.length;
-    }
-    return false;
-  }
 }

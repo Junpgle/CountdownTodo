@@ -155,7 +155,16 @@ class AiTodoContextBuilder {
           _shouldInjectTodoContext,
         ) &&
         _matchesAny(userMessage, _existingTodoKeywords);
+    final asksTodoList =
+        _matchesAny(userMessage, _todoListQueryKeywords) ||
+        _looksLikeTodoListQuery(userMessage);
+    final hasExplicitTodoListMutation = _todoListMutationKeywords.any(
+      (trigger) => isExplicitlyRequested(userMessage, trigger),
+    );
+    final isReadOnlyTodoListQuery =
+        asksTodoList && !hasExplicitTodoListMutation;
     final requestsTodoAction =
+        !isReadOnlyTodoListQuery &&
         (!requestsHabitAction || explicitlyTargetsTodo) &&
         !unresolvedHabitTodoChoice &&
         (contextualTodoMutation ||
@@ -245,8 +254,14 @@ class AiTodoContextBuilder {
         '- update_plan_block / reschedule_plan_blocks / delete_plan_block / skip_plan_block / start_plan_block_pomodoro: 必须带 planBlockId',
       );
     }
-    if (_matchesAny(userMessage, _timeLogKeywords) ||
-        _looksLikeFocusQuery(userMessage)) {
+    final isReadOnlyFocusQuery =
+        _matchesAny(userMessage, _readOnlyFocusQueryKeywords) &&
+        !_focusMutationKeywords.any(
+          (trigger) => isExplicitlyRequested(userMessage, trigger),
+        );
+    if (!isReadOnlyFocusQuery &&
+        (_matchesAny(userMessage, _timeLogKeywords) ||
+            _looksLikeFocusQuery(userMessage))) {
       add(
         '- create_time_log: {"action":"create_time_log","logs":[{"title":"专注内容","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","tagUuids":[]}]}',
       );
@@ -304,7 +319,7 @@ class AiTodoContextBuilder {
             ? '- 本轮不生成结构化创建操作：如果用户是在咨询周期性安排，直接回答；如果用户想创建但未选择类型，先询问习惯或循环待办'
             : mentionsHabit
             ? '- 本轮是习惯信息咨询，不要生成结构化操作'
-            : '- create_todo / update_todo / complete_todo / delete_todo',
+            : '- 本轮不生成结构化操作：直接回答用户问题；只有用户明确提出增删改操作时才输出操作块，意图不明确先追问',
       );
     }
 
@@ -815,6 +830,38 @@ ${sections.join('\n')}
     return keywords.any((k) => text.contains(k));
   }
 
+  static bool isExplicitlyRequested(String text, String trigger) {
+    var searchFrom = 0;
+    while (searchFrom < text.length) {
+      final index = text.indexOf(trigger, searchFrom);
+      if (index == -1) return false;
+      final clauseBoundary = text.lastIndexOf(RegExp(r'[，。；！？,;]'), index);
+      final clauseStart = clauseBoundary == -1 ? 0 : clauseBoundary + 1;
+      final prefix = text
+          .substring(clauseStart, index)
+          .replaceAll(RegExp(r'(?:别|不要)忘(?:了|记)?'), '');
+      final completedStatus =
+          trigger == '完成' &&
+          RegExp(r'(?:已|已经|已被|已经被|需要|应该|尚未|未|待)\s*$')
+              .hasMatch(prefix);
+      final howToQuestion = RegExp(
+        r'(?:怎么|如何|怎样|是否|能不能|可不可以)[^，。；！？,;]*$',
+      ).hasMatch(prefix);
+      if (completedStatus || howToQuestion) {
+        searchFrom = index + trigger.length;
+        continue;
+      }
+      final negations = RegExp(r'不|别|无需|禁止|避免').allMatches(prefix).toList();
+      final contrasts = RegExp(r'但是|不过|但|而是').allMatches(prefix).toList();
+      final isNegated =
+          negations.isNotEmpty &&
+          (contrasts.isEmpty || negations.last.start > contrasts.last.start);
+      if (!isNegated) return true;
+      searchFrom = index + trigger.length;
+    }
+    return false;
+  }
+
   static bool _shouldInjectCourseContext(String text) {
     if (_matchesAny(text, _courseKeywords)) return true;
     return _matchesAny(text, _planningKeywords) &&
@@ -1080,6 +1127,64 @@ ${sections.join('\n')}
     '全部待办',
     '列出待办',
     '查看待办',
+  ];
+  static const _todoListMutationKeywords = [
+    '新建',
+    '新增',
+    '创建',
+    '添加',
+    '修改',
+    '更新',
+    '删除',
+    '删掉',
+    '延期',
+    '改期',
+    '改到',
+    '移到',
+    '挪到',
+    '调到',
+    '提前到',
+    '推迟到',
+    '分类',
+    '归类',
+    '分个类',
+    '拆分',
+    '合并',
+    '重排',
+    '完成',
+    '把第',
+  ];
+  static const _readOnlyFocusQueryKeywords = [
+    '分析',
+    '统计',
+    '汇总',
+    '效率',
+    '趋势',
+    '排行',
+    '占比',
+    '多少',
+    '明细',
+    '查看',
+    '查询',
+    '列出',
+    '有哪些',
+    '有什么',
+    '专注记录',
+    '时间日志',
+  ];
+  static const _focusMutationKeywords = [
+    '补记',
+    '新增专注',
+    '创建专注',
+    '开始专注',
+    '开始番茄钟',
+    '停止专注',
+    '结束专注',
+    '停止番茄钟',
+    '修改专注',
+    '更新专注',
+    '删除专注',
+    '删除时间记录',
   ];
   static const _groupKeywords = ['分类', '文件夹', '归类', '分组'];
   static const _countdownKeywords = ['倒计时', '倒数日', '倒數日', '截止', 'ddl'];

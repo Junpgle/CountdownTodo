@@ -416,4 +416,32 @@ void main() {
       isTrue,
     );
   });
+
+  test('只读分析和待办列表查询不注入写操作协议', () {
+    for (final query in [
+      '分析我上个月的效率',
+      '今天有哪些待办？',
+      '有哪些已完成待办？',
+      '有哪些待办？不要删除其中一条',
+      '分析最近效率，不要补记专注记录',
+    ]) {
+      final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(query);
+
+      expect(prompt, contains('本轮不生成结构化操作'), reason: query);
+      expect(prompt, isNot(contains('create_todo')), reason: query);
+      expect(prompt, isNot(contains('delete_todo')), reason: query);
+      expect(prompt, isNot(contains('create_time_log')), reason: query);
+      expect(prompt, isNot(contains('delete_time_log')), reason: query);
+      expect(prompt, isNot(contains('start_pomodoro')), reason: query);
+    }
+
+    final mixedRequest = AiTodoContextBuilder.buildActionProtocolPrompt(
+      '查看待办并删除第一个',
+    );
+    expect(mixedRequest, contains('delete_todo'));
+    final explicitFocusRequest = AiTodoContextBuilder.buildActionProtocolPrompt(
+      '帮我补记一条专注记录',
+    );
+    expect(explicitFocusRequest, contains('create_time_log'));
+  });
 }
