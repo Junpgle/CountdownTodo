@@ -121,4 +121,60 @@ void main() {
       'Bob 的挑战',
     );
   });
+
+  test('导入不含损坏副本的新备份会清理目标账号的旧副本', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final state = await ThirtyDayChallengeRepository.startNewChallenge(
+      title: '新挑战',
+      taskTitles: ['新任务'],
+    );
+    final bundle = await ThirtyDayChallengeRepository.exportBackup();
+    await prefs.setString(
+      'thirty_day_self_challenge_v1_bob_corrupt_backup',
+      'stale backup',
+    );
+
+    await ThirtyDayChallengeRepository.importBackup(bundle!, username: 'bob');
+
+    expect(state.challengeTitle, '新挑战');
+    expect(
+      await ThirtyDayChallengeRepository.getCorruptStateBackup(username: 'bob'),
+      isNull,
+    );
+  });
+
+  test('损坏存档会保留原文并随挑战备份导出', () async {
+    const username = 'alice';
+    const storageKey = 'thirty_day_self_challenge_v1_alice';
+    const corruptJson = '{broken challenge data';
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(storageKey, corruptJson);
+
+    final backup = await ThirtyDayChallengeRepository.exportBackup(
+      username: username,
+    );
+    final fallback = await ThirtyDayChallengeRepository.load(
+      username: username,
+    );
+
+    expect(fallback.isBuiltIn, isTrue);
+    expect(backup?['started'], isFalse);
+    expect(
+      await ThirtyDayChallengeRepository.getCorruptStateBackup(
+        username: username,
+      ),
+      corruptJson,
+    );
+    expect(backup?['corrupt_state_backup'], corruptJson);
+
+    await ThirtyDayChallengeRepository.importBackup(backup!, username: 'bob');
+    expect(
+      await ThirtyDayChallengeRepository.hasStarted(username: 'bob'),
+      isFalse,
+    );
+    expect(
+      await ThirtyDayChallengeRepository.getCorruptStateBackup(username: 'bob'),
+      corruptJson,
+    );
+  });
 }

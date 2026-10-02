@@ -98,6 +98,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     final isPaused = widget.showBuiltInIntroduction
         ? false
         : await ThirtyDayChallengeRepository.isPaused();
+    final hasCorruptBackup = !widget.showBuiltInIntroduction &&
+        await ThirtyDayChallengeRepository.getCorruptStateBackup() != null;
     if (!mounted) return;
     setState(() {
       _state = state;
@@ -105,6 +107,19 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       _isPaused = isPaused;
     });
     _entranceController.forward();
+    if (hasCorruptBackup) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(
+            content: Text(
+              '旧挑战记录无法读取，原始副本已保留。请在“数据导出”中备份“30 天挑战”数据。',
+            ),
+          ),
+        );
+      });
+    }
   }
 
   Future<void> _openNewChallenge() async {
