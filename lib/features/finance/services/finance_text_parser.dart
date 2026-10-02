@@ -570,6 +570,22 @@ abstract final class FinanceTextParser {
     }.contains(kind)) {
       return true;
     }
+    if (const {
+      'todo',
+      'fixedschedule',
+      'fixed_schedule',
+      'planblock',
+      'plan_block',
+      'needsconfirmation',
+      'needs_confirmation',
+      'task',
+      'meal_pickup',
+      'mealpickup',
+      'pickup',
+      'pickup_code',
+    }.contains(kind)) {
+      return false;
+    }
     final hasAmount = result.containsKey('amount') ||
         result.containsKey('amount_yuan') ||
         result.containsKey('amountYuan') ||

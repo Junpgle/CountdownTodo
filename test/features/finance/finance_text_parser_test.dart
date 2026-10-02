@@ -110,6 +110,8 @@ void main() {
       'itemKind': 'todo',
       'title': '肯德基取餐',
       'remark': '取餐码: 1234',
+      'amount': 35.6,
+      'merchant': '肯德基',
     };
     final bill = <String, dynamic>{
       'itemKind': 'finance',
