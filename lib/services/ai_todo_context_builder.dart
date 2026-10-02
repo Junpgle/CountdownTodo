@@ -34,7 +34,7 @@ class AiTodoContextBuilder {
   );
   static final RegExp _rollingMonthRangePattern = RegExp(
     r'(?<![\d一二两三四五六七八九十])(?:最近|过去|近)?\s*'
-    r'(\d{1,2}|[一二两三四五六七八九十]{1,3})\s*个月',
+    r'(?:(\d{1,2}|[一二两三四五六七八九十]{1,3})\s*个月|半年)',
   );
 
   static AiContextDateRange? resolveCustomInjectionDateRange({
@@ -2212,7 +2212,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
     final todayStart = DateTime(now.year, now.month, now.day);
     final rollingMonthRange = _rollingMonthRangePattern.firstMatch(text);
     if (rollingMonthRange != null) {
-      final months = _parseRollingMonthCount(rollingMonthRange.group(1)!);
+      final months = _parseRollingMonthCount(rollingMonthRange.group(1) ?? '6');
       if (months != null && months > 0) {
         final targetMonth = DateTime(todayStart.year, todayStart.month - months);
         final lastDayOfTargetMonth = DateTime(
@@ -2772,7 +2772,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
     final rollingMonthRanges = _rollingMonthRangePattern.allMatches(text);
     if (rollingMonthRanges.any(
       (match) {
-        final months = _parseRollingMonthCount(match.group(1)!);
+        final months = _parseRollingMonthCount(match.group(1) ?? '6');
         return months == null || months < 1;
       },
     )) {

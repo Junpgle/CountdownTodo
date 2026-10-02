@@ -1195,6 +1195,78 @@ void main() {
       expect(context, contains('展示 60/62 条，优先用户所选范围'));
     });
 
+    test('过去半年效率按含今天的滚动自然月范围筛选记录', () {
+      final now = DateTime(2026, 10, 3, 12);
+      final timeLogs = [
+        TimeLogItem(
+          id: 'outside-half-year',
+          title: '半年范围外专注',
+          startTime: DateTime(2026, 4, 2, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 4, 2, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'first-day-half-year',
+          title: '半年范围首日专注',
+          startTime: DateTime(2026, 4, 3, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 4, 3, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'today-half-year',
+          title: '今天专注',
+          startTime: DateTime(2026, 10, 3, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 3, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'future-half-year',
+          title: '未来专注',
+          startTime: DateTime(2026, 10, 4, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 4, 10).millisecondsSinceEpoch,
+        ),
+      ];
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析过去半年的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析过去半年的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final customQuery = AiTodoContextBuilder.buildContextQueryText(
+        userMessage: '分析过去半年的效率',
+        customStart: DateTime(2026, 8, 1),
+        customEnd: DateTime(2026, 8, 31),
+        now: now,
+      );
+      final twoMonthPreview =
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: '分析过去两个月的效率',
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      expect(context, contains('first-day-half-year'));
+      expect(context, contains('today-half-year'));
+      expect(context, isNot(contains('outside-half-year')));
+      expect(context, isNot(contains('future-half-year')));
+      expect(preview, contains('专注记录20260403-20261003'));
+      expect(preview, isNot(contains('最近30条')));
+      expect(customQuery, contains('2026-08-01 至 2026-08-31'));
+      expect(customQuery, isNot(contains('过去半年')));
+      expect(twoMonthPreview, contains('专注记录20260803-20261003'));
+    });
+
     test('上周效率只汇总上一自然周，不混入本周记录', () {
       final now = DateTime(2026, 10, 2, 12);
       final timeLogs = [
