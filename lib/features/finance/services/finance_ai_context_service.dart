@@ -275,10 +275,14 @@ abstract final class FinanceAiContextService {
             _containsAny(userMessage, _financeFollowUpWords));
   }
 
-  static bool _isPaymentBalanceQuestion(String text) =>
-      _containsAny(text, ['余额']) ||
-      (_containsAny(text, _paymentAccountWords) &&
-          _containsAny(text, _paymentBalancePhrases));
+  static bool _isPaymentBalanceQuestion(String text) {
+    final namesPaymentAccount = _containsAny(text, _paymentAccountWords);
+    if (_containsAny(text, ['余额'])) {
+      return !_containsAny(text, ['预算']) || namesPaymentAccount;
+    }
+    return namesPaymentAccount &&
+        _containsAny(text, _paymentBalancePhrases);
+  }
 
   /// Returns whether the model needs the local finance catalog without
   /// exposing the user's existing ledger.  This covers new-entry requests

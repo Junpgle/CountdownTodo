@@ -307,6 +307,23 @@ void main() {
       ),
       contains('付款方式实际余额'),
     );
+
+    final budgetBalanceContext = await FinanceAiContextService.buildContext(
+      userMessage: '本月预算余额多少',
+      now: DateTime(2026, 9, 2, 23, 59),
+    );
+    expect(budgetBalanceContext, contains('预算（2026-09，整月）'));
+    expect(
+      budgetBalanceContext,
+      isNot(contains('付款方式实际余额（截至')),
+    );
+    expect(
+      FinanceAiContextService.buildContextInjectionSummary(
+        userMessage: '本月预算余额多少',
+        now: DateTime(2026, 9, 2),
+      ),
+      isNot(contains('付款方式实际余额')),
+    );
   });
 
   test('AI 财务上下文会说明账单和预算明细被截断', () {
