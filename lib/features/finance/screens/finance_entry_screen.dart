@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../../widgets/floating_glass_control.dart';
 
 import 'package:flutter/material.dart';
@@ -65,6 +67,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   int _installmentCount = FinanceInstallmentCalculator.minCount;
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _saveCompleted = false;
+  bool _catalogRefreshPending = false;
+  bool _catalogRefreshInProgress = false;
+  Timer? _financeChangeRefreshTimer;
 
   bool get _isEditing => widget.transaction != null;
   bool get _isLoanInterest => _linkedRepayment != null;
@@ -150,17 +156,77 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         draft?.paymentMethodUuid ??
         template?.paymentMethodUuid;
     _selectedTemplateUuid = template?.uuid;
+    FinanceStorage.revision.addListener(_onFinanceChanged);
     _loadOptions();
   }
 
   @override
   void dispose() {
+    _financeChangeRefreshTimer?.cancel();
+    FinanceStorage.revision.removeListener(_onFinanceChanged);
     _amountController.dispose();
     _merchantController.dispose();
     _noteController.dispose();
     _quickEntryController.dispose();
     _installmentCountController.dispose();
     super.dispose();
+  }
+
+  void _onFinanceChanged() {
+    _financeChangeRefreshTimer?.cancel();
+    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
+      _financeChangeRefreshTimer = null;
+      if (!mounted || _isSaving || _saveCompleted) return;
+      if (_isLoading || _catalogRefreshInProgress) {
+        _catalogRefreshPending = true;
+        return;
+      }
+      unawaited(_refreshCatalogOptions());
+    });
+  }
+
+  Future<void> _refreshCatalogOptions() async {
+    if (!mounted) return;
+    if (_isLoading || _catalogRefreshInProgress) {
+      _catalogRefreshPending = true;
+      return;
+    }
+
+    _catalogRefreshInProgress = true;
+    try {
+      do {
+        _catalogRefreshPending = false;
+        final categories = await FinanceStorage.getCategories(
+          includeArchived: true,
+        );
+        final paymentMethods = await FinanceStorage.getPaymentMethods(
+          includeArchived: true,
+        );
+        final templates = await FinanceStorage.getTemplates();
+        if (!mounted) return;
+        setState(() {
+          _categories = categories;
+          _paymentMethods = paymentMethods;
+          _templates = templates;
+        });
+      } while (_catalogRefreshPending);
+    } catch (error) {
+      debugPrint('刷新记账选项失败：$error');
+    } finally {
+      _catalogRefreshInProgress = false;
+      _drainPendingCatalogRefresh();
+    }
+  }
+
+  void _drainPendingCatalogRefresh() {
+    if (!mounted ||
+        !_catalogRefreshPending ||
+        _isLoading ||
+        _catalogRefreshInProgress) {
+      return;
+    }
+    _catalogRefreshPending = false;
+    unawaited(_refreshCatalogOptions());
   }
 
   Future<void> _loadOptions() async {
@@ -261,10 +327,12 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         preserveUnresolvedPaymentMethod:
             widget.transaction != null || widget.originalTransaction != null,
       );
+      _drainPendingCatalogRefresh();
     } catch (error) {
       if (!mounted) return;
       setState(() => _isLoading = false);
       _showError('加载分类失败：$error');
+      _drainPendingCatalogRefresh();
     }
   }
 
@@ -947,6 +1015,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         }
       }
       if (!mounted) return;
+      _saveCompleted = true;
       Navigator.of(context).pop(saved.first);
     } catch (error) {
       if (!mounted) return;
