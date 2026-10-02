@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
+import '../services/finance_storage.dart';
 import '../widgets/finance_management_widgets.dart';
 import '../../../utils/app_dialogs.dart';
 
@@ -39,6 +42,9 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
   bool _isLoading = true;
   String? _loadError;
   bool _isSaving = false;
+  bool _scopeRefreshPending = false;
+  bool _scopeRefreshInProgress = false;
+  Timer? _financeChangeRefreshTimer;
   DateTime? _balanceTime;
   bool _useSaveTime = true;
   bool _balanceTimeChanged = false;
@@ -79,14 +85,74 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
       );
       _useSaveTime = false;
     }
+    FinanceStorage.revision.addListener(_onFinanceChanged);
     _loadScopeOptions();
   }
 
   @override
   void dispose() {
+    _financeChangeRefreshTimer?.cancel();
+    FinanceStorage.revision.removeListener(_onFinanceChanged);
     _amountController.dispose();
     _noteController.dispose();
     super.dispose();
+  }
+
+  void _onFinanceChanged() {
+    _financeChangeRefreshTimer?.cancel();
+    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
+      _financeChangeRefreshTimer = null;
+      if (!mounted || _isSaving) return;
+      if (_isLoading || _scopeRefreshInProgress) {
+        _scopeRefreshPending = true;
+        return;
+      }
+      unawaited(_refreshScopeOptions());
+    });
+  }
+
+  Future<void> _refreshScopeOptions() async {
+    if (!mounted) return;
+    if (_isLoading || _scopeRefreshInProgress) {
+      _scopeRefreshPending = true;
+      return;
+    }
+
+    _scopeRefreshInProgress = true;
+    try {
+      do {
+        _scopeRefreshPending = false;
+        final categories = await FinanceRepository.getCategories(
+          type: FinanceCategoryType.expense,
+          includeArchived: true,
+        );
+        final paymentMethods = await FinanceRepository.getPaymentMethods(
+          includeArchived: true,
+        );
+        if (!mounted) return;
+        setState(() {
+          _categories = categories;
+          _paymentMethods = paymentMethods;
+        });
+      } while (_scopeRefreshPending);
+    } catch (error) {
+      debugPrint('刷新预算范围选项失败：$error');
+    } finally {
+      _scopeRefreshInProgress = false;
+      _drainPendingScopeRefresh();
+    }
+  }
+
+  void _drainPendingScopeRefresh() {
+    if (!mounted ||
+        !_scopeRefreshPending ||
+        _isLoading ||
+        _scopeRefreshInProgress ||
+        _isSaving) {
+      return;
+    }
+    _scopeRefreshPending = false;
+    unawaited(_refreshScopeOptions());
   }
 
   Future<void> _loadScopeOptions() async {
@@ -108,12 +174,14 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
         _paymentMethods = values[1] as List<FinancePaymentMethod>;
         _isLoading = false;
       });
+      _drainPendingScopeRefresh();
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
         _loadError = error.toString();
       });
+      _drainPendingScopeRefresh();
     }
   }
 
