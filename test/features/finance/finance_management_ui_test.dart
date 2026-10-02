@@ -68,16 +68,19 @@ FinanceAutomationManager _manager({
   Future<void> Function(FinanceRecurringRule)? onEdit,
   Future<void> Function(FinanceEntryTemplate)? onUse,
   Future<bool> Function()? onAdd,
+  List<FinanceRecurringRule>? rules,
+  List<FinanceEntryTemplate>? templates,
+  List<FinancePaymentMethod> paymentMethods = const [],
 }) =>
     FinanceAutomationManager(
-      rules: [
+      rules: rules ?? [
         _rule(),
         _rule(uuid: 'paused', enabled: false),
         _rule(uuid: 'deleted')..isDeleted = true
       ],
-      templates: [_template()],
+      templates: templates ?? [_template()],
       categories: _categories(),
-      paymentMethods: const [],
+      paymentMethods: paymentMethods,
       onAddRule: onAdd ?? () async => false,
       onAddTemplate: () async => false,
       onEditRule: onEdit ?? (_) async {},
@@ -143,6 +146,30 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('没有找到匹配项目'), findsOneWidget);
     await _tap(tester, find.text('清除筛选'));
+    expect(_key('finance-automation-template-breakfast'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('周期账单和模板都能按付款方式名称搜索', (tester) async {
+    final rule = _rule()..paymentMethodUuid = 'bank';
+    final template = _template()..paymentMethodUuid = 'bank';
+    await _pump(
+      tester,
+      _manager(
+        rules: [rule],
+        templates: [template],
+        paymentMethods: [FinancePaymentMethod(uuid: 'bank', name: '招商银行卡')],
+      ),
+    );
+
+    await tester.enterText(_key('finance-automation-search'), '招商银行卡');
+    await tester.pumpAndSettle();
+    expect(_key('finance-automation-rule-rent'), findsOneWidget);
+    expect(_key('finance-automation-rule-paused'), findsNothing);
+
+    await _tap(tester, _key('finance-automation-tab-templates'));
+    await tester.enterText(_key('finance-automation-search'), '招商银行卡');
+    await tester.pumpAndSettle();
     expect(_key('finance-automation-template-breakfast'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

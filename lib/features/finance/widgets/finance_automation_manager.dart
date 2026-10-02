@@ -110,14 +110,22 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
     return '';
   }
 
-  bool _matches(String name, String? merchant, String? note, String? category) {
+  bool _matches(
+    String name,
+    String? merchant,
+    String? note,
+    String? category,
+    String? paymentMethod,
+  ) {
     final query = _search.text.trim().toLowerCase();
     return query.isEmpty ||
-        [name, merchant, note, _categoryName(category)]
-            .whereType<String>()
-            .join(' ')
-            .toLowerCase()
-            .contains(query);
+        [
+          name,
+          merchant,
+          note,
+          _categoryName(category),
+          _paymentName(paymentMethod),
+        ].whereType<String>().join(' ').toLowerCase().contains(query);
   }
 
   @override
@@ -125,14 +133,29 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final rules = _rules
-        .where((rule) =>
-            (_filter == _RuleFilter.all ||
-                rule.isEnabled == (_filter == _RuleFilter.enabled)) &&
-            _matches(rule.name, rule.merchant, rule.note, rule.categoryUuid))
+        .where(
+          (rule) =>
+              (_filter == _RuleFilter.all ||
+                  rule.isEnabled == (_filter == _RuleFilter.enabled)) &&
+              _matches(
+                rule.name,
+                rule.merchant,
+                rule.note,
+                rule.categoryUuid,
+                rule.paymentMethodUuid,
+              ),
+        )
         .toList();
     final templates = _templates
-        .where((template) => _matches(template.name, template.merchant,
-            template.note, template.categoryUuid))
+        .where(
+          (template) => _matches(
+            template.name,
+            template.merchant,
+            template.note,
+            template.categoryUuid,
+            template.paymentMethodUuid,
+          ),
+        )
         .toList();
     final count = _isRules ? rules.length : templates.length;
     final total = _isRules ? _rules.length : _templates.length;
