@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../models/finance_models.dart';
 import '../services/finance_automation_service.dart';
 import '../services/finance_repository.dart';
+import '../services/finance_storage.dart';
 import '../services/ai_usage_cost_service.dart';
 import '../../../widgets/floating_bottom_bar.dart';
 import '../../../widgets/floating_glass_control.dart';
@@ -80,6 +81,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   bool _maintenanceScheduled = false;
   Future<void>? _maintenanceFuture;
   Timer? _upcomingTransactionTimer;
+  Timer? _financeChangeRefreshTimer;
   final GlobalKey _overviewAddActionKey = GlobalKey();
   final GlobalKey _bottomAddActionKey = GlobalKey();
 
@@ -137,6 +139,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   @override
   void initState() {
     super.initState();
+    FinanceStorage.revision.addListener(_onFinanceStorageChanged);
     final initialMonth = widget.initialMonth ?? widget.clock();
     _month = DateTime(initialMonth.year, initialMonth.month);
     if (_isCategoryLedgerRoute) {
@@ -164,7 +167,17 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   @override
   void dispose() {
     _upcomingTransactionTimer?.cancel();
+    _financeChangeRefreshTimer?.cancel();
+    FinanceStorage.revision.removeListener(_onFinanceStorageChanged);
     super.dispose();
+  }
+
+  void _onFinanceStorageChanged() {
+    _financeChangeRefreshTimer?.cancel();
+    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
+      _financeChangeRefreshTimer = null;
+      if (mounted) unawaited(_load(showLoading: false));
+    });
   }
 
   Future<void> _load({bool showLoading = true}) async {

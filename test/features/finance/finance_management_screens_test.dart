@@ -1031,6 +1031,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('云端同步后已打开的账单列表会刷新', (tester) async {
+    await _seed(tester);
+    final now = DateTime.now();
+    await _pump(
+      tester,
+      const FinanceHomeScreen(username: 'default'),
+      size: const Size(1100, 1000),
+    );
+    await _tap(tester, find.text('账单').hitTestable().last);
+    expect(find.text('来自另一台设备的账单'), findsNothing);
+
+    final remoteTransaction = FinanceTransaction(
+      uuid: 'remote-finance-screen-refresh',
+      amountMinor: 1234,
+      transactionDate: dateKey(now),
+      merchant: '来自另一台设备的账单',
+    );
+    await tester.runAsync(
+      () => FinanceStorage.mergeRemoteBundle({
+        'transactions': [remoteTransaction.toMap()],
+      }),
+    );
+
+    await _waitFor(
+      tester,
+      () => find.text('来自另一台设备的账单').evaluate().isNotEmpty,
+    );
+    expect(find.text('来自另一台设备的账单'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('未来月份概览将待发生账单标为计划数据', (tester) async {
     final now = DateTime.now();
     final futureMonth = DateTime(now.year, now.month + 1);
