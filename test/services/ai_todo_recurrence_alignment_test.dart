@@ -1038,6 +1038,65 @@ void main() {
       expect(expandedContext.length, greaterThan(regularContext.length));
     });
 
+    test('效率上下文标明按上限截断的明细数量', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        for (var index = 0; index < 61; index++)
+          TimeLogItem(
+            id: 'selected-$index',
+            title: '专注记录 $index',
+            startTime: DateTime(
+              2026,
+              9,
+              index % 30 + 1,
+              8 + index ~/ 30,
+            ).millisecondsSinceEpoch,
+            endTime: DateTime(
+              2026,
+              9,
+              index % 30 + 1,
+              9 + index ~/ 30,
+            ).millisecondsSinceEpoch,
+          ),
+        TimeLogItem(
+          id: 'deleted-record',
+          title: '已删除记录',
+          startTime: DateTime(2026, 9, 30, 23).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 1).millisecondsSinceEpoch,
+          isDeleted: true,
+        ),
+      ];
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析自定义范围内的效率 2026-09-01 至 2026-09-30',
+        courses: const [],
+        timeLogs: timeLogs,
+        expandFocusContext: true,
+        focusRecordPriorityRange: AiContextDateRange(
+          DateTime(2026, 9, 1),
+          DateTime(2026, 10, 1),
+        ),
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析自定义范围内的效率 2026-09-01 至 2026-09-30',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        expandFocusContext: true,
+        now: now,
+      )!;
+
+      expect(context, contains('展示 60/61 条'));
+      expect(context, contains('合计基于全部记录'));
+      expect(context, isNot(contains('selected-0')));
+      expect(context, contains('selected-60'));
+      expect(preview, contains('明细60/61条'));
+    });
+
     test('上周效率只汇总上一自然周，不混入本周记录', () {
       final now = DateTime(2026, 10, 2, 12);
       final timeLogs = [

@@ -805,6 +805,11 @@ ${sections.join('\n')}
             pomodoroRecords.isNotEmpty ||
             planBlocks.isNotEmpty)) {
       final period = _resolveTimeLogPeriod(userMessage, nowValue);
+      final focusRecordCount = _countFocusRecords(
+        timeLogs,
+        pomodoroRecords,
+        period,
+      );
       if (period != null) {
         final start = _formatCompactDate(period.start);
         final end = _formatCompactDate(
@@ -812,7 +817,18 @@ ${sections.join('\n')}
         );
         parts.add(start == end ? '专注记录$start' : '专注记录$start-$end');
       } else {
-        parts.add('专注记录最近${expandFocusContext ? 60 : 30}条');
+        parts.add(
+          focusRecordCount == 0
+              ? '专注记录暂无'
+              : '专注记录最近${expandFocusContext ? 60 : 30}条',
+        );
+      }
+      if (focusRecordCount > 0) {
+        final recordLimit = expandFocusContext ? 60 : 30;
+        final displayedCount = focusRecordCount < recordLimit
+            ? focusRecordCount
+            : recordLimit;
+        parts.add('明细$displayedCount/$focusRecordCount条');
       }
       if (planBlocks.isNotEmpty) {
         parts.add('规划块');
@@ -1902,17 +1918,10 @@ ${sections.join('\n')}
     int recordLimit = 30,
     AiContextDateRange? priorityRange,
   }) {
-    final activeLogs = timeLogs.where((t) => !t.isDeleted).toList();
-    final activePomodoros = pomodoroRecords.where((p) => !p.isDeleted).toList();
-    if (activeLogs.isEmpty && activePomodoros.isEmpty) return '专注记录: 暂无';
+    final records = _activeFocusRecords(timeLogs, pomodoroRecords);
+    if (records.isEmpty) return '专注记录: 暂无';
     final period = _resolveTimeLogPeriod(userMessage, now);
-    final records = <_FocusRecord>[
-      ...activeLogs.map(_FocusRecord.fromTimeLog),
-      ...activePomodoros.map(_FocusRecord.fromPomodoro),
-    ]..sort((a, b) => b.startMs.compareTo(a.startMs));
-    final scopedRecords = period == null
-        ? records
-        : records.where((r) => _focusOverlapsPeriod(r, period)).toList();
+    final scopedRecords = _scopeFocusRecords(records, period);
     final recordsToFormat = _limitFocusRecords(
       scopedRecords,
       limit: recordLimit,
@@ -1943,6 +1952,7 @@ ${sections.join('\n')}
 ${period.label}范围: ${_formatDateTime(period.start)} 至 ${_formatDateTime(period.end)}
 ${period.label}合计: ${formatMinutesChinese(totalMinutes)}
 其中补录: ${formatMinutesChinese(timeLogMinutes)}，番茄钟: ${formatMinutesChinese(pomodoroMinutes)}
+记录明细展示 ${recordsToFormat.length}/${scopedRecords.length} 条，按开始时间倒序；合计基于全部记录。
 ${period.label}记录:
 ${lines.isEmpty ? '暂无' : lines}''';
     }
@@ -1954,7 +1964,45 @@ ${lines.isEmpty ? '暂无' : lines}''';
           return '- [${r.source} ID: ${r.id}] $start-$end ${r.title} | ${formatMinutesChinese(r.minutes)}${r.status != null ? ' | 状态: ${r.status}' : ''}';
         })
         .join('\n');
-    return '专注记录（最近$recordLimit条，按开始时间倒序）:\n$lines';
+    return '专注记录（展示 ${recordsToFormat.length}/${records.length} 条，按开始时间倒序）:\n$lines';
+  }
+
+  static List<_FocusRecord> _activeFocusRecords(
+    List<TimeLogItem> timeLogs,
+    List<PomodoroRecord> pomodoroRecords,
+  ) => [
+    ...timeLogs.where((record) => !record.isDeleted).map(
+      _FocusRecord.fromTimeLog,
+    ),
+    ...pomodoroRecords.where((record) => !record.isDeleted).map(
+      _FocusRecord.fromPomodoro,
+    ),
+  ]..sort((left, right) => right.startMs.compareTo(left.startMs));
+
+  static List<_FocusRecord> _scopeFocusRecords(
+    List<_FocusRecord> records,
+    _TimeLogPeriod? period,
+  ) => period == null
+      ? records
+      : records.where((record) => _focusOverlapsPeriod(record, period)).toList();
+
+  static int _countFocusRecords(
+    List<TimeLogItem> timeLogs,
+    List<PomodoroRecord> pomodoroRecords,
+    _TimeLogPeriod? period,
+  ) {
+    var count = 0;
+    for (final log in timeLogs) {
+      if (log.isDeleted) continue;
+      final record = _FocusRecord.fromTimeLog(log);
+      if (period == null || _focusOverlapsPeriod(record, period)) count++;
+    }
+    for (final pomodoro in pomodoroRecords) {
+      if (pomodoro.isDeleted) continue;
+      final record = _FocusRecord.fromPomodoro(pomodoro);
+      if (period == null || _focusOverlapsPeriod(record, period)) count++;
+    }
+    return count;
   }
 
   static List<_FocusRecord> _limitFocusRecords(
