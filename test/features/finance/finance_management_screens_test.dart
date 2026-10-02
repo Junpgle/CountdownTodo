@@ -1944,21 +1944,43 @@ void main() {
   });
 
   testWidgets('账单列表将尚未发生的未来账单标记出来', (tester) async {
-    final futureAt = DateTime.now().add(const Duration(hours: 1));
-    final transaction = FinanceTransaction(
-      uuid: 'ledger-upcoming-bill',
-      amountMinor: 3000,
-      transactionDate: dateKey(futureAt),
-      occurredAt: futureAt.millisecondsSinceEpoch,
-      createdAt: DateTime.now().millisecondsSinceEpoch,
-      merchant: '未来房租',
-    );
+    final now = DateTime(2026, 10, 2, 12);
+    final futureAt = now.add(const Duration(hours: 1));
+    final actualAt = now.subtract(const Duration(hours: 1));
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'ledger-upcoming-bill',
+        amountMinor: 3000,
+        transactionDate: dateKey(futureAt),
+        occurredAt: futureAt.millisecondsSinceEpoch,
+        createdAt: now.millisecondsSinceEpoch,
+        merchant: '未来房租',
+      ),
+      FinanceTransaction(
+        uuid: 'ledger-occurred-bill',
+        amountMinor: 1500,
+        transactionDate: dateKey(now),
+        occurredAt: actualAt.millisecondsSinceEpoch,
+        createdAt: actualAt.millisecondsSinceEpoch,
+        merchant: '已发生账单',
+      ),
+      FinanceTransaction(
+        uuid: 'ledger-upcoming-income',
+        type: FinanceTransactionType.income,
+        amountMinor: 7200,
+        transactionDate: dateKey(futureAt),
+        occurredAt: futureAt.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+        createdAt: now.millisecondsSinceEpoch,
+        merchant: '待到账收入',
+      ),
+    ];
 
     await _pump(
       tester,
       Scaffold(
         body: FinanceLedgerPanel(
-          transactions: [transaction],
+          clock: () => now,
+          transactions: transactions,
           categories: const {},
           paymentMethods: const {},
           keyword: '',
@@ -1973,8 +1995,11 @@ void main() {
       ),
     );
 
-    expect(find.text('待发生'), findsOneWidget);
+    expect(find.text('待发生'), findsNWidgets(2));
     expect(find.text('未来房租'), findsOneWidget);
+    expect(find.text('净支出 ¥15.00'), findsOneWidget);
+    expect(find.text('计划净支出 ¥30.00'), findsOneWidget);
+    expect(find.text('计划收入 ¥72.00'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

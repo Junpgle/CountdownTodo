@@ -1005,6 +1005,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
 class FinanceLedgerPanel extends StatefulWidget {
   final double topPadding;
   final DateTime? month;
+  final DateTime Function() clock;
   final List<FinanceTransaction> transactions;
   final Map<String, FinanceCategory> categories;
   final Map<String, FinancePaymentMethod> paymentMethods;
@@ -1023,6 +1024,7 @@ class FinanceLedgerPanel extends StatefulWidget {
     super.key,
     this.topPadding = 0,
     this.month,
+    this.clock = DateTime.now,
     required this.transactions,
     required this.categories,
     required this.paymentMethods,
@@ -1118,7 +1120,8 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
       ].whereType<String>().join(' ').toLowerCase();
       return content.contains(query);
     }).toList();
-    final dayGroups = _groupFinanceTransactionsByDay(filtered);
+    final nowAt = widget.clock().millisecondsSinceEpoch;
+    final dayGroups = _groupFinanceTransactionsByDay(filtered, asOfAt: nowAt);
     final bottomPadding = financeBottomContentPaddingFor(context);
 
     return Column(
@@ -1176,6 +1179,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
                         _buildTransactionTile(
                           context,
                           dayGroups[groupIndex].transactions[transactionIndex],
+                          nowAt,
                         ),
                         if (transactionIndex + 1 <
                             dayGroups[groupIndex].transactions.length)
@@ -1232,12 +1236,27 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   Widget _buildDayHeader(BuildContext context, _FinanceDayGroup group) {
     final colorScheme = Theme.of(context).colorScheme;
     final hasExpenseFlow = group.expenseMinor > 0 || group.refundMinor > 0;
+    final hasPlannedExpenseFlow =
+        group.plannedExpenseMinor > 0 || group.plannedRefundMinor > 0;
     final amountLabels = <String>[
       if (hasExpenseFlow) '净支出 ${formatFinanceAmount(group.netExpenseMinor)}',
+      if (hasPlannedExpenseFlow)
+        '计划净支出 ${formatFinanceAmount(group.plannedNetExpenseMinor)}',
       if (group.incomeMinor > 0) '收入 ${formatFinanceAmount(group.incomeMinor)}',
+      if (group.plannedIncomeMinor > 0)
+        '计划收入 ${formatFinanceAmount(group.plannedIncomeMinor)}',
     ];
     if (amountLabels.isEmpty) {
       amountLabels.add('${group.transactions.length} 笔');
+    }
+    Color labelColor(String label) {
+      if (label.contains('收入')) return colorScheme.primary;
+      final netExpenseMinor = label.startsWith('计划净支出')
+          ? group.plannedNetExpenseMinor
+          : group.netExpenseMinor;
+      return netExpenseMinor > 0
+          ? colorScheme.error
+          : colorScheme.onSurfaceVariant;
     }
 
     return Padding(
@@ -1281,11 +1300,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: label.startsWith('收入')
-                          ? colorScheme.primary
-                          : group.netExpenseMinor > 0
-                          ? colorScheme.error
-                          : colorScheme.onSurfaceVariant,
+                      color: labelColor(label),
                       fontWeight: FontWeight.w700,
                       fontSize: 12,
                     ),
@@ -1301,6 +1316,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
   Widget _buildTransactionTile(
     BuildContext context,
     FinanceTransaction transaction,
+    int asOfAt,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
     final category = categories[transaction.categoryUuid];
@@ -1312,8 +1328,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         ? transaction.merchant!
         : categoryName ?? transaction.type.label;
     final subtitleParts = <String>[
-      if (transaction.balanceEventAt() > DateTime.now().millisecondsSinceEpoch)
-        '待发生',
+      if (transaction.balanceEventAt() > asOfAt) '待发生',
       if (category != null) '${category.icon} $categoryName',
       if (payment != null) '${payment.icon} ${payment.name}',
       if (transaction.installmentLabel != null)
@@ -1389,8 +1404,8 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
 
   Widget _buildEmptyState(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final selectedMonth = widget.month ?? DateTime.now();
-    final now = DateTime.now();
+    final now = widget.clock();
+    final selectedMonth = widget.month ?? now;
     final monthLabel =
         selectedMonth.year == now.year && selectedMonth.month == now.month
         ? '本月'
@@ -1474,6 +1489,9 @@ class _FinanceDayGroup {
   final int expenseMinor;
   final int refundMinor;
   final int incomeMinor;
+  final int plannedExpenseMinor;
+  final int plannedRefundMinor;
+  final int plannedIncomeMinor;
 
   const _FinanceDayGroup({
     required this.date,
@@ -1481,14 +1499,19 @@ class _FinanceDayGroup {
     required this.expenseMinor,
     required this.refundMinor,
     required this.incomeMinor,
+    required this.plannedExpenseMinor,
+    required this.plannedRefundMinor,
+    required this.plannedIncomeMinor,
   });
 
   int get netExpenseMinor => expenseMinor - refundMinor;
+  int get plannedNetExpenseMinor => plannedExpenseMinor - plannedRefundMinor;
 }
 
 List<_FinanceDayGroup> _groupFinanceTransactionsByDay(
-  Iterable<FinanceTransaction> transactions,
-) {
+  Iterable<FinanceTransaction> transactions, {
+  required int asOfAt,
+}) {
   final grouped = <String, List<FinanceTransaction>>{};
   for (final transaction in transactions) {
     grouped.putIfAbsent(transaction.transactionDate, () => []).add(transaction);
@@ -1510,14 +1533,30 @@ List<_FinanceDayGroup> _groupFinanceTransactionsByDay(
     var expenseMinor = 0;
     var refundMinor = 0;
     var incomeMinor = 0;
+    var plannedExpenseMinor = 0;
+    var plannedRefundMinor = 0;
+    var plannedIncomeMinor = 0;
     for (final item in items) {
+      final isPlanned = item.balanceEventAt() > asOfAt;
       switch (item.type) {
         case FinanceTransactionType.expense:
-          expenseMinor += item.amountMinor;
+          if (isPlanned) {
+            plannedExpenseMinor += item.amountMinor;
+          } else {
+            expenseMinor += item.amountMinor;
+          }
         case FinanceTransactionType.refund:
-          refundMinor += item.amountMinor;
+          if (isPlanned) {
+            plannedRefundMinor += item.amountMinor;
+          } else {
+            refundMinor += item.amountMinor;
+          }
         case FinanceTransactionType.income:
-          incomeMinor += item.amountMinor;
+          if (isPlanned) {
+            plannedIncomeMinor += item.amountMinor;
+          } else {
+            incomeMinor += item.amountMinor;
+          }
       }
     }
     result.add(
@@ -1527,6 +1566,9 @@ List<_FinanceDayGroup> _groupFinanceTransactionsByDay(
         expenseMinor: expenseMinor,
         refundMinor: refundMinor,
         incomeMinor: incomeMinor,
+        plannedExpenseMinor: plannedExpenseMinor,
+        plannedRefundMinor: plannedRefundMinor,
+        plannedIncomeMinor: plannedIncomeMinor,
       ),
     );
   }
