@@ -1424,6 +1424,45 @@ ${lines.isEmpty ? '暂无' : lines}''';
       final start = thisWeekStart.subtract(const Duration(days: 7));
       return _TimeLogPeriod(label: '上周', start: start, end: thisWeekStart);
     }
+    final recentDays = _matchesAny(text, [
+      '最近7天',
+      '最近七天',
+      '过去7天',
+      '过去七天',
+      '近7天',
+      '近七天',
+      '最近一周',
+      '过去一周',
+      '近一周',
+    ])
+        ? 7
+        : _matchesAny(text, [
+            '最近30天',
+            '最近三十天',
+            '过去30天',
+            '过去三十天',
+            '近30天',
+            '近三十天',
+          ])
+        ? 30
+        : null;
+    if (recentDays != null) {
+      final start = DateTime(
+        todayStart.year,
+        todayStart.month,
+        todayStart.day - recentDays + 1,
+      );
+      final end = DateTime(
+        todayStart.year,
+        todayStart.month,
+        todayStart.day + 1,
+      );
+      return _TimeLogPeriod(
+        label: '最近$recentDays天',
+        start: start,
+        end: end,
+      );
+    }
     if (text.contains('本周') || text.contains('这周')) {
       final start = todayStart.subtract(Duration(days: now.weekday - 1));
       return _TimeLogPeriod(

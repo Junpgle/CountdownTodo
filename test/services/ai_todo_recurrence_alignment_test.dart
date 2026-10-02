@@ -859,5 +859,82 @@ void main() {
       expect(preview, contains('专注记录20260921-20260927'));
       expect(preview, isNot(contains('最近30条')));
     });
+
+    test('最近七天效率按含今天的滚动自然日范围汇总', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        TimeLogItem(
+          id: 'outside-seven-days',
+          title: '七天前专注',
+          startTime: DateTime(2026, 9, 25, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 25, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'first-day-in-range',
+          title: '范围首日专注',
+          startTime: DateTime(2026, 9, 26, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 26, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'inside-seven-days',
+          title: '本周专注',
+          startTime: DateTime(2026, 10, 1, 11).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 1, 12).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'future-log',
+          title: '未来专注',
+          startTime: DateTime(2026, 10, 3, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 10, 3, 10).millisecondsSinceEpoch,
+        ),
+      ];
+
+      final context = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析最近七天的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final preview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析最近七天的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(context, contains('最近7天合计'));
+      expect(context, isNot(contains('outside-seven-days')));
+      expect(context, contains('first-day-in-range'));
+      expect(context, contains('inside-seven-days'));
+      expect(context, isNot(contains('future-log')));
+      expect(preview, contains('专注记录20260926-20261002'));
+
+      final thirtyDayContext = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析最近30天的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final thirtyDayPreview =
+          AiTodoContextBuilder.buildContextInjectionSummary(
+            userMessage: '分析最近30天的效率',
+            courses: const [],
+            timeLogs: timeLogs,
+            conflicts: const [],
+            teams: const [],
+            now: now,
+          )!;
+
+      expect(thirtyDayContext, contains('最近30天合计'));
+      expect(thirtyDayContext, contains('outside-seven-days'));
+      expect(thirtyDayContext, isNot(contains('future-log')));
+      expect(thirtyDayPreview, contains('专注记录20260903-20261002'));
+    });
   });
 }
