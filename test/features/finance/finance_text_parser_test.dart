@@ -355,6 +355,13 @@ void main() {
     expect(memberDiscountDrafts, hasLength(1));
     expect(memberDiscountDrafts.single.amountMinor, 2500);
 
+    final paymentPromotionDrafts = FinanceTextParser.parseQuickEntries(
+      '今天午餐原价 30 元，支付宝优惠 5 元，实付 25 元',
+      now: fixedNow,
+    );
+    expect(paymentPromotionDrafts, hasLength(1));
+    expect(paymentPromotionDrafts.single.amountMinor, 2500);
+
     final incomeDrafts = FinanceTextParser.parseQuickEntries(
       '今天工资应发 1000 元，实收 980 元',
       now: fixedNow,
