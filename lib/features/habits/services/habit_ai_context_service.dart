@@ -35,6 +35,25 @@ abstract final class HabitAiContextService {
     '倒计时',
     '团队',
   ];
+  static const _recent30DayTerms = [
+    '最近30天',
+    '最近三十天',
+    '过去30天',
+    '过去三十天',
+    '近30天',
+    '近三十天',
+  ];
+  static const _recent7DayTerms = [
+    '最近7天',
+    '最近七天',
+    '过去7天',
+    '过去七天',
+    '近7天',
+    '近七天',
+    '最近一周',
+    '过去一周',
+    '近一周',
+  ];
 
   static final RegExp _monthPattern = RegExp(
     r'(?:(\d{4})\s*年\s*)?(十一|十二|十|[一二三四五六七八九]|\d{1,2})\s*月(?:份)?',
@@ -227,10 +246,8 @@ abstract final class HabitAiContextService {
           '昨天',
           '昨日',
           '前天',
-          '最近7天',
-          '最近七天',
-          '最近30天',
-          '最近三十天',
+          ..._recent7DayTerms,
+          ..._recent30DayTerms,
           '本周',
           '这周',
           '上周',
@@ -257,10 +274,8 @@ abstract final class HabitAiContextService {
           '昨天',
           '昨日',
           '前天',
-          '最近7天',
-          '最近七天',
-          '最近30天',
-          '最近三十天',
+          ..._recent7DayTerms,
+          ..._recent30DayTerms,
           '本周',
           '这周',
           '上周',
@@ -470,9 +485,9 @@ abstract final class HabitAiContextService {
         text.contains('这周') ||
         text.contains('这星期')) {
       from = _mondayOf(day);
-    } else if (text.contains('最近30天') || text.contains('最近三十天')) {
+    } else if (_containsAny(text, _recent30DayTerms)) {
       from = day.subtract(const Duration(days: 29));
-    } else if (text.contains('最近7天') || text.contains('最近七天')) {
+    } else if (_containsAny(text, _recent7DayTerms)) {
       from = day.subtract(const Duration(days: 6));
     }
     return (

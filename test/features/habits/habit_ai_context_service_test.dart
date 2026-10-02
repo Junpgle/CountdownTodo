@@ -82,6 +82,37 @@ void main() {
       expect(summary, contains('2026-09-27 至 2026-10-03'));
     });
 
+    test('resolves recent-day aliases and treats them as follow-up ranges', () {
+      final testNow = DateTime(2026, 10, 3, 12);
+      for (final period in [
+        '最近7天',
+        '最近七天',
+        '过去7天',
+        '过去七天',
+        '近7天',
+        '近七天',
+        '最近一周',
+        '过去一周',
+        '近一周',
+      ]) {
+        final direct = HabitAiContextService.buildContextInjectionSummary(
+          userMessage: '查看$period的习惯进度',
+          goals: const [],
+          now: testNow,
+        );
+        final followUp = HabitAiContextService.buildContextInjectionSummary(
+          userMessage: '那$period呢？',
+          previousUserMessage: '查看2026-06-01至2026-06-30的习惯进度',
+          conversationContext: '习惯进度',
+          goals: const [],
+          now: testNow,
+        );
+
+        expect(direct, contains('2026-09-27 至 2026-10-03'), reason: period);
+        expect(followUp, contains('2026-09-27 至 2026-10-03'), reason: period);
+      }
+    });
+
     test('resolves the second previous week instead of the previous week', () {
       final summary = HabitAiContextService.buildContextInjectionSummary(
         userMessage: '查看上上周的习惯进度',
