@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../features/finance/services/finance_storage.dart';
+import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
 import '../models/data_export_models.dart';
 import '../storage_service.dart';
 import 'api_service.dart';
@@ -13,6 +14,7 @@ import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
 import 'pomodoro_service.dart';
 import 'storage/habit_storage.dart';
+import 'storage/storage_key_scope.dart';
 
 class DataExportService {
   static const int _exportVersion = 2;
@@ -58,6 +60,12 @@ class DataExportService {
         (financeBundle['loan_installments'] as List<dynamic>? ?? const [])
             .where((item) => item is Map && item['is_deleted'] != 1)
             .toList();
+    final challengeBundle = await ThirtyDayChallengeRepository.exportBackup();
+    final challengeState = challengeBundle?['state'];
+    final challengeTasks = challengeState is Map &&
+            challengeState['tasks'] is List
+        ? (challengeState['tasks'] as List).length
+        : 0;
 
     return [
       ExportTypeOption(
@@ -132,6 +140,13 @@ class DataExportService {
             habitCheckIns.where((checkIn) => !checkIn.isDeleted).length +
             sleepPlans.where((plan) => !plan.isDeleted).length,
         description: '习惯目标、规则、打卡记录和睡眠训练计划',
+      ),
+      ExportTypeOption(
+        key: 'thirty_day_challenge',
+        label: '30 天挑战',
+        icon: Icons.emoji_events_outlined,
+        count: challengeTasks,
+        description: '当前挑战任务、进度、感受和图片记录',
       ),
       ExportTypeOption(
         key: 'finance',
@@ -375,6 +390,16 @@ class DataExportService {
             goals.length + rules.length + checkIns.length + sleepPlans.length;
       }
 
+      if (selectedTypes.contains('thirty_day_challenge')) {
+        final bundle = await ThirtyDayChallengeRepository.exportBackup();
+        if (bundle != null) {
+          data['thirty_day_challenge'] = bundle;
+          final state = bundle['state'];
+          final tasks = state is Map ? state['tasks'] : null;
+          if (tasks is List) totalItems += tasks.length;
+        }
+      }
+
       if (selectedTypes.contains('finance')) {
         final bundle = await FinanceStorage.getExportBundle();
         if (options.removeDeviceId) {
@@ -484,7 +509,10 @@ class DataExportService {
 
     for (final key in keys) {
       // 跳过排除的键
-      if (excludedKeys.contains(key)) continue;
+      if (excludedKeys.contains(key) ||
+          StorageKeyScope.isChallengeDataKey(key)) {
+        continue;
+      }
 
       // 多学期设置也按账号隔离。导出时统一还原为基础键名，避免把源账号
       // 后缀带到另一台设备后无法被当前账号读取。

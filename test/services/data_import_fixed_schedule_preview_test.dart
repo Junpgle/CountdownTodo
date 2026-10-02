@@ -46,4 +46,31 @@ void main() {
       expect(StorageKeyScope.scoped(key, 'alice'), '${key}_alice');
     }
   });
+
+  test('backup preview lists challenge data separately from settings',
+      () async {
+    final preview = await DataImportService.parseJsonString(
+      jsonEncode({
+        'version': 2,
+        'exportedAt': DateTime(2026, 10, 2).millisecondsSinceEpoch,
+        'data': {
+          'thirty_day_challenge': {
+            'started': true,
+            'state': {
+              'challenge_title': '周末阅读计划',
+              'tasks': [
+                {'id': 1, 'original_title': '读一本书'},
+                {'id': 2, 'original_title': '写下感想'},
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    expect(preview.types, hasLength(1));
+    expect(preview.types.single.key, 'thirty_day_challenge');
+    expect(preview.types.single.label, '30 天挑战');
+    expect(preview.types.single.count, 2);
+  });
 }

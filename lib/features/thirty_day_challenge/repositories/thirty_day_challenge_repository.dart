@@ -70,6 +70,52 @@ abstract final class ThirtyDayChallengeRepository {
     await prefs.setBool(await _scopedHabitCenterPromotionKey(), true);
   }
 
+  static Future<Map<String, dynamic>?> exportBackup() async {
+    if (!await hasStarted()) return null;
+    final state = await load();
+    return {
+      'state': state.toJson(),
+      'intro_seen': await hasSeenIntro(),
+      'started': await hasStarted(),
+      'paused': await isPaused(),
+      'habit_center_promotion_dismissed':
+          await isHabitCenterPromotionDismissed(),
+    };
+  }
+
+  static Future<int> importBackup(Map<String, dynamic> bundle) async {
+    final rawState = bundle['state'];
+    if (rawState is! Map) {
+      throw const FormatException('thirty_day_challenge.state 必须是对象');
+    }
+    final stateJson = Map<String, dynamic>.from(rawState);
+    final rawTasks = stateJson['tasks'];
+    if (rawTasks is! List ||
+        rawTasks.isEmpty ||
+        rawTasks.any((task) => task is! Map)) {
+      throw const FormatException('thirty_day_challenge.state.tasks 格式无效');
+    }
+    final state = ThirtyDayChallengeState.fromJson(stateJson);
+    if (state.tasks.length != rawTasks.length || bundle['started'] == false) {
+      throw const FormatException('thirty_day_challenge 记录不完整');
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await _save(prefs, state);
+    await prefs.setBool(
+      await _scopedIntroKey(),
+      bundle['intro_seen'] != false,
+    );
+    await prefs.setBool(await _scopedStartedKey(), true);
+    await prefs.setBool(await _scopedPausedKey(), bundle['paused'] == true);
+    await prefs.setBool(
+      await _scopedHabitCenterPromotionKey(),
+      bundle['habit_center_promotion_dismissed'] == true,
+    );
+    activityRevision.value++;
+    return state.tasks.length;
+  }
+
   static Future<void> setPaused(bool paused) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(await _scopedPausedKey(), paused);

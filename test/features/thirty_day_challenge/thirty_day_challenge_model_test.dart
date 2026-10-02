@@ -46,4 +46,48 @@ void main() {
     expect(started.isBuiltIn, isTrue);
     expect(restored.isBuiltIn, isTrue);
   });
+
+  test('挑战备份往返保留进度、记录和参与状态', () async {
+    final started = await ThirtyDayChallengeRepository.startNewChallenge(
+      title: '周末阅读计划',
+      taskTitles: ['读完一本书', '写下三条感想'],
+    );
+    await ThirtyDayChallengeRepository.updateTask(
+      started,
+      1,
+      customTitle: '读完一本小说',
+      feeling: '读完后心情放松。',
+      imageBase64: 'aW1hZ2U=',
+    );
+    await ThirtyDayChallengeRepository.setCompleted(
+      started,
+      1,
+      true,
+      completedAt: DateTime(2026, 10, 2, 19),
+    );
+    await ThirtyDayChallengeRepository.setPaused(true);
+    await ThirtyDayChallengeRepository.dismissHabitCenterPromotion();
+
+    final bundle = await ThirtyDayChallengeRepository.exportBackup();
+    expect(bundle, isNotNull);
+    await ThirtyDayChallengeRepository.abandonChallenge();
+    expect(
+      await ThirtyDayChallengeRepository.importBackup(bundle!),
+      2,
+    );
+
+    final restored = await ThirtyDayChallengeRepository.load();
+    expect(restored.challengeTitle, '周末阅读计划');
+    expect(restored.tasks.first.title, '读完一本小说');
+    expect(restored.tasks.first.isCompleted, isTrue);
+    expect(restored.tasks.first.feeling, '读完后心情放松。');
+    expect(restored.tasks.first.imageBase64, 'aW1hZ2U=');
+    expect(await ThirtyDayChallengeRepository.hasStarted(), isTrue);
+    expect(await ThirtyDayChallengeRepository.hasSeenIntro(), isTrue);
+    expect(await ThirtyDayChallengeRepository.isPaused(), isTrue);
+    expect(
+      await ThirtyDayChallengeRepository.isHabitCenterPromotionDismissed(),
+      isTrue,
+    );
+  });
 }

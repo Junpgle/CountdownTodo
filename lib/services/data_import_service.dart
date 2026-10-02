@@ -12,6 +12,7 @@ import '../features/habits/models/habit_checkin.dart';
 import '../features/habits/models/habit_goal.dart';
 import '../features/habits/models/habit_goal_rule.dart';
 import '../features/habits/models/habit_sleep_coaching_plan.dart';
+import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
 import '../storage_service.dart';
 import '../utils/text_file_reader.dart';
 import 'api_service.dart';
@@ -38,6 +39,7 @@ class DataImportService {
     'pomodoro_tags': '番茄钟标签',
     'pomodoro_records': '番茄钟记录',
     'habits': '习惯与睡眠训练',
+    'thirty_day_challenge': '30 天挑战',
     'finance': '记账数据',
     'settings': '偏好设置',
   };
@@ -83,6 +85,26 @@ class DataImportService {
       if (entry.key == 'settings' || entry.key == 'finance') {
         if (entry.value is! Map) {
           throw FormatException('${entry.key} 必须是对象');
+        }
+        continue;
+      }
+      if (entry.key == 'thirty_day_challenge') {
+        if (entry.value is! Map) {
+          throw const FormatException('thirty_day_challenge 必须是对象');
+        }
+        final bundle = Map<String, dynamic>.from(entry.value as Map);
+        final rawState = bundle['state'];
+        if (rawState is! Map) {
+          throw const FormatException('thirty_day_challenge.state 必须是对象');
+        }
+        final state = Map<String, dynamic>.from(rawState);
+        final tasks = state['tasks'];
+        if (tasks is! List ||
+            tasks.isEmpty ||
+            tasks.any((task) => task is! Map)) {
+          throw const FormatException(
+            'thirty_day_challenge.state.tasks 格式无效',
+          );
         }
         continue;
       }
@@ -157,6 +179,17 @@ class DataImportService {
           key: key,
           label: '偏好设置',
           count: 1,
+        ));
+        continue;
+      }
+      if (key == 'thirty_day_challenge' && entry.value is Map) {
+        final bundle = Map<String, dynamic>.from(entry.value as Map);
+        final state = bundle['state'];
+        final tasks = state is Map ? state['tasks'] : null;
+        types.add(ImportTypePreview(
+          key: key,
+          label: _typeLabels[key] ?? key,
+          count: tasks is List ? tasks.length : 0,
         ));
         continue;
       }
@@ -457,6 +490,12 @@ class DataImportService {
           username: username,
         );
         importedCount += 1;
+      }
+
+      if (data['thirty_day_challenge'] is Map) {
+        importedCount += await ThirtyDayChallengeRepository.importBackup(
+          Map<String, dynamic>.from(data['thirty_day_challenge'] as Map),
+        );
       }
 
       // Imported todos, courses, fixed schedules, finance rules and habits
