@@ -280,6 +280,48 @@ void main() {
     expect(followUp, '记账明细 2025-01-01 至 2025-12-31');
   });
 
+  test('近半年和近几个月查询使用滚动自然月范围', () async {
+    final now = DateTime(2026, 10, 2, 12);
+    for (final (query, expectedFrom) in [
+      ('近半年支出', '2026-04-02'),
+      ('过去6个月支出', '2026-04-02'),
+      ('最近三个月支出', '2026-07-02'),
+      ('近3个月支出', '2026-07-02'),
+    ]) {
+      final range = FinanceAiContextService.resolveDateRange(
+        query,
+        now: now,
+      );
+      expect(dateKey(range.from), expectedFrom, reason: query);
+      expect(dateKey(range.to), '2026-10-03', reason: query);
+      expect(
+        FinanceAiContextService.shouldInjectFor(query),
+        isTrue,
+        reason: query,
+      );
+    }
+
+    expect(
+      FinanceAiContextService.buildContextInjectionSummary(
+        userMessage: '近半年支出',
+        now: now,
+      ),
+      '记账明细 2026-04-02 至 2026-10-02',
+    );
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '近半年支出',
+      now: now,
+    );
+    expect(context, contains('查询范围: 2026-04-02 至 2026-10-02（含首尾日期）'));
+    expect(context, contains('[transactionId: today]'));
+
+    final monthEndRange = FinanceAiContextService.resolveDateRange(
+      '近6个月支出',
+      now: DateTime(2026, 8, 31),
+    );
+    expect(dateKey(monthEndRange.from), '2026-02-28');
+  });
+
   test('AI 查询付款方式余额时提供快照及之后的账户流水', () async {
     final snapshotAt = DateTime(2026, 9, 1, 10);
     await db.insert(
