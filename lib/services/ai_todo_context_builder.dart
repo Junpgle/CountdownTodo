@@ -2488,19 +2488,23 @@ ${lines.isEmpty ? '暂无' : lines}''';
   }
 
   static bool _focusOverlapsPeriod(_FocusRecord record, _TimeLogPeriod period) {
-    return record.endMs > period.start.millisecondsSinceEpoch &&
-        record.startMs < period.end.millisecondsSinceEpoch;
+    final periodStart = period.start.millisecondsSinceEpoch;
+    final periodEnd = period.end.millisecondsSinceEpoch;
+    return record.focusIntervals.any(
+      (interval) => interval.endMs > periodStart && interval.startMs < periodEnd,
+    );
   }
 
   static int _focusOverlapSeconds(_FocusRecord record, _TimeLogPeriod period) {
-    final start = record.startMs > period.start.millisecondsSinceEpoch
-        ? record.startMs
-        : period.start.millisecondsSinceEpoch;
-    final end = record.endMs < period.end.millisecondsSinceEpoch
-        ? record.endMs
-        : period.end.millisecondsSinceEpoch;
-    if (end <= start) return 0;
-    return (end - start) ~/ 1000;
+    final periodStart = period.start.millisecondsSinceEpoch;
+    final periodEnd = period.end.millisecondsSinceEpoch;
+    return record.focusIntervals.fold<int>(0, (sum, interval) {
+      final start = interval.startMs > periodStart
+          ? interval.startMs
+          : periodStart;
+      final end = interval.endMs < periodEnd ? interval.endMs : periodEnd;
+      return end <= start ? sum : sum + (end - start) ~/ 1000;
+    });
   }
 
   static String _formatEpochMillis(int value) {
@@ -2694,6 +2698,7 @@ class _FocusRecord {
     required this.source,
     required this.startMs,
     required this.endMs,
+    required this.focusIntervals,
     this.status,
   });
 
@@ -2704,18 +2709,32 @@ class _FocusRecord {
       source: '补录',
       startMs: log.startTime,
       endMs: log.endTime,
+      focusIntervals: log.endTime > log.startTime
+          ? [_FocusInterval(log.startTime, log.endTime)]
+          : const [],
     );
   }
 
   factory _FocusRecord.fromPomodoro(PomodoroRecord record) {
-    final endMs =
-        record.endTime ?? record.startTime + record.effectiveDuration * 1000;
+    final totalPauseSeconds = record.totalPauseSeconds ?? 0;
+    final pauseSeconds = totalPauseSeconds > 0 ? totalPauseSeconds : 0;
+    final endMs = record.endTime ??
+        record.startTime + (record.effectiveDuration + pauseSeconds) * 1000;
+    final pauses = record.pauseIntervals;
+    final focusIntervals = pauses != null && pauses.isNotEmpty
+        ? _subtractPauseIntervals(record.startTime, endMs, pauses)
+        : _fallbackPomodoroFocusInterval(
+            record.startTime,
+            endMs,
+            record.effectiveDuration,
+          );
     return _FocusRecord(
       id: record.uuid,
       title: record.todoTitle?.isNotEmpty == true ? record.todoTitle! : '番茄钟',
       source: '番茄钟',
       startMs: record.startTime,
       endMs: endMs,
+      focusIntervals: focusIntervals,
       status: record.isCompleted ? '已完成' : '已中断',
     );
   }
@@ -2725,9 +2744,60 @@ class _FocusRecord {
   final String source;
   final int startMs;
   final int endMs;
+  final List<_FocusInterval> focusIntervals;
   final String? status;
 
-  int get minutes => ((endMs - startMs) / 60000).round();
+  int get minutes =>
+      (focusIntervals.fold<int>(0, (sum, interval) => sum + interval.seconds) /
+              60)
+          .round();
+}
+
+class _FocusInterval {
+  const _FocusInterval(this.startMs, this.endMs);
+
+  final int startMs;
+  final int endMs;
+
+  int get seconds => (endMs - startMs) ~/ 1000;
+}
+
+List<_FocusInterval> _subtractPauseIntervals(
+  int startMs,
+  int endMs,
+  List<PauseInterval> pauses,
+) {
+  if (endMs <= startMs) return const [];
+  final orderedPauses = pauses.toList()
+    ..sort((left, right) => left.startMs.compareTo(right.startMs));
+  final focusIntervals = <_FocusInterval>[];
+  var cursor = startMs;
+  for (final pause in orderedPauses) {
+    final pauseStart = pause.startMs < startMs ? startMs : pause.startMs;
+    final rawPauseEnd = pause.endMs ?? endMs;
+    final pauseEnd = rawPauseEnd > endMs ? endMs : rawPauseEnd;
+    if (pauseEnd <= cursor || pauseStart >= endMs) continue;
+    if (pauseStart > cursor) {
+      focusIntervals.add(_FocusInterval(cursor, pauseStart));
+    }
+    if (pauseEnd > cursor) cursor = pauseEnd;
+    if (cursor >= endMs) break;
+  }
+  if (cursor < endMs) focusIntervals.add(_FocusInterval(cursor, endMs));
+  return focusIntervals;
+}
+
+List<_FocusInterval> _fallbackPomodoroFocusInterval(
+  int startMs,
+  int endMs,
+  int effectiveDurationSeconds,
+) {
+  if (effectiveDurationSeconds <= 0 || endMs <= startMs) return const [];
+  final effectiveEndMs = startMs + effectiveDurationSeconds * 1000;
+  final focusEndMs = effectiveEndMs < endMs ? effectiveEndMs : endMs;
+  return focusEndMs > startMs
+      ? [_FocusInterval(startMs, focusEndMs)]
+      : const [];
 }
 
 class _DateRange {
