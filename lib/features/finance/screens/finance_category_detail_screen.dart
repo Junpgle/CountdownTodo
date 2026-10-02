@@ -12,6 +12,7 @@ class FinanceCategoryDetailScreen extends StatefulWidget {
   final DateTime? periodStart;
   final DateTime? periodEnd;
   final DateTime Function() clock;
+  final bool isPlanned;
   final String? rootCategoryUuid;
   final List<FinanceTransaction> transactions;
   final Map<String, FinanceCategory> categories;
@@ -27,6 +28,7 @@ class FinanceCategoryDetailScreen extends StatefulWidget {
     this.periodStart,
     this.periodEnd,
     this.clock = DateTime.now,
+    this.isPlanned = false,
     required this.rootCategoryUuid,
     required this.transactions,
     required this.categories,
@@ -52,6 +54,10 @@ class _FinanceCategoryDetailScreenState
   String? get rootCategoryUuid => widget.rootCategoryUuid;
   List<FinanceTransaction> get transactions => _transactions;
   Map<String, FinanceCategory> get categories => _categories;
+  bool get _isPlanned {
+    final from = widget.periodStart;
+    return from == null ? widget.isPlanned : from.isAfter(widget.clock());
+  }
 
   @override
   void initState() {
@@ -117,8 +123,8 @@ class _FinanceCategoryDetailScreenState
       _scheduleUpcomingTransactionRefresh(
         allTransactions,
         now: now,
+        periodStart: from,
         periodEnd: to,
-        enabled: includesNow,
       );
       final nextTransactions = includesNow
           ? allTransactions
@@ -147,22 +153,25 @@ class _FinanceCategoryDetailScreenState
   void _scheduleUpcomingTransactionRefresh(
     Iterable<FinanceTransaction> values, {
     required DateTime now,
+    required DateTime periodStart,
     required DateTime periodEnd,
-    required bool enabled,
   }) {
     _upcomingTransactionTimer?.cancel();
     _upcomingTransactionTimer = null;
-    if (!enabled) return;
 
     final nowAt = now.millisecondsSinceEpoch;
     final periodEndAt = periodEnd.millisecondsSinceEpoch;
     int? nextEventAt;
-    for (final transaction in values) {
-      final eventAt = transaction.balanceEventAt();
-      if (eventAt > nowAt &&
-          eventAt < periodEndAt &&
-          (nextEventAt == null || eventAt < nextEventAt)) {
-        nextEventAt = eventAt;
+    if (now.isBefore(periodStart)) {
+      nextEventAt = periodStart.millisecondsSinceEpoch;
+    } else if (now.isBefore(periodEnd)) {
+      for (final transaction in values) {
+        final eventAt = transaction.balanceEventAt();
+        if (eventAt > nowAt &&
+            eventAt < periodEndAt &&
+            (nextEventAt == null || eventAt < nextEventAt)) {
+          nextEventAt = eventAt;
+        }
       }
     }
     if (nextEventAt == null) return;
@@ -294,22 +303,32 @@ class _FinanceCategoryDetailScreenState
     final String categoryTitle;
     final String sectionTitle;
     final String emptyMessage;
+    final isPlanned = _isPlanned;
     if (root == null) {
       categoryTitle = rootCategoryUuid == null ? '未分类' : '分类已删除';
       sectionTitle = rootCategoryUuid == null ? '未分类账单' : '分类不可用';
-      emptyMessage = rootCategoryUuid == null
-          ? '没有可筛选的分类账单'
-          : '这个分类已删除或不可用';
+      if (rootCategoryUuid == null) {
+        emptyMessage = isPlanned ? '没有可筛选的计划分类账单' : '没有可筛选的分类账单';
+      } else {
+        emptyMessage = '这个分类已删除或不可用';
+      }
     } else {
       categoryTitle = root.name;
-      sectionTitle = hasSubcategories ? '小类' : '分类';
-      emptyMessage = hasSubcategories
-          ? '这个大类下暂无可展示的小类账单'
-          : '这个分类下暂无账单';
+      if (hasSubcategories) {
+        sectionTitle = isPlanned ? '计划小类' : '小类';
+        emptyMessage = isPlanned
+            ? '这个大类下暂无可展示的计划小类账单'
+            : '这个大类下暂无可展示的小类账单';
+      } else {
+        sectionTitle = isPlanned ? '计划分类' : '分类';
+        emptyMessage = isPlanned ? '这个分类下暂无计划账单' : '这个分类下暂无账单';
+      }
     }
 
     return Scaffold(
-      appBar: const FloatingGlassAppBar(title: Text('支出分类详情')),
+      appBar: FloatingGlassAppBar(
+        title: Text(isPlanned ? '计划支出分类详情' : '支出分类详情'),
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: [
@@ -343,7 +362,8 @@ class _FinanceCategoryDetailScreenState
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '$periodTitle · ${matchingTransactions.length} 笔账单',
+                          '$periodTitle · ${matchingTransactions.length} 笔'
+                          '${isPlanned ? '计划账单' : '账单'}',
                           style: TextStyle(
                             color: colorScheme.onPrimaryContainer
                                 .withValues(alpha: 0.75),
@@ -353,12 +373,25 @@ class _FinanceCategoryDetailScreenState
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    formatFinanceAmount(total),
-                    style: TextStyle(
-                      color: colorScheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        isPlanned ? '计划净支出' : '净支出',
+                        style: TextStyle(
+                          color: colorScheme.onPrimaryContainer
+                              .withValues(alpha: 0.75),
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        formatFinanceAmount(total),
+                        style: TextStyle(
+                          color: colorScheme.onPrimaryContainer,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -398,7 +431,7 @@ class _FinanceCategoryDetailScreenState
             ),
           const SizedBox(height: 12),
           Text(
-            '点击分类即可查看对应账单',
+            isPlanned ? '点击分类即可查看对应计划账单' : '点击分类即可查看对应账单',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: colorScheme.onSurfaceVariant,
@@ -443,7 +476,9 @@ class _FinanceCategoryDetailScreenState
           child: Text(item.icon, style: const TextStyle(fontSize: 19)),
         ),
         title: Text(item.title),
-        subtitle: Text('${item.transactionCount} 笔账单 · 点击查看'),
+        subtitle: Text(
+          '${item.transactionCount} 笔${_isPlanned ? '计划账单' : '账单'} · 点击查看',
+        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

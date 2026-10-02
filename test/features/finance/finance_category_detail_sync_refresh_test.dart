@@ -47,6 +47,62 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
 
+  testWidgets('未来周期分类详情标记计划并在周期开始后切换为实际', (tester) async {
+    final db = await _openDatabase(tester);
+    _closeDatabase(db);
+    var now = DateTime(2026, 11, 30, 23, 59);
+    final periodStart = DateTime(2026, 12);
+    final periodEnd = DateTime(2027, 1);
+    final root = FinanceCategory(uuid: 'planned-detail-root', name: '日常支出');
+    final child = FinanceCategory(
+      uuid: 'planned-detail-food',
+      name: '食品',
+      parentUuid: root.uuid,
+    );
+    final transaction = FinanceTransaction(
+      uuid: 'planned-detail-expense',
+      amountMinor: 2500,
+      categoryUuid: child.uuid,
+      transactionDate: '2026-12-15',
+      occurredAt: DateTime(2026, 12, 15, 12).millisecondsSinceEpoch,
+    );
+    await tester.runAsync(() async {
+      await FinanceStorage.saveCategory(root);
+      await FinanceStorage.saveCategory(child);
+      await FinanceStorage.saveTransaction(transaction);
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FinanceCategoryDetailScreen(
+          periodTitle: '2026年12月',
+          periodStart: periodStart,
+          periodEnd: periodEnd,
+          clock: () => now,
+          isPlanned: true,
+          rootCategoryUuid: root.uuid,
+          transactions: [transaction],
+          categories: {root.uuid: root, child.uuid: child},
+        ),
+      ),
+    );
+
+    await _waitFor(tester, () => find.text('计划净支出').evaluate().isNotEmpty);
+    expect(find.text('计划支出分类详情'), findsOneWidget);
+    expect(find.text('计划小类'), findsOneWidget);
+    expect(find.text('1 笔计划账单 · 点击查看'), findsOneWidget);
+
+    now = DateTime(2026, 12, 1, 0, 0, 2);
+    await tester.pump(const Duration(seconds: 62));
+    await _waitFor(tester, () => find.text('计划净支出').evaluate().isEmpty);
+
+    expect(find.text('支出分类详情'), findsOneWidget);
+    expect(find.text('净支出'), findsOneWidget);
+    expect(find.text('计划小类'), findsNothing);
+    expect(find.text('1 笔计划账单 · 点击查看'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('云同步更新分类和账单后刷新已打开的分类详情', (tester) async {
     final db = await _openDatabase(tester);
     _closeDatabase(db);

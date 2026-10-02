@@ -704,6 +704,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       periodStart: period.from,
       periodEnd: period.to,
       clock: clock,
+      isPlanned: period.isPlanned,
       rootCategoryUuid: entry.categoryUuid,
       transactions: period.transactions,
       categories: categories,
