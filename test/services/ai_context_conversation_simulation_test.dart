@@ -424,6 +424,9 @@ void main() {
       '有哪些已完成待办？',
       '有哪些待办？不要删除其中一条',
       '分析最近效率，不要补记专注记录',
+      '明天有哪些固定日程？',
+      '查看我的倒计时',
+      '有哪些番茄标签？',
     ]) {
       final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(query);
 
@@ -433,7 +436,20 @@ void main() {
       expect(prompt, isNot(contains('create_time_log')), reason: query);
       expect(prompt, isNot(contains('delete_time_log')), reason: query);
       expect(prompt, isNot(contains('start_pomodoro')), reason: query);
+      expect(prompt, isNot(contains('create_schedule')), reason: query);
+      expect(prompt, isNot(contains('delete_schedule')), reason: query);
+      expect(prompt, isNot(contains('create_countdown')), reason: query);
+      expect(prompt, isNot(contains('create_pomodoro_tag')), reason: query);
+      expect(prompt, isNot(contains('update_finance')), reason: query);
+      expect(prompt, isNot(contains('delete_finance')), reason: query);
     }
+
+    final financeQuery = AiTodoContextBuilder.buildActionProtocolPrompt(
+      '查询上月账单明细',
+    );
+    expect(financeQuery, contains('finance_summary / finance_list'));
+    expect(financeQuery, isNot(contains('update_finance')));
+    expect(financeQuery, isNot(contains('delete_finance')));
 
     final mixedRequest = AiTodoContextBuilder.buildActionProtocolPrompt(
       '查看待办并删除第一个',

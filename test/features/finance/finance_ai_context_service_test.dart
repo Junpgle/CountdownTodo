@@ -145,10 +145,16 @@ void main() {
 
     expect(prompt, contains('finance_summary'));
     expect(prompt, contains('finance_list'));
-    expect(prompt, contains('update_finance'));
-    expect(prompt, contains('delete_finance'));
+    expect(prompt, isNot(contains('update_finance')));
+    expect(prompt, isNot(contains('delete_finance')));
     expect(prompt, contains('[FINANCE_ACTION_START]'));
-    expect(prompt, contains('绝不编造transactionId'));
+    expect(prompt, isNot(contains('绝不编造transactionId')));
+
+    final updatePrompt = AiTodoContextBuilder.buildActionProtocolPrompt(
+      '把上月餐饮账单金额改成30元',
+    );
+    expect(updatePrompt, contains('update_finance'));
+    expect(updatePrompt, contains('绝不编造transactionId'));
 
     final creationPrompt =
         AiTodoContextBuilder.buildActionProtocolPrompt('今天午餐 28 元');

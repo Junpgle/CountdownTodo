@@ -155,16 +155,9 @@ class AiTodoContextBuilder {
           _shouldInjectTodoContext,
         ) &&
         _matchesAny(userMessage, _existingTodoKeywords);
-    final asksTodoList =
-        _matchesAny(userMessage, _todoListQueryKeywords) ||
-        _looksLikeTodoListQuery(userMessage);
-    final hasExplicitTodoListMutation = _todoListMutationKeywords.any(
-      (trigger) => isExplicitlyRequested(userMessage, trigger),
-    );
-    final isReadOnlyTodoListQuery =
-        asksTodoList && !hasExplicitTodoListMutation;
+    final readOnlyRequest = _isReadOnlyRequest(userMessage);
     final requestsTodoAction =
-        !isReadOnlyTodoListQuery &&
+        !readOnlyRequest &&
         (!requestsHabitAction || explicitlyTargetsTodo) &&
         !unresolvedHabitTodoChoice &&
         (contextualTodoMutation ||
@@ -198,7 +191,7 @@ class AiTodoContextBuilder {
     if (requestsTodoAction && !isPlanningRequest) {
       add('- split_todo / merge_todos: 拆分合并需 sourceTodoId/sourceTodoIds');
     }
-    if (requestsHabitAction) {
+    if (requestsHabitAction && !readOnlyRequest) {
       add(
         '- create_habit: {"action":"create_habit","habits":[{"name":"习惯名称","icon":"🎯","sourceType":"quantityCheckIn|timeCheckIn|durationCheckIn|pomodoroTag|recurringTodo","periodType":"daily|weekly|weekdays|monthly|custom","targetValue":1600,"unit":"ml","durationMinutes":30,"targetTimeMinute":420,"timeComparison":"before|after","timeToleranceMinutes":0,"weekdaysMask":127,"customIntervalDays":null,"dayBoundaryMinute":0,"quickValues":[200,500],"sourceIds":[],"displayMode":"habitOnly|todoOnly|both","defaultFocusMinutes":25,"reminderPolicy":{"fixedTimes":[480],"progressReminder":false,"nearEndReminder":false,"dailySummaryReminder":false}}]}',
       );
@@ -211,7 +204,7 @@ class AiTodoContextBuilder {
         '- 创建类型不明确：用户只描述了周期性事项但没有说明要创建为习惯还是待办。先询问“要创建成习惯，还是循环待办？”，不要输出任何创建动作。',
       );
     }
-    if (requestsScheduleAction) {
+    if (requestsScheduleAction && !readOnlyRequest) {
       add(
         '- create_schedule: {"action":"create_schedule","schedules":[{"title":"日程名","date":"YYYY-MM-DD","startTime":"YYYY-MM-DD HH:mm或null","endTime":"YYYY-MM-DD HH:mm或null","location":null,"remark":null,"reminderMinutes":[15],"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}',
       );
@@ -223,27 +216,31 @@ class AiTodoContextBuilder {
       );
     }
     if (requestsFinanceAction) {
-      add(
-        '- 记账草案：回复正文末尾追加 [FINANCE_START]...[FINANCE_END]，其中必须是JSON数组；每笔使用 {"type":"expense|income|refund","amount":28.50,"category":"餐饮","categoryUuid":null,"merchant":"午餐","date":"YYYY-MM-DD","paymentMethod":"微信","paymentMethodUuid":null,"note":"备注"}，金额单位为元，缺失的可选字段用null；若提供本地记账目录，UUID只能复制目录中的真实值；只生成草案并告知用户在应用显示的“待确认记账”卡片中核对后点击“编辑并保存”；聊天中的“确认/确定”不会保存账单，不得承诺收到文字确认后代为保存，也不得声称已保存',
-      );
-      add(
-        '- 记账与取餐码双识别：同一条消息同时包含账单和取餐/取件信息时，两者都保留，记账放FINANCE块，取餐放ACTION块，禁止二选一',
-      );
-      add('- 只记账时不要为了凑协议生成空的ACTION块；FINANCE块独立于ACTION块，账单只作为待确认草案，不要声称已保存');
+      if (!readOnlyRequest) {
+        add(
+          '- 记账草案：回复正文末尾追加 [FINANCE_START]...[FINANCE_END]，其中必须是JSON数组；每笔使用 {"type":"expense|income|refund","amount":28.50,"category":"餐饮","categoryUuid":null,"merchant":"午餐","date":"YYYY-MM-DD","paymentMethod":"微信","paymentMethodUuid":null,"note":"备注"}，金额单位为元，缺失的可选字段用null；若提供本地记账目录，UUID只能复制目录中的真实值；只生成草案并告知用户在应用显示的“待确认记账”卡片中核对后点击“编辑并保存”；聊天中的“确认/确定”不会保存账单，不得承诺收到文字确认后代为保存，也不得声称已保存',
+        );
+        add(
+          '- 记账与取餐码双识别：同一条消息同时包含账单和取餐/取件信息时，两者都保留，记账放FINANCE块，取餐放ACTION块，禁止二选一',
+        );
+        add('- 只记账时不要为了凑协议生成空的ACTION块；FINANCE块独立于ACTION块，账单只作为待确认草案，不要声称已保存');
+      }
       add(
         '- finance_summary / finance_list：查询已有账单时使用 [FINANCE_ACTION_START]...[FINANCE_ACTION_END]，分别输出 {"action":"finance_summary","from":"YYYY-MM-DD","to":"YYYY-MM-DD"} 或 {"action":"finance_list","from":"YYYY-MM-DD","to":"YYYY-MM-DD","keyword":null,"type":null,"limit":20}；上下文已有汇总和明细时，正文要直接回答用户，不要假装执行了写入',
       );
-      add(
-        '- update_finance：只允许引用记账上下文里的真实transactionId，使用 {"action":"update_finance","transactionId":"真实ID","type":"expense|income|refund","amount":28.50,"category":"餐饮","merchant":"商家","date":"YYYY-MM-DD","paymentMethod":"微信","note":"备注"}；只填写用户要改的字段，先生成待确认修改，不得直接保存',
-      );
-      add(
-        '- delete_finance：只允许引用记账上下文里的真实transactionId，使用 {"action":"delete_finance","transactionId":"真实ID","reason":"用户要求删除"}；先生成待确认删除，不得直接删除；找不到唯一账单时先追问日期、商家或金额',
-      );
-      add(
-        '- 记账操作安全：绝不编造transactionId；查询只读，修改/删除必须等用户在确认卡中操作；同一消息既有新增账单又有已有账单操作时，分别放FINANCE块和FINANCE_ACTION块',
-      );
+      if (!readOnlyRequest) {
+        add(
+          '- update_finance：只允许引用记账上下文里的真实transactionId，使用 {"action":"update_finance","transactionId":"真实ID","type":"expense|income|refund","amount":28.50,"category":"餐饮","merchant":"商家","date":"YYYY-MM-DD","paymentMethod":"微信","note":"备注"}；只填写用户要改的字段，先生成待确认修改，不得直接保存',
+        );
+        add(
+          '- delete_finance：只允许引用记账上下文里的真实transactionId，使用 {"action":"delete_finance","transactionId":"真实ID","reason":"用户要求删除"}；先生成待确认删除，不得直接删除；找不到唯一账单时先追问日期、商家或金额',
+        );
+        add(
+          '- 记账操作安全：绝不编造transactionId；查询只读，修改/删除必须等用户在确认卡中操作；同一消息既有新增账单又有已有账单操作时，分别放FINANCE块和FINANCE_ACTION块',
+        );
+      }
     }
-    if (isPlanningRequest) {
+    if (isPlanningRequest && !readOnlyRequest) {
       add(
         '- 规划优先规则：把上下文中已有待办安排到可调整执行时段时，必须使用create_plan_block；禁止用create_todo复制已有待办。每个已有待办都要使用真实todoId',
       );
@@ -254,12 +251,7 @@ class AiTodoContextBuilder {
         '- update_plan_block / reschedule_plan_blocks / delete_plan_block / skip_plan_block / start_plan_block_pomodoro: 必须带 planBlockId',
       );
     }
-    final isReadOnlyFocusQuery =
-        _matchesAny(userMessage, _readOnlyFocusQueryKeywords) &&
-        !_focusMutationKeywords.any(
-          (trigger) => isExplicitlyRequested(userMessage, trigger),
-        );
-    if (!isReadOnlyFocusQuery &&
+    if (!readOnlyRequest &&
         (_matchesAny(userMessage, _timeLogKeywords) ||
             _looksLikeFocusQuery(userMessage))) {
       add(
@@ -276,8 +268,9 @@ class AiTodoContextBuilder {
       );
       add('- stop_pomodoro: {"action":"stop_pomodoro","status":"completed"}');
     }
-    if (_matchesAny(userMessage, _countdownKeywords) ||
-        _looksLikeCountdownQuery(userMessage)) {
+    if (!readOnlyRequest &&
+        (_matchesAny(userMessage, _countdownKeywords) ||
+            _looksLikeCountdownQuery(userMessage))) {
       add(
         '- create_countdown: {"action":"create_countdown","countdowns":[{"title":"事件","dueDate":"YYYY-MM-DD HH:mm"}]}',
       );
@@ -291,7 +284,7 @@ class AiTodoContextBuilder {
         '- delete_countdown: {"action":"delete_countdown","updates":[{"countdownId":"倒计时ID"}]}',
       );
     }
-    if (_matchesAny(userMessage, _groupKeywords)) {
+    if (!readOnlyRequest && _matchesAny(userMessage, _groupKeywords)) {
       add(
         '- create_todo_group: {"action":"create_todo_group","groups":[{"name":"分类名"}]}',
       );
@@ -302,7 +295,7 @@ class AiTodoContextBuilder {
         '- delete_todo_group: {"action":"delete_todo_group","updates":[{"groupId":"分类ID"}]}',
       );
     }
-    if (_matchesAny(userMessage, _tagKeywords)) {
+    if (!readOnlyRequest && _matchesAny(userMessage, _tagKeywords)) {
       add(
         '- create_pomodoro_tag: {"action":"create_pomodoro_tag","tags":[{"name":"标签名","color":"#607D8B"}]}',
       );
@@ -323,6 +316,18 @@ class AiTodoContextBuilder {
       );
     }
 
+    final financeActionProtocol = readOnlyRequest
+        ? '''记账查询格式（只读）：
+[FINANCE_ACTION_START]
+[{"action":"finance_summary|finance_list"}]
+[FINANCE_ACTION_END]
+'''
+        : '''记账动作块格式（查询/修改/删除已有账单时使用）：
+[FINANCE_ACTION_START]
+[{"action":"finance_summary|finance_list|update_finance|delete_finance"}]
+[FINANCE_ACTION_END]
+''';
+
     return '''【本轮可用动作（按需精简）】
 ${actions.join('\n')}
 
@@ -333,10 +338,7 @@ ${actions.join('\n')}
 
 输出约束：只允许输出上述 v$actionProtocolVersion 信封，不输出裸 JSON 数组。
 
-记账动作块格式（查询/修改/删除已有账单时使用）：
-[FINANCE_ACTION_START]
-[{"action":"finance_summary|finance_list|update_finance|delete_finance"}]
-[FINANCE_ACTION_END]
+$financeActionProtocol
 
 字段约束（必须）：
 - 仅操作已有对象时必须携带对应ID（todoId / scheduleId / groupId / countdownId / tagId / planBlockId / logId）
@@ -830,6 +832,20 @@ ${sections.join('\n')}
     return keywords.any((k) => text.contains(k));
   }
 
+  static bool _isReadOnlyRequest(String text) {
+    final asksInformation =
+        _matchesAny(text, _readOnlyRequestKeywords) ||
+        _looksLikeInformationQuestion(text) ||
+        _matchesAny(text, _todoListQueryKeywords) ||
+        _looksLikeTodoListQuery(text) ||
+        _looksLikeFocusQuery(text) ||
+        _looksLikeCountdownQuery(text);
+    if (!asksInformation) return false;
+    return !_writeIntentKeywords.any(
+      (trigger) => isExplicitlyRequested(text, trigger),
+    );
+  }
+
   static bool isExplicitlyRequested(String text, String trigger) {
     var searchFrom = 0;
     while (searchFrom < text.length) {
@@ -844,10 +860,15 @@ ${sections.join('\n')}
           trigger == '完成' &&
           RegExp(r'(?:已|已经|已被|已经被|需要|应该|尚未|未|待)\s*$')
               .hasMatch(prefix);
+      final completionMetric =
+          trigger == '完成' &&
+          RegExp(r'^(?:率|情况|数量|进度|状态)').hasMatch(
+            text.substring(index + trigger.length),
+          );
       final howToQuestion = RegExp(
-        r'(?:怎么|如何|怎样|是否|能不能|可不可以)[^，。；！？,;]*$',
+        r'(?:为什么|怎么|如何|怎样|是否|能不能|可不可以)[^，。；！？,;]*$',
       ).hasMatch(prefix);
-      if (completedStatus || howToQuestion) {
+      if (completedStatus || completionMetric || howToQuestion) {
         searchFrom = index + trigger.length;
         continue;
       }
@@ -1038,8 +1059,14 @@ ${sections.join('\n')}
     '行程',
   ];
   static const _planningKeywords = [
-    '规划',
-    '安排',
+    '帮我规划',
+    '规划一下',
+    '规划到',
+    '规划今天',
+    '规划明天',
+    '规划本周',
+    '规划本月',
+    '帮我安排',
     '计划',
     '排一下',
     '排时间',
@@ -1128,11 +1155,50 @@ ${sections.join('\n')}
     '列出待办',
     '查看待办',
   ];
+  static const _readOnlyRequestKeywords = [
+    '分析',
+    '统计',
+    '汇总',
+    '排行',
+    '占比',
+    '多少',
+    '明细',
+    '查看',
+    '查询',
+    '列出',
+    '有哪些',
+    '有什么',
+    '什么',
+    '是否',
+    '怎么',
+    '如何',
+    '怎样',
+    '建议',
+    '趋势',
+    '效率',
+    '记录',
+    '报告',
+    '待办',
+    '任务',
+    '日程',
+    '倒计时',
+    '标签',
+    '分类',
+    '账单',
+    '支出',
+    '收入',
+    '退款',
+    '消费',
+    '余额',
+    '预算',
+  ];
   static const _todoListMutationKeywords = [
     '新建',
     '新增',
     '创建',
     '添加',
+    '取消',
+    '移除',
     '修改',
     '更新',
     '删除',
@@ -1154,24 +1220,6 @@ ${sections.join('\n')}
     '完成',
     '把第',
   ];
-  static const _readOnlyFocusQueryKeywords = [
-    '分析',
-    '统计',
-    '汇总',
-    '效率',
-    '趋势',
-    '排行',
-    '占比',
-    '多少',
-    '明细',
-    '查看',
-    '查询',
-    '列出',
-    '有哪些',
-    '有什么',
-    '专注记录',
-    '时间日志',
-  ];
   static const _focusMutationKeywords = [
     '补记',
     '新增专注',
@@ -1185,6 +1233,46 @@ ${sections.join('\n')}
     '更新专注',
     '删除专注',
     '删除时间记录',
+  ];
+  static const _writeIntentKeywords = [
+    '提醒我',
+    '新建',
+    '新增',
+    '创建',
+    '添加',
+    ..._todoListMutationKeywords,
+    ..._focusMutationKeywords,
+    '改成',
+    '改为',
+    '清空',
+    '加入',
+    '安排到',
+    '规划',
+    '安排',
+    '排一下',
+    '排时间',
+    '排进',
+    '排入',
+    '创建日程',
+    '修改日程',
+    '更新日程',
+    '删除日程',
+    '取消日程',
+    '新增倒计时',
+    '创建倒计时',
+    '修改倒计时',
+    '删除倒计时',
+    '新增标签',
+    '创建标签',
+    '修改标签',
+    '删除标签',
+    '新增分类',
+    '创建分类',
+    '修改分类',
+    '删除分类',
+    '记一笔',
+    '新增一笔',
+    '添加一笔',
   ];
   static const _groupKeywords = ['分类', '文件夹', '归类', '分组'];
   static const _countdownKeywords = ['倒计时', '倒数日', '倒數日', '截止', 'ddl'];
