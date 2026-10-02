@@ -16,6 +16,14 @@ typedef AiFinanceDataLoader = Future<List<FinanceTransaction>> Function(
   DateTime from,
   DateTime toExclusive,
 );
+typedef AiFinanceBalanceTransactionLoader =
+    Future<List<FinanceTransaction>> Function({
+      required int snapshotAt,
+      required DateTime before,
+      required Iterable<String> paymentMethodUuids,
+    });
+typedef AiFinanceLoanRepaymentLoader =
+    Future<List<FinanceLoanInstallment>> Function();
 
 /// Read-only entry points. The model selects the domain and filters; no user
 /// text or keyword routing is used to decide which business records to load.
@@ -28,11 +36,18 @@ class AiQueryToolService {
     Future<List<FinanceCategory>> Function()? loadCategories,
     Future<List<FinancePaymentMethod>> Function()? loadPaymentMethods,
     Future<List<FinanceBudget>> Function()? loadBudgets,
+    AiFinanceBalanceTransactionLoader? loadBalanceTransactions,
+    AiFinanceLoanRepaymentLoader? loadPaidLoanInstallments,
     DateTime Function()? now,
   }) : loadFinanceData =
            loadFinanceData ??
            ((from, to) =>
                FinanceRepository.getTransactions(from: from, to: to)),
+       loadBalanceTransactions =
+           loadBalanceTransactions ?? FinanceRepository.getBalanceTransactions,
+       loadPaidLoanInstallments =
+           loadPaidLoanInstallments ??
+           FinanceRepository.getPaidLoanInstallments,
        loadFinanceTransaction =
            loadFinanceTransaction ?? FinanceRepository.getTransaction,
        loadCategories =
@@ -47,6 +62,8 @@ class AiQueryToolService {
   final AiAppDataLoader loadAppData;
   final AiHabitDataLoader loadHabitData;
   final AiFinanceDataLoader loadFinanceData;
+  final AiFinanceBalanceTransactionLoader loadBalanceTransactions;
+  final AiFinanceLoanRepaymentLoader loadPaidLoanInstallments;
   final Future<FinanceTransaction?> Function(String id) loadFinanceTransaction;
   final DateTime Function() now;
   final Future<List<FinanceCategory>> Function() loadCategories;
@@ -101,11 +118,11 @@ class AiQueryToolService {
   static List<Map<String, dynamic>> buildDefinitions() => [
     _tool(
       'query_finance',
-      '统计收支用summary，无账单明细；列表用transactions，默认10条，不返回长备注；读单笔完整详情及备注用transaction_id。也可查询分类/付款方式catalog及budgets。金额为人民币分。summary和transactions必须提供日期；分页不影响完整汇总，未来账单不计入已发生收支。',
+      '统计收支用summary，无账单明细；列表用transactions，默认10条，不返回长备注；读单笔完整详情及备注用transaction_id。账户当前余额用balances，按最近有效快照和后续流水计算；没有快照时明确返回未知。也可查询分类/付款方式catalog及budgets。金额为人民币分。summary和transactions必须提供日期；分页不影响完整汇总，未来账单不计入已发生收支。',
       {
         'view': {
           'type': 'string',
-          'enum': ['summary', 'transactions', 'catalog', 'budgets'],
+          'enum': ['summary', 'transactions', 'catalog', 'budgets', 'balances'],
         },
         'group_by': {
           'type': 'string',
@@ -357,6 +374,20 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
       ];
       return {'view': view, ...page(_keyword(rows, args), args)};
     }
+    if (view == 'balances') {
+      if (args.keys.any(
+        (key) => !{
+          'view',
+          'limit',
+          'offset',
+          'keyword',
+          'payment_method_id',
+        }.contains(key),
+      )) {
+        throw const FormatException('balances仅接受付款方式、关键词和分页参数');
+      }
+      return _paymentBalances(args, methods);
+    }
     final transactionId = args['transaction_id'] as String?;
     final range = _range(args, required: transactionId == null);
     if (view == 'budgets') {
@@ -547,6 +578,92 @@ query_*自动执行只读查询；propose_*只生成待确认操作草案，不�
               if (transactionId != null) 'note': item.note,
             },
         ], args),
+    };
+  }
+
+  Future<Map<String, dynamic>> _paymentBalances(
+    Map<String, dynamic> args,
+    List<FinancePaymentMethod> methods,
+  ) async {
+    final asOfAt = now().millisecondsSinceEpoch;
+    final methodId = args['payment_method_id'] as String?;
+    final selectedMethods = methods
+        .where(
+          (method) =>
+              !method.isDeleted &&
+              (methodId == null || method.uuid == methodId),
+        )
+        .toList(growable: false);
+    final selectedIds = selectedMethods.map((method) => method.uuid).toSet();
+    final snapshots = FinanceRepository.latestPaymentBalanceSnapshots(
+      (await loadBudgets()).where(
+        (budget) =>
+            !budget.isDeleted &&
+            budget.isPaymentMethod &&
+            selectedIds.contains(budget.paymentMethodUuid),
+      ),
+      asOfAt: asOfAt,
+      nowAt: asOfAt,
+    );
+    final snapshotsByMethod = {
+      for (final snapshot in snapshots) snapshot.paymentMethodUuid!: snapshot,
+    };
+
+    var balanceTransactions = const <FinanceTransaction>[];
+    var loanRepayments = const <FinanceLoanInstallment>[];
+    if (snapshots.isNotEmpty) {
+      final snapshotAt = snapshots
+          .map((snapshot) => snapshot.effectiveBalanceSnapshotAt)
+          .reduce((left, right) => left < right ? left : right);
+      final before = DateTime.fromMillisecondsSinceEpoch(asOfAt);
+      balanceTransactions = await loadBalanceTransactions(
+        snapshotAt: snapshotAt,
+        before: before,
+        paymentMethodUuids: snapshots
+            .map((snapshot) => snapshot.paymentMethodUuid!)
+            .toSet(),
+      );
+      loanRepayments = await loadPaidLoanInstallments();
+    }
+    final loanInterestTransactionUuids = loanRepayments
+        .map((item) => item.interestTransactionUuid)
+        .whereType<String>()
+        .toSet();
+    final rows = selectedMethods
+        .map((method) {
+          final snapshot = snapshotsByMethod[method.uuid];
+          return <String, dynamic>{
+            'id': method.uuid,
+            'name': method.name,
+            'archived': method.isArchived,
+            'snapshot_available': snapshot != null,
+            'balance_status': snapshot == null
+                ? 'unknown_no_snapshot'
+                : 'calculated_from_snapshot',
+            'balance_minor': snapshot == null
+                ? null
+                : FinanceRepository.paymentMethodBalanceAt(
+                    snapshot: snapshot,
+                    transactions: balanceTransactions,
+                    loanRepayments: loanRepayments,
+                    loanInterestTransactionUuids: loanInterestTransactionUuids,
+                    asOfAt: asOfAt,
+                  ),
+            if (snapshot != null) ...{
+              'snapshot_month': snapshot.monthKey,
+              'snapshot_at': DateTime.fromMillisecondsSinceEpoch(
+                snapshot.effectiveBalanceSnapshotAt,
+              ).toIso8601String(),
+            },
+          };
+        })
+        .toList(growable: false);
+    return {
+      'view': 'balances',
+      'amount_unit': 'CNY_minor',
+      'as_of': DateTime.fromMillisecondsSinceEpoch(asOfAt).toIso8601String(),
+      'balance_basis': 'latest_saved_snapshot_plus_account_movements',
+      ...page(_keyword(rows, args), args),
     };
   }
 

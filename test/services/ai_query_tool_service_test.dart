@@ -37,6 +37,114 @@ void main() {
     );
   });
 
+  test('工具查询支持读取付款方式实际余额', () {
+    final financeDefinition = AiQueryToolService.buildDefinitions().firstWhere(
+      (tool) => (tool['function'] as Map)['name'] == 'query_finance',
+    );
+    final parameters =
+        ((financeDefinition['function'] as Map)['parameters'] as Map);
+    final view = ((parameters['properties'] as Map)['view'] as Map);
+
+    expect(view['enum'], contains('balances'));
+  });
+
+  test('余额查询从快照扣除后续流水和贷款还款，无快照时保持未知', () async {
+    final asOf = DateTime(2026, 10, 2, 12);
+    final snapshotAt = DateTime(2026, 10, 2, 9).millisecondsSinceEpoch;
+    final expenseAt = DateTime(2026, 10, 2, 10).millisecondsSinceEpoch;
+    final incomeAt = DateTime(2026, 10, 2, 10, 30).millisecondsSinceEpoch;
+    final repaymentAt = DateTime(2026, 10, 2, 11).millisecondsSinceEpoch;
+    int? requestedSnapshotAt;
+    DateTime? requestedBefore;
+    Set<String>? requestedMethods;
+    final finance = AiQueryToolService(
+      loadAppData: (_) async => [],
+      loadHabitData: (_, _, _) async => [],
+      loadFinanceData: (_, _) async => [],
+      loadCategories: () async => [],
+      loadPaymentMethods: () async => [
+        FinancePaymentMethod(uuid: 'bank', name: '工资卡'),
+        FinancePaymentMethod(uuid: 'cash', name: '现金账户'),
+      ],
+      loadBudgets: () async => [
+        FinanceBudget(
+          monthKey: '2026-10',
+          paymentMethodUuid: 'bank',
+          amountMinor: 100000,
+          balanceSnapshotAt: snapshotAt,
+        ),
+      ],
+      loadBalanceTransactions:
+          ({
+            required snapshotAt,
+            required before,
+            required paymentMethodUuids,
+          }) async {
+            requestedSnapshotAt = snapshotAt;
+            requestedBefore = before;
+            requestedMethods = paymentMethodUuids.toSet();
+            return [
+              FinanceTransaction(
+                uuid: 'expense',
+                amountMinor: 1200,
+                paymentMethodUuid: 'bank',
+                transactionDate: '2026-10-02',
+                occurredAt: expenseAt,
+              ),
+              FinanceTransaction(
+                uuid: 'income',
+                type: FinanceTransactionType.income,
+                amountMinor: 5000,
+                paymentMethodUuid: 'bank',
+                transactionDate: '2026-10-02',
+                occurredAt: incomeAt,
+              ),
+              FinanceTransaction(
+                uuid: 'loan-interest',
+                amountMinor: 700,
+                paymentMethodUuid: 'bank',
+                transactionDate: '2026-10-02',
+                occurredAt: repaymentAt,
+              ),
+            ];
+          },
+      loadPaidLoanInstallments: () async => [
+        FinanceLoanInstallment(
+          uuid: 'repayment',
+          loanUuid: 'loan',
+          installmentIndex: 1,
+          dueDate: '2026-10-02',
+          paymentMinor: 2000,
+          principalMinor: 1300,
+          interestMinor: 700,
+          remainingPrincipalMinor: 8700,
+          isPaid: true,
+          paidAt: repaymentAt,
+          paymentMethodUuid: 'bank',
+          interestTransactionUuid: 'loan-interest',
+        ),
+      ],
+      now: () => asOf,
+    );
+
+    final result = await finance.execute(
+      query('query_finance', {'view': 'balances'}),
+    );
+
+    expect(result['ok'], true);
+    expect(result['amount_unit'], 'CNY_minor');
+    expect(requestedSnapshotAt, snapshotAt);
+    expect(requestedBefore, asOf);
+    expect(requestedMethods, {'bank'});
+    final items = result['items'] as List<Map<String, dynamic>>;
+    final bank = items.firstWhere((item) => item['id'] == 'bank');
+    final cash = items.firstWhere((item) => item['id'] == 'cash');
+    expect(bank['balance_minor'], 101800);
+    expect(bank['snapshot_available'], true);
+    expect(cash['balance_minor'], isNull);
+    expect(cash['balance_status'], 'unknown_no_snapshot');
+  });
+
   test('完整月度汇总不受明细分页影响，保留退款语义和截止边界', () async {
     transactions = [
       for (var i = 0; i < 65; i++)
