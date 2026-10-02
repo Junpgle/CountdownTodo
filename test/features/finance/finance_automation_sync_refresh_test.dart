@@ -137,6 +137,22 @@ void main() {
     expect(rows.single['merchant'], '待办页房租');
     await tester.pump(const Duration(milliseconds: 500));
     FinanceAutomationService.cancelScheduledAutoGeneration();
+
+    clockNow = DateTime(2026, 10, 15, 9, 1);
+    await tester.runAsync(
+      () => FinanceAutomationService.resumeAutoGenerationSchedule(
+        clock: () => clockNow,
+      ),
+    );
+    rows = (await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'source = ? AND transaction_date = ?',
+        whereArgs: [FinanceEntrySource.automation.name, '2026-10-15'],
+      ),
+    ))!;
+    expect(rows, hasLength(1), reason: '错过本期时段后恢复应用也应补生成');
+    FinanceAutomationService.cancelScheduledAutoGeneration();
     expect(tester.takeException(), isNull);
   });
 }

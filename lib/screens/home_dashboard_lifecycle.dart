@@ -202,7 +202,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     if (lifecycleState != null && lifecycleState != AppLifecycleState.resumed) {
       return;
     }
-    unawaited(FinanceAutomationService.scheduleNextAutoGeneration());
+    unawaited(FinanceAutomationService.resumeAutoGenerationSchedule());
     _scheduleDashboardMinuteTick();
   }
 

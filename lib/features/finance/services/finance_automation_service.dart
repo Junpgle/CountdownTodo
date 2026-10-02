@@ -129,8 +129,24 @@ abstract final class FinanceAutomationService {
       if (revision != _autoGenerationTimerRevision) return;
       scheduleAutoGenerationForRules(rules, now: current, clock: clock);
     } catch (_) {
-      // A temporary database failure should not block the rest of the app.
+      if (revision == _autoGenerationTimerRevision) {
+        _scheduleAutoGenerationRetry(clock: clock);
+      }
     }
+  }
+
+  /// Reconciles elapsed due bills before calculating the next future timer.
+  /// Called when the app starts or returns to the foreground.
+  static Future<void> resumeAutoGenerationSchedule({
+    DateTime Function()? clock,
+  }) async {
+    try {
+      await reconcileCurrentPeriod(now: clock?.call());
+    } catch (_) {
+      _scheduleAutoGenerationRetry(clock: clock);
+      return;
+    }
+    await scheduleNextAutoGeneration(clock: clock);
   }
 
   /// Arms the shared timer from a loaded rule list. Kept separate so callers
@@ -161,6 +177,18 @@ abstract final class FinanceAutomationService {
     _autoGenerationTimerRevision++;
     _autoGenerationTimer?.cancel();
     _autoGenerationTimer = null;
+  }
+
+  static void _scheduleAutoGenerationRetry({
+    DateTime Function()? clock,
+  }) {
+    final revision = ++_autoGenerationTimerRevision;
+    _autoGenerationTimer?.cancel();
+    _autoGenerationTimer = Timer(const Duration(minutes: 1), () {
+      _autoGenerationTimer = null;
+      if (revision != _autoGenerationTimerRevision) return;
+      unawaited(resumeAutoGenerationSchedule(clock: clock));
+    });
   }
 
   static Future<void> _runScheduledAutoGeneration(
