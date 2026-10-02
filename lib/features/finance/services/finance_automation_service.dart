@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
@@ -26,6 +28,8 @@ abstract final class FinanceAutomationService {
   static const int recurringNotificationRange = 7999;
   static const int maxRecurringCatchUpPeriods = 12;
   static final Set<String> _budgetAlertInFlight = {};
+  static Timer? _autoGenerationTimer;
+  static int _autoGenerationTimerRevision = 0;
 
   /// 计算规则在指定年月的发生时间。
   ///
@@ -108,6 +112,86 @@ abstract final class FinanceAutomationService {
       }
     }
     return nextDue;
+  }
+
+  /// Keeps automatic bills materialized while the app is open, even when the
+  /// finance screen is not the active route.
+  static Future<void> scheduleNextAutoGeneration({
+    DateTime? now,
+    DateTime Function()? clock,
+  }) async {
+    final current = now ?? clock?.call() ?? DateTime.now();
+    final revision = ++_autoGenerationTimerRevision;
+    _autoGenerationTimer?.cancel();
+    _autoGenerationTimer = null;
+    try {
+      final rules = await FinanceStorage.getRecurringRules(enabledOnly: true);
+      if (revision != _autoGenerationTimerRevision) return;
+      scheduleAutoGenerationForRules(rules, now: current, clock: clock);
+    } catch (_) {
+      // A temporary database failure should not block the rest of the app.
+    }
+  }
+
+  /// Arms the shared timer from a loaded rule list. Kept separate so callers
+  /// that already loaded rules can avoid a second database query.
+  static void scheduleAutoGenerationForRules(
+    Iterable<FinanceRecurringRule> rules, {
+    required DateTime now,
+    DateTime Function()? clock,
+  }) {
+    final revision = ++_autoGenerationTimerRevision;
+    _autoGenerationTimer?.cancel();
+    _autoGenerationTimer = null;
+    final dueAt = nextAutoGenerationDueAfter(rules, now: now);
+    if (dueAt == null) return;
+
+    final delayMs =
+        (dueAt.millisecondsSinceEpoch - now.millisecondsSinceEpoch + 1)
+        .clamp(1, const Duration(days: 24).inMilliseconds)
+        .toInt();
+    _autoGenerationTimer = Timer(Duration(milliseconds: delayMs), () {
+      _autoGenerationTimer = null;
+      if (revision != _autoGenerationTimerRevision) return;
+      unawaited(_runScheduledAutoGeneration(revision, clock: clock));
+    });
+  }
+
+  static void cancelScheduledAutoGeneration() {
+    _autoGenerationTimerRevision++;
+    _autoGenerationTimer?.cancel();
+    _autoGenerationTimer = null;
+  }
+
+  static Future<void> _runScheduledAutoGeneration(
+    int revision, {
+    DateTime Function()? clock,
+    int retryAttempt = 0,
+  }) async {
+    try {
+      await reconcileCurrentPeriod(now: clock?.call());
+    } catch (_) {
+      if (revision != _autoGenerationTimerRevision) return;
+      if (retryAttempt < 3) {
+        _autoGenerationTimer = Timer(
+          Duration(minutes: 1 << retryAttempt),
+          () {
+            _autoGenerationTimer = null;
+            if (revision != _autoGenerationTimerRevision) return;
+            unawaited(
+              _runScheduledAutoGeneration(
+                revision,
+                clock: clock,
+                retryAttempt: retryAttempt + 1,
+              ),
+            );
+          },
+        );
+        return;
+      }
+    }
+    if (revision != _autoGenerationTimerRevision) return;
+    await scheduleNextAutoGeneration(now: clock?.call(), clock: clock);
   }
 
   /// 返回当前周期的到期项；尚未到 09:00 时不生成账单。

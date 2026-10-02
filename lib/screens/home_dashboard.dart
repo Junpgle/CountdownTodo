@@ -83,6 +83,7 @@ import '../features/habits/screens/habit_center_screen.dart';
 import '../features/finance/screens/finance_home_screen.dart';
 import '../features/finance/screens/finance_entry_screen.dart';
 import '../features/finance/models/finance_models.dart';
+import '../features/finance/services/finance_automation_service.dart';
 import '../features/finance/widgets/finance_today_section.dart';
 import '../features/habits/services/habit_reminder_service.dart';
 import '../features/habits/widgets/habit_today_section.dart';

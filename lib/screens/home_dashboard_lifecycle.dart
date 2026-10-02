@@ -202,6 +202,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     if (lifecycleState != null && lifecycleState != AppLifecycleState.resumed) {
       return;
     }
+    unawaited(FinanceAutomationService.scheduleNextAutoGeneration());
     _scheduleDashboardMinuteTick();
   }
 
@@ -244,6 +245,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
 
   @override
   void dispose() {
+    FinanceAutomationService.cancelScheduledAutoGeneration();
     _permissionCoordinator.dispose();
     for (final sub in _notifSubs) {
       sub.cancel();
