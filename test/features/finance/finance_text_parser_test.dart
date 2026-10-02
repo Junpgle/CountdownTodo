@@ -382,6 +382,13 @@ void main() {
       commaSeparated.map((draft) => draft.paymentMethodName),
       ['微信', '支付宝'],
     );
+
+    final repeatedEntries = FinanceTextParser.parseQuickEntries(
+      '今天午餐 20 元；今天午餐 20 元',
+      now: now,
+    );
+    expect(repeatedEntries, hasLength(2));
+    expect(repeatedEntries.map((draft) => draft.amountMinor), [2000, 2000]);
   });
 
   test('单笔账单中的原价优惠和实付金额不会拆成多笔', () {

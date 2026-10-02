@@ -381,7 +381,7 @@ abstract final class FinanceTextParser {
       source: source,
     );
     if (wholeDraft != null && drafts.length <= 1) return [wholeDraft];
-    return _deduplicate(drafts);
+    return drafts;
   }
 
   /// Parses one or more explicit bill blocks. Invalid/incomplete blocks are
