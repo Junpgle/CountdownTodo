@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -6,13 +8,14 @@ import '../../../widgets/app_detail_widgets.dart';
 import '../../../widgets/floating_glass_control.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
+import '../services/finance_storage.dart';
 import 'finance_entry_screen.dart';
 
 /// Read-only presentation of a saved finance transaction.
 ///
 /// Editing is deliberately one action away from this screen, so tapping a
 /// ledger row is safe for people who only want to inspect a bill.
-class FinanceTransactionDetailScreen extends StatelessWidget {
+class FinanceTransactionDetailScreen extends StatefulWidget {
   final FinanceTransaction transaction;
   final FinanceCategory? category;
   final String? categoryDisplayName;
@@ -25,6 +28,110 @@ class FinanceTransactionDetailScreen extends StatelessWidget {
     this.categoryDisplayName,
     this.paymentMethod,
   });
+
+  @override
+  State<FinanceTransactionDetailScreen> createState() =>
+      _FinanceTransactionDetailScreenState();
+}
+
+class _FinanceTransactionDetailScreenState
+    extends State<FinanceTransactionDetailScreen> {
+  late FinanceTransaction transaction;
+  FinanceCategory? category;
+  String? categoryDisplayName;
+  FinancePaymentMethod? paymentMethod;
+  Timer? _financeChangeRefreshTimer;
+  bool _refreshInProgress = false;
+  bool _refreshPending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    transaction = widget.transaction;
+    category = widget.category;
+    categoryDisplayName = widget.categoryDisplayName;
+    paymentMethod = widget.paymentMethod;
+    FinanceStorage.revision.addListener(_onFinanceChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant FinanceTransactionDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.transaction, widget.transaction)) {
+      transaction = widget.transaction;
+    }
+    if (!identical(oldWidget.category, widget.category)) {
+      category = widget.category;
+    }
+    if (oldWidget.categoryDisplayName != widget.categoryDisplayName) {
+      categoryDisplayName = widget.categoryDisplayName;
+    }
+    if (!identical(oldWidget.paymentMethod, widget.paymentMethod)) {
+      paymentMethod = widget.paymentMethod;
+    }
+  }
+
+  @override
+  void dispose() {
+    _financeChangeRefreshTimer?.cancel();
+    FinanceStorage.revision.removeListener(_onFinanceChanged);
+    super.dispose();
+  }
+
+  void _onFinanceChanged() {
+    _financeChangeRefreshTimer?.cancel();
+    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
+      _financeChangeRefreshTimer = null;
+      if (mounted) unawaited(_reloadLatestTransaction());
+    });
+  }
+
+  Future<void> _reloadLatestTransaction() async {
+    if (_refreshInProgress) {
+      _refreshPending = true;
+      return;
+    }
+    _refreshInProgress = true;
+    try {
+      do {
+        _refreshPending = false;
+        final latestTransaction = await FinanceRepository.getTransaction(
+          transaction.uuid,
+        );
+        if (latestTransaction == null) return;
+        final categories = await FinanceRepository.getCategories(
+          includeArchived: true,
+        );
+        final paymentMethods = await FinanceRepository.getPaymentMethods(
+          includeArchived: true,
+        );
+        if (!mounted) return;
+
+        final latestCategory = categories
+            .where((item) => item.uuid == latestTransaction.categoryUuid)
+            .firstOrNull;
+        final latestPaymentMethod = paymentMethods
+            .where((item) => item.uuid == latestTransaction.paymentMethodUuid)
+            .firstOrNull;
+        setState(() {
+          transaction = latestTransaction;
+          category = latestCategory;
+          categoryDisplayName = latestCategory == null
+              ? null
+              : financeCategoryDisplayName(latestCategory, categories);
+          paymentMethod = latestPaymentMethod;
+        });
+      } while (_refreshPending);
+    } catch (error) {
+      debugPrint('刷新账单详情失败：$error');
+    } finally {
+      _refreshInProgress = false;
+      if (mounted && _refreshPending) {
+        _refreshPending = false;
+        unawaited(_reloadLatestTransaction());
+      }
+    }
+  }
 
   String get _title {
     final merchant = transaction.merchant?.trim();
