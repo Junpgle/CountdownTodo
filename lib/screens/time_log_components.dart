@@ -1117,7 +1117,7 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
                     color: accent, fontSize: 12, fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 16),
-          Text('TODO',
+          Text('关联待办',
               style: TextStyle(
                   fontSize: 9, color: _TC.textHint(context), letterSpacing: 2)),
           const SizedBox(height: 8),
