@@ -24,6 +24,7 @@ typedef FinanceCategorySelectionCallback = Future<void> Function(
 
 class FinanceOverviewPanel extends StatefulWidget {
   final double topPadding;
+  final DateTime Function() clock;
   final DateTime month;
   final FinanceSummary summary;
   final List<FinanceTransaction> transactions;
@@ -37,6 +38,7 @@ class FinanceOverviewPanel extends StatefulWidget {
   const FinanceOverviewPanel({
     super.key,
     this.topPadding = 0,
+    this.clock = DateTime.now,
     required this.month,
     required this.summary,
     required this.transactions,
@@ -64,6 +66,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   VoidCallback get onAdd => widget.onAdd;
   GlobalKey get addActionKey => widget.addActionKey;
   Future<void> Function() get onRefresh => widget.onRefresh;
+  DateTime Function() get clock => widget.clock;
   ValueChanged<DateTime>? get onMonthChanged => widget.onMonthChanged;
   FinanceCategorySelectionCallback? get onCategorySelected =>
       widget.onCategorySelected;
@@ -84,7 +87,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   }
 
   DateTime _initialFocusDate(DateTime selectedMonth) {
-    final today = DateTime.now();
+    final today = clock();
     if (today.year == selectedMonth.year &&
         today.month == selectedMonth.month) {
       return DateTime(today.year, today.month, today.day);
@@ -103,8 +106,12 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
-        padding:
-            EdgeInsets.fromLTRB(16, widget.topPadding + 12, 16, bottomPadding),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          widget.topPadding + 12,
+          16,
+          bottomPadding,
+        ),
         children: [
           _buildViewSelector(context),
           const SizedBox(height: 10),
@@ -121,9 +128,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           const SizedBox(height: 24),
           Text(
             period.isPlanned ? '计划支出分类' : '支出分类',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           if (topCategories.isEmpty)
@@ -155,9 +161,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           const SizedBox(height: 24),
           Text(
             _spendingChartTitle(period),
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           Card(
@@ -176,7 +181,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
   _FinanceOverviewPeriod get _currentPeriod {
     final range = _periodRange;
     final transactionsInRange = _transactionsInRange(range);
-    final now = DateTime.now();
+    final now = clock();
     final includesNow = !now.isBefore(range.from) && now.isBefore(range.to);
     final isPlanned = range.from.isAfter(now);
     final periodTransactions = includesNow
@@ -194,20 +199,21 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
         now.year == month.year && now.month == month.month;
     final title = switch (_view) {
       _FinanceOverviewView.month => '${month.year} 年 ${month.month} 月',
-      _FinanceOverviewView.week =>
-          _formatFinanceDateRange(range.from, range.to),
+      _FinanceOverviewView.week => _formatFinanceDateRange(
+        range.from,
+        range.to,
+      ),
       _FinanceOverviewView.day => _formatFinanceDayLabel(dateKey(_focusedDate)),
     };
     final shortTitle = switch (_view) {
-      _FinanceOverviewView.month => selectedMonthIsCurrent
-          ? '本月'
-          : '${month.year}年${month.month}月',
-      _FinanceOverviewView.week => includesNow
-          ? '本周'
-          : _formatFinanceDateRange(range.from, range.to),
-      _FinanceOverviewView.day => dateKey(now) == dateKey(_focusedDate)
-          ? '今天'
-          : _formatFinanceDayLabel(dateKey(_focusedDate)),
+      _FinanceOverviewView.month =>
+        selectedMonthIsCurrent ? '本月' : '${month.year}年${month.month}月',
+      _FinanceOverviewView.week =>
+        includesNow ? '本周' : _formatFinanceDateRange(range.from, range.to),
+      _FinanceOverviewView.day =>
+        dateKey(now) == dateKey(_focusedDate)
+            ? '今天'
+            : _formatFinanceDayLabel(dateKey(_focusedDate)),
     };
     return _FinanceOverviewPeriod(
       from: range.from,
@@ -230,16 +236,17 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           '计划${_formatFinanceDayLabel(dateKey(_focusedDate))}时段净支出',
       };
     }
-    final now = DateTime.now();
+    final now = clock();
     return switch (_view) {
       _FinanceOverviewView.month => '每日净支出',
       _FinanceOverviewView.week =>
         !now.isBefore(_periodRange.from) && now.isBefore(_periodRange.to)
             ? '本周每日净支出'
             : '${_formatFinanceDateRange(_periodRange.from, _periodRange.to)}每日净支出',
-      _FinanceOverviewView.day => dateKey(now) == dateKey(_focusedDate)
-          ? '当天时段净支出'
-          : '${_formatFinanceDayLabel(dateKey(_focusedDate))}时段净支出',
+      _FinanceOverviewView.day =>
+        dateKey(now) == dateKey(_focusedDate)
+            ? '当天时段净支出'
+            : '${_formatFinanceDayLabel(dateKey(_focusedDate))}时段净支出',
     };
   }
 
@@ -257,18 +264,18 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           financeCalendarDayOffset(weekStart, 7),
         );
       case _FinanceOverviewView.day:
-        final day =
-            DateTime(_focusedDate.year, _focusedDate.month, _focusedDate.day);
+        final day = DateTime(
+          _focusedDate.year,
+          _focusedDate.month,
+          _focusedDate.day,
+        );
         return _FinanceDateRange(day, financeCalendarDayOffset(day, 1));
     }
   }
 
   DateTime _startOfWeek(DateTime value) {
     final day = DateTime(value.year, value.month, value.day);
-    return financeCalendarDayOffset(
-      day,
-      DateTime.monday - day.weekday,
-    );
+    return financeCalendarDayOffset(day, DateTime.monday - day.weekday);
   }
 
   List<FinanceTransaction> _transactionsInRange(_FinanceDateRange range) {
@@ -289,9 +296,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       children: [
         Text(
           '时间视图',
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+          style: Theme.of(context).textTheme.labelLarge
+              ?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 6),
         SizedBox(
@@ -346,8 +352,10 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     }
     final title = switch (_view) {
       _FinanceOverviewView.month => '${month.year}年${month.month}月',
-      _FinanceOverviewView.week =>
-        _formatFinanceDateRange(period.from, period.to),
+      _FinanceOverviewView.week => _formatFinanceDateRange(
+        period.from,
+        period.to,
+      ),
       _FinanceOverviewView.day => _formatFinanceDayLabel(dateKey(_focusedDate)),
     };
     final subtitle = switch (_view) {
@@ -368,8 +376,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
             tooltip: isMonthView
                 ? '上个月'
                 : _view == _FinanceOverviewView.week
-                    ? '上一周'
-                    : '前一天',
+                ? '上一周'
+                : '前一天',
             onPressed: previousAction,
             icon: const Icon(Icons.chevron_left),
           ),
@@ -404,8 +412,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
             tooltip: isMonthView
                 ? '下个月'
                 : _view == _FinanceOverviewView.week
-                    ? '下一周'
-                    : '后一天',
+                ? '下一周'
+                : '后一天',
             onPressed: nextAction,
             icon: const Icon(Icons.chevron_right),
           ),
@@ -424,7 +432,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       context: context,
       initialDate: month,
       firstDate: DateTime(2000),
-      lastDate: DateTime.now().add(const Duration(days: 3650)),
+      lastDate: clock().add(const Duration(days: 3650)),
       helpText: '选择月份',
     );
     if (picked != null && mounted) {
@@ -443,7 +451,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     );
     if (picked != null && mounted) {
       setState(
-          () => _focusedDate = DateTime(picked.year, picked.month, picked.day));
+        () => _focusedDate = DateTime(picked.year, picked.month, picked.day),
+      );
     }
   }
 
@@ -468,9 +477,11 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     if (_view == _FinanceOverviewView.month) {
       final nextMonth = DateTime(month.year, month.month + delta);
       final firstAllowedMonth = DateTime(2000);
-      final lastAllowedDate = DateTime.now().add(const Duration(days: 3650));
-      final lastAllowedMonth =
-          DateTime(lastAllowedDate.year, lastAllowedDate.month);
+      final lastAllowedDate = clock().add(const Duration(days: 3650));
+      final lastAllowedMonth = DateTime(
+        lastAllowedDate.year,
+        lastAllowedDate.month,
+      );
       return !nextMonth.isBefore(firstAllowedMonth) &&
           !nextMonth.isAfter(lastAllowedMonth);
     }
@@ -578,8 +589,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     ColorScheme colorScheme,
     _FinanceOverviewPeriod period,
   ) {
-    final category =
-        entry.categoryUuid == null ? null : categories[entry.categoryUuid];
+    final category = entry.categoryUuid == null
+        ? null
+        : categories[entry.categoryUuid];
     final categoryName = category == null ? '未分类' : category.name;
     final categoryKey = ValueKey(
       'finance-overview-category-${entry.categoryUuid ?? 'uncategorized'}',
@@ -682,8 +694,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     _FinanceOverviewPeriod period,
     GlobalKey sourceKey,
   ) async {
-    final category =
-        entry.categoryUuid == null ? null : categories[entry.categoryUuid];
+    final category = entry.categoryUuid == null
+        ? null
+        : categories[entry.categoryUuid];
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final detailPage = FinanceCategoryDetailScreen(
@@ -693,8 +706,11 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       categories: categories,
       onCategorySelected: onCategorySelected == null
           ? null
-          : (categoryUuid, sourceKey, _) =>
-              onCategorySelected!(categoryUuid, sourceKey, period.transactions),
+          : (categoryUuid, sourceKey, _) => onCategorySelected!(
+              categoryUuid,
+              sourceKey,
+              period.transactions,
+            ),
     );
     await PageTransitions.pushFromRect<String>(
       context: context,
@@ -703,10 +719,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       sourceColor: colorScheme.brightness == Brightness.dark
           ? Colors.black
           : Colors.white,
-      placeholderBuilder: (_) => Text(
-        category?.icon ?? '💰',
-        style: const TextStyle(fontSize: 30),
-      ),
+      placeholderBuilder: (_) =>
+          Text(category?.icon ?? '💰', style: const TextStyle(fontSize: 30)),
       sourceBorderRadius: BorderRadius.circular(12),
     );
   }
@@ -725,15 +739,14 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
               ? '计划支出与退款相抵，计划净支出为 ${formatFinanceAmount(0)}'
               : '支出与退款相抵，净支出为 ${formatFinanceAmount(0)}'
         : period.isPlanned
-            ? '${period.shortTitle}还没有计划净支出记录'
-            : '${period.shortTitle}还没有净支出记录';
+        ? '${period.shortTitle}还没有计划净支出记录'
+        : '${period.shortTitle}还没有净支出记录';
     if (_view == _FinanceOverviewView.day) {
       const unknownHourIndex = 24;
       final values = List<int>.filled(unknownHourIndex + 1, 0);
       for (final transaction in period.transactions) {
         if (transaction.type == FinanceTransactionType.income) continue;
-        final hour =
-            _financeTransactionHour(transaction) ?? unknownHourIndex;
+        final hour = _financeTransactionHour(transaction) ?? unknownHourIndex;
         values[hour] += transaction.type == FinanceTransactionType.refund
             ? -transaction.amountMinor
             : transaction.amountMinor;
@@ -768,9 +781,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     final values = List<int>.generate(
       count,
       (index) =>
-          period.summary
-              .expenseByDate[
-                  dateKey(financeCalendarDayOffset(period.from, index))] ??
+          period.summary.expenseByDate[dateKey(
+            financeCalendarDayOffset(period.from, index),
+          )] ??
           0,
     );
     final dates = List<DateTime>.generate(
@@ -781,9 +794,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       context,
       colorScheme,
       values: values,
-      labels: [
-        for (final date in dates) _formatFinanceChartDayLabel(date),
-      ],
+      labels: [for (final date in dates) _formatFinanceChartDayLabel(date)],
       tooltips: [
         for (var index = 0; index < dates.length; index++)
           '${_formatFinanceDayLabel(dateKey(dates[index]))} · '
@@ -835,8 +846,8 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     final baseline = hasPositive && hasNegative
         ? plotHeight / 2
         : hasPositive
-            ? plotHeight
-            : 0.0;
+        ? plotHeight
+        : 0.0;
     return SizedBox(
       height: 142,
       child: SingleChildScrollView(
@@ -867,11 +878,13 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                               ),
                             Positioned(
                               left: (barWidth - 18) / 2,
-                              top: values[index] < 0 ||
+                              top:
+                                  values[index] < 0 ||
                                       (values[index] == 0 && !hasPositive)
                                   ? baseline
                                   : null,
-                              bottom: values[index] < 0 ||
+                              bottom:
+                                  values[index] < 0 ||
                                       (values[index] == 0 && !hasPositive)
                                   ? null
                                   : plotHeight - baseline,
@@ -882,13 +895,12 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                                   width: 12,
                                   height: values[index] == 0
                                       ? 2
-                                      : ((values[index].abs() /
-                                                      maxMagnitude) *
-                                                  (values[index] < 0
-                                                      ? plotHeight - baseline
-                                                      : baseline))
-                                              .clamp(2, plotHeight)
-                                              .toDouble(),
+                                      : ((values[index].abs() / maxMagnitude) *
+                                                (values[index] < 0
+                                                    ? plotHeight - baseline
+                                                    : baseline))
+                                            .clamp(2, plotHeight)
+                                            .toDouble(),
                                   decoration: BoxDecoration(
                                     color: values[index] < 0
                                         ? colorScheme.primary
@@ -947,12 +959,12 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                     : '共 ${period.summary.transactionCount} 笔记录，'
                           '本期暂无支出或退款记录。'
               : period.isPlanned
-                  ? '共 ${period.summary.transactionCount} 笔待发生记录，'
-                        '计划支出/退款 $outflowTransactionCount 笔，'
-                        '平均计划净支出 ${formatFinanceAmount(average)}。'
-                  : '共 ${period.summary.transactionCount} 笔记录，'
-                        '支出/退款 $outflowTransactionCount 笔，'
-                        '平均净支出 ${formatFinanceAmount(average)}。',
+              ? '共 ${period.summary.transactionCount} 笔待发生记录，'
+                    '计划支出/退款 $outflowTransactionCount 笔，'
+                    '平均计划净支出 ${formatFinanceAmount(average)}。'
+              : '共 ${period.summary.transactionCount} 笔记录，'
+                    '支出/退款 $outflowTransactionCount 笔，'
+                    '平均净支出 ${formatFinanceAmount(average)}。',
         ),
       ),
     );
@@ -1082,9 +1094,9 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
       if (categoryUuid != null) {
         final matchesCategory =
             categoryUuid == financeUncategorizedCategoryFilterUuid
-                ? transaction.categoryUuid == null ||
-                    !categories.containsKey(transaction.categoryUuid)
-                : transaction.categoryUuid == categoryUuid;
+            ? transaction.categoryUuid == null ||
+                  !categories.containsKey(transaction.categoryUuid)
+            : transaction.categoryUuid == categoryUuid;
         if (!matchesCategory) return false;
       }
       if (keyword.trim().isEmpty) return true;
@@ -1146,14 +1158,18 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
               : ListView(
                   padding: EdgeInsets.fromLTRB(16, 4, 16, bottomPadding),
                   children: [
-                    for (var groupIndex = 0;
-                        groupIndex < dayGroups.length;
-                        groupIndex++) ...[
+                    for (
+                      var groupIndex = 0;
+                      groupIndex < dayGroups.length;
+                      groupIndex++
+                    ) ...[
                       _buildDayHeader(context, dayGroups[groupIndex]),
-                      for (var transactionIndex = 0;
-                          transactionIndex <
-                              dayGroups[groupIndex].transactions.length;
-                          transactionIndex++) ...[
+                      for (
+                        var transactionIndex = 0;
+                        transactionIndex <
+                            dayGroups[groupIndex].transactions.length;
+                        transactionIndex++
+                      ) ...[
                         _buildTransactionTile(
                           context,
                           dayGroups[groupIndex].transactions[transactionIndex],
@@ -1194,8 +1210,8 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     final label = isUncategorized
         ? '分类 · 未分类'
         : category == null
-            ? '分类筛选'
-            : '分类 · ${financeCategoryDisplayName(category, categories.values)}';
+        ? '分类筛选'
+        : '分类 · ${financeCategoryDisplayName(category, categories.values)}';
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: FilterChip(
@@ -1238,9 +1254,8 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
               children: [
                 Text(
                   _formatFinanceDayLabel(group.date),
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(context).textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 Text(
                   '${group.transactions.length} 笔账单',
@@ -1266,8 +1281,8 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
                       color: label.startsWith('收入')
                           ? colorScheme.primary
                           : group.netExpenseMinor > 0
-                              ? colorScheme.error
-                              : colorScheme.onSurfaceVariant,
+                          ? colorScheme.error
+                          : colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.w700,
                       fontSize: 12,
                     ),
@@ -1294,8 +1309,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         ? transaction.merchant!
         : categoryName ?? transaction.type.label;
     final subtitleParts = <String>[
-      if (transaction.balanceEventAt() >
-          DateTime.now().millisecondsSinceEpoch)
+      if (transaction.balanceEventAt() > DateTime.now().millisecondsSinceEpoch)
         '待发生',
       if (category != null) '${category.icon} $categoryName',
       if (payment != null) '${payment.icon} ${payment.name}',
@@ -1331,11 +1345,10 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
           children: [
             Text(
               formatSignedFinanceAmount(
-                  transaction.amountMinor, transaction.type),
-              style: TextStyle(
-                color: amountColor,
-                fontWeight: FontWeight.w700,
+                transaction.amountMinor,
+                transaction.type,
               ),
+              style: TextStyle(color: amountColor, fontWeight: FontWeight.w700),
             ),
             PopupMenuButton<String>(
               onSelected: (value) {
@@ -1345,10 +1358,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
               },
               itemBuilder: (context) => [
                 if (transaction.type == FinanceTransactionType.expense)
-                  const PopupMenuItem(
-                    value: 'refund',
-                    child: Text('退款'),
-                  ),
+                  const PopupMenuItem(value: 'refund', child: Text('退款')),
                 const PopupMenuItem(value: 'edit', child: Text('编辑')),
                 const PopupMenuItem(value: 'delete', child: Text('删除')),
               ],
@@ -1363,16 +1373,19 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     final colorScheme = Theme.of(context).colorScheme;
     final selectedMonth = widget.month ?? DateTime.now();
     final now = DateTime.now();
-    final monthLabel = selectedMonth.year == now.year &&
-            selectedMonth.month == now.month
+    final monthLabel =
+        selectedMonth.year == now.year && selectedMonth.month == now.month
         ? '本月'
         : '${selectedMonth.year}年${selectedMonth.month}月';
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.receipt_long_outlined,
-              size: 48, color: colorScheme.onSurfaceVariant),
+          Icon(
+            Icons.receipt_long_outlined,
+            size: 48,
+            color: colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(height: 12),
           Text(
             keyword.isEmpty && filterType == null && categoryUuid == null
@@ -1466,8 +1479,9 @@ List<_FinanceDayGroup> _groupFinanceTransactionsByDay(
   for (final date in dates) {
     final items = List<FinanceTransaction>.of(grouped[date]!)
       ..sort((a, b) {
-        final occurredComparison =
-            b.balanceEventAt().compareTo(a.balanceEventAt());
+        final occurredComparison = b.balanceEventAt().compareTo(
+          a.balanceEventAt(),
+        );
         if (occurredComparison != 0) return occurredComparison;
         final updatedComparison = b.updatedAt.compareTo(a.updatedAt);
         if (updatedComparison != 0) return updatedComparison;
@@ -1486,13 +1500,15 @@ List<_FinanceDayGroup> _groupFinanceTransactionsByDay(
           incomeMinor += item.amountMinor;
       }
     }
-    result.add(_FinanceDayGroup(
-      date: date,
-      transactions: items,
-      expenseMinor: expenseMinor,
-      refundMinor: refundMinor,
-      incomeMinor: incomeMinor,
-    ));
+    result.add(
+      _FinanceDayGroup(
+        date: date,
+        transactions: items,
+        expenseMinor: expenseMinor,
+        refundMinor: refundMinor,
+        incomeMinor: incomeMinor,
+      ),
+    );
   }
   return result;
 }

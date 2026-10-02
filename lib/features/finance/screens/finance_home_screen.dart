@@ -35,6 +35,7 @@ typedef _FinanceHomeData = ({
 class FinanceHomeScreen extends StatefulWidget {
   final String username;
   final bool openQuickEntry;
+  final DateTime Function() clock;
   final DateTime? initialMonth;
   final String? initialCategoryFilterUuid;
   final _FinanceHomeData? _initialData;
@@ -43,25 +44,27 @@ class FinanceHomeScreen extends StatefulWidget {
     super.key,
     required this.username,
     this.openQuickEntry = false,
-  })  : initialMonth = null,
-        initialCategoryFilterUuid = null,
-        _initialData = null;
+    this.clock = DateTime.now,
+  }) : initialMonth = null,
+       initialCategoryFilterUuid = null,
+       _initialData = null;
 
   const FinanceHomeScreen._categoryLedger({
     required this.username,
     required DateTime month,
     required String categoryUuid,
     required this._initialData,
-  })  : openQuickEntry = false,
-        initialMonth = month,
-        initialCategoryFilterUuid = categoryUuid;
+    this.clock = DateTime.now,
+  }) : openQuickEntry = false,
+       initialMonth = month,
+       initialCategoryFilterUuid = categoryUuid;
 
   @override
   State<FinanceHomeScreen> createState() => _FinanceHomeScreenState();
 }
 
 class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
-  DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+  late DateTime _month;
   List<FinanceTransaction> _transactions = const [];
   List<FinanceTransaction> _overviewTransactions = const [];
   List<FinanceCategory> _categories = const [];
@@ -81,12 +84,12 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   final GlobalKey _bottomAddActionKey = GlobalKey();
 
   Map<String, FinanceCategory> get _categoryMap => {
-        for (final item in _categories) item.uuid: item,
-      };
+    for (final item in _categories) item.uuid: item,
+  };
 
   Map<String, FinancePaymentMethod> get _paymentMethodMap => {
-        for (final item in _paymentMethods) item.uuid: item,
-      };
+    for (final item in _paymentMethods) item.uuid: item,
+  };
 
   bool get _hasLedgerFilters =>
       _keyword.trim().isNotEmpty ||
@@ -134,7 +137,8 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialMonth != null) _month = widget.initialMonth!;
+    final initialMonth = widget.initialMonth ?? widget.clock();
+    _month = DateTime(initialMonth.year, initialMonth.month);
     if (_isCategoryLedgerRoute) {
       _categoryFilterUuid = widget.initialCategoryFilterUuid;
       _selectedIndex = 1;
@@ -213,13 +217,14 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     final fromKey = dateKey(from);
     final toKey = dateKey(to);
     final transactions = overviewTransactions
-        .where((transaction) =>
-            transaction.transactionDate.compareTo(fromKey) >= 0 &&
-            transaction.transactionDate.compareTo(toKey) < 0)
+        .where(
+          (transaction) =>
+              transaction.transactionDate.compareTo(fromKey) >= 0 &&
+              transaction.transactionDate.compareTo(toKey) < 0,
+        )
         .toList(growable: false);
-    final now = DateTime.now();
-    final isCurrentMonth =
-        from.year == now.year && from.month == now.month;
+    final now = widget.clock();
+    final isCurrentMonth = from.year == now.year && from.month == now.month;
     return (
       transactions: transactions,
       summary: FinanceSummary.fromTransactions(
@@ -235,30 +240,29 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   void _scheduleUpcomingTransactionRefresh() {
     _upcomingTransactionTimer?.cancel();
     _upcomingTransactionTimer = null;
-    final currentDate = DateTime.now();
+    final currentDate = widget.clock();
     final now = currentDate.millisecondsSinceEpoch;
     if (_month.year != currentDate.year || _month.month != currentDate.month) {
       return;
     }
 
-    int? nextEventAt;
+    var nextEventAt = DateTime(
+      currentDate.year,
+      currentDate.month + 1,
+    ).millisecondsSinceEpoch;
     for (final transaction in _overviewTransactions) {
       final eventAt = transaction.balanceEventAt();
-      if (eventAt > now && (nextEventAt == null || eventAt < nextEventAt)) {
+      if (eventAt > now && eventAt < nextEventAt) {
         nextEventAt = eventAt;
       }
     }
-    if (nextEventAt == null) return;
     final delayMs = (nextEventAt - now + 1)
         .clamp(1, const Duration(days: 24).inMilliseconds)
         .toInt();
-    _upcomingTransactionTimer = Timer(
-      Duration(milliseconds: delayMs),
-      () {
-        _upcomingTransactionTimer = null;
-        if (mounted) unawaited(_load(showLoading: false));
-      },
-    );
+    _upcomingTransactionTimer = Timer(Duration(milliseconds: delayMs), () {
+      _upcomingTransactionTimer = null;
+      if (mounted) unawaited(_load(showLoading: false));
+    });
   }
 
   void _startBackgroundMaintenance(int generation) {
@@ -332,8 +336,9 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   Future<void> _openRefund(FinanceTransaction original) async {
-    final remaining =
-        await FinanceRepository.getRemainingRefundableMinor(original.uuid);
+    final remaining = await FinanceRepository.getRemainingRefundableMinor(
+      original.uuid,
+    );
     if (!mounted) return;
     if (remaining <= 0) {
       AppSnackBars.showSnackBar(
@@ -389,9 +394,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
 
   Future<void> _openTextRecognition() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const FinanceTextRecognitionScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const FinanceTextRecognitionScreen()),
     );
     if (mounted) await _load();
   }
@@ -406,16 +409,15 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   Future<void> _openLoans() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const FinanceLoanScreen()),
-    );
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const FinanceLoanScreen()));
     if (mounted) await _load();
   }
 
   Future<void> _openAutomation() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const FinanceAutomationScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const FinanceAutomationScreen()));
     if (mounted) await _load();
   }
 
@@ -486,9 +488,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     if (mounted) {
       AppSnackBars.showSnackBar(
         context,
-        SnackBar(
-          content: Text(deleteMode == 'group' ? '整组分期账单已删除' : '账单已删除'),
-        ),
+        SnackBar(content: Text(deleteMode == 'group' ? '整组分期账单已删除' : '账单已删除')),
       );
       await _load();
     }
@@ -506,9 +506,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         context,
         SnackBar(
           content: Text(
-              path == null
-                  ? '已取消导出'
-                  : '已导出$_selectedMonthLabel账单${path.isEmpty ? '' : '：$path'}'),
+            path == null
+                ? '已取消导出'
+                : '已导出$_selectedMonthLabel账单${path.isEmpty ? '' : '：$path'}',
+          ),
           duration: const Duration(seconds: 4),
         ),
       );
@@ -525,7 +526,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   String get _selectedMonthLabel {
-    final now = DateTime.now();
+    final now = widget.clock();
     return _month.year == now.year && _month.month == now.month
         ? '本月'
         : '${_month.year}年${_month.month}月';
@@ -558,15 +559,14 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           paymentMethods: _paymentMethods,
           overviewTransactions: _overviewTransactions,
         ),
+        clock: widget.clock,
       ),
       sourceKey: sourceKey,
       sourceColor: colorScheme.brightness == Brightness.dark
           ? Colors.black
           : Colors.white,
-      placeholderBuilder: (_) => Text(
-        category?.icon ?? '💰',
-        style: const TextStyle(fontSize: 30),
-      ),
+      placeholderBuilder: (_) =>
+          Text(category?.icon ?? '💰', style: const TextStyle(fontSize: 30)),
       sourceBorderRadius: BorderRadius.circular(12),
     );
     if (mounted) await _load(showLoading: false);
@@ -587,11 +587,11 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
                 style: floatingGlassPlainIconButtonStyle(),
                 tooltip: _clearFiltersBeforePop
                     ? _isCategoryLedgerRoute
-                        ? '取消附加筛选'
-                        : '返回全部账单'
+                          ? '取消附加筛选'
+                          : '返回全部账单'
                     : _isCategoryLedgerRoute
-                        ? '返回支出分类'
-                        : '返回概览',
+                    ? '返回支出分类'
+                    : '返回概览',
                 onPressed: _handleBack,
                 icon: const Icon(Icons.arrow_back_ios_new_rounded),
               )
@@ -619,9 +619,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
               if (value == 'export') _exportCsv();
               if (value == 'trash') {
                 Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const FinanceTrashScreen(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const FinanceTrashScreen()),
                 );
               }
             },
@@ -691,53 +689,53 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _loadError != null
-                ? _buildError(colorScheme)
-                : Column(
-                    children: [
-                      Expanded(
-                        child: IndexedStack(
-                          index: _selectedIndex,
-                          children: [
-                            FinanceOverviewPanel(
-                              topPadding: topBarHeight,
-                              month: _month,
-                              summary: _summary,
-                              transactions: _overviewTransactions,
-                              categories: _categoryMap,
-                              onAdd: () => _openEntry(
-                                sourceKey: _overviewAddActionKey,
-                              ),
-                              addActionKey: _overviewAddActionKey,
-                              onRefresh: _load,
-                              onMonthChanged: _setMonth,
-                              onCategorySelected: _pushCategoryLedger,
-                            ),
-                            FinanceLedgerPanel(
-                              topPadding: topBarHeight,
-                              month: _month,
-                              transactions: _transactions,
-                              categories: _categoryMap,
-                              paymentMethods: _paymentMethodMap,
-                              keyword: _keyword,
-                              filterType: _filterType,
-                              categoryUuid: _categoryFilterUuid,
-                              onOpenDetail: _openDetail,
-                              onKeywordChanged: (value) =>
-                                  setState(() => _keyword = value),
-                              onFilterChanged: (value) =>
-                                  setState(() => _filterType = value),
-                              onCategoryChanged: (value) =>
-                                  setState(() => _categoryFilterUuid = value),
-                              onEdit: (transaction) =>
-                                  _openEntry(transaction: transaction),
-                              onDelete: _deleteTransaction,
-                              onRefund: _openRefund,
-                            ),
-                          ],
+            ? _buildError(colorScheme)
+            : Column(
+                children: [
+                  Expanded(
+                    child: IndexedStack(
+                      index: _selectedIndex,
+                      children: [
+                        FinanceOverviewPanel(
+                          topPadding: topBarHeight,
+                          month: _month,
+                          clock: widget.clock,
+                          summary: _summary,
+                          transactions: _overviewTransactions,
+                          categories: _categoryMap,
+                          onAdd: () =>
+                              _openEntry(sourceKey: _overviewAddActionKey),
+                          addActionKey: _overviewAddActionKey,
+                          onRefresh: _load,
+                          onMonthChanged: _setMonth,
+                          onCategorySelected: _pushCategoryLedger,
                         ),
-                      ),
-                    ],
+                        FinanceLedgerPanel(
+                          topPadding: topBarHeight,
+                          month: _month,
+                          transactions: _transactions,
+                          categories: _categoryMap,
+                          paymentMethods: _paymentMethodMap,
+                          keyword: _keyword,
+                          filterType: _filterType,
+                          categoryUuid: _categoryFilterUuid,
+                          onOpenDetail: _openDetail,
+                          onKeywordChanged: (value) =>
+                              setState(() => _keyword = value),
+                          onFilterChanged: (value) =>
+                              setState(() => _filterType = value),
+                          onCategoryChanged: (value) =>
+                              setState(() => _categoryFilterUuid = value),
+                          onEdit: (transaction) =>
+                              _openEntry(transaction: transaction),
+                          onDelete: _deleteTransaction,
+                          onRefund: _openRefund,
+                        ),
+                      ],
+                    ),
                   ),
+                ],
+              ),
       ),
       // 记账入口固定在底栏中央，避免扩展 FAB 覆盖账单内容。
       bottomNavigationBar: FloatingBottomNavigationBar(
@@ -791,23 +789,18 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       child: scaffold,
     );
 
-    final isDesktop = !kIsWeb &&
+    final isDesktop =
+        !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.windows ||
             defaultTargetPlatform == TargetPlatform.macOS ||
             defaultTargetPlatform == TargetPlatform.linux);
     if (!isDesktop) return guardedScaffold;
     return Shortcuts(
       shortcuts: const {
-        SingleActivator(
-          LogicalKeyboardKey.keyN,
-          control: true,
-          shift: true,
-        ): _FinanceQuickEntryIntent(),
-        SingleActivator(
-          LogicalKeyboardKey.keyN,
-          meta: true,
-          shift: true,
-        ): _FinanceQuickEntryIntent(),
+        SingleActivator(LogicalKeyboardKey.keyN, control: true, shift: true):
+            _FinanceQuickEntryIntent(),
+        SingleActivator(LogicalKeyboardKey.keyN, meta: true, shift: true):
+            _FinanceQuickEntryIntent(),
       },
       child: Actions(
         actions: {
@@ -818,10 +811,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
             },
           ),
         },
-        child: Focus(
-          autofocus: true,
-          child: guardedScaffold,
-        ),
+        child: Focus(autofocus: true, child: guardedScaffold),
       ),
     );
   }
