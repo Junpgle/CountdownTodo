@@ -1985,23 +1985,24 @@ ${sections.join('\n')}
     );
 
     if (period != null) {
-      final totalMinutes = scopedRecords
-          .map((r) => _focusOverlapMinutes(r, period))
-          .fold<int>(0, (sum, minutes) => sum + minutes);
-      final timeLogMinutes = scopedRecords
-          .where((r) => r.source == '补录')
-          .map((r) => _focusOverlapMinutes(r, period))
-          .fold<int>(0, (sum, minutes) => sum + minutes);
-      final pomodoroMinutes = scopedRecords
-          .where((r) => r.source == '番茄钟')
-          .map((r) => _focusOverlapMinutes(r, period))
-          .fold<int>(0, (sum, minutes) => sum + minutes);
+      int totalFocusSeconds(Iterable<_FocusRecord> records) => records
+          .map((record) => _focusOverlapSeconds(record, period))
+          .fold<int>(0, (sum, seconds) => sum + seconds);
+      final totalMinutes = (totalFocusSeconds(scopedRecords) / 60).round();
+      final timeLogMinutes =
+          (totalFocusSeconds(scopedRecords.where((r) => r.source == '补录')) /
+                  60)
+              .round();
+      final pomodoroMinutes =
+          (totalFocusSeconds(scopedRecords.where((r) => r.source == '番茄钟')) /
+                  60)
+              .round();
       final lines = recordsToFormat
           .map((r) {
             final start = _formatEpochMillis(r.startMs);
             final end = _formatEpochMillis(r.endMs);
-            final minutes = _focusOverlapMinutes(r, period);
-            return '- [${r.source} ID: ${r.id}] $start-$end ${r.title} | 本时段计入${formatMinutesChinese(minutes)}${r.status != null ? ' | 状态: ${r.status}' : ''}';
+            final seconds = _focusOverlapSeconds(r, period);
+            return '- [${r.source} ID: ${r.id}] $start-$end ${r.title} | 本时段计入${formatDurationChinese(seconds)}${r.status != null ? ' | 状态: ${r.status}' : ''}';
           })
           .join('\n');
       return '''专注记录:
@@ -2491,7 +2492,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
         record.startMs < period.end.millisecondsSinceEpoch;
   }
 
-  static int _focusOverlapMinutes(_FocusRecord record, _TimeLogPeriod period) {
+  static int _focusOverlapSeconds(_FocusRecord record, _TimeLogPeriod period) {
     final start = record.startMs > period.start.millisecondsSinceEpoch
         ? record.startMs
         : period.start.millisecondsSinceEpoch;
@@ -2499,7 +2500,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
         ? record.endMs
         : period.end.millisecondsSinceEpoch;
     if (end <= start) return 0;
-    return ((end - start) / 60000).round();
+    return (end - start) ~/ 1000;
   }
 
   static String _formatEpochMillis(int value) {
