@@ -1255,8 +1255,9 @@ abstract final class FinanceTextParser {
         .replaceAll('日', '')
         .replaceAll('/', '-')
         .replaceAll('.', '-');
-    final match =
-        RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})').firstMatch(normalized);
+    final match = RegExp(
+      r'^(\d{4})(?!\d)-(\d{1,2})(?!\d)-(\d{1,2})(?!\d)(?=$|[\sT])',
+    ).firstMatch(normalized);
     if (match == null) return null;
     final year = int.parse(match.group(1)!);
     final month = int.parse(match.group(2)!);

@@ -282,6 +282,15 @@ void main() {
     );
   });
 
+  test('结构化记账拒绝被数字尾缀截短的日期', () {
+    final drafts = FinanceTextParser.parse(
+      '#记账 | 支出 | 20 | 餐饮 | 午餐 | 2026-09-023',
+      now: DateTime(2026, 10, 2),
+    );
+
+    expect(drafts, isEmpty);
+  });
+
   test('流式AI回复隐藏完整和未完成的记账协议块', () {
     expect(
       FinanceTextParser.cleanStreamingAssistantContent(
