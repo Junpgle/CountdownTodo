@@ -60,7 +60,8 @@ class DataExportService {
         (financeBundle['loan_installments'] as List<dynamic>? ?? const [])
             .where((item) => item is Map && item['is_deleted'] != 1)
             .toList();
-    final challengeBundle = await ThirtyDayChallengeRepository.exportBackup();
+    final challengeBundle =
+        await ThirtyDayChallengeRepository.exportBackup(username: username);
     final challengeState = challengeBundle?['state'];
     final challengeTasks = challengeState is Map &&
             challengeState['tasks'] is List
@@ -391,7 +392,8 @@ class DataExportService {
       }
 
       if (selectedTypes.contains('thirty_day_challenge')) {
-        final bundle = await ThirtyDayChallengeRepository.exportBackup();
+        final bundle =
+            await ThirtyDayChallengeRepository.exportBackup(username: username);
         if (bundle != null) {
           data['thirty_day_challenge'] = bundle;
           final state = bundle['state'];

@@ -495,6 +495,7 @@ class DataImportService {
       if (data['thirty_day_challenge'] is Map) {
         importedCount += await ThirtyDayChallengeRepository.importBackup(
           Map<String, dynamic>.from(data['thirty_day_challenge'] as Map),
+          username: username,
         );
       }
 

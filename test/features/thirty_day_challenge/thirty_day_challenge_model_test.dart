@@ -90,4 +90,35 @@ void main() {
       isTrue,
     );
   });
+
+  test('备份导入导出按调用方账号读写，不跟随切换后的登录账号', () async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('current_login_user', 'source');
+    await ThirtyDayChallengeRepository.startNewChallenge(
+      title: '来源账号挑战',
+      taskTitles: ['保留来源账号的数据'],
+    );
+    final bundle = await ThirtyDayChallengeRepository.exportBackup(
+      username: 'source',
+    );
+
+    await prefs.setString('current_login_user', 'bob');
+    await ThirtyDayChallengeRepository.startNewChallenge(
+      title: 'Bob 的挑战',
+      taskTitles: ['不能被来源备份覆盖'],
+    );
+    await ThirtyDayChallengeRepository.importBackup(
+      bundle!,
+      username: 'alice',
+    );
+
+    expect(
+      (await ThirtyDayChallengeRepository.load(username: 'alice')).challengeTitle,
+      '来源账号挑战',
+    );
+    expect(
+      (await ThirtyDayChallengeRepository.load(username: 'bob')).challengeTitle,
+      'Bob 的挑战',
+    );
+  });
 }

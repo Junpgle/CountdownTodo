@@ -15,12 +15,12 @@ abstract final class ThirtyDayChallengeRepository {
   static const String _storageKey = 'thirty_day_self_challenge_v1';
   static final ValueNotifier<int> activityRevision = ValueNotifier<int>(0);
 
-  static Future<ThirtyDayChallengeState> load() async {
+  static Future<ThirtyDayChallengeState> load({String? username}) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(await _scopedKey());
+    final raw = prefs.getString(await _scopedKey(username));
     if (raw == null || raw.isEmpty) {
       final state = ThirtyDayChallengeState.initial();
-      await _save(prefs, state);
+      await _save(prefs, state, username: username);
       return state;
     }
 
@@ -30,14 +30,14 @@ abstract final class ThirtyDayChallengeRepository {
       );
     } catch (_) {
       final state = ThirtyDayChallengeState.initial();
-      await _save(prefs, state);
+      await _save(prefs, state, username: username);
       return state;
     }
   }
 
-  static Future<bool> hasSeenIntro() async {
+  static Future<bool> hasSeenIntro({String? username}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(await _scopedIntroKey()) ?? false;
+    return prefs.getBool(await _scopedIntroKey(username)) ?? false;
   }
 
   static Future<void> markIntroSeen() async {
@@ -48,21 +48,22 @@ abstract final class ThirtyDayChallengeRepository {
     activityRevision.value++;
   }
 
-  static Future<bool> hasStarted() async {
+  static Future<bool> hasStarted({String? username}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(await _scopedStartedKey()) ??
-        prefs.getBool(await _scopedIntroKey()) ??
+    return prefs.getBool(await _scopedStartedKey(username)) ??
+        prefs.getBool(await _scopedIntroKey(username)) ??
         false;
   }
 
-  static Future<bool> isPaused() async {
+  static Future<bool> isPaused({String? username}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(await _scopedPausedKey()) ?? false;
+    return prefs.getBool(await _scopedPausedKey(username)) ?? false;
   }
 
-  static Future<bool> isHabitCenterPromotionDismissed() async {
+  static Future<bool> isHabitCenterPromotionDismissed({String? username}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(await _scopedHabitCenterPromotionKey()) ?? false;
+    return prefs.getBool(await _scopedHabitCenterPromotionKey(username)) ??
+        false;
   }
 
   static Future<void> dismissHabitCenterPromotion() async {
@@ -70,20 +71,23 @@ abstract final class ThirtyDayChallengeRepository {
     await prefs.setBool(await _scopedHabitCenterPromotionKey(), true);
   }
 
-  static Future<Map<String, dynamic>?> exportBackup() async {
-    if (!await hasStarted()) return null;
-    final state = await load();
+  static Future<Map<String, dynamic>?> exportBackup({String? username}) async {
+    if (!await hasStarted(username: username)) return null;
+    final state = await load(username: username);
     return {
       'state': state.toJson(),
-      'intro_seen': await hasSeenIntro(),
-      'started': await hasStarted(),
-      'paused': await isPaused(),
+      'intro_seen': await hasSeenIntro(username: username),
+      'started': await hasStarted(username: username),
+      'paused': await isPaused(username: username),
       'habit_center_promotion_dismissed':
-          await isHabitCenterPromotionDismissed(),
+          await isHabitCenterPromotionDismissed(username: username),
     };
   }
 
-  static Future<int> importBackup(Map<String, dynamic> bundle) async {
+  static Future<int> importBackup(
+    Map<String, dynamic> bundle, {
+    String? username,
+  }) async {
     final rawState = bundle['state'];
     if (rawState is! Map) {
       throw const FormatException('thirty_day_challenge.state 必须是对象');
@@ -101,15 +105,18 @@ abstract final class ThirtyDayChallengeRepository {
     }
 
     final prefs = await SharedPreferences.getInstance();
-    await _save(prefs, state);
+    await _save(prefs, state, username: username);
     await prefs.setBool(
-      await _scopedIntroKey(),
+      await _scopedIntroKey(username),
       bundle['intro_seen'] != false,
     );
-    await prefs.setBool(await _scopedStartedKey(), true);
-    await prefs.setBool(await _scopedPausedKey(), bundle['paused'] == true);
+    await prefs.setBool(await _scopedStartedKey(username), true);
     await prefs.setBool(
-      await _scopedHabitCenterPromotionKey(),
+      await _scopedPausedKey(username),
+      bundle['paused'] == true,
+    );
+    await prefs.setBool(
+      await _scopedHabitCenterPromotionKey(username),
       bundle['habit_center_promotion_dismissed'] == true,
     );
     activityRevision.value++;
@@ -223,32 +230,38 @@ abstract final class ThirtyDayChallengeRepository {
     activityRevision.value++;
   }
 
-  static Future<String> _scopedKey() async {
-    final username = await UserSessionStorage.getCurrentUsername();
-    return StorageKeyScope.scoped(_storageKey, username);
+  static Future<String> _scopedKey([String? username]) async {
+    final scope = username ?? await UserSessionStorage.getCurrentUsername();
+    return StorageKeyScope.scoped(_storageKey, scope);
   }
 
-  static Future<String> _scopedIntroKey() async {
-    return '${await _scopedKey()}_intro_seen';
+  static Future<String> _scopedIntroKey([String? username]) async {
+    return '${await _scopedKey(username)}_intro_seen';
   }
 
-  static Future<String> _scopedStartedKey() async {
-    return '${await _scopedKey()}_started';
+  static Future<String> _scopedStartedKey([String? username]) async {
+    return '${await _scopedKey(username)}_started';
   }
 
-  static Future<String> _scopedPausedKey() async {
-    return '${await _scopedKey()}_paused';
+  static Future<String> _scopedPausedKey([String? username]) async {
+    return '${await _scopedKey(username)}_paused';
   }
 
-  static Future<String> _scopedHabitCenterPromotionKey() async {
-    return '${await _scopedKey()}_habit_center_promotion_dismissed';
+  static Future<String> _scopedHabitCenterPromotionKey([
+    String? username,
+  ]) async {
+    return '${await _scopedKey(username)}_habit_center_promotion_dismissed';
   }
 
   static Future<void> _save(
     SharedPreferences prefs,
-    ThirtyDayChallengeState state,
-  ) async {
-    await prefs.setString(await _scopedKey(), jsonEncode(state.toJson()));
+    ThirtyDayChallengeState state, {
+    String? username,
+  }) async {
+    await prefs.setString(
+      await _scopedKey(username),
+      jsonEncode(state.toJson()),
+    );
   }
 
   static ThirtyDayChallengeTask? _findTask(
