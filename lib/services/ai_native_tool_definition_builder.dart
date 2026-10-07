@@ -364,7 +364,7 @@ class AiNativeToolDefinitionBuilder {
           (word) => AiTodoContextBuilder.isExplicitlyRequested(message, word),
         );
     final isTodoCategorizationRequest =
-        _matchesAny(message, ['分类', '归类', '分组', '分个类']) &&
+        _matchesAny(message, ['分类', '归类', '分组', '分个类', '移出文件夹']) &&
         _matchesAny(message, ['待办', '任务']) &&
         !_matchesAny(message, [
           '有哪些',
@@ -775,6 +775,7 @@ class AiNativeToolDefinitionBuilder {
     '分类',
     '归类',
     '分个类',
+    '移出文件夹',
     '拆分',
     '合并',
     '重排',

@@ -115,6 +115,28 @@ void main() {
       expect(parsed.single.type.name, 'categorizeTodo');
     });
 
+    test('待办移出文件夹时仍提供分类操作', () {
+      const request = '把这个待办移出文件夹';
+      final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(request);
+      final tools = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+        request,
+      );
+
+      expect(prompt, isNot(contains('本轮不生成结构化操作')));
+      expect(AiNativeToolDefinitionBuilder.allowedCdtActionNames(tools), {
+        'categorize_todo',
+      });
+
+      final readOnlyTools =
+          AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+            '查看待办文件夹',
+          );
+      expect(
+        AiNativeToolDefinitionBuilder.allowedCdtActionNames(readOnlyTools),
+        isEmpty,
+      );
+    });
+
     test('offers finance updates for correction and adjustment wording', () {
       for (final request in [
         '把上周那笔账单更正为30元',
