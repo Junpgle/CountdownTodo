@@ -1,6 +1,6 @@
 # Project architecture
 
-Last reconciled with code: 2026-10-07. Flutter package version: **6.6.105**.
+Last reconciled with code: 2026-10-07. Flutter package version: **6.6.106**.
 
 ## Repository map
 
@@ -59,6 +59,9 @@ as part of normal client work.
   budgets, recurring rules, entry templates, loans and loan installments. They are
   a personal-only domain; `finance_v1` uses an independent cursor and never carries
   `team_uuid`.
+- Payment-method balances replay transactions and loan repayments after a dated
+  snapshot. A repayment recorded after a snapshot in the same minute takes effect
+  from its record update time, matching transaction balance handling.
 - Global search combines FTS5/FTS4/`LIKE` database search with feature-module and
   remote catalog adapters. See [`features/global-search.md`](features/global-search.md)
   for coverage, openable destinations, animation behavior and server limits.

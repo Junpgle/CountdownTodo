@@ -192,10 +192,20 @@ abstract final class FinanceRepository {
     final repayments = loanRepayments
         .where((item) {
           final paidAt = item.paidAt;
-          return item.paymentMethodUuid == paymentMethodUuid &&
-              paidAt != null &&
-              paidAt > snapshotAt &&
-              paidAt <= asOfAt;
+          if (paidAt == null || item.paymentMethodUuid != paymentMethodUuid) {
+            return false;
+          }
+          // Match transaction.balanceEventAt: when a repayment is recorded
+          // after a balance snapshot in the same minute, its paidAt can equal
+          // the snapshot time because the picker stores minute precision.
+          // Use the repayment edit time so the new cash movement is applied
+          // only from when the record became available.
+          final eventAt = paidAt <= snapshotAt &&
+                  paidAt ~/ 60000 == snapshotAt ~/ 60000 &&
+                  item.updatedAt > snapshotAt
+              ? item.updatedAt
+              : paidAt;
+          return eventAt > snapshotAt && eventAt <= asOfAt;
         })
         .fold<int>(0, (sum, item) => sum + item.paymentMinor);
     return snapshot.amountMinor + balanceChange - repayments;

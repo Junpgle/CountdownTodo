@@ -1046,6 +1046,53 @@ void main() {
     expect(changes, {'payment-card': 1500});
   });
 
+  test('快照同一分钟后录入的贷款还款按记录时间扣减余额', () {
+    final snapshotAt = DateTime(2026, 9, 15, 12).millisecondsSinceEpoch;
+    final repayment = FinanceLoanInstallment(
+      uuid: 'same-minute-repayment',
+      loanUuid: 'loan',
+      installmentIndex: 1,
+      dueDate: '2026-09-15',
+      paymentMinor: 5000,
+      principalMinor: 4500,
+      interestMinor: 500,
+      remainingPrincipalMinor: 50000,
+      isPaid: true,
+      paidAt: snapshotAt,
+      paymentMethodUuid: 'payment-card',
+      createdAt: snapshotAt - 60_000,
+      updatedAt: snapshotAt + 10_000,
+    );
+    final snapshot = FinanceBudget(
+      uuid: 'payment-card-snapshot',
+      monthKey: '2026-09',
+      paymentMethodUuid: 'payment-card',
+      amountMinor: 100000,
+      balanceSnapshotAt: snapshotAt,
+    );
+
+    expect(
+      FinanceRepository.paymentMethodBalanceAt(
+        snapshot: snapshot,
+        transactions: const [],
+        loanRepayments: [repayment],
+        loanInterestTransactionUuids: const {},
+        asOfAt: snapshotAt + 60_000,
+      ),
+      95000,
+    );
+    expect(
+      FinanceRepository.paymentMethodBalanceAt(
+        snapshot: snapshot,
+        transactions: const [],
+        loanRepayments: [repayment],
+        loanInterestTransactionUuids: const {},
+        asOfAt: snapshotAt + 5_000,
+      ),
+      100000,
+    );
+  });
+
   test('默认分类和付款方式使用稳定 ID', () {
     expect(
       FinanceDefaults.categories.map((item) => item['uuid']).toSet().length,
