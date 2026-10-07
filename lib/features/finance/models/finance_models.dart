@@ -2444,6 +2444,16 @@ String dateKey(DateTime date) =>
     '${date.month.toString().padLeft(2, '0')}-'
     '${date.day.toString().padLeft(2, '0')}';
 
+int financeDefaultOccurrenceTimezoneOffsetMinutes({
+  required DateTime? occurrence,
+  required DateTime now,
+}) {
+  if (occurrence == null || dateKey(occurrence) == dateKey(now)) {
+    return now.timeZoneOffset.inMinutes;
+  }
+  return occurrence.timeZoneOffset.inMinutes;
+}
+
 DateTime financeCalendarDayOffset(DateTime value, int days) {
   if (value.isUtc) {
     return DateTime.utc(value.year, value.month, value.day + days);

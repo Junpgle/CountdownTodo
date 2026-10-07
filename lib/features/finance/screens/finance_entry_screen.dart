@@ -84,10 +84,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
     final transaction = widget.transaction;
     _editingTransaction = transaction;
     _timezoneOffsetMinutes = transaction?.timezoneOffsetMinutes ??
-        DateTime.now().timeZoneOffset.inMinutes;
+        now.timeZoneOffset.inMinutes;
     final template = transaction == null ? widget.initialTemplate : null;
     final draft = transaction == null ? widget.initialDraft : null;
     _originalTransaction = widget.originalTransaction;
@@ -105,11 +106,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     }
     _date = transaction == null
         ? draft == null
-              ? DateTime.now()
+              ? now
               : dateFromKey(draft.transactionDate)
         : dateFromKey(transaction.transactionDate);
     if (transaction == null) {
-      final now = DateTime.now();
       _occurredAt = _defaultOccurrenceTimeFor(_date, now);
     } else {
       final occurred = transaction.occurrenceLocalTime;
@@ -120,7 +120,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _occurrenceTimeExplicit = _occurredAt != null;
     }
     if (transaction == null && _occurredAt != null) {
-      _timezoneOffsetMinutes = _occurredAt!.timeZoneOffset.inMinutes;
+      _timezoneOffsetMinutes = financeDefaultOccurrenceTimezoneOffsetMinutes(
+        occurrence: _occurredAt,
+        now: now,
+      );
     }
     _amountController = TextEditingController(
       text: transaction == null
@@ -670,7 +673,13 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 occurredAt.minute,
               );
         if (widget.transaction == null && _occurredAt != null) {
-          _timezoneOffsetMinutes = _occurredAt!.timeZoneOffset.inMinutes;
+          final isCurrentDefaultOccurrence =
+              dateKey(pickedDate) == dateKey(now) &&
+              occurredAt.hour == now.hour &&
+              occurredAt.minute == now.minute;
+          _timezoneOffsetMinutes = isCurrentDefaultOccurrence
+              ? now.timeZoneOffset.inMinutes
+              : _occurredAt!.timeZoneOffset.inMinutes;
         }
       }
     });
@@ -687,6 +696,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     );
     _dismissKeyboard();
     if (picked == null || !mounted) return;
+    final now = DateTime.now();
     setState(() {
       _occurredAt = DateTime(
         _date.year,
@@ -696,7 +706,13 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         picked.minute,
       );
       if (widget.transaction == null) {
-        _timezoneOffsetMinutes = _occurredAt!.timeZoneOffset.inMinutes;
+        final isCurrentDefaultOccurrence =
+            dateKey(_date) == dateKey(now) &&
+            picked.hour == now.hour &&
+            picked.minute == now.minute;
+        _timezoneOffsetMinutes = isCurrentDefaultOccurrence
+            ? now.timeZoneOffset.inMinutes
+            : _occurredAt!.timeZoneOffset.inMinutes;
       }
       _occurrenceTimeExplicit = true;
     });
@@ -735,8 +751,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _date = dateFromKey(draft.transactionDate);
       final now = DateTime.now();
       _occurredAt = _defaultOccurrenceTimeFor(_date, now);
-      _timezoneOffsetMinutes =
-          _occurredAt?.timeZoneOffset.inMinutes ?? now.timeZoneOffset.inMinutes;
+      _timezoneOffsetMinutes = financeDefaultOccurrenceTimezoneOffsetMinutes(
+        occurrence: _occurredAt,
+        now: now,
+      );
       _occurrenceTimeExplicit = false;
       _amountExpression = null;
       _amountController.text = formatFinanceAmount(

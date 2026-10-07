@@ -26,6 +26,46 @@ void main() {
     expect(dateKey(transaction.occurrenceLocalTime!), localDate);
   });
 
+  test(
+    '回拨小时的默认发生时刻保留当前实际偏移',
+    () {
+      final firstOccurrence = DateTime(2026, 11, 1, 1, 30);
+      final secondOccurrence = DateTime.fromMillisecondsSinceEpoch(
+        firstOccurrence.millisecondsSinceEpoch +
+            const Duration(hours: 1).inMilliseconds,
+      );
+      final reconstructed = DateTime(
+        secondOccurrence.year,
+        secondOccurrence.month,
+        secondOccurrence.day,
+        secondOccurrence.hour,
+        secondOccurrence.minute,
+      );
+
+      expect(
+        firstOccurrence.timeZoneOffset,
+        isNot(secondOccurrence.timeZoneOffset),
+      );
+      expect(
+        financeDefaultOccurrenceTimezoneOffsetMinutes(
+          occurrence: reconstructed,
+          now: secondOccurrence,
+        ),
+        secondOccurrence.timeZoneOffset.inMinutes,
+      );
+      final futureOccurrence = DateTime(2027, 2, 15, 9);
+      expect(
+        financeDefaultOccurrenceTimezoneOffsetMinutes(
+          occurrence: futureOccurrence,
+          now: secondOccurrence,
+        ),
+        futureOccurrence.timeZoneOffset.inMinutes,
+      );
+    },
+    skip: DateTime(2026, 11, 1, 1, 30).timeZoneOffset ==
+        DateTime(2026, 11, 1, 2, 30).timeZoneOffset,
+  );
+
   test('分期发生时刻使用记录时区，跨日期后仍按实际时刻扣减', () {
     final eventAt = DateTime.utc(2026, 10, 1, 10, 30).millisecondsSinceEpoch;
     final transaction = FinanceTransaction(
