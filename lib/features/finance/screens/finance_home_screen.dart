@@ -486,6 +486,19 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   Future<void> _deleteTransaction(FinanceTransaction transaction) async {
+    final hasPaymentMethod =
+        transaction.paymentMethodUuid?.trim().isNotEmpty == true;
+    final deleteDescription = switch (transaction.type) {
+      FinanceTransactionType.expense => hasPaymentMethod
+          ? '删除后，这笔支出不再计入统计，付款方式余额会相应增加。确认继续吗？'
+          : '删除后不会计入统计，确认继续吗？',
+      FinanceTransactionType.income => hasPaymentMethod
+          ? '删除后，这笔收入不再计入统计，付款方式余额会相应减少。确认继续吗？'
+          : '删除后不会计入统计，确认继续吗？',
+      FinanceTransactionType.refund => hasPaymentMethod
+          ? '删除后，这笔退款不再抵扣净支出，也不再增加该付款方式的余额。确认继续吗？'
+          : '删除后，这笔退款不再抵扣净支出。确认继续吗？',
+    };
     final deleteMode = transaction.isInstallment
         ? await showAppDialog<String>(
             context: context,
@@ -515,13 +528,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('删除账单？'),
-              content: Text(
-                transaction.type == FinanceTransactionType.refund
-                    ? transaction.paymentMethodUuid?.trim().isNotEmpty == true
-                          ? '删除后，这笔退款不再抵扣净支出，也不再增加该付款方式的余额。确认继续吗？'
-                          : '删除后，这笔退款不再抵扣净支出。确认继续吗？'
-                    : '删除后不会计入统计，确认继续吗？',
-              ),
+              content: Text(deleteDescription),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),

@@ -3464,6 +3464,68 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('删除关联付款方式的支出或收入会提示余额变化', (tester) async {
+    await _seed(tester);
+    final today = dateKey(DateTime.now());
+    await tester.runAsync(() async {
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-expense-delete-balance-copy',
+          amountMinor: 1200,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: today,
+          merchant: '删除后余额增加的支出',
+        ),
+      );
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-income-delete-balance-copy',
+          type: FinanceTransactionType.income,
+          amountMinor: 2200,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: today,
+          merchant: '删除后余额减少的收入',
+        ),
+      );
+    });
+    await _pump(
+      tester,
+      const FinanceHomeScreen(username: 'default'),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+
+    for (final (merchant, warning) in [
+      (
+        '删除后余额增加的支出',
+        '删除后，这笔支出不再计入统计，付款方式余额会相应增加。确认继续吗？',
+      ),
+      (
+        '删除后余额减少的收入',
+        '删除后，这笔收入不再计入统计，付款方式余额会相应减少。确认继续吗？',
+      ),
+    ]) {
+      final row = find
+          .ancestor(of: find.text(merchant), matching: find.byType(ListTile))
+          .first;
+      await _tap(
+        tester,
+        find.descendant(
+          of: row,
+          matching: find.byType(PopupMenuButton<String>),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('删除').last);
+      await tester.pumpAndSettle();
+      expect(find.text(warning), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, '取消'));
+      await tester.pumpAndSettle();
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('跨时区账单显示记录时刻且编辑保存保留原始时间戳', (tester) async {
     final db = await _seed(tester);
     final transaction = FinanceTransaction(
