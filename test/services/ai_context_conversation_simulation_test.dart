@@ -364,6 +364,42 @@ void main() {
     expect(injection, isNot(contains('todo-thursday')));
   });
 
+  test('显式未来课程范围超过30天时不截断', () {
+    String dateText(DateTime date) => date.toIso8601String().substring(0, 10);
+
+    CourseItem course(String id, DateTime date) => CourseItem(
+      uuid: id,
+      courseName: id,
+      teacherName: '王老师',
+      date: dateText(date),
+      weekday: date.weekday,
+      startTime: 900,
+      endTime: 950,
+      weekIndex: 1,
+      roomName: 'A101',
+    );
+
+    for (final rangeDays in [60, 100]) {
+      final inRangeDate = now.add(Duration(days: rangeDays - 15));
+      final rangeEnd = now.add(Duration(days: rangeDays));
+      final injection = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '未来$rangeDays天课程安排',
+        courses: [
+          course('course-in-range', inRangeDate),
+          course('course-at-range-end', rangeEnd),
+        ],
+        timeLogs: const [],
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      );
+
+      expect(injection, contains('未来$rangeDays天范围'));
+      expect(injection, contains('course-in-range'));
+      expect(injection, isNot(contains('course-at-range-end')));
+    }
+  });
+
   test('与习惯或账单相关的省略日期续问继承上一轮范围', () {
     final habit = HabitAiContextService.buildContextInjectionSummary(
       userMessage: '那完成率呢？',

@@ -58,7 +58,7 @@ class AiTodoContextBuilder {
     r'大前天|大前日|前天|前日|昨天|昨日|今天|今日|明天|明日|大后天|大后日|后天|后日',
   );
   static final RegExp _futureDaysRangePattern = RegExp(
-    r'(?:未来|接下来)\s*(?:\d{1,2}|[一二两三四五六七八九十]{1,3})\s*(?:天|日)',
+    r'(?:未来|接下来)\s*(?:\d+|[一二两三四五六七八九十]{1,3})\s*(?:天|日)',
   );
 
   static AiContextDateRange? resolveCustomInjectionDateRange({
@@ -2061,12 +2061,12 @@ ${sections.join('\n')}
   }
 
   static int? _parseFutureDays(String text) {
-    final digitMatch = RegExp(r'(?:未来|接下来)\s*(\d{1,2})\s*(?:天|日)')
+    final digitMatch = RegExp(r'(?:未来|接下来)\s*(\d+)\s*(?:天|日)')
         .firstMatch(text);
     if (digitMatch != null) {
       final parsed = int.tryParse(digitMatch.group(1)!);
       if (parsed != null && parsed > 0) {
-        return parsed.clamp(1, 30);
+        return parsed;
       }
     }
 
@@ -2075,7 +2075,7 @@ ${sections.join('\n')}
     if (hanMatch != null) {
       final parsed = _parseSimpleChineseNumber(hanMatch.group(1)!);
       if (parsed != null && parsed > 0) {
-        return parsed.clamp(1, 30);
+        return parsed;
       }
     }
     return null;
