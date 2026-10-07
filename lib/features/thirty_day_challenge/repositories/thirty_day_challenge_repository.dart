@@ -172,6 +172,8 @@ abstract final class ThirtyDayChallengeRepository {
     final corruptBackupKey = await _scopedCorruptBackupKey(username);
     if (corruptStateBackup is String && corruptStateBackup.isNotEmpty) {
       await prefs.setString(corruptBackupKey, corruptStateBackup);
+    } else {
+      await prefs.remove(corruptBackupKey);
     }
     activityRevision.value++;
     return state.tasks.length;
