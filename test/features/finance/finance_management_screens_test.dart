@@ -4052,6 +4052,58 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('删除未来计划账单时说明不会影响当前余额', (tester) async {
+    await _seed(tester);
+    final clockNow = DateTime(2026, 10, 7, 12);
+    final dueAt = DateTime(2026, 10, 8, 9);
+    await tester.runAsync(
+      () => FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-future-expense-delete-copy',
+          amountMinor: 1200,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: dateKey(dueAt),
+          occurredAt: dueAt.millisecondsSinceEpoch,
+          createdAt: clockNow.millisecondsSinceEpoch,
+          merchant: '删除后余额不变的计划支出',
+        ),
+      ),
+    );
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(
+          of: find.text('删除后余额不变的计划支出'),
+          matching: find.byType(ListTile),
+        )
+        .first;
+    await _tap(
+      tester,
+      find.descendant(of: row, matching: find.byType(PopupMenuButton<String>)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await _waitFor(
+      tester,
+      () => find
+          .text('删除后，这笔计划支出会从未来账单中移除，不会影响当前付款方式余额。确认继续吗？')
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(
+      find.text('删除后，这笔计划支出会从未来账单中移除，不会影响当前付款方式余额。确认继续吗？'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(TextButton, '取消'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('删除付款方式已删除的账单不会承诺余额变化', (tester) async {
     await _seed(tester);
     await tester.runAsync(() async {

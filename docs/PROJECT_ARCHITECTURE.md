@@ -1,6 +1,6 @@
 # Project architecture
 
-Last reconciled with code: 2026-10-07. Flutter package version: **6.6.109**.
+Last reconciled with code: 2026-10-07. Flutter package version: **6.6.110**.
 
 ## Repository map
 
@@ -68,6 +68,8 @@ as part of normal client work.
   reconstruction, including repayments entered after a same-minute snapshot.
 - AI balance context uses the shared snapshot selection rules, including
   month-key tolerance for cross-timezone month-end snapshots.
+- Deleting a future finance entry describes its removal from planned cash flow
+  without implying an immediate change to the current payment balance.
 - Global search combines FTS5/FTS4/`LIKE` database search with feature-module and
   remote catalog adapters. See [`features/global-search.md`](features/global-search.md)
   for coverage, openable destinations, animation behavior and server limits.

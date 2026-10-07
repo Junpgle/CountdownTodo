@@ -532,6 +532,37 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     if (mounted) await _load();
   }
 
+  String _deleteTransactionDescription(
+    FinanceTransaction transaction, {
+    required bool hasPaymentMethod,
+  }) {
+    if (transaction.balanceEventAt() > widget.clock().millisecondsSinceEpoch) {
+      final label = switch (transaction.type) {
+        FinanceTransactionType.expense => '支出',
+        FinanceTransactionType.income => '收入',
+        FinanceTransactionType.refund => '退款',
+      };
+      final effect = hasPaymentMethod
+          ? '，不会影响当前付款方式余额'
+          : transaction.type == FinanceTransactionType.refund
+          ? '，不再抵扣净支出'
+          : '';
+      return '删除后，这笔计划$label会从未来账单中移除$effect。确认继续吗？';
+    }
+
+    return switch (transaction.type) {
+      FinanceTransactionType.expense => hasPaymentMethod
+          ? '删除后，这笔支出不再计入统计，付款方式余额会相应增加。确认继续吗？'
+          : '删除后不会计入统计，确认继续吗？',
+      FinanceTransactionType.income => hasPaymentMethod
+          ? '删除后，这笔收入不再计入统计，付款方式余额会相应减少。确认继续吗？'
+          : '删除后不会计入统计，确认继续吗？',
+      FinanceTransactionType.refund => hasPaymentMethod
+          ? '删除后，这笔退款不再抵扣净支出，也不再增加该付款方式的余额。确认继续吗？'
+          : '删除后，这笔退款不再抵扣净支出。确认继续吗？',
+    };
+  }
+
   Future<void> _deleteTransaction(FinanceTransaction transaction) async {
     if (transaction.type == FinanceTransactionType.expense) {
       final transactionsToCheck =
@@ -557,17 +588,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     final hasPaymentMethod = _paymentMethodMap.containsKey(
       transaction.paymentMethodUuid?.trim(),
     );
-    final deleteDescription = switch (transaction.type) {
-      FinanceTransactionType.expense => hasPaymentMethod
-          ? '删除后，这笔支出不再计入统计，付款方式余额会相应增加。确认继续吗？'
-          : '删除后不会计入统计，确认继续吗？',
-      FinanceTransactionType.income => hasPaymentMethod
-          ? '删除后，这笔收入不再计入统计，付款方式余额会相应减少。确认继续吗？'
-          : '删除后不会计入统计，确认继续吗？',
-      FinanceTransactionType.refund => hasPaymentMethod
-          ? '删除后，这笔退款不再抵扣净支出，也不再增加该付款方式的余额。确认继续吗？'
-          : '删除后，这笔退款不再抵扣净支出。确认继续吗？',
-    };
+    final deleteDescription = _deleteTransactionDescription(
+      transaction,
+      hasPaymentMethod: hasPaymentMethod,
+    );
     final installmentDeleteDescription = switch (transaction.type) {
       FinanceTransactionType.expense => hasPaymentMethod
           ? '删除后不会计入统计；已发生期次会相应增加付款方式余额，'
