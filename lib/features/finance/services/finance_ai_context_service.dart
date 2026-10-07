@@ -202,12 +202,42 @@ abstract final class FinanceAiContextService {
     r'(\d+|[零〇○一二三四五六七八九十廿百千]{1,4})\s*[日号]',
   );
 
+  static const _currentCalendarWeekWords = [
+    '本周',
+    '本星期',
+    '本礼拜',
+    '这周',
+    '这星期',
+    '这个星期',
+    '这礼拜',
+    '这个礼拜',
+  ];
+
+  static const _previousCalendarWeekWords = [
+    '上周',
+    '上一周',
+    '上星期',
+    '上一星期',
+    '上个星期',
+    '上一个星期',
+    '上礼拜',
+    '上个礼拜',
+    '上一个礼拜',
+  ];
+
+  static const _twoWeeksAgoCalendarWeekWords = [
+    '上上周',
+    '上上星期',
+    '上上个星期',
+    '上上礼拜',
+    '上上个礼拜',
+  ];
+
   static const _periodWords = [
     '本月',
     '这个月',
     '当月',
-    '本周',
-    '这周',
+    ..._currentCalendarWeekWords,
     '今天',
     '今日',
     'today',
@@ -225,14 +255,8 @@ abstract final class FinanceAiContextService {
     '后日',
     '大后天',
     '大后日',
-    '上上周',
-    '上上星期',
-    '上上个星期',
-    '上上礼拜',
-    '上上个礼拜',
-    '上周',
-    '上星期',
-    '上礼拜',
+    ..._twoWeeksAgoCalendarWeekWords,
+    ..._previousCalendarWeekWords,
     '上上月',
     '上上个月',
     '上上季度',
@@ -668,17 +692,17 @@ abstract final class FinanceAiContextService {
     if (_containsAny(text, ['明天', '明日', 'tomorrow'])) {
       return relativeDayRange(1);
     }
-    if (_containsAny(text, ['上上周', '上上星期', '上上个星期', '上上礼拜', '上上个礼拜'])) {
+    if (_containsAny(text, _twoWeeksAgoCalendarWeekWords)) {
       final thisMonday = _mondayOf(current);
       final end = financeCalendarDayOffset(thisMonday, -7);
       return FinanceDateRange(financeCalendarDayOffset(end, -7), end);
     }
-    if (_containsAny(text, ['上周', '上星期', '上礼拜'])) {
+    if (_containsAny(text, _previousCalendarWeekWords)) {
       final thisMonday = _mondayOf(current);
       final from = financeCalendarDayOffset(thisMonday, -7);
       return FinanceDateRange(from, thisMonday);
     }
-    if (text.contains('本周') || text.contains('这周') || text.contains('这星期')) {
+    if (_containsAny(text, _currentCalendarWeekWords)) {
       final from = _mondayOf(current);
       return FinanceDateRange(from, financeCalendarDayOffset(from, 7));
     }

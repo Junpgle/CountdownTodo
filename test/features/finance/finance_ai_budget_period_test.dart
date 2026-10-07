@@ -77,6 +77,72 @@ void main() {
     expect(context, contains('净支出 ¥60.00'));
   });
 
+  test('本星期和上个星期查询使用完整自然周', () async {
+    final now = DateTime(2026, 9, 2, 23, 59);
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'previous-calendar-week',
+        amountMinor: 400,
+        transactionDate: '2026-08-27',
+        occurredAt: DateTime(2026, 8, 27, 12).millisecondsSinceEpoch,
+      ),
+    );
+
+    final currentWeekContext = await FinanceAiContextService.buildContext(
+      userMessage: '本星期支出多少',
+      now: now,
+    );
+    final previousWeekContext = await FinanceAiContextService.buildContext(
+      userMessage: '上个星期支出了多少',
+      now: now,
+    );
+
+    for (final phrase in [
+      '本周',
+      '本星期',
+      '本礼拜',
+      '这周',
+      '这星期',
+      '这个星期',
+      '这礼拜',
+      '这个礼拜',
+    ]) {
+      final range = FinanceAiContextService.resolveDateRange(
+        '$phrase支出',
+        now: now,
+      );
+      expect(dateKey(range.from), '2026-08-31', reason: phrase);
+      expect(dateKey(range.to), '2026-09-07', reason: phrase);
+    }
+    expect(currentWeekContext, contains('[transactionId: august]'));
+    expect(currentWeekContext, contains('净支出 ¥60.00'));
+
+    for (final phrase in [
+      '上周',
+      '上一周',
+      '上星期',
+      '上一星期',
+      '上个星期',
+      '上一个星期',
+      '上礼拜',
+      '上个礼拜',
+      '上一个礼拜',
+    ]) {
+      final range = FinanceAiContextService.resolveDateRange(
+        '$phrase支出',
+        now: now,
+      );
+      expect(dateKey(range.from), '2026-08-24', reason: phrase);
+      expect(dateKey(range.to), '2026-08-31', reason: phrase);
+    }
+    expect(
+      previousWeekContext,
+      contains('[transactionId: previous-calendar-week]'),
+    );
+    expect(previousWeekContext, isNot(contains('[transactionId: august]')));
+    expect(previousWeekContext, contains('净支出 ¥4.00'));
+  });
+
   test('过去七天查询按滚动自然日跨月取账单', () async {
     final range = FinanceAiContextService.resolveDateRange(
       '过去7天支出',
