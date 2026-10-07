@@ -32,6 +32,7 @@ class FinanceTodaySection extends StatefulWidget {
 class _FinanceTodaySectionState extends State<FinanceTodaySection> {
   FinanceSummary _summary = const FinanceSummary();
   FinanceTransaction? _latestTransaction;
+  FinanceTransaction? _upcomingTransaction;
   bool _isLoading = true;
   bool _hasError = false;
   int _loadGeneration = 0;
@@ -84,6 +85,21 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
       final occurredTransactions = transactions
           .where((transaction) => transaction.balanceEventAt() <= asOfAt)
           .toList(growable: false);
+      final upcomingTransaction = transactions
+          .where((transaction) => transaction.balanceEventAt() > asOfAt)
+          .fold<FinanceTransaction?>(null, (upcoming, transaction) {
+            if (upcoming == null) return transaction;
+            final upcomingEventAt = upcoming.balanceEventAt();
+            final transactionEventAt = transaction.balanceEventAt();
+            if (transactionEventAt != upcomingEventAt) {
+              return transactionEventAt < upcomingEventAt
+                  ? transaction
+                  : upcoming;
+            }
+            return transaction.updatedAt > upcoming.updatedAt
+                ? transaction
+                : upcoming;
+          });
       final latestTransaction = occurredTransactions
           .fold<FinanceTransaction?>(null, (latest, transaction) {
         if (latest == null) return transaction;
@@ -100,6 +116,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
           asOfAt: asOfAt,
         );
         _latestTransaction = latestTransaction;
+        _upcomingTransaction = upcomingTransaction;
         _isLoading = false;
         _hasError = false;
       });
@@ -282,7 +299,21 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
         const SizedBox(height: 12),
         Divider(height: 1, thickness: 0.8, color: dividerColor),
         const SizedBox(height: 10),
-        if (_latestTransaction == null)
+        if (_latestTransaction != null)
+          _buildLatestTransaction(
+            _latestTransaction!,
+            colorScheme,
+            subColor,
+            eventLabel: '最近一笔',
+          )
+        else if (_upcomingTransaction != null)
+          _buildLatestTransaction(
+            _upcomingTransaction!,
+            colorScheme,
+            subColor,
+            eventLabel: '下一笔待发生',
+          )
+        else
           Row(
             children: [
               Icon(Icons.receipt_long_outlined, size: 18, color: subColor),
@@ -296,9 +327,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
                 ),
               ),
             ],
-          )
-        else
-          _buildLatestTransaction(_latestTransaction!, colorScheme, subColor),
+          ),
       ],
     );
   }
@@ -349,8 +378,9 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
   Widget _buildLatestTransaction(
     FinanceTransaction transaction,
     ColorScheme colorScheme,
-    Color subColor,
-  ) {
+    Color subColor, {
+    required String eventLabel,
+  }) {
     final title = transaction.merchant?.trim().isNotEmpty == true
         ? transaction.merchant!.trim()
         : transaction.type.label;
@@ -380,7 +410,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
               ),
               const SizedBox(height: 2),
               Text(
-                '最近一笔 · ${transaction.transactionDate}'
+                '$eventLabel · ${transaction.transactionDate}'
                 '${transaction.installmentLabel == null ? '' : ' · 分期 ${transaction.installmentLabel}'}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

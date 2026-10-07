@@ -1479,6 +1479,50 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('首页仅有未来账单时显示待发生记录而不是空账单提示', (tester) async {
+    final db = await _seed(tester);
+    var now = DateTime(2026, 10, 7, 12);
+    final futureAt = DateTime(2026, 10, 7, 20);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'today-section-only-future-expense',
+          amountMinor: 6500,
+          categoryUuid: 'test-food',
+          transactionDate: dateKey(futureAt),
+          occurredAt: futureAt.millisecondsSinceEpoch,
+          createdAt: now.millisecondsSinceEpoch,
+          merchant: '计划晚餐',
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceTodaySection(username: 'default', clock: () => now),
+      ),
+    );
+
+    expect(find.text('0 笔'), findsOneWidget);
+    expect(find.text('本月还没有账单，点击开始记录'), findsNothing);
+    expect(find.text('计划晚餐'), findsOneWidget);
+    expect(find.textContaining('下一笔待发生 · 2026-10-07'), findsOneWidget);
+    expect(find.text('-¥65.00'), findsOneWidget);
+
+    now = futureAt;
+    await tester.pump(const Duration(hours: 8, milliseconds: 2));
+    await _waitFor(
+      tester,
+      () => find.textContaining('最近一笔 · 2026-10-07').evaluate().isNotEmpty,
+    );
+
+    expect(find.textContaining('下一笔待发生'), findsNothing);
+    expect(find.text('本月还没有账单，点击开始记录'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('首页最近一笔按有效发生时刻排序旧账单', (tester) async {
     final db = await _seed(tester);
     final now = DateTime.now();
