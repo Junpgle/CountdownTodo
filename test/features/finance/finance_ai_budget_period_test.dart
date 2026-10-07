@@ -1255,4 +1255,36 @@ void main() {
     expect(context, contains('- 待发生 | [transactionId: next-quarter-plan]'));
     expect(context, isNot(contains('[transactionId: today]')));
   });
+
+  test('明年下一年和来年查询返回下一自然年的计划账单', () async {
+    final now = DateTime(2026, 10, 2, 12);
+    final futureAt = DateTime(2027, 5, 12, 12);
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'next-year-plan',
+        amountMinor: 4100,
+        transactionDate: '2027-05-12',
+        occurredAt: futureAt.millisecondsSinceEpoch,
+        createdAt: now.millisecondsSinceEpoch,
+        merchant: '明年计划账单',
+      ),
+    );
+
+    for (final phrase in ['明年', '下年', '下一年', '来年']) {
+      final range = FinanceAiContextService.resolveDateRange(
+        '$phrase支出',
+        now: now,
+      );
+      expect(dateKey(range.from), '2027-01-01', reason: phrase);
+      expect(dateKey(range.to), '2028-01-01', reason: phrase);
+    }
+
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '明年支出有哪些',
+      now: now,
+    );
+    expect(context, contains('查询范围: 2027-01-01 至 2027-12-31'));
+    expect(context, contains('- 待发生 | [transactionId: next-year-plan]'));
+    expect(context, isNot(contains('[transactionId: today]')));
+  });
 }

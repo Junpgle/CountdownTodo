@@ -319,6 +319,10 @@ abstract final class FinanceAiContextService {
     '最近',
     '今年',
     '本年',
+    '明年',
+    '下年',
+    '下一年',
+    '来年',
     '去年',
     '上一年',
     '前年',
@@ -884,6 +888,10 @@ abstract final class FinanceAiContextService {
         currentQuarterStart,
         DateTime(currentQuarterStart.year, currentQuarterStart.month + 3),
       );
+    }
+    if (_containsAny(text, ['明年', '下年', '下一年', '来年'])) {
+      final from = DateTime(current.year + 1);
+      return FinanceDateRange(from, DateTime(current.year + 2));
     }
     if (text.contains('前年')) {
       final from = DateTime(current.year - 2);
