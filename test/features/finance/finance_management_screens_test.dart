@@ -3397,11 +3397,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '删除'));
     await _waitFor(
       tester,
       () => find.text('该账单已关联退款，请先处理退款记录').evaluate().isNotEmpty,
     );
+    expect(find.text('该账单已关联退款，请先处理退款记录'), findsOneWidget);
+    expect(find.text('删除账单？'), findsNothing);
     expect(tester.takeException(), isNull);
     final rows = (await tester.runAsync(
       () => db.query(
@@ -3411,6 +3412,67 @@ void main() {
       ),
     ))!;
     expect(rows.single['is_deleted'], 0);
+  });
+
+  testWidgets('删除整组分期前会检查其他期次关联的退款', (tester) async {
+    final db = await _seed(tester);
+    late List<FinanceTransaction> installments;
+    await tester.runAsync(() async {
+      installments = await FinanceStorage.saveInstallmentPlan(
+        transaction: FinanceTransaction(
+          uuid: 'ui-installment-refund-first',
+          amountMinor: 1200,
+          transactionDate: dateKey(DateTime.now()),
+          merchant: '其他期次有关联退款的分期',
+        ),
+        totalAmountMinor: 3600,
+        installmentCount: 3,
+        startDate: DateTime.now(),
+      );
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-installment-refund-linked',
+          type: FinanceTransactionType.refund,
+          amountMinor: 100,
+          transactionDate: installments[1].transactionDate,
+          merchant: '第二期退款',
+          relatedTransactionUuid: installments[1].uuid,
+        ),
+      );
+    });
+    await _pump(
+      tester,
+      const FinanceHomeScreen(username: 'default'),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(
+          of: find.text('其他期次有关联退款的分期'),
+          matching: find.byType(ListTile),
+        )
+        .first;
+    await _tap(
+      tester,
+      find.descendant(of: row, matching: find.byType(PopupMenuButton<String>)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await _waitFor(
+      tester,
+      () => find.text('该账单已关联退款，请先处理退款记录').evaluate().isNotEmpty,
+    );
+    expect(find.text('删除分期账单？'), findsNothing);
+    final groupRows = (await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'installment_group_uuid = ?',
+        whereArgs: [installments.first.installmentGroupUuid],
+      ),
+    ))!;
+    expect(groupRows.where((item) => item['is_deleted'] == 0), hasLength(3));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('删除退款前明确提示净支出和账户余额影响', (tester) async {
@@ -3519,6 +3581,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('删除').last);
       await tester.pumpAndSettle();
+      await _waitFor(tester, () => find.text(warning).evaluate().isNotEmpty);
       expect(find.text(warning), findsOneWidget);
       await tester.tap(find.widgetWithText(TextButton, '取消'));
       await tester.pumpAndSettle();
@@ -3563,6 +3626,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除'));
     await tester.pumpAndSettle();
+    await _waitFor(
+      tester,
+      () => find
+          .text(
+            '这是第 1/3 期。删除后不会计入统计；已发生期次会相应增加付款方式余额，未发生期次会从未来计划中移除。',
+          )
+          .evaluate()
+          .isNotEmpty,
+    );
 
     expect(
       find.text(

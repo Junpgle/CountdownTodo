@@ -486,6 +486,27 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   }
 
   Future<void> _deleteTransaction(FinanceTransaction transaction) async {
+    if (transaction.type == FinanceTransactionType.expense) {
+      final transactionsToCheck =
+          transaction.isInstallment && transaction.installmentGroupUuid != null
+          ? await FinanceRepository.getInstallmentGroup(
+              transaction.installmentGroupUuid!,
+            )
+          : [transaction];
+      for (final item in transactionsToCheck) {
+        final refunds = await FinanceRepository.getRefundsForTransaction(
+          item.uuid,
+        );
+        if (refunds.isEmpty) continue;
+        if (!mounted) return;
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('该账单已关联退款，请先处理退款记录')),
+        );
+        return;
+      }
+    }
+    if (!mounted) return;
     final hasPaymentMethod =
         transaction.paymentMethodUuid?.trim().isNotEmpty == true;
     final deleteDescription = switch (transaction.type) {
