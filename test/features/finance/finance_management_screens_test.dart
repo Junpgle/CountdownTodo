@@ -2259,6 +2259,90 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('账单搜索支持列表显示的中文日期', (tester) async {
+    final now = DateTime(2026, 9, 5, 12);
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'ledger-search-date-match',
+        amountMinor: 3000,
+        transactionDate: '2026-09-04',
+        merchant: '日期匹配账单',
+      ),
+      FinanceTransaction(
+        uuid: 'ledger-search-date-other',
+        amountMinor: 1500,
+        transactionDate: '2026-09-05',
+        merchant: '其他日期账单',
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          clock: () => now,
+          transactions: transactions,
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '9月4日',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('日期匹配账单'), findsOneWidget);
+    expect(find.text('其他日期账单'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('账单搜索按中文月份精确筛选', (tester) async {
+    final now = DateTime(2026, 11, 5, 12);
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'ledger-search-january',
+        amountMinor: 3000,
+        transactionDate: '2026-01-04',
+        merchant: '一月账单',
+      ),
+      FinanceTransaction(
+        uuid: 'ledger-search-november',
+        amountMinor: 1500,
+        transactionDate: '2026-11-04',
+        merchant: '十一月账单',
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          clock: () => now,
+          transactions: transactions,
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '1月',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('一月账单'), findsOneWidget);
+    expect(find.text('十一月账单'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('账单被删除后打开的详情停止显示旧记录', (tester) async {
     final db = await _seed(tester);
     final transaction = FinanceTransaction(

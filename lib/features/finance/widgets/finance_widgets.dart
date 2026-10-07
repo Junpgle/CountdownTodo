@@ -1117,9 +1117,9 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         transaction.note,
         categoryName,
         payment?.name,
-        transaction.transactionDate,
       ].whereType<String>().join(' ').toLowerCase();
-      return content.contains(query);
+      return content.contains(query) ||
+          _matchesFinanceLedgerDate(transaction.transactionDate, query);
     }).toList();
     final nowAt = widget.clock().millisecondsSinceEpoch;
     final dayGroups = _groupFinanceTransactionsByDay(filtered, asOfAt: nowAt);
@@ -1583,4 +1583,45 @@ String _formatFinanceDayLabel(String value) {
       ? ' ${weekdays[date.weekday]}'
       : '';
   return '${date.month}月${date.day}日$weekday';
+}
+
+final _financeFullChineseDatePattern = RegExp(
+  r'^(\d{4})年(\d{1,2})月(\d{1,2})日?$',
+);
+final _financeChineseYearMonthPattern = RegExp(r'^(\d{4})年(\d{1,2})月$');
+final _financeChineseMonthDayPattern = RegExp(r'^(\d{1,2})月(\d{1,2})日?$');
+final _financeChineseMonthPattern = RegExp(r'^(\d{1,2})月$');
+final _financeSlashMonthDayPattern = RegExp(r'^(\d{1,2})/(\d{1,2})$');
+
+bool _matchesFinanceLedgerDate(String value, String query) {
+  if (value.contains(query)) return true;
+  if (!isFinanceDateKey(value)) return false;
+  final date = DateTime.parse(value);
+
+  final fullChineseDate = _financeFullChineseDatePattern.firstMatch(query);
+  if (fullChineseDate != null) {
+    return int.parse(fullChineseDate.group(1)!) == date.year &&
+        int.parse(fullChineseDate.group(2)!) == date.month &&
+        int.parse(fullChineseDate.group(3)!) == date.day;
+  }
+  final chineseYearMonth = _financeChineseYearMonthPattern.firstMatch(query);
+  if (chineseYearMonth != null) {
+    return int.parse(chineseYearMonth.group(1)!) == date.year &&
+        int.parse(chineseYearMonth.group(2)!) == date.month;
+  }
+  final chineseMonthDay = _financeChineseMonthDayPattern.firstMatch(query);
+  if (chineseMonthDay != null) {
+    return int.parse(chineseMonthDay.group(1)!) == date.month &&
+        int.parse(chineseMonthDay.group(2)!) == date.day;
+  }
+  final chineseMonth = _financeChineseMonthPattern.firstMatch(query);
+  if (chineseMonth != null) {
+    return int.parse(chineseMonth.group(1)!) == date.month;
+  }
+  final slashMonthDay = _financeSlashMonthDayPattern.firstMatch(query);
+  if (slashMonthDay != null) {
+    return int.parse(slashMonthDay.group(1)!) == date.month &&
+        int.parse(slashMonthDay.group(2)!) == date.day;
+  }
+  return _formatFinanceDayLabel(value).toLowerCase().contains(query);
 }
