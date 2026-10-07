@@ -558,6 +558,46 @@ void main() {
       );
     });
 
+    test('编辑分期组时不把未来账单的无效旧时刻重新带回整组', () async {
+      final now = DateTime.now();
+      final createdAt = now.subtract(const Duration(days: 2));
+      final staleOccurrence = createdAt.subtract(const Duration(hours: 1));
+      final futureDate = DateTime(now.year, now.month, now.day + 1);
+      final original = FinanceTransaction(
+        uuid: 'future-installment-stale-time-first',
+        amountMinor: 1000,
+        paymentMethodUuid: _cash,
+        transactionDate: dateKey(futureDate),
+        occurredAt: staleOccurrence.millisecondsSinceEpoch,
+        timezoneOffsetMinutes: now.timeZoneOffset.inMinutes,
+        installmentGroupUuid: 'future-installment-stale-time-group',
+        installmentIndex: 1,
+        installmentCount: 2,
+        installmentTotalMinor: 2000,
+        createdAt: createdAt.millisecondsSinceEpoch,
+        updatedAt: createdAt.millisecondsSinceEpoch,
+      );
+      await db.insert('finance_transactions', original.toMap());
+
+      final edited = FinanceTransaction.fromMap(original.toMap())
+        ..occurredAt = null;
+      final saved = await FinanceStorage.saveInstallmentPlan(
+        transaction: edited,
+        original: original,
+        totalAmountMinor: 3000,
+        installmentCount: 3,
+        startDate: futureDate,
+        existingInstallments: [original],
+      );
+
+      expect(saved, hasLength(3));
+      expect(saved.map((item) => item.occurredAt), everyElement(isNull));
+      expect(
+        saved.map((item) => item.balanceEventAt()),
+        everyElement(greaterThanOrEqualTo(futureDate.millisecondsSinceEpoch)),
+      );
+    });
+
     test(
       '新建分期组跨夏令时后每期保留当地发生时刻',
       () async {

@@ -505,8 +505,19 @@ abstract final class FinanceStorage {
             );
       for (final allocation in allocations) {
         final old = existingByIndex[allocation.index];
-        final previousOccurrence =
-            old?.occurrenceLocalTime ?? transaction.occurrenceLocalTime;
+        final oldOccurrence = old?.occurrenceLocalTime;
+        DateTime? previousOccurrence;
+        if (old != null &&
+            oldOccurrence != null &&
+            dateKey(oldOccurrence) == old.transactionDate) {
+          previousOccurrence = oldOccurrence;
+        } else {
+          final transactionOccurrence = transaction.occurrenceLocalTime;
+          previousOccurrence = transactionOccurrence != null &&
+                  dateKey(transactionOccurrence) == transaction.transactionDate
+              ? transactionOccurrence
+              : null;
+        }
         final localOccurrence = previousOccurrence == null
             ? null
             : DateTime(
