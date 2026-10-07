@@ -1110,7 +1110,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
       final category = categories[transaction.categoryUuid];
       final payment = paymentMethods[transaction.paymentMethodUuid];
       final categoryName = category == null
-          ? null
+          ? '未分类'
           : financeCategoryDisplayName(category, categories.values);
       final content = [
         transaction.merchant,
