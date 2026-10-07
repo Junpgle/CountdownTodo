@@ -1128,4 +1128,26 @@ void main() {
       expect(context, contains('净支出 ¥4.00'));
     }
   });
+
+  test('前一个季度和前一季度查询上一完整自然季度', () async {
+    final now = DateTime(2026, 10, 2, 12);
+    for (final phrase in ['前一个季度', '前一季度']) {
+      final range = FinanceAiContextService.resolveDateRange(
+        '$phrase支出',
+        now: now,
+      );
+      final context = await FinanceAiContextService.buildContext(
+        userMessage: '$phrase支出多少',
+        now: now,
+      );
+
+      expect(dateKey(range.from), '2026-07-01', reason: phrase);
+      expect(dateKey(range.to), '2026-10-01', reason: phrase);
+      expect(context, contains('查询范围: 2026-07-01 至 2026-09-30'));
+      expect(context, contains('[transactionId: august]'));
+      expect(context, contains('[transactionId: earlier-september]'));
+      expect(context, contains('[transactionId: today]'));
+      expect(context, contains('净支出 ¥60.00'));
+    }
+  });
 }

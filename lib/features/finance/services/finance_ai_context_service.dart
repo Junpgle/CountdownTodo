@@ -317,6 +317,8 @@ abstract final class FinanceAiContextService {
     '上个季度',
     '上一季度',
     '上一个季度',
+    '前一季度',
+    '前一个季度',
   ];
 
   static const _summaryNouns = [
@@ -836,6 +838,8 @@ abstract final class FinanceAiContextService {
       '上个季度',
       '上一季度',
       '上一个季度',
+      '前一季度',
+      '前一个季度',
     ])) {
       final from = DateTime(
         currentQuarterStart.year,
