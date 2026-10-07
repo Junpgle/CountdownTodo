@@ -1330,7 +1330,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         : categoryName ?? transaction.type.label;
     final subtitleParts = <String>[
       if (transaction.balanceEventAt() > asOfAt) '待发生',
-      if (category != null) '${category.icon} $categoryName',
+      category == null ? '未分类' : '${category.icon} $categoryName',
       if (payment != null) '${payment.icon} ${payment.name}',
       if (transaction.installmentLabel != null)
         '分期 ${transaction.installmentLabel}',
