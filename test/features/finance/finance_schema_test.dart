@@ -172,6 +172,25 @@ void main() {
       );
     });
 
+    test('备份恢复保留账单原始来源', () async {
+      for (final source in FinanceEntrySource.values) {
+        final transaction = FinanceTransaction(
+          uuid: 'backup-source-${source.name}',
+          amountMinor: 100,
+          transactionDate: '2026-09-10',
+          source: source,
+        );
+        final result = await FinanceStorage.importBundle({
+          'transactions': [transaction.toMap()],
+        });
+        expect(result['imported'], 1);
+        expect(
+          (await FinanceStorage.getTransaction(transaction.uuid))!.source,
+          source,
+        );
+      }
+    });
+
     test('旧客户端同步备注不会把余额快照时间前移', () async {
       final now = DateTime.now();
       final month = DateTime(now.year, now.month - 1);

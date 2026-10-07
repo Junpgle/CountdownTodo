@@ -3065,7 +3065,6 @@ abstract final class FinanceStorage {
         item.installmentGroupUuid,
         remap,
       );
-      item.source = FinanceEntrySource.import;
       if (!_isValidImportedTransaction(map, item)) {
         skipped++;
         continue;
