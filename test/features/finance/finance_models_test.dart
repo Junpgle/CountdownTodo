@@ -206,6 +206,31 @@ void main() {
     );
   });
 
+  test('未来账单的旧发生时刻早于录入时间时按计划日期计入余额', () {
+    final createdAt = DateTime.utc(2026, 10, 1, 16, 30);
+    final staleOccurrence = createdAt.subtract(const Duration(hours: 1));
+    final localCreatedAt = DateTime.fromMillisecondsSinceEpoch(
+      createdAt.millisecondsSinceEpoch,
+    );
+    final futureDate = DateTime(
+      localCreatedAt.year,
+      localCreatedAt.month,
+      localCreatedAt.day + 1,
+    );
+    final transaction = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: dateKey(futureDate),
+      occurredAt: staleOccurrence.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: 0,
+      createdAt: createdAt.millisecondsSinceEpoch,
+    );
+
+    expect(
+      transaction.balanceEventAt(snapshotAt: createdAt.millisecondsSinceEpoch),
+      dateFromKey(dateKey(futureDate)).millisecondsSinceEpoch,
+    );
+  });
+
   test('已录入的历史日期账单不回溯修改付款余额', () {
     final createdAt = DateTime.utc(2026, 10, 2);
     final transaction = FinanceTransaction(

@@ -1566,10 +1566,14 @@ class FinanceTransaction {
           Duration(minutes: timezoneOffsetMinutes),
         ),
       );
-      if (transactionDate.compareTo(createdDate) <= 0) {
+      final occurrencePredatesEntry =
+          timestamp != null && timestamp < createdAt;
+      if (transactionDate.compareTo(createdDate) <= 0 ||
+          occurrencePredatesEntry) {
         // A mismatched legacy occurrence timestamp should not rewrite an
         // account's balance before the row was entered. A future ledger day
-        // still uses its known occurrence time so it is not counted early.
+        // may use its known occurrence time only if it is not older than the
+        // row itself; stale timestamps must not make a planned bill apply now.
         eventAt = createdAt > dateStartAt ? createdAt : dateStartAt;
       }
     }
