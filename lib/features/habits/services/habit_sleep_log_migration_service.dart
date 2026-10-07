@@ -173,11 +173,10 @@ abstract final class HabitSleepLogMigrationService {
     if (hasImportedTimeLogCheckIns(existingCheckIns)) return null;
 
     final current = now ?? DateTime.now();
-    final cutoff = DateTime(
-      current.year,
-      current.month,
-      current.day,
-    ).subtract(Duration(days: lookbackDays));
+    final cutoff = HabitRuleResolver.addCalendarDays(
+      DateTime(current.year, current.month, current.day),
+      -lookbackDays,
+    );
 
     // 同一晚可能存在多段重复日志，只保留持续时间最长的一段，避免一次睡眠
     // 被重复计入统计。午休等白天记录也不用于推导早睡早起目标。

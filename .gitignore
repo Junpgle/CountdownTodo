@@ -199,6 +199,7 @@ todo.md
 /test/features/habits/*
 !/test/features/habits/habit_models_test.dart
 !/test/features/habits/habit_day_loader_test.dart
+!/test/features/habits/habit_sleep_log_cutoff_test.dart
 !/test/features/habits/habit_progress_calculator_test.dart
 !/test/features/habits/habit_rule_resolver_test.dart
 !/test/features/habits/habit_streak_service_test.dart
