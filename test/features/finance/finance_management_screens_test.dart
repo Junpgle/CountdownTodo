@@ -13,6 +13,7 @@ import 'package:countdown_todo/features/finance/screens/finance_transaction_deta
 import 'package:countdown_todo/features/finance/screens/finance_trash_screen.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/features/finance/services/finance_repository.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_amount_calculator.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_catalog_editor.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_management_widgets.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_today_section.dart';
@@ -383,6 +384,35 @@ void main() {
     expect(rows, hasLength(1));
     expect(rows!.single['installment_group_uuid'], isNull);
     expect(rows.single['installment_count'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('计算器拒绝超过金额安全上限的结果并保留边界值', (tester) async {
+    Future<void> pumpCalculator(String expression) => tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FinanceAmountCalculatorSheet(
+            key: ValueKey(expression),
+            initialExpression: expression,
+          ),
+        ),
+      ),
+    );
+
+    await pumpCalculator('90071992547409.92');
+    var useResultButton = tester.widget<FilledButton>(
+      _key('finance-calculator-use-result'),
+    );
+    expect(useResultButton.onPressed, isNull);
+    await _tap(tester, _key('finance-calculator-key-equals'));
+    expect(find.text('结果超过可记录金额上限'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await pumpCalculator('90071992547409.91');
+    useResultButton = tester.widget<FilledButton>(
+      _key('finance-calculator-use-result'),
+    );
+    expect(useResultButton.onPressed, isNotNull);
     expect(tester.takeException(), isNull);
   });
 
