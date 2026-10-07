@@ -34,7 +34,7 @@ abstract final class HabitStreakService {
       rule.dayBoundaryMinute,
     );
     final lookback = lookbackDays ?? _defaultLookbackDays(rule.periodType);
-    final from = today.subtract(Duration(days: lookback));
+    final from = HabitRuleResolver.addCalendarDays(today, -lookback);
 
     final days = await HabitProgressCalculator.computeRange(
       habit: habit,

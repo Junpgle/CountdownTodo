@@ -148,7 +148,7 @@ abstract final class HabitDayLoader {
     final rule = HabitRuleResolver.effectiveRule(rules, calendarDate) ??
         HabitRuleResolver.effectiveRule(
           rules,
-          calendarDate.subtract(const Duration(days: 1)),
+          HabitRuleResolver.addCalendarDays(calendarDate, -1),
         );
     return HabitRuleResolver.logicalDateFor(
       date,

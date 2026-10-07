@@ -126,6 +126,18 @@ void main() {
       );
       expect(HabitRuleResolver.isPlannedDay(rule, DateTime(2026, 8, 1)), true);
     });
+
+    test('自定义间隔跨夏令时仍按日历天计算', () {
+      final rule = HabitGoalRuleRevision(
+        habitUuid: habitUuid,
+        periodType: HabitPeriodType.custom,
+        customIntervalDays: 2,
+        effectiveFromDate: '2026-03-07',
+      );
+
+      expect(HabitRuleResolver.isPlannedDay(rule, DateTime(2026, 3, 9)), true);
+      expect(HabitRuleResolver.isPlannedDay(rule, DateTime(2026, 3, 10)), false);
+    });
   });
 
   group('HabitRuleResolver 周期计算', () {
@@ -243,6 +255,45 @@ void main() {
           true,
         );
       }
+    });
+
+    test('跨夏令时周期仍在本地午夜结束', () {
+      expect(
+        HabitRuleResolver.periodEndExclusive(
+          rule(HabitPeriodType.daily),
+          DateTime(2026, 3, 8),
+        ),
+        DateTime(2026, 3, 9),
+      );
+      expect(
+        HabitRuleResolver.periodEndExclusive(
+          rule(HabitPeriodType.weekly),
+          DateTime(2026, 3, 4),
+        ),
+        DateTime(2026, 3, 9),
+      );
+
+      final boundaryRule = HabitGoalRuleRevision(
+        habitUuid: 'h1',
+        periodType: HabitPeriodType.daily,
+        dayBoundaryMinute: 4 * 60,
+      );
+      expect(
+        HabitRuleResolver.isPeriodFinished(
+          boundaryRule,
+          DateTime(2026, 3, 7),
+          DateTime(2026, 3, 8, 3, 59),
+        ),
+        false,
+      );
+      expect(
+        HabitRuleResolver.isPeriodFinished(
+          boundaryRule,
+          DateTime(2026, 3, 7),
+          DateTime(2026, 3, 8, 4),
+        ),
+        true,
+      );
     });
   });
 

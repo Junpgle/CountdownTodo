@@ -647,7 +647,7 @@ abstract final class HabitRepository {
   static String _previousDay(String dayKey) {
     final date = HabitRuleResolver.parseDayKey(dayKey);
     if (date == null) return dayKey;
-    final prev = date.subtract(const Duration(days: 1));
+    final prev = HabitRuleResolver.addCalendarDays(date, -1);
     return HabitRuleResolver.dayKey(prev);
   }
 

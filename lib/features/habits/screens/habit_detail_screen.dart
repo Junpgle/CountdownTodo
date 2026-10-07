@@ -132,7 +132,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
             ? await HabitProgressCalculator.computeRange(
                 habit: _goal,
                 rules: rules,
-                from: todayDate.subtract(const Duration(days: 29)),
+                from: HabitRuleResolver.addCalendarDays(todayDate, -29),
                 to: todayDate,
               )
             : const <HabitDayProgress>[];
@@ -141,8 +141,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         ? await HabitSourceResolver.recordsForTags(
             tagUuids: _goal.sourceIds,
             from: DateTime(today.year, today.month, today.day),
-            to: DateTime(today.year, today.month, today.day)
-                .add(const Duration(days: 1)),
+            to: HabitRuleResolver.addCalendarDays(todayDate, 1),
           )
         : const <PomodoroRecord>[];
 

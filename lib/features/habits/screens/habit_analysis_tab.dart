@@ -119,7 +119,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
   ) async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final monday = today.subtract(Duration(days: today.weekday - 1));
+    final monday = HabitRuleResolver.addCalendarDays(today, 1 - today.weekday);
     var planned = 0;
     var met = 0;
 
@@ -167,7 +167,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
   ) async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final from = today.subtract(const Duration(days: 29));
+    final from = HabitRuleResolver.addCalendarDays(today, -29);
     final trend = List<int>.filled(30, 0);
 
     for (final goal in goals) {
@@ -181,7 +181,8 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
       );
       for (final day in range) {
         if (!day.progress.isPlanned || !day.progress.goalMet) continue;
-        final index = day.logicalDate.difference(from).inDays;
+        final index =
+            HabitRuleResolver.calendarDayDifference(day.logicalDate, from);
         if (index >= 0 && index < 30) trend[index]++;
       }
     }
@@ -356,7 +357,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
         _monthTrend.isEmpty ? 0 : _monthTrend.reduce((a, b) => a > b ? a : b);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final first = today.subtract(const Duration(days: 29));
+    final first = HabitRuleResolver.addCalendarDays(today, -29);
     final firstWeekday = first.weekday; // 1 = Monday, 7 = Sunday
 
     // We arrange the 30 days into columns of 7 (Mon-Sun).

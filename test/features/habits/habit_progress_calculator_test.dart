@@ -3,6 +3,7 @@ import 'package:countdown_todo/features/habits/models/habit_goal.dart';
 import 'package:countdown_todo/features/habits/models/habit_goal_rule.dart';
 import 'package:countdown_todo/features/habits/models/habit_progress.dart';
 import 'package:countdown_todo/features/habits/services/habit_progress_calculator.dart';
+import 'package:countdown_todo/features/habits/services/habit_rule_resolver.dart';
 import 'package:countdown_todo/models.dart';
 import 'package:countdown_todo/services/pomodoro_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -116,6 +117,31 @@ void main() {
       expect(
         (await progressAt(DateTime(2026, 8, 6, 4))).progress.dayStatus,
         HabitDayStatus.missed,
+      );
+    });
+
+    test('跨夏令时的日期范围不漏天', () async {
+      final habit = goal(HabitSourceType.quantityCheckIn, []);
+      final rule = HabitGoalRuleRevision(
+        uuid: 'rule-1',
+        habitUuid: 'goal-1',
+        effectiveFromDate: '2026-01-01',
+        periodType: HabitPeriodType.daily,
+        targetValue: 1,
+      );
+      final results = await HabitProgressCalculator.computeRange(
+        habit: habit,
+        rules: [rule],
+        from: DateTime(2026, 3, 7),
+        to: DateTime(2026, 3, 9),
+        now: DateTime(2026, 3, 11),
+        checkIns: const [],
+      );
+
+      expect(results, hasLength(3));
+      expect(
+        results.map((result) => result.logicalDate.day),
+        [7, 8, 9],
       );
     });
 
@@ -454,7 +480,7 @@ void main() {
       );
       final from = DateTime(2021, 1, 1);
       final to = DateTime(2026, 8, 5);
-      final dayCount = to.difference(from).inDays + 1;
+      final dayCount = HabitRuleResolver.calendarDayDifference(to, from) + 1;
 
       final dayLevel = await HabitProgressCalculator.computeRange(
         habit: habit,
