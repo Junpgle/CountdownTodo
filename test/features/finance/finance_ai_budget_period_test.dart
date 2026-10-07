@@ -1151,6 +1151,87 @@ void main() {
     }
   });
 
+  test('明确季度账单查询按指定年份和季度过滤', () async {
+    final now = DateTime(2026, 10, 2, 12);
+    for (final item in [
+      FinanceTransaction(
+        uuid: 'explicit-2026-q2',
+        amountMinor: 500,
+        transactionDate: '2026-05-15',
+        occurredAt: DateTime(2026, 5, 15, 12).millisecondsSinceEpoch,
+      ),
+      FinanceTransaction(
+        uuid: 'explicit-2025-q3',
+        amountMinor: 700,
+        transactionDate: '2025-08-15',
+        occurredAt: DateTime(2025, 8, 15, 12).millisecondsSinceEpoch,
+      ),
+    ]) {
+      await FinanceStorage.saveTransaction(item);
+    }
+
+    final secondQuarterRange = FinanceAiContextService.resolveDateRange(
+      '2026年第2季度支出',
+      now: now,
+    );
+    final secondQuarterContext = await FinanceAiContextService.buildContext(
+      userMessage: '2026年第2季度支出多少',
+      now: now,
+    );
+    final previousYearRange = FinanceAiContextService.resolveDateRange(
+      '去年第三季度支出',
+      now: now,
+    );
+    final previousYearContext = await FinanceAiContextService.buildContext(
+      userMessage: '去年第三季度支出多少',
+      now: now,
+    );
+
+    expect(dateKey(secondQuarterRange.from), '2026-04-01');
+    expect(dateKey(secondQuarterRange.to), '2026-07-01');
+    expect(secondQuarterContext, contains('[transactionId: explicit-2026-q2]'));
+    expect(secondQuarterContext, isNot(contains('[transactionId: today]')));
+    expect(dateKey(previousYearRange.from), '2025-07-01');
+    expect(dateKey(previousYearRange.to), '2025-10-01');
+    expect(previousYearContext, contains('[transactionId: explicit-2025-q3]'));
+    expect(
+      previousYearContext,
+      isNot(contains('[transactionId: explicit-2026-q2]')),
+    );
+
+    for (final (phrase, expectedFrom, expectedTo) in [
+      ('2026年第二季度', '2026-04-01', '2026-07-01'),
+      ('今年第一季度', '2026-01-01', '2026-04-01'),
+      ('前年第四季度', '2024-10-01', '2025-01-01'),
+      ('明年第四季度', '2027-10-01', '2028-01-01'),
+    ]) {
+      final range = FinanceAiContextService.resolveDateRange(
+        '$phrase支出',
+        now: now,
+      );
+      expect(dateKey(range.from), expectedFrom, reason: phrase);
+      expect(dateKey(range.to), expectedTo, reason: phrase);
+      expect(
+        FinanceAiContextService.shouldInjectFor('$phrase支出多少'),
+        isTrue,
+        reason: phrase,
+      );
+    }
+
+    expect(FinanceAiContextService.shouldInjectFor('2026年第5季度支出多少'), isFalse);
+    expect(
+      FinanceAiContextService.shouldInjectFor('今年第二季度和去年第三季度支出对比'),
+      isFalse,
+    );
+    expect(
+      await FinanceAiContextService.buildContext(
+        userMessage: '2026年第5季度支出多少',
+        now: now,
+      ),
+      isEmpty,
+    );
+  });
+
   test('下个月账单查询返回计划账单而不是本月记录', () async {
     final now = DateTime(2026, 9, 2, 23, 59);
     final futureAt = DateTime(2026, 10, 5, 12);

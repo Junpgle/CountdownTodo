@@ -186,8 +186,9 @@ abstract final class FinanceAiContextService {
     r'(\d+|[零〇○一二三四五六七八九十廿两百千]{1,4})\s*年',
   );
   static final RegExp _quarterPeriodPattern = RegExp(
-    r'(?:(?:今年|去年|前年)\s*|\d{4}\s*年\s*)?'
-    r'(?:第\s*)?[一二三四1-4]\s*季度',
+    r'(?:(今年|本年|明年|下年|下一年|来年|去年|上一年|前一年|前年)\s*(?:的\s*)?'
+    r'|(\d{4})\s*年\s*(?:的\s*)?)?'
+    r'(?<![前上下一])(?:第\s*)?([零〇○一二三四五六七八九十\d]{1,4})\s*季度',
   );
   static final RegExp _halfYearPeriodPattern = RegExp(
     r'(?:(?:今年|本年|明年|下年|下一年|来年|去年|上一年|前一年|前年)\s*'
@@ -196,7 +197,7 @@ abstract final class FinanceAiContextService {
   );
   static final RegExp _numericYearPeriodPattern = RegExp(
     r'(?<!\d)\d{4}\s*年'
-    r'(?!\s*(?:\d{1,2}\s*月|(?:第\s*)?[一二三四1-4]\s*季度))',
+    r'(?!\s*(?:\d{1,2}\s*月|(?:第\s*)?[零〇○一二三四五六七八九十\d]{1,4}\s*季度))',
   );
   static final RegExp _numericYearMonthPattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](\d+)(?!\d|[-/.]\d)',
@@ -405,6 +406,7 @@ abstract final class FinanceAiContextService {
     final hasPeriod =
         _containsAny(text, _periodWords) ||
         hasExplicitMonth ||
+        _quarterPeriodPattern.hasMatch(text) ||
         _rollingDayPeriodPattern.hasMatch(text) ||
         _hasRollingMonthPeriod(text) ||
         _hasRollingYearPeriod(text);
@@ -712,6 +714,7 @@ abstract final class FinanceAiContextService {
         _hasRollingMonthPeriod(text) ||
         _hasRollingYearPeriod(text) ||
         _hasExplicitMonth(text) ||
+        _quarterPeriodPattern.hasMatch(text) ||
         _calendarDatePattern.hasMatch(text) ||
         _numericYearMonthPattern.hasMatch(text);
 
@@ -858,6 +861,8 @@ abstract final class FinanceAiContextService {
     }
     final explicitMonth = _resolveExplicitMonthRange(text, current);
     if (explicitMonth != null) return explicitMonth;
+    final explicitQuarter = _resolveExplicitQuarterRange(text, current);
+    if (explicitQuarter != null) return explicitQuarter;
     final isFirstHalfYear = _containsAny(text, ['上半年', '上半年度']);
     final isSecondHalfYear = _containsAny(text, ['下半年', '下半年度']);
     if (isFirstHalfYear || isSecondHalfYear) {
@@ -1247,6 +1252,10 @@ abstract final class FinanceAiContextService {
       final count = _parseRollingPeriodCount(rollingYear.group(1)!);
       if (count == null || count < 1 || count > 10) return true;
     }
+    for (final quarter in _quarterPeriodPattern.allMatches(text)) {
+      final number = _parseQuarterNumber(quarter.group(3)!);
+      if (number == null || number < 1 || number > 4) return true;
+    }
 
     for (final chineseMonth in _chineseMonthPattern.allMatches(text)) {
       final month = _parseMonthNumber(chineseMonth.group(3)!);
@@ -1497,6 +1506,29 @@ abstract final class FinanceAiContextService {
     return FinanceDateRange(from, DateTime(endYear, last.month + 1));
   }
 
+  static FinanceDateRange? _resolveExplicitQuarterRange(
+    String text,
+    DateTime current,
+  ) {
+    final match = _quarterPeriodPattern.firstMatch(text);
+    if (match == null) return null;
+    final quarter = _parseQuarterNumber(match.group(3)!);
+    if (quarter == null || quarter < 1 || quarter > 4) return null;
+    final numericYear = int.tryParse(match.group(2) ?? '');
+    final relativeYear = match.group(1);
+    final year =
+        numericYear ??
+        switch (relativeYear) {
+          '前年' => current.year - 2,
+          '去年' || '上一年' || '前一年' => current.year - 1,
+          '明年' || '下年' || '下一年' || '来年' => current.year + 1,
+          _ => current.year,
+        };
+    final month = (quarter - 1) * 3 + 1;
+    final from = DateTime(year, month);
+    return FinanceDateRange(from, DateTime(year, month + 3));
+  }
+
   static List<_ExplicitFinanceMonthToken> _explicitMonthTokens(
     String text,
     int currentYear,
@@ -1569,6 +1601,26 @@ abstract final class FinanceAiContextService {
       '十': 10,
       '十一': 11,
       '十二': 12,
+    }[value];
+  }
+
+  static int? _parseQuarterNumber(String value) {
+    final numeric = int.tryParse(value);
+    if (numeric != null) return numeric;
+    return const {
+      '零': 0,
+      '〇': 0,
+      '○': 0,
+      '一': 1,
+      '二': 2,
+      '三': 3,
+      '四': 4,
+      '五': 5,
+      '六': 6,
+      '七': 7,
+      '八': 8,
+      '九': 9,
+      '十': 10,
     }[value];
   }
 
