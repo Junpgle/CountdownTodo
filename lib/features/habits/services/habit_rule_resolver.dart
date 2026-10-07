@@ -152,8 +152,9 @@ abstract final class HabitRuleResolver {
     DateTime logicalDate,
     DateTime now,
   ) {
-    final end = periodEndExclusive(rule, logicalDate);
-    return now.isAfter(end);
+    final end = periodEndExclusive(rule, logicalDate)
+        .add(Duration(minutes: rule.dayBoundaryMinute));
+    return !now.isBefore(end);
   }
 
   /// 下一个周期起始日期。

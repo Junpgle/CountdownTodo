@@ -202,6 +202,46 @@ void main() {
         true,
       );
     });
+
+    test('周期结束时间遵循日期分界', () {
+      final cases = [
+        (
+          HabitPeriodType.daily,
+          DateTime(2026, 8, 5),
+          DateTime(2026, 8, 6, 3, 59),
+          DateTime(2026, 8, 6, 4),
+        ),
+        (
+          HabitPeriodType.weekly,
+          DateTime(2026, 8, 5),
+          DateTime(2026, 8, 10, 3, 59),
+          DateTime(2026, 8, 10, 4),
+        ),
+        (
+          HabitPeriodType.monthly,
+          DateTime(2026, 8, 5),
+          DateTime(2026, 9, 1, 3, 59),
+          DateTime(2026, 9, 1, 4),
+        ),
+      ];
+
+      for (final (type, logicalDate, justBeforeEnd, atEnd) in cases) {
+        final boundaryRule = HabitGoalRuleRevision(
+          habitUuid: 'h1',
+          periodType: type,
+          dayBoundaryMinute: 4 * 60,
+        );
+        expect(
+          HabitRuleResolver.isPeriodFinished(
+              boundaryRule, logicalDate, justBeforeEnd),
+          false,
+        );
+        expect(
+          HabitRuleResolver.isPeriodFinished(boundaryRule, logicalDate, atEnd),
+          true,
+        );
+      }
+    });
   });
 
   group('HabitRuleResolver.isTimePointMet', () {

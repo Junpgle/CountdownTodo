@@ -86,6 +86,39 @@ void main() {
       expect(results.first.progress.goalMet, false);
     });
 
+    test('日期分界前仍在进行，分界时才标记 missed', () async {
+      final habit = goal(HabitSourceType.quantityCheckIn, []);
+      final rule = HabitGoalRuleRevision(
+        uuid: 'rule-1',
+        habitUuid: 'goal-1',
+        effectiveFromDate: '2026-07-01',
+        periodType: HabitPeriodType.daily,
+        targetValue: 1,
+        dayBoundaryMinute: 4 * 60,
+      );
+
+      Future<HabitDayProgress> progressAt(DateTime currentTime) async {
+        final results = await HabitProgressCalculator.computeRange(
+          habit: habit,
+          rules: [rule],
+          from: DateTime(2026, 8, 5),
+          to: DateTime(2026, 8, 5),
+          now: currentTime,
+          checkIns: const [],
+        );
+        return results.first;
+      }
+
+      expect(
+        (await progressAt(DateTime(2026, 8, 6, 3, 59))).progress.dayStatus,
+        HabitDayStatus.inProgress,
+      );
+      expect(
+        (await progressAt(DateTime(2026, 8, 6, 4))).progress.dayStatus,
+        HabitDayStatus.missed,
+      );
+    });
+
     test('已达标的历史日期为 met', () async {
       final habit = goal(HabitSourceType.quantityCheckIn, []);
       final rule = dailyRule(target: 2000);
