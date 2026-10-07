@@ -1,6 +1,6 @@
 # Project architecture
 
-Last reconciled with code: 2026-09-26. Flutter package version: **6.4.1**.
+Last reconciled with code: 2026-10-07. Flutter package version: **6.6.84**.
 
 ## Repository map
 
@@ -49,7 +49,7 @@ as part of normal client work.
 
 ## Local data
 
-- SQLite schema version: **55** in `DatabaseHelper`
+- SQLite schema version: **57** in `DatabaseSchemaHistory`
   (`DatabaseSchemaHistory.currentVersion`).
 - Per-user database: `uni_sync_<username>.db`.
 - Main tables include todos, groups, countdowns, courses, plan blocks, time logs,
