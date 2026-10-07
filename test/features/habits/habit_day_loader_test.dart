@@ -14,7 +14,7 @@ void main() {
       uuid: 'rule-1',
       habitUuid: goal.uuid,
       effectiveFromDate: '2026-07-01',
-      effectiveToDate: '2026-08-05',
+      effectiveToDate: '2026-08-31',
       dayBoundaryMinute: 4 * 60,
     );
 
@@ -33,6 +33,14 @@ void main() {
         date: DateTime(2026, 8, 6, 4),
       ),
       DateTime(2026, 8, 6),
+    );
+    expect(
+      HabitDayLoader.progressLogicalDateFor(
+        goal: goal,
+        rules: [rule],
+        date: DateTime(2026, 8, 10, 1, 59),
+      ),
+      DateTime(2026, 8, 9),
     );
   });
 }

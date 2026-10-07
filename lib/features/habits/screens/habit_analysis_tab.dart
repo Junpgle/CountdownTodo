@@ -6,6 +6,7 @@ import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
+import '../services/habit_day_loader.dart';
 import '../services/habit_progress_calculator.dart';
 import '../services/habit_rule_resolver.dart';
 import '../services/habit_sleep_goal_resolver.dart';
@@ -118,26 +119,29 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     Map<String, List<HabitGoalRuleRevision>> rulesByHabit,
   ) async {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final monday = HabitRuleResolver.addCalendarDays(today, 1 - today.weekday);
     var planned = 0;
     var met = 0;
 
     for (final goal in goals) {
       final rules = rulesByHabit[goal.uuid] ?? const [];
       if (rules.isEmpty) continue;
-      final rule = HabitRuleResolver.effectiveRule(rules, today);
+      final logicalToday = HabitDayLoader.progressLogicalDateFor(
+        goal: goal,
+        rules: rules,
+        date: now,
+      );
+      final rule = HabitRuleResolver.effectiveRule(rules, logicalToday);
       if (rule == null) continue;
 
       if (rule.periodType == HabitPeriodType.monthly) continue;
 
       if (rule.periodType == HabitPeriodType.weekly) {
         // 周周期：仅在本周结束时判定达标。
-        if (today.weekday == DateTime.sunday) {
+        if (logicalToday.weekday == DateTime.sunday) {
           final progress = await HabitProgressCalculator.computePeriod(
             habit: goal,
             rules: rules,
-            logicalDate: today,
+            logicalDate: logicalToday,
           );
           planned++;
           if (progress.goalMet) met++;
@@ -145,11 +149,15 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
         continue;
       }
 
+      final monday = HabitRuleResolver.addCalendarDays(
+        logicalToday,
+        1 - logicalToday.weekday,
+      );
       final range = await HabitProgressCalculator.computeRange(
         habit: goal,
         rules: rules,
         from: monday,
-        to: today,
+        to: logicalToday,
       );
       for (final day in range) {
         if (!day.progress.isPlanned) continue;
