@@ -99,12 +99,15 @@ abstract final class HabitDayLoader {
     final progress = <String, HabitProgress>{};
 
     for (final goal in goals) {
-      final progressDate =
-          HabitSleepDurationService.displayLogicalDateFor(goal, date);
       final rules = allRules.where((r) => r.habitUuid == goal.uuid).toList()
         ..sort((a, b) =>
             (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''));
       rulesByHabit[goal.uuid] = rules;
+      final progressDate = progressLogicalDateFor(
+        goal: goal,
+        rules: rules,
+        date: date,
+      );
       final rule = HabitRuleResolver.effectiveRule(rules, progressDate);
       if (rule == null) continue;
       effective[goal.uuid] = rule;
@@ -128,6 +131,28 @@ abstract final class HabitDayLoader {
       progressByHabit: progress,
       allRulesByHabit: rulesByHabit,
       sleepCoachingSnapshot: sleepCoachingSnapshot,
+    );
+  }
+
+  @visibleForTesting
+  static DateTime progressLogicalDateFor({
+    required HabitGoal goal,
+    required List<HabitGoalRuleRevision> rules,
+    required DateTime date,
+  }) {
+    if (HabitSleepDurationService.isSleepDurationGoal(goal)) {
+      return HabitSleepDurationService.displayLogicalDateFor(goal, date);
+    }
+
+    final calendarDate = DateTime(date.year, date.month, date.day);
+    final rule = HabitRuleResolver.effectiveRule(rules, calendarDate) ??
+        HabitRuleResolver.effectiveRule(
+          rules,
+          calendarDate.subtract(const Duration(days: 1)),
+        );
+    return HabitRuleResolver.logicalDateFor(
+      date,
+      rule?.dayBoundaryMinute ?? 0,
     );
   }
 }
