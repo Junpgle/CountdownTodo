@@ -3504,6 +3504,89 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('余额刷新定时器遵循快照同分钟还款的记录生效时刻', (tester) async {
+    final db = await _seed(tester);
+    final actualNow = DateTime.now();
+    final snapshotAt = DateTime(
+      actualNow.year,
+      actualNow.month,
+      actualNow.day,
+      actualNow.hour,
+      actualNow.minute,
+    );
+    var clockNow = snapshotAt.add(const Duration(seconds: 10));
+    final recordedAt = snapshotAt.add(const Duration(minutes: 1));
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: 'timer-repayment-card',
+          name: '还款刷新银行卡',
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'timer-repayment-snapshot',
+          monthKey: financeMonthKey(snapshotAt),
+          paymentMethodUuid: 'timer-repayment-card',
+          amountMinor: 10000,
+          balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+          createdAt: snapshotAt.millisecondsSinceEpoch,
+          updatedAt: snapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_loan_installments',
+        FinanceLoanInstallment(
+          uuid: 'timer-same-minute-repayment',
+          loanUuid: 'test-loan',
+          installmentIndex: 2,
+          dueDate: dateKey(snapshotAt),
+          paymentMinor: 500,
+          principalMinor: 500,
+          interestMinor: 0,
+          remainingPrincipalMinor: 100000,
+          isPaid: true,
+          paidAt: snapshotAt.millisecondsSinceEpoch,
+          paymentMethodUuid: 'timer-repayment-card',
+          createdAt: snapshotAt.millisecondsSinceEpoch,
+          updatedAt: recordedAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(
+        initialMonth: clockNow,
+        clock: () => clockNow,
+      ),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-timer-repayment-snapshot');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥100.00')),
+      findsOneWidget,
+    );
+
+    clockNow = recordedAt.add(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 55));
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('当前余额 ¥95.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('跨时区付款余额按快照月份归属避免污染前月', (tester) async {
     final db = await _seed(tester);
     final actualNow = DateTime.now();

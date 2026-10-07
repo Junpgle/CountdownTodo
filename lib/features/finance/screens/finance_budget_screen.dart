@@ -264,15 +264,22 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     for (final repayment in _loanRepayments) {
       final snapshotAt = snapshotsByMethod[repayment.paymentMethodUuid];
       final paidAt = repayment.paidAt;
-      if (snapshotAt == null ||
-          paidAt == null ||
-          paidAt <= snapshotAt ||
-          paidAt <= now ||
-          paidAt > monthEndAt ||
-          (nextEventAt != null && paidAt >= nextEventAt)) {
+      if (snapshotAt == null || paidAt == null) continue;
+      // Match paymentMethodBalanceAt: picker precision can put a repayment's
+      // paidAt in the same minute as a balance snapshot even though the
+      // repayment was recorded later. Refresh when that record becomes active.
+      final eventAt = paidAt <= snapshotAt &&
+              paidAt ~/ 60000 == snapshotAt ~/ 60000 &&
+              repayment.updatedAt > snapshotAt
+          ? repayment.updatedAt
+          : paidAt;
+      if (eventAt <= snapshotAt ||
+          eventAt <= now ||
+          eventAt > monthEndAt ||
+          (nextEventAt != null && eventAt >= nextEventAt)) {
         continue;
       }
-      nextEventAt = paidAt;
+      nextEventAt = eventAt;
     }
     if (nextEventAt == null) return;
 
