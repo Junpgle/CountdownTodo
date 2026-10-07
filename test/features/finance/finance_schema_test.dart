@@ -4,6 +4,7 @@ library;
 import 'dart:convert';
 
 import 'package:countdown_todo/features/finance/services/ai_usage_cost_service.dart';
+import 'package:countdown_todo/features/finance/services/finance_repository.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/features/finance/services/finance_sync_service.dart';
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
@@ -131,6 +132,100 @@ void main() {
           paymentMethodUuids: const {},
         ),
         isEmpty,
+      );
+    });
+
+    test('旧客户端同步备注不会把余额快照时间前移', () async {
+      final now = DateTime.now();
+      final month = DateTime(now.year, now.month - 1);
+      final snapshotAt = DateTime(
+        month.year,
+        month.month,
+        15,
+        10,
+      ).millisecondsSinceEpoch;
+      const paymentMethodUuid = 'legacy-client-sync-card';
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: paymentMethodUuid,
+          name: '旧客户端同步测试卡',
+        ).toMap(),
+      );
+
+      final budget = FinanceBudget(
+        monthKey: financeMonthKey(month),
+        paymentMethodUuid: paymentMethodUuid,
+        amountMinor: 10000,
+        balanceSnapshotAt: snapshotAt,
+        createdAt: snapshotAt - 1000,
+        updatedAt: snapshotAt,
+      );
+      await FinanceStorage.saveBudget(
+        budget,
+        balanceSnapshotAt: snapshotAt,
+      );
+      final saved = (await FinanceStorage.getBudget(budget.uuid))!;
+
+      final expenseAt = snapshotAt + const Duration(hours: 1).inMilliseconds;
+      final expense = FinanceTransaction(
+        uuid: 'legacy-client-sync-expense',
+        amountMinor: 1000,
+        paymentMethodUuid: paymentMethodUuid,
+        transactionDate: dateKey(
+          DateTime.fromMillisecondsSinceEpoch(expenseAt),
+        ),
+        occurredAt: expenseAt,
+        timezoneOffsetMinutes: DateTime.fromMillisecondsSinceEpoch(
+          expenseAt,
+        ).timeZoneOffset.inMinutes,
+        createdAt: expenseAt,
+      );
+      final oldClientEdit = FinanceBudget.fromMap(saved.toMap())
+        ..note = '旧客户端修改备注'
+        ..balanceSnapshotAt = null
+        ..updatedAt = expenseAt + const Duration(hours: 1).inMilliseconds
+        ..version = saved.version + 1
+        ..pendingSync = false;
+      await FinanceStorage.mergeRemoteBundle({
+        'budgets': [oldClientEdit.toMap()],
+      });
+
+      final synced = (await FinanceStorage.getBudget(saved.uuid))!;
+      expect(synced.effectiveBalanceSnapshotAt, snapshotAt);
+      expect(
+        FinanceRepository.paymentMethodBalanceAt(
+          snapshot: synced,
+          transactions: [expense],
+          loanRepayments: const [],
+          loanInterestTransactionUuids: const {},
+          asOfAt: now.millisecondsSinceEpoch,
+        ),
+        9000,
+      );
+
+      final amountChangedAt =
+          expenseAt + const Duration(hours: 2).inMilliseconds;
+      final oldClientAmountEdit = FinanceBudget.fromMap(synced.toMap())
+        ..amountMinor = 12000
+        ..balanceSnapshotAt = null
+        ..updatedAt = amountChangedAt
+        ..version = synced.version + 1
+        ..pendingSync = false;
+      await FinanceStorage.mergeRemoteBundle({
+        'budgets': [oldClientAmountEdit.toMap()],
+      });
+      final rebased = (await FinanceStorage.getBudget(synced.uuid))!;
+      expect(rebased.effectiveBalanceSnapshotAt, amountChangedAt);
+      expect(
+        FinanceRepository.paymentMethodBalanceAt(
+          snapshot: rebased,
+          transactions: [expense],
+          loanRepayments: const [],
+          loanInterestTransactionUuids: const {},
+          asOfAt: now.millisecondsSinceEpoch,
+        ),
+        12000,
       );
     });
 

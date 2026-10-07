@@ -4159,6 +4159,14 @@ abstract final class FinanceStorage {
         }
         continue;
       }
+      if (item.isPaymentMethod &&
+          item.balanceSnapshotAt == null &&
+          item.amountMinor == current.amountMinor) {
+        // Older clients do not send an explicit snapshot time. A note or
+        // deletion update must not turn the update time into a new balance
+        // baseline when the recorded amount itself did not change.
+        item.balanceSnapshotAt = current.effectiveBalanceSnapshotAt;
+      }
       await _deleteBudgetsInScope(db, item);
       await db.insert('finance_budgets', _remoteValues(item.toMap()));
       changed++;
