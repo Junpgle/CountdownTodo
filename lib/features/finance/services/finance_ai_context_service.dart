@@ -225,9 +225,11 @@ abstract final class FinanceAiContextService {
     '上一星期',
     '上个星期',
     '上一个星期',
+    '前一个星期',
     '上礼拜',
     '上个礼拜',
     '上一个礼拜',
+    '前一个礼拜',
   ];
 
   static const _twoWeeksAgoCalendarWeekWords = [

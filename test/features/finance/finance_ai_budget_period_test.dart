@@ -1031,4 +1031,37 @@ void main() {
     expect(context, isNot(contains('[transactionId: today]')));
     expect(context, contains('净支出 ¥10.00'));
   });
+
+  test('前一个星期和前一个礼拜查询上一完整自然周', () async {
+    final now = DateTime(2026, 9, 2, 23, 59);
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'previous-calendar-week-prefix-alias',
+        amountMinor: 400,
+        transactionDate: '2026-08-27',
+        occurredAt: DateTime(2026, 8, 27, 12).millisecondsSinceEpoch,
+      ),
+    );
+
+    for (final phrase in ['前一个星期', '前一个礼拜']) {
+      final range = FinanceAiContextService.resolveDateRange(
+        '$phrase支出',
+        now: now,
+      );
+      final context = await FinanceAiContextService.buildContext(
+        userMessage: '$phrase支出了多少',
+        now: now,
+      );
+
+      expect(dateKey(range.from), '2026-08-24', reason: phrase);
+      expect(dateKey(range.to), '2026-08-31', reason: phrase);
+      expect(
+        context,
+        contains('[transactionId: previous-calendar-week-prefix-alias]'),
+      );
+      expect(context, isNot(contains('[transactionId: august]')));
+      expect(context, isNot(contains('[transactionId: earlier-september]')));
+      expect(context, contains('净支出 ¥4.00'));
+    }
+  });
 }
