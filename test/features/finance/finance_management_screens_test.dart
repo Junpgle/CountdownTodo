@@ -3124,6 +3124,72 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('余额刷新定时器遵循快照同分钟账单的实际生效时刻', (tester) async {
+    final db = await _seed(tester);
+    var clockNow = DateTime(2026, 10, 7, 12, 0, 30);
+    final snapshotAt = DateTime(2026, 10, 7, 12, 0);
+    final recordedAt = DateTime(2026, 10, 7, 12, 1);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'timer-card', name: '定时刷新银行卡').toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'timer-card-snapshot',
+          monthKey: financeMonthKey(snapshotAt),
+          paymentMethodUuid: 'timer-card',
+          amountMinor: 10000,
+          balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+          createdAt: snapshotAt.millisecondsSinceEpoch,
+          updatedAt: snapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'timer-card-expense',
+          amountMinor: 100,
+          paymentMethodUuid: 'timer-card',
+          transactionDate: dateKey(snapshotAt),
+          occurredAt: snapshotAt.millisecondsSinceEpoch,
+          createdAt: recordedAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(
+        initialMonth: clockNow,
+        clock: () => clockNow,
+      ),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-timer-card-snapshot');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('当前余额 ¥100.00')),
+      findsOneWidget,
+    );
+
+    clockNow = recordedAt.add(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 31));
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(of: card, matching: find.text('当前余额 ¥99.00'))
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('跨时区付款余额按快照月份归属避免污染前月', (tester) async {
     final db = await _seed(tester);
     final actualNow = DateTime.now();

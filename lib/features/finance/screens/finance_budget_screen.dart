@@ -248,7 +248,10 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       final paymentMethodUuid = transaction.paymentMethodUuid;
       final snapshotAt = snapshotsByMethod[paymentMethodUuid];
       if (paymentMethodUuid == null || snapshotAt == null) continue;
-      final eventAt = _balanceEventTime(transaction);
+      final eventAt = _balanceEventTime(
+        transaction,
+        snapshotAt: snapshotAt,
+      );
       if (eventAt <= snapshotAt) continue;
       final eligibleAt = eventAt;
       if (eligibleAt <= now ||
