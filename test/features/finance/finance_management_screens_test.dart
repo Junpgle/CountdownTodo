@@ -3589,6 +3589,58 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('删除付款方式已删除的账单不会承诺余额变化', (tester) async {
+    await _seed(tester);
+    await tester.runAsync(() async {
+      await FinanceStorage.databaseOverride!.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: 'deleted-payment-method',
+          name: '已删除银行卡',
+          isDeleted: true,
+        ).toMap(),
+      );
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-deleted-payment-method-delete-copy',
+          amountMinor: 1500,
+          paymentMethodUuid: 'deleted-payment-method',
+          transactionDate: dateKey(DateTime.now()),
+          merchant: '删除付款方式后仍保留的账单',
+        ),
+      );
+    });
+    await _pump(
+      tester,
+      const FinanceHomeScreen(username: 'default'),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(
+          of: find.text('删除付款方式后仍保留的账单'),
+          matching: find.byType(ListTile),
+        )
+        .first;
+    await _tap(
+      tester,
+      find.descendant(of: row, matching: find.byType(PopupMenuButton<String>)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await _waitFor(
+      tester,
+      () => find.text('删除后不会计入统计，确认继续吗？').evaluate().isNotEmpty,
+    );
+
+    expect(find.text('删除后不会计入统计，确认继续吗？'), findsOneWidget);
+    expect(find.textContaining('付款方式余额'), findsNothing);
+    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('删除关联付款方式的分期会说明余额与计划影响', (tester) async {
     await _seed(tester);
     await tester.runAsync(

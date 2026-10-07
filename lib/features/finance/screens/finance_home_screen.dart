@@ -507,8 +507,9 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       }
     }
     if (!mounted) return;
-    final hasPaymentMethod =
-        transaction.paymentMethodUuid?.trim().isNotEmpty == true;
+    final hasPaymentMethod = _paymentMethodMap.containsKey(
+      transaction.paymentMethodUuid?.trim(),
+    );
     final deleteDescription = switch (transaction.type) {
       FinanceTransactionType.expense => hasPaymentMethod
           ? '删除后，这笔支出不再计入统计，付款方式余额会相应增加。确认继续吗？'
