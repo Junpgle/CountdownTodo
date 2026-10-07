@@ -379,11 +379,17 @@ void main() {
       roomName: 'A101',
     );
 
-    for (final rangeDays in [60, 100]) {
+    for (final (rangeDays, query) in [
+      (60, '未来60天课程安排'),
+      (100, '未来100天课程安排'),
+      (100, '未来一百天课程安排'),
+      (105, '未来一百零五天课程安排'),
+      (365, '未来三百六十五天课程安排'),
+    ]) {
       final inRangeDate = now.add(Duration(days: rangeDays - 15));
       final rangeEnd = now.add(Duration(days: rangeDays));
       final injection = AiTodoContextBuilder.buildContextInjection(
-        userMessage: '未来$rangeDays天课程安排',
+        userMessage: query,
         courses: [
           course('course-in-range', inRangeDate),
           course('course-at-range-end', rangeEnd),
@@ -415,12 +421,17 @@ void main() {
       roomName: 'A101',
     );
 
-    for (final rangeDays in [60, 100]) {
-      final queryRange = rangeDays == 60 ? '最近' : '过去';
+    for (final (rangeDays, query) in [
+      (60, '最近60天课程安排'),
+      (100, '过去100天课程安排'),
+      (100, '最近一百天课程安排'),
+      (105, '最近一百零五天课程安排'),
+      (365, '过去三百六十五天课程安排'),
+    ]) {
       final inRangeDate = now.subtract(Duration(days: rangeDays - 15));
       final rangeStart = now.subtract(Duration(days: rangeDays));
       final injection = AiTodoContextBuilder.buildContextInjection(
-        userMessage: '$queryRange$rangeDays天课程安排',
+        userMessage: query,
         courses: [
           course('course-in-range', inRangeDate),
           course('course-at-range-start', rangeStart),

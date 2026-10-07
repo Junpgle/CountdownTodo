@@ -37,7 +37,7 @@ class AiTodoContextBuilder {
     r'(?:(\d{1,2}|[一二两三四五六七八九十]{1,3})\s*个月|半年)',
   );
   static final RegExp _relativeDayRangePattern = RegExp(
-    r'(?:最近|过去|近)\s*(?:\d{1,6}|[一二两三四五六七八九十]{1,3})\s*(?:天|日)|'
+    r'(?:最近|过去|近)\s*(?:\d{1,6}|[零〇一二两三四五六七八九十百千]{1,12})\s*(?:天|日)|'
     r'(?:最近|过去|近)\s*一周',
   );
   static final RegExp _relativeWeekPeriodPattern = RegExp(
@@ -57,7 +57,7 @@ class AiTodoContextBuilder {
     r'大前天|大前日|前天|前日|昨天|昨日|今天|今日|明天|明日|大后天|大后日|后天|后日',
   );
   static final RegExp _futureDaysRangePattern = RegExp(
-    r'(?:未来|接下来)\s*(?:\d{1,6}|[一二两三四五六七八九十]{1,3})\s*(?:天|日)',
+    r'(?:未来|接下来)\s*(?:\d{1,6}|[零〇一二两三四五六七八九十百千]{1,12})\s*(?:天|日)',
   );
 
   static AiContextDateRange? resolveCustomInjectionDateRange({
@@ -1903,12 +1903,12 @@ ${sections.join('\n')}
       r'(?:最近|过去|近)\s*(\d{1,6})\s*(?:天|日)',
     ).firstMatch(text);
     final chineseDays = RegExp(
-      r'(?:最近|过去|近)\s*([一二两三四五六七八九十]{1,3})\s*(?:天|日)',
+      r'(?:最近|过去|近)\s*([零〇一二两三四五六七八九十百千]{1,12})\s*(?:天|日)',
     ).firstMatch(text);
     final days = numericDays != null
         ? int.tryParse(numericDays.group(1)!)
         : chineseDays != null
-        ? _parseSimpleChineseNumber(chineseDays.group(1)!)
+        ? _parseChineseDayCount(chineseDays.group(1)!)
         : _matchesAny(text, ['最近一周', '过去一周', '近一周'])
         ? 7
         : null;
@@ -2062,15 +2062,71 @@ ${sections.join('\n')}
       }
     }
 
-    final hanMatch = RegExp(r'(?:未来|接下来)\s*([一二两三四五六七八九十]{1,3})\s*(?:天|日)')
+    final hanMatch = RegExp(
+      r'(?:未来|接下来)\s*([零〇一二两三四五六七八九十百千]{1,12})\s*(?:天|日)',
+    )
         .firstMatch(text);
     if (hanMatch != null) {
-      final parsed = _parseSimpleChineseNumber(hanMatch.group(1)!);
+      final parsed = _parseChineseDayCount(hanMatch.group(1)!);
       if (parsed != null && parsed > 0) {
         return parsed;
       }
     }
     return null;
+  }
+
+  static int? _parseChineseDayCount(String text) {
+    const digits = {
+      '零': 0,
+      '〇': 0,
+      '一': 1,
+      '二': 2,
+      '两': 2,
+      '三': 3,
+      '四': 4,
+      '五': 5,
+      '六': 6,
+      '七': 7,
+      '八': 8,
+      '九': 9,
+    };
+    const units = {'十': 10, '百': 100, '千': 1000};
+    var total = 0;
+    var pendingDigit = 0;
+    var hasPendingDigit = false;
+    var previousWasZero = false;
+    var previousUnit = 10000;
+
+    for (final character in text.split('')) {
+      final value = digits[character];
+      if (value != null) {
+        if (value == 0) {
+          pendingDigit = 0;
+          hasPendingDigit = true;
+          previousWasZero = true;
+          continue;
+        }
+        if (hasPendingDigit && !previousWasZero) return null;
+        pendingDigit = value;
+        hasPendingDigit = true;
+        previousWasZero = false;
+        continue;
+      }
+
+      final unit = units[character];
+      if (unit == null || unit >= previousUnit || previousWasZero) {
+        return null;
+      }
+      total += (hasPendingDigit ? pendingDigit : 1) * unit;
+      if (total > 999999) return null;
+      pendingDigit = 0;
+      hasPendingDigit = false;
+      previousWasZero = false;
+      previousUnit = unit;
+    }
+
+    final result = total + pendingDigit;
+    return result <= 999999 ? result : null;
   }
 
   static int? _parseSimpleChineseNumber(String text) {
