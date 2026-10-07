@@ -535,6 +535,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   String _deleteTransactionDescription(
     FinanceTransaction transaction, {
     required bool hasPaymentMethod,
+    required bool includedInBalanceSnapshot,
   }) {
     if (transaction.balanceEventAt() > widget.clock().millisecondsSinceEpoch) {
       final label = switch (transaction.type) {
@@ -548,6 +549,17 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           ? '，不再抵扣净支出'
           : '';
       return '删除后，这笔计划$label会从未来账单中移除$effect。确认继续吗？';
+    }
+
+    if (hasPaymentMethod && includedInBalanceSnapshot) {
+      return switch (transaction.type) {
+        FinanceTransactionType.expense =>
+          '删除后，这笔支出不再计入统计；当前余额以录入的余额快照为准，不会变化。确认继续吗？',
+        FinanceTransactionType.income =>
+          '删除后，这笔收入不再计入统计；当前余额以录入的余额快照为准，不会变化。确认继续吗？',
+        FinanceTransactionType.refund =>
+          '删除后，这笔退款不再抵扣净支出；当前余额以录入的余额快照为准，不会变化。确认继续吗？',
+      };
     }
 
     return switch (transaction.type) {
@@ -588,9 +600,14 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     final hasPaymentMethod = _paymentMethodMap.containsKey(
       transaction.paymentMethodUuid?.trim(),
     );
+    final includedInBalanceSnapshot = hasPaymentMethod
+        ? await _isIncludedInBalanceSnapshot(transaction)
+        : false;
+    if (!mounted) return;
     final deleteDescription = _deleteTransactionDescription(
       transaction,
       hasPaymentMethod: hasPaymentMethod,
+      includedInBalanceSnapshot: includedInBalanceSnapshot,
     );
     final installmentDeleteDescription = switch (transaction.type) {
       FinanceTransactionType.expense => hasPaymentMethod
@@ -676,6 +693,26 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       );
       await _load();
     }
+  }
+
+  Future<bool> _isIncludedInBalanceSnapshot(
+    FinanceTransaction transaction,
+  ) async {
+    final paymentMethodUuid = transaction.paymentMethodUuid?.trim();
+    if (paymentMethodUuid == null || paymentMethodUuid.isEmpty) return false;
+    final nowAt = widget.clock().millisecondsSinceEpoch;
+    if (transaction.balanceEventAt() > nowAt) return false;
+    final snapshots = FinanceRepository.latestPaymentBalanceSnapshots(
+      await FinanceRepository.getBudgets(),
+      asOfAt: nowAt,
+      nowAt: nowAt,
+    );
+    for (final snapshot in snapshots) {
+      if (snapshot.paymentMethodUuid != paymentMethodUuid) continue;
+      final snapshotAt = snapshot.effectiveBalanceSnapshotAt;
+      return transaction.balanceEventAt(snapshotAt: snapshotAt) <= snapshotAt;
+    }
+    return false;
   }
 
   Future<void> _exportCsv() async {

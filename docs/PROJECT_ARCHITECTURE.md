@@ -1,6 +1,6 @@
 # Project architecture
 
-Last reconciled with code: 2026-10-07. Flutter package version: **6.6.110**.
+Last reconciled with code: 2026-10-07. Flutter package version: **6.6.111**.
 
 ## Repository map
 
@@ -70,6 +70,8 @@ as part of normal client work.
   month-key tolerance for cross-timezone month-end snapshots.
 - Deleting a future finance entry describes its removal from planned cash flow
   without implying an immediate change to the current payment balance.
+- Deleting a finance entry already covered by the latest account snapshot
+  explains that it changes ledger statistics without changing the saved balance.
 - Global search combines FTS5/FTS4/`LIKE` database search with feature-module and
   remote catalog adapters. See [`features/global-search.md`](features/global-search.md)
   for coverage, openable destinations, animation behavior and server limits.

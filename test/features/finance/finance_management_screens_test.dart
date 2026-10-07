@@ -3978,7 +3978,13 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除'));
-    await tester.pumpAndSettle();
+    await _waitFor(
+      tester,
+      () => find
+          .text('删除后，这笔退款不再抵扣净支出，也不再增加该付款方式的余额。确认继续吗？')
+          .evaluate()
+          .isNotEmpty,
+    );
 
     expect(
       find.text('删除后，这笔退款不再抵扣净支出，也不再增加该付款方式的余额。确认继续吗？'),
@@ -4097,6 +4103,68 @@ void main() {
     );
     expect(
       find.text('删除后，这笔计划支出会从未来账单中移除，不会影响当前付款方式余额。确认继续吗？'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(TextButton, '取消'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('删除余额快照之前的账单不会承诺改变当前余额', (tester) async {
+    final db = await _seed(tester);
+    final snapshotAt = DateTime(2026, 10, 15, 12);
+    final clockNow = DateTime(2026, 10, 16, 12);
+    final transactionAt = DateTime(2026, 10, 14, 12);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'ui-delete-snapshotted-expense',
+          monthKey: '2026-10',
+          paymentMethodUuid: 'finance-system-payment-cash',
+          amountMinor: 10000,
+          balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+          createdAt: snapshotAt.millisecondsSinceEpoch,
+          updatedAt: snapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-delete-before-snapshot-expense',
+          amountMinor: 1200,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: dateKey(transactionAt),
+          occurredAt: transactionAt.millisecondsSinceEpoch,
+          createdAt: transactionAt.millisecondsSinceEpoch,
+          merchant: '快照前支出',
+        ),
+      );
+    });
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(of: find.text('快照前支出'), matching: find.byType(ListTile))
+        .first;
+    await _tap(
+      tester,
+      find.descendant(of: row, matching: find.byType(PopupMenuButton<String>)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await _waitFor(
+      tester,
+      () => find
+          .text('删除后，这笔支出不再计入统计；当前余额以录入的余额快照为准，不会变化。确认继续吗？')
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(
+      find.text('删除后，这笔支出不再计入统计；当前余额以录入的余额快照为准，不会变化。确认继续吗？'),
       findsOneWidget,
     );
     await tester.tap(find.widgetWithText(TextButton, '取消'));
