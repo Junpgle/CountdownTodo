@@ -698,6 +698,57 @@ void main() {
     }
   });
 
+  test('去年同期查询沿用上一条账单的月份范围', () async {
+    final now = DateTime(2026, 10, 2, 12);
+    for (final transaction in [
+      FinanceTransaction(
+        uuid: 'same-period-2025-september',
+        amountMinor: 900,
+        transactionDate: '2025-09-15',
+        occurredAt: DateTime(2025, 9, 15, 12).millisecondsSinceEpoch,
+      ),
+      FinanceTransaction(
+        uuid: 'same-period-2025-may',
+        amountMinor: 500,
+        transactionDate: '2025-05-15',
+        occurredAt: DateTime(2025, 5, 15, 12).millisecondsSinceEpoch,
+      ),
+    ]) {
+      await FinanceStorage.saveTransaction(transaction);
+    }
+
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '去年同期支出多少',
+      conversationContext: '查看记账支出情况',
+      previousUserMessage: '今年9月支出多少',
+      now: now,
+    );
+    final preview = FinanceAiContextService.buildContextInjectionSummary(
+      userMessage: '去年同期呢',
+      conversationContext: '查看记账支出情况',
+      previousUserMessage: '今年9月支出多少',
+      now: now,
+    );
+    final missingPeriodContext = await FinanceAiContextService.buildContext(
+      userMessage: '去年同期支出多少',
+      conversationContext: '查看记账支出情况',
+      now: now,
+    );
+    final missingPeriodPreview =
+        FinanceAiContextService.buildContextInjectionSummary(
+          userMessage: '去年同期呢',
+          conversationContext: '查看记账支出情况',
+          now: now,
+        );
+
+    expect(context, contains('查询范围: 2025-09-01 至 2025-09-30'));
+    expect(context, contains('[transactionId: same-period-2025-september]'));
+    expect(context, isNot(contains('[transactionId: same-period-2025-may]')));
+    expect(preview, '记账明细 2025-09-01 至 2025-09-30');
+    expect(missingPeriodContext, contains('“同期”需要参考上一条具体账期'));
+    expect(missingPeriodPreview, '记账查询范围待确认');
+  });
+
   test('近半年和近几个月查询使用滚动自然月范围', () async {
     final now = DateTime(2026, 10, 2, 12);
     for (final (query, expectedFrom) in [

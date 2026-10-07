@@ -206,6 +206,10 @@ abstract final class FinanceAiContextService {
   static final RegExp _numericYearMonthPattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](\d+)(?!\d|[-/.]\d)',
   );
+  static final RegExp _samePeriodYearPattern = RegExp(
+    r'(今年|本年|去年|上一年|前一年|前年|明年|下年|下一年|来年)\s*'
+    r'(?:的\s*)?(?:同期|同月|同日|同天|同季度|同周|同星期|同礼拜)',
+  );
   static final RegExp _explicitDateRangeSeparator = RegExp(
     r'^\s*(?:至|到|~|～|－|–|—|-)\s*$',
   );
@@ -501,6 +505,19 @@ abstract final class FinanceAiContextService {
     DateTime? now,
   }) async {
     final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
+    final samePeriodRange = dateRangeOverride == null
+        ? _resolveSamePeriodYearRange(
+            userMessage: userMessage,
+            previousUserMessage: previousUserMessage,
+            now: now,
+          )
+        : null;
+    if (dateRangeOverride == null &&
+        _samePeriodYearPattern.hasMatch(userMessage) &&
+        samePeriodRange == null) {
+      return '【记账查询日期范围不明确】“同期”需要参考上一条具体账期。'
+          '请先确认要比较的年月、季度或日期范围。';
+    }
     if (dateRangeOverride == null &&
         _shouldClarifyUnderspecifiedRange(
           userMessage: userMessage,
@@ -542,7 +559,10 @@ abstract final class FinanceAiContextService {
     if (!needsLedger) return catalog;
 
     final nowValue = now ?? DateTime.now();
-    final range = dateRangeOverride ?? resolveDateRange(rangeQueryText, now: nowValue);
+    final range =
+        dateRangeOverride ??
+        samePeriodRange ??
+        resolveDateRange(rangeQueryText, now: nowValue);
     final asOfAt = nowValue.millisecondsSinceEpoch;
     final balanceAsOfAt = range.to.isBefore(nowValue)
         ? range.to.millisecondsSinceEpoch - 1
@@ -670,6 +690,20 @@ abstract final class FinanceAiContextService {
   }) {
     final parts = <String>[];
     final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
+    final samePeriodRange = dateRangeOverride == null
+        ? _resolveSamePeriodYearRange(
+            userMessage: userMessage,
+            previousUserMessage: previousUserMessage,
+            now: now,
+          )
+        : null;
+    final unresolvedSamePeriodRange =
+        dateRangeOverride == null &&
+        _samePeriodYearPattern.hasMatch(userMessage) &&
+        samePeriodRange == null;
+    if (unresolvedSamePeriodRange) {
+      parts.add('记账查询范围待确认');
+    }
     if (dateRangeOverride == null &&
         _shouldClarifyUnderspecifiedRange(
           userMessage: userMessage,
@@ -681,7 +715,8 @@ abstract final class FinanceAiContextService {
     }
     final hasValidRange =
         dateRangeOverride != null ||
-        (!_hasInvalidExplicitDateOrPeriod(rangeQueryText) &&
+        (!unresolvedSamePeriodRange &&
+            !_hasInvalidExplicitDateOrPeriod(rangeQueryText) &&
             !_hasMultipleRecognizedDatePeriods(rangeQueryText));
     if (hasValidRange &&
         shouldInjectFor(
@@ -690,7 +725,7 @@ abstract final class FinanceAiContextService {
           hasDateRangeOverride: dateRangeOverride != null,
         )) {
       parts.add(
-        '记账明细 ${(dateRangeOverride ?? resolveDateRange(rangeQueryText, now: now)).label}',
+        '记账明细 ${(dateRangeOverride ?? samePeriodRange ?? resolveDateRange(rangeQueryText, now: now)).label}',
       );
       if (_shouldIncludePaymentBalances(
         userMessage: userMessage,
@@ -713,21 +748,79 @@ abstract final class FinanceAiContextService {
     String userMessage,
     String previousUserMessage,
   ) {
-    bool hasDateScope(String text) =>
-        _containsAny(text, _periodWords) ||
-        _underspecifiedRollingPeriodPattern.hasMatch(text) ||
-        _hasRollingMonthPeriod(text) ||
-        _hasRollingYearPeriod(text) ||
-        _hasExplicitMonth(text) ||
-        _quarterPeriodPattern.hasMatch(text) ||
-        _numericYearPeriodPattern.hasMatch(text) ||
-        _calendarDatePattern.hasMatch(text) ||
-        _numericYearMonthPattern.hasMatch(text);
-
-    if (hasDateScope(userMessage) || !hasDateScope(previousUserMessage)) {
+    if (_hasRecognizedDateScope(userMessage) ||
+        !_hasRecognizedDateScope(previousUserMessage)) {
       return userMessage;
     }
     return previousUserMessage;
+  }
+
+  static bool _hasRecognizedDateScope(String text) =>
+      _containsAny(text, _periodWords) ||
+      _underspecifiedRollingPeriodPattern.hasMatch(text) ||
+      _hasRollingMonthPeriod(text) ||
+      _hasRollingYearPeriod(text) ||
+      _hasExplicitMonth(text) ||
+      _quarterPeriodPattern.hasMatch(text) ||
+      _numericYearPeriodPattern.hasMatch(text) ||
+      _calendarDatePattern.hasMatch(text) ||
+      _numericYearMonthPattern.hasMatch(text);
+
+  static FinanceDateRange? _resolveSamePeriodYearRange({
+    required String userMessage,
+    required String previousUserMessage,
+    DateTime? now,
+  }) {
+    final match = _samePeriodYearPattern.firstMatch(userMessage);
+    if (match == null ||
+        !_hasRecognizedDateScope(previousUserMessage) ||
+        _hasInvalidExplicitDateOrPeriod(previousUserMessage) ||
+        _hasMultipleRecognizedDatePeriods(previousUserMessage)) {
+      return null;
+    }
+
+    final yearOffset = switch (match.group(1)) {
+      '前年' => -2,
+      '去年' || '上一年' || '前一年' => -1,
+      '明年' || '下年' || '下一年' || '来年' => 1,
+      _ => 0,
+    };
+    final previousRange = resolveDateRange(
+      previousUserMessage,
+      now: now,
+    );
+    return FinanceDateRange(
+      _shiftFinanceDateByYears(previousRange.from, yearOffset),
+      _shiftFinanceDateByYears(previousRange.to, yearOffset),
+    );
+  }
+
+  static DateTime _shiftFinanceDateByYears(DateTime value, int years) {
+    final year = value.year + years;
+    final lastDay = DateTime(year, value.month + 1, 0).day;
+    final day = value.day > lastDay ? lastDay : value.day;
+    if (value.isUtc) {
+      return DateTime.utc(
+        year,
+        value.month,
+        day,
+        value.hour,
+        value.minute,
+        value.second,
+        value.millisecond,
+        value.microsecond,
+      );
+    }
+    return DateTime(
+      year,
+      value.month,
+      day,
+      value.hour,
+      value.minute,
+      value.second,
+      value.millisecond,
+      value.microsecond,
+    );
   }
 
   static bool _shouldClarifyUnderspecifiedRange({
@@ -1336,6 +1429,7 @@ abstract final class FinanceAiContextService {
     addMatches(_quarterPeriodPattern);
     addMatches(_halfYearPeriodPattern);
     addMatches(_numericYearPeriodPattern);
+    addMatches(_samePeriodYearPattern);
 
     final now = _day(DateTime.now());
     final dateTokens = _explicitDateTokens(normalizedText, now: now);
