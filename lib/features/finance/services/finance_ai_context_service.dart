@@ -282,6 +282,9 @@ abstract final class FinanceAiContextService {
     '上个月',
     '上一个月',
     '前一个月',
+    '下月',
+    '下个月',
+    '下一个月',
     '这一个月',
     '最近一个月',
     '过去一个月',
@@ -820,6 +823,10 @@ abstract final class FinanceAiContextService {
     }
     final explicitMonth = _resolveExplicitMonthRange(text, current);
     if (explicitMonth != null) return explicitMonth;
+    if (_containsAny(text, ['下月', '下个月', '下一个月'])) {
+      final from = DateTime(current.year, current.month + 1);
+      return FinanceDateRange(from, DateTime(from.year, from.month + 1));
+    }
     final currentQuarterMonth = ((current.month - 1) ~/ 3) * 3 + 1;
     final currentQuarterStart = DateTime(current.year, currentQuarterMonth);
     if (_containsAny(text, ['上上季度', '上上个季度'])) {

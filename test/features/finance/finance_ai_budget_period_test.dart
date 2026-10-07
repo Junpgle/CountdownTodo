@@ -1150,4 +1150,37 @@ void main() {
       expect(context, contains('净支出 ¥60.00'));
     }
   });
+
+  test('下个月账单查询返回计划账单而不是本月记录', () async {
+    final now = DateTime(2026, 9, 2, 23, 59);
+    final futureAt = DateTime(2026, 10, 5, 12);
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'next-month-plan',
+        amountMinor: 2500,
+        transactionDate: '2026-10-05',
+        occurredAt: futureAt.millisecondsSinceEpoch,
+        createdAt: now.millisecondsSinceEpoch,
+        merchant: '下月计划账单',
+      ),
+    );
+
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '下个月支出有哪些',
+      now: now,
+    );
+
+    for (final phrase in ['下月', '下个月', '下一个月']) {
+      final range = FinanceAiContextService.resolveDateRange(
+        '$phrase支出',
+        now: now,
+      );
+      expect(dateKey(range.from), '2026-10-01', reason: phrase);
+      expect(dateKey(range.to), '2026-11-01', reason: phrase);
+    }
+    expect(context, contains('查询范围: 2026-10-01 至 2026-10-31'));
+    expect(context, contains('- 待发生 | [transactionId: next-month-plan]'));
+    expect(context, isNot(contains('[transactionId: earlier-september]')));
+    expect(context, isNot(contains('[transactionId: today]')));
+  });
 }
