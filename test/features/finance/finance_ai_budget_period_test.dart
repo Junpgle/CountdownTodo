@@ -875,6 +875,70 @@ void main() {
     );
   });
 
+  test('历史月份的银行卡余额按账期结束时刻计算', () async {
+    final augustSnapshotAt = DateTime(2026, 8, 1);
+    final septemberSnapshotAt = DateTime(2026, 9, 1);
+    await db.insert(
+      'finance_payment_methods',
+      FinancePaymentMethod(uuid: 'historical-card', name: '历史银行卡').toMap(),
+    );
+    for (final (uuid, monthKey, amountMinor, snapshotAt) in [
+      (
+        'historical-card-august-snapshot',
+        '2026-08',
+        10000,
+        augustSnapshotAt,
+      ),
+      (
+        'historical-card-september-snapshot',
+        '2026-09',
+        6000,
+        septemberSnapshotAt,
+      ),
+    ]) {
+      await FinanceStorage.saveBudget(
+        FinanceBudget(
+          uuid: uuid,
+          monthKey: monthKey,
+          paymentMethodUuid: 'historical-card',
+          amountMinor: amountMinor,
+          balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+          createdAt: snapshotAt.millisecondsSinceEpoch,
+          updatedAt: snapshotAt.millisecondsSinceEpoch,
+        ),
+        balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+      );
+    }
+    final augustExpenseAt = DateTime(2026, 8, 10, 12);
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'historical-card-august-expense',
+        amountMinor: 2000,
+        paymentMethodUuid: 'historical-card',
+        transactionDate: '2026-08-10',
+        occurredAt: augustExpenseAt.millisecondsSinceEpoch,
+        createdAt: augustExpenseAt.millisecondsSinceEpoch,
+      ),
+    );
+
+    final now = DateTime(2026, 9, 2, 23, 59);
+    final currentContext = await FinanceAiContextService.buildContext(
+      userMessage: '银行卡余额多少',
+      now: now,
+    );
+    final historicalContext = await FinanceAiContextService.buildContext(
+      userMessage: '上个月银行卡余额多少',
+      now: now,
+    );
+
+    expect(currentContext, contains('- 历史银行卡: ¥60.00'));
+    expect(historicalContext, contains('- 历史银行卡: ¥80.00'));
+    expect(
+      historicalContext,
+      contains('付款方式实际余额（截至 2026-08-31 23:59:59.999'),
+    );
+  });
+
   test('AI 财务上下文会说明账单和预算明细被截断', () {
     final categories = [
       for (var index = 0; index < 21; index++)

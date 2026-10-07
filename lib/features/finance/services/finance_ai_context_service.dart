@@ -501,6 +501,9 @@ abstract final class FinanceAiContextService {
     final nowValue = now ?? DateTime.now();
     final range = dateRangeOverride ?? resolveDateRange(rangeQueryText, now: nowValue);
     final asOfAt = nowValue.millisecondsSinceEpoch;
+    final balanceAsOfAt = range.to.isBefore(nowValue)
+        ? range.to.millisecondsSinceEpoch - 1
+        : asOfAt;
     final monthFrom = DateTime(range.from.year, range.from.month);
     final lastDay = range.to.subtract(const Duration(microseconds: 1));
     final monthTo = DateTime(lastDay.year, lastDay.month + 1);
@@ -523,8 +526,12 @@ abstract final class FinanceAiContextService {
       Map<String, int>? paymentMethodBalances;
       if (needsPaymentBalances) {
         final snapshots = FinanceRepository.latestPaymentBalanceSnapshots(
-          allBudgets.where((budget) => budget.isPaymentMethod),
-          asOfAt: asOfAt,
+          allBudgets.where(
+            (budget) =>
+                budget.isPaymentMethod &&
+                budget.effectiveBalanceSnapshotAt <= balanceAsOfAt,
+          ),
+          asOfAt: balanceAsOfAt,
           nowAt: asOfAt,
         );
         paymentMethodBalances = {};
@@ -535,7 +542,7 @@ abstract final class FinanceAiContextService {
           final balanceValues = await Future.wait<dynamic>([
             FinanceRepository.getBalanceTransactions(
               snapshotAt: earliestSnapshotAt,
-              before: nowValue,
+              before: DateTime.fromMillisecondsSinceEpoch(balanceAsOfAt),
               paymentMethodUuids: snapshots
                   .map((budget) => budget.paymentMethodUuid!)
                   .toSet(),
@@ -559,7 +566,7 @@ abstract final class FinanceAiContextService {
                   loanRepayments: loanRepayments,
                   loanInterestTransactionUuids:
                       loanInterestTransactionUuids,
-                  asOfAt: asOfAt,
+                  asOfAt: balanceAsOfAt,
                 );
           }
         }
@@ -596,6 +603,7 @@ abstract final class FinanceAiContextService {
         budgetSummaries: budgetSummaries,
         asOfAt: asOfAt,
         paymentMethodBalances: paymentMethodBalances,
+        paymentBalanceAsOfAt: balanceAsOfAt,
       );
       return [
         if (needsCatalog) catalog,
@@ -886,6 +894,7 @@ abstract final class FinanceAiContextService {
     required Map<String, FinanceSummary> budgetSummaries,
     required int asOfAt,
     Map<String, int>? paymentMethodBalances,
+    int? paymentBalanceAsOfAt,
   }) {
     final categoryMap = {for (final item in categories) item.uuid: item};
     final paymentMap = {for (final item in paymentMethods) item.uuid: item};
@@ -926,7 +935,9 @@ abstract final class FinanceAiContextService {
         return byName == 0 ? left.compareTo(right) : byName;
       });
       lines.add(
-        '付款方式实际余额（截至 ${DateTime.fromMillisecondsSinceEpoch(asOfAt).toString()}，已应用快照后的收支和还款）:',
+        '付款方式实际余额（截至 '
+        '${DateTime.fromMillisecondsSinceEpoch(paymentBalanceAsOfAt ?? asOfAt).toString()}，'
+        '已应用快照后的收支和还款）:',
       );
       if (balanceMethodUuids.isEmpty) {
         lines.add('- 没有配置付款方式');
