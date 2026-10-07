@@ -1183,4 +1183,44 @@ void main() {
     expect(context, isNot(contains('[transactionId: earlier-september]')));
     expect(context, isNot(contains('[transactionId: today]')));
   });
+
+  test('下周计划账单查询使用下一完整自然周', () async {
+    final now = DateTime(2026, 9, 2, 23, 59);
+    final futureAt = DateTime(2026, 9, 8, 12);
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'next-week-plan',
+        amountMinor: 1800,
+        transactionDate: '2026-09-08',
+        occurredAt: futureAt.millisecondsSinceEpoch,
+        createdAt: now.millisecondsSinceEpoch,
+        merchant: '下周计划账单',
+      ),
+    );
+
+    for (final phrase in [
+      '下周',
+      '下星期',
+      '下个星期',
+      '下一个星期',
+      '下礼拜',
+      '下个礼拜',
+      '下一个礼拜',
+    ]) {
+      final range = FinanceAiContextService.resolveDateRange(
+        '$phrase支出',
+        now: now,
+      );
+      expect(dateKey(range.from), '2026-09-07', reason: phrase);
+      expect(dateKey(range.to), '2026-09-14', reason: phrase);
+    }
+
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '下周支出有哪些',
+      now: now,
+    );
+    expect(context, contains('查询范围: 2026-09-07 至 2026-09-13'));
+    expect(context, contains('- 待发生 | [transactionId: next-week-plan]'));
+    expect(context, isNot(contains('[transactionId: today]')));
+  });
 }

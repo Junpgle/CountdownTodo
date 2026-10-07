@@ -218,6 +218,16 @@ abstract final class FinanceAiContextService {
     '这个礼拜',
   ];
 
+  static const _nextCalendarWeekWords = [
+    '下周',
+    '下星期',
+    '下个星期',
+    '下一个星期',
+    '下礼拜',
+    '下个礼拜',
+    '下一个礼拜',
+  ];
+
   static const _previousCalendarWeekWords = [
     '上周',
     '上一周',
@@ -254,6 +264,7 @@ abstract final class FinanceAiContextService {
     '这个月',
     '当月',
     ..._currentCalendarWeekWords,
+    ..._nextCalendarWeekWords,
     '今天',
     '今日',
     'today',
@@ -775,6 +786,10 @@ abstract final class FinanceAiContextService {
       final thisMonday = _mondayOf(current);
       final from = financeCalendarDayOffset(thisMonday, -7);
       return FinanceDateRange(from, thisMonday);
+    }
+    if (_containsAny(text, _nextCalendarWeekWords)) {
+      final from = financeCalendarDayOffset(_mondayOf(current), 7);
+      return FinanceDateRange(from, financeCalendarDayOffset(from, 7));
     }
     if (_containsAny(text, _currentCalendarWeekWords)) {
       final from = _mondayOf(current);
