@@ -400,6 +400,43 @@ void main() {
     }
   });
 
+  test('最近课程日期范围超过30天时保留历史课程', () {
+    String dateText(DateTime date) => date.toIso8601String().substring(0, 10);
+
+    CourseItem course(String id, DateTime date) => CourseItem(
+      uuid: id,
+      courseName: id,
+      teacherName: '王老师',
+      date: dateText(date),
+      weekday: date.weekday,
+      startTime: 900,
+      endTime: 950,
+      weekIndex: 1,
+      roomName: 'A101',
+    );
+
+    for (final rangeDays in [60, 100]) {
+      final queryRange = rangeDays == 60 ? '最近' : '过去';
+      final inRangeDate = now.subtract(Duration(days: rangeDays - 15));
+      final rangeStart = now.subtract(Duration(days: rangeDays));
+      final injection = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '$queryRange$rangeDays天课程安排',
+        courses: [
+          course('course-in-range', inRangeDate),
+          course('course-at-range-start', rangeStart),
+        ],
+        timeLogs: const [],
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      );
+
+      expect(injection, contains('最近$rangeDays天范围'));
+      expect(injection, contains('course-in-range'));
+      expect(injection, isNot(contains('course-at-range-start')));
+    }
+  });
+
   test('与习惯或账单相关的省略日期续问继承上一轮范围', () {
     final habit = HabitAiContextService.buildContextInjectionSummary(
       userMessage: '那完成率呢？',

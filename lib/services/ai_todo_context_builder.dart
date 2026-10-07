@@ -37,9 +37,8 @@ class AiTodoContextBuilder {
     r'(?:(\d{1,2}|[一二两三四五六七八九十]{1,3})\s*个月|半年)',
   );
   static final RegExp _relativeDayRangePattern = RegExp(
-    r'最近(?:7天|七天|30天|三十天|一周)|'
-    r'过去(?:7天|七天|30天|三十天|一周)|'
-    r'近(?:7天|七天|30天|三十天|一周)',
+    r'(?:最近|过去|近)\s*(?:\d{1,6}|[一二两三四五六七八九十]{1,3})\s*(?:天|日)|'
+    r'(?:最近|过去|近)\s*一周',
   );
   static final RegExp _relativeWeekPeriodPattern = RegExp(
     r'上上(?:周|星期|礼拜)|上(?:周|星期|礼拜)|本(?:周|星期|礼拜)|这(?:周|星期|礼拜)',
@@ -58,7 +57,7 @@ class AiTodoContextBuilder {
     r'大前天|大前日|前天|前日|昨天|昨日|今天|今日|明天|明日|大后天|大后日|后天|后日',
   );
   static final RegExp _futureDaysRangePattern = RegExp(
-    r'(?:未来|接下来)\s*(?:\d+|[一二两三四五六七八九十]{1,3})\s*(?:天|日)',
+    r'(?:未来|接下来)\s*(?:\d{1,6}|[一二两三四五六七八九十]{1,3})\s*(?:天|日)',
   );
 
   static AiContextDateRange? resolveCustomInjectionDateRange({
@@ -1900,29 +1899,20 @@ ${sections.join('\n')}
   }
 
   static _DateRange? _resolveRecentDayRange(String text, DateTime now) {
-    final days = _matchesAny(text, [
-      '最近7天',
-      '最近七天',
-      '过去7天',
-      '过去七天',
-      '近7天',
-      '近七天',
-      '最近一周',
-      '过去一周',
-      '近一周',
-    ])
+    final numericDays = RegExp(
+      r'(?:最近|过去|近)\s*(\d{1,6})\s*(?:天|日)',
+    ).firstMatch(text);
+    final chineseDays = RegExp(
+      r'(?:最近|过去|近)\s*([一二两三四五六七八九十]{1,3})\s*(?:天|日)',
+    ).firstMatch(text);
+    final days = numericDays != null
+        ? int.tryParse(numericDays.group(1)!)
+        : chineseDays != null
+        ? _parseSimpleChineseNumber(chineseDays.group(1)!)
+        : _matchesAny(text, ['最近一周', '过去一周', '近一周'])
         ? 7
-        : _matchesAny(text, [
-            '最近30天',
-            '最近三十天',
-            '过去30天',
-            '过去三十天',
-            '近30天',
-            '近三十天',
-          ])
-        ? 30
         : null;
-    if (days == null) return null;
+    if (days == null || days <= 0) return null;
 
     final todayStart = DateTime(now.year, now.month, now.day);
     return _DateRange(
@@ -2063,7 +2053,7 @@ ${sections.join('\n')}
   }
 
   static int? _parseFutureDays(String text) {
-    final digitMatch = RegExp(r'(?:未来|接下来)\s*(\d+)\s*(?:天|日)')
+    final digitMatch = RegExp(r'(?:未来|接下来)\s*(\d{1,6})\s*(?:天|日)')
         .firstMatch(text);
     if (digitMatch != null) {
       final parsed = int.tryParse(digitMatch.group(1)!);
