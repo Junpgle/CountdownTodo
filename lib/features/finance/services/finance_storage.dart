@@ -1500,26 +1500,37 @@ abstract final class FinanceStorage {
       if (existing.isEmpty) return false;
       final category = FinanceCategory.fromMap(existing.first);
       if (category.isSystem || category.isArchived) return false;
+      final children = await txn.query(
+        'finance_categories',
+        where: 'parent_uuid = ? AND is_deleted = 0',
+        whereArgs: [uuid],
+      );
       category
         ..isArchived = true
         ..markAsChanged();
+      var cascadeUpdatedAt = category.updatedAt;
+      for (final raw in children) {
+        final child = FinanceCategory.fromMap(raw);
+        if (child.updatedAt >= cascadeUpdatedAt) {
+          cascadeUpdatedAt = child.updatedAt + 1;
+        }
+      }
+      // The shared timestamp identifies children archived as part of this
+      // parent operation, so a later restore can preserve older child archives.
+      category.updatedAt = cascadeUpdatedAt;
       await txn.update(
         'finance_categories',
         _localValues(category.toMap()),
         where: 'uuid = ?',
         whereArgs: [uuid],
       );
-      final children = await txn.query(
-        'finance_categories',
-        where: 'parent_uuid = ? AND is_deleted = 0 AND is_archived = 0',
-        whereArgs: [uuid],
-      );
       for (final raw in children) {
         final child = FinanceCategory.fromMap(raw);
-        if (child.isSystem) continue;
+        if (child.isSystem || child.isArchived) continue;
         child
           ..isArchived = true
           ..markAsChanged();
+        child.updatedAt = cascadeUpdatedAt;
         await txn.update(
           'finance_categories',
           _localValues(child.toMap()),
@@ -1543,10 +1554,10 @@ abstract final class FinanceStorage {
         limit: 1,
       );
       if (existing.isEmpty) return false;
-      var category = FinanceCategory.fromMap(existing.first);
+      final category = FinanceCategory.fromMap(existing.first);
       if (category.isSystem || category.isDeleted) return false;
-      final categoryWasArchived = category.isArchived;
 
+      FinanceCategory? archivedParent;
       final parentUuid = _normalizeCategoryParentUuid(category.parentUuid);
       if (parentUuid != null) {
         final parentRows = await txn.query(
@@ -1562,32 +1573,41 @@ abstract final class FinanceStorage {
           return false;
         }
         if (parent.isArchived) {
-          category = parent;
-        } else if (!categoryWasArchived) {
+          archivedParent = parent;
+        } else if (!category.isArchived) {
           return false;
         }
-      } else if (!categoryWasArchived) {
+      } else if (!category.isArchived) {
         return false;
       }
 
-      if (category.isSystem || !category.isArchived) return false;
-      category
+      final categoryToRestore = archivedParent ?? category;
+      if (categoryToRestore.isSystem || !categoryToRestore.isArchived) {
+        return false;
+      }
+      final cascadeUpdatedAt = categoryToRestore.updatedAt;
+      categoryToRestore
         ..isArchived = false
         ..markAsChanged();
       await txn.update(
         'finance_categories',
-        _localValues(category.toMap()),
+        _localValues(categoryToRestore.toMap()),
         where: 'uuid = ?',
-        whereArgs: [category.uuid],
+        whereArgs: [categoryToRestore.uuid],
       );
       final children = await txn.query(
         'finance_categories',
         where: 'parent_uuid = ? AND is_deleted = 0 AND is_archived = 1',
-        whereArgs: [category.uuid],
+        whereArgs: [categoryToRestore.uuid],
       );
       for (final raw in children) {
         final child = FinanceCategory.fromMap(raw);
-        if (child.isSystem) continue;
+        final isRequestedChild =
+            archivedParent != null && child.uuid == category.uuid;
+        if (child.isSystem ||
+            (child.updatedAt != cascadeUpdatedAt && !isRequestedChild)) {
+          continue;
+        }
         child
           ..isArchived = false
           ..markAsChanged();

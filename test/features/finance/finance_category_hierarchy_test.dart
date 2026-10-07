@@ -121,6 +121,70 @@ void main() {
     expect(archivedByUuid[child.uuid], 0);
   });
 
+  test('恢复大类只恢复级联归档的细分类', () async {
+    final previouslyArchivedChild = FinanceCategory(
+      uuid: 'previously-archived-child',
+      name: '此前归档的小类',
+      parentUuid: root.uuid,
+    );
+    final cascadedChild = FinanceCategory(
+      uuid: 'cascaded-child',
+      name: '随大类归档的小类',
+      parentUuid: root.uuid,
+    );
+    await FinanceStorage.saveCategory(previouslyArchivedChild);
+    await FinanceStorage.saveCategory(cascadedChild);
+    await FinanceStorage.archiveCategory(child.uuid);
+    await FinanceStorage.archiveCategory(previouslyArchivedChild.uuid);
+    await FinanceStorage.archiveCategory(root.uuid);
+
+    expect(await FinanceStorage.unarchiveCategory(root.uuid), isTrue);
+
+    final rows = await db.query(
+      'finance_categories',
+      where: 'uuid IN (?, ?, ?, ?)',
+      whereArgs: [
+        root.uuid,
+        child.uuid,
+        previouslyArchivedChild.uuid,
+        cascadedChild.uuid,
+      ],
+    );
+    final archivedByUuid = {
+      for (final row in rows) row['uuid'] as String: row['is_archived'] as int,
+    };
+    expect(archivedByUuid[root.uuid], 0);
+    expect(archivedByUuid[child.uuid], 1);
+    expect(archivedByUuid[previouslyArchivedChild.uuid], 1);
+    expect(archivedByUuid[cascadedChild.uuid], 0);
+  });
+
+  test('从细分类入口恢复时不恢复此前单独归档的其他小类', () async {
+    final previouslyArchivedSibling = FinanceCategory(
+      uuid: 'previously-archived-sibling',
+      name: '此前归档的另一小类',
+      parentUuid: root.uuid,
+    );
+    await FinanceStorage.saveCategory(previouslyArchivedSibling);
+    await FinanceStorage.archiveCategory(child.uuid);
+    await FinanceStorage.archiveCategory(previouslyArchivedSibling.uuid);
+    await FinanceStorage.archiveCategory(root.uuid);
+
+    expect(await FinanceStorage.unarchiveCategory(child.uuid), isTrue);
+
+    final rows = await db.query(
+      'finance_categories',
+      where: 'uuid IN (?, ?, ?)',
+      whereArgs: [root.uuid, child.uuid, previouslyArchivedSibling.uuid],
+    );
+    final archivedByUuid = {
+      for (final row in rows) row['uuid'] as String: row['is_archived'] as int,
+    };
+    expect(archivedByUuid[root.uuid], 0);
+    expect(archivedByUuid[child.uuid], 0);
+    expect(archivedByUuid[previouslyArchivedSibling.uuid], 1);
+  });
+
   test('旧数据中父类已归档的活跃小类不会进入可用列表，并可从子类入口修复', () async {
     await db.update(
       'finance_categories',
