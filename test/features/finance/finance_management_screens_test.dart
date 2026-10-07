@@ -170,6 +170,24 @@ Future<void> _waitFor(WidgetTester tester, bool Function() ready) async {
   fail('页面未在限定时间内完成数据库操作');
 }
 
+Future<List<Map<String, Object?>>> _waitForSavedTransactions(
+  WidgetTester tester,
+  Database db,
+) async {
+  var rows = <Map<String, Object?>>[];
+  for (var attempt = 0; attempt < 100; attempt++) {
+    rows = (await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    ))!;
+    if (rows.isNotEmpty) return rows;
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+  fail('账单未能保存');
+}
+
 Future<void> _pump(
   WidgetTester tester,
   Widget screen, {
@@ -234,6 +252,26 @@ Future<void> _top(WidgetTester tester) async {
       .position
       .jumpTo(0);
   await tester.pumpAndSettle();
+}
+
+DateTime? _upcomingTimezoneOffsetChangeDate() {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  for (var day = 1; day <= 370; day++) {
+    final candidate = today.add(Duration(days: day));
+    final localNoon = DateTime(
+      candidate.year,
+      candidate.month,
+      candidate.day,
+      12,
+    );
+    if (localNoon.timeZoneOffset != now.timeZoneOffset) {
+      // Avoid testing on the transition day itself, where the selected time
+      // may be skipped or repeated.
+      return localNoon.add(const Duration(days: 3));
+    }
+  }
+  return null;
 }
 
 void main() {
@@ -667,6 +705,103 @@ void main() {
     expect(find.text('这笔账单没有与日期匹配的发生时刻，余额计算暂按录入时间估算。'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    '新建账单选择夏令时切换后的日期时保存该日期的时区偏移',
+    (tester) async {
+      final targetDate = _upcomingTimezoneOffsetChangeDate();
+      if (targetDate == null) return;
+      final db = await _seed(tester);
+      final now = DateTime.now();
+      await _pump(
+        tester,
+        FinanceEntryScreen(
+          initialDraft: FinanceEntryDraft(
+            amountMinor: 1200,
+            transactionDate: dateKey(now),
+          ),
+        ),
+        size: const Size(1100, 1800),
+      );
+
+      await _tap(tester, find.text('账单日期'));
+      await tester.pumpAndSettle();
+      final monthDelta =
+          (targetDate.year - now.year) * 12 + targetDate.month - now.month;
+      for (var month = 0; month < monthDelta; month++) {
+        await tester.tap(find.byTooltip('Next month'));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.text('${targetDate.day}').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('保存账单'));
+      await tester.tap(find.text('保存账单'));
+      final rows = await _waitForSavedTransactions(tester, db);
+      await tester.pump(const Duration(milliseconds: 200));
+      final transaction = FinanceTransaction.fromMap(rows.single);
+      final expectedOccurrence = DateTime(
+        targetDate.year,
+        targetDate.month,
+        targetDate.day,
+        now.hour,
+        now.minute,
+      );
+      expect(
+        transaction.timezoneOffsetMinutes,
+        expectedOccurrence.timeZoneOffset.inMinutes,
+      );
+      expect(
+        transaction.occurredAt,
+        expectedOccurrence.millisecondsSinceEpoch,
+      );
+      expect(tester.takeException(), isNull);
+    },
+    skip: _upcomingTimezoneOffsetChangeDate() == null,
+  );
+
+  testWidgets(
+    '未来日期草稿使用发生日期对应的时区偏移',
+    (tester) async {
+      final targetDate = _upcomingTimezoneOffsetChangeDate();
+      if (targetDate == null) return;
+      final db = await _seed(tester);
+      final now = DateTime.now();
+      await _pump(
+        tester,
+        FinanceEntryScreen(
+          initialDraft: FinanceEntryDraft(
+            amountMinor: 1200,
+            transactionDate: dateKey(targetDate),
+          ),
+        ),
+      );
+
+      await _tap(tester, find.text('保存账单'));
+      final rows = await _waitForSavedTransactions(tester, db);
+      await tester.pump(const Duration(milliseconds: 200));
+      final transaction = FinanceTransaction.fromMap(rows.single);
+      final expectedOccurrence = DateTime(
+        targetDate.year,
+        targetDate.month,
+        targetDate.day,
+        now.hour,
+        now.minute,
+      );
+      expect(
+        transaction.timezoneOffsetMinutes,
+        expectedOccurrence.timeZoneOffset.inMinutes,
+      );
+      expect(
+        transaction.occurredAt,
+        expectedOccurrence.millisecondsSinceEpoch,
+      );
+      expect(tester.takeException(), isNull);
+    },
+    skip: _upcomingTimezoneOffsetChangeDate() == null,
+  );
 
   testWidgets('编辑旧账单时保留未记录的发生时刻', (tester) async {
     final db = await _seed(tester);

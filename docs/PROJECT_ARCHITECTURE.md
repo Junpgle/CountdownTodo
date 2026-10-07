@@ -1,6 +1,6 @@
 # Project architecture
 
-Last reconciled with code: 2026-10-07. Flutter package version: **6.6.95**.
+Last reconciled with code: 2026-10-07. Flutter package version: **6.6.96**.
 
 ## Repository map
 

@@ -119,6 +119,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           : null;
       _occurrenceTimeExplicit = _occurredAt != null;
     }
+    if (transaction == null && _occurredAt != null) {
+      _timezoneOffsetMinutes = _occurredAt!.timeZoneOffset.inMinutes;
+    }
     _amountController = TextEditingController(
       text: transaction == null
           ? draft != null
@@ -666,6 +669,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 occurredAt.hour,
                 occurredAt.minute,
               );
+        if (widget.transaction == null && _occurredAt != null) {
+          _timezoneOffsetMinutes = _occurredAt!.timeZoneOffset.inMinutes;
+        }
       }
     });
   }
@@ -689,6 +695,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         picked.hour,
         picked.minute,
       );
+      if (widget.transaction == null) {
+        _timezoneOffsetMinutes = _occurredAt!.timeZoneOffset.inMinutes;
+      }
       _occurrenceTimeExplicit = true;
     });
   }
@@ -725,8 +734,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _type = draft.type;
       _date = dateFromKey(draft.transactionDate);
       final now = DateTime.now();
-      _timezoneOffsetMinutes = now.timeZoneOffset.inMinutes;
       _occurredAt = _defaultOccurrenceTimeFor(_date, now);
+      _timezoneOffsetMinutes =
+          _occurredAt?.timeZoneOffset.inMinutes ?? now.timeZoneOffset.inMinutes;
       _occurrenceTimeExplicit = false;
       _amountExpression = null;
       _amountController.text = formatFinanceAmount(
