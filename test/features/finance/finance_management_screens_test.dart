@@ -3526,6 +3526,55 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('删除关联付款方式的分期会说明余额与计划影响', (tester) async {
+    await _seed(tester);
+    await tester.runAsync(
+      () => FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'ui-installment-delete-balance-copy',
+          amountMinor: 1200,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: dateKey(DateTime.now()),
+          merchant: '需确认的分期账单',
+          installmentGroupUuid: 'ui-installment-delete-balance-group',
+          installmentIndex: 1,
+          installmentCount: 3,
+          installmentTotalMinor: 3600,
+        ),
+      ),
+    );
+    await _pump(
+      tester,
+      const FinanceHomeScreen(username: 'default'),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(of: find.text('需确认的分期账单'), matching: find.byType(ListTile))
+        .first;
+    await _tap(
+      tester,
+      find.descendant(
+        of: row,
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        '这是第 1/3 期。删除后不会计入统计；已发生期次会相应增加付款方式余额，未发生期次会从未来计划中移除。',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(TextButton, '取消'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('跨时区账单显示记录时刻且编辑保存保留原始时间戳', (tester) async {
     final db = await _seed(tester);
     final transaction = FinanceTransaction(

@@ -499,14 +499,28 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           ? '删除后，这笔退款不再抵扣净支出，也不再增加该付款方式的余额。确认继续吗？'
           : '删除后，这笔退款不再抵扣净支出。确认继续吗？',
     };
+    final installmentDeleteDescription = switch (transaction.type) {
+      FinanceTransactionType.expense => hasPaymentMethod
+          ? '删除后不会计入统计；已发生期次会相应增加付款方式余额，'
+              '未发生期次会从未来计划中移除。'
+          : '删除后不会计入统计；未发生期次会从未来计划中移除。',
+      FinanceTransactionType.income => hasPaymentMethod
+          ? '删除后不会计入统计；已发生期次会相应减少付款方式余额，'
+              '未发生期次会从未来计划中移除。'
+          : '删除后不会计入统计；未发生期次会从未来计划中移除。',
+      FinanceTransactionType.refund => hasPaymentMethod
+          ? '删除后不会计入统计；已发生期次不再抵扣净支出，也不再增加付款方式余额，'
+              '未发生期次会从未来计划中移除。'
+          : '删除后不会计入统计；未发生期次会从未来计划中移除。',
+    };
     final deleteMode = transaction.isInstallment
         ? await showAppDialog<String>(
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('删除分期账单？'),
               content: Text(
-                '这是第 ${transaction.installmentIndex}/${transaction.installmentCount} 期，'
-                '删除后不会计入统计。',
+                '这是第 ${transaction.installmentIndex}/${transaction.installmentCount} 期。'
+                '$installmentDeleteDescription',
               ),
               actions: [
                 TextButton(
