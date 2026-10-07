@@ -627,6 +627,77 @@ void main() {
     expect(followUp, '记账明细 2025-01-01 至 2025-12-31');
   });
 
+  test('数字年份账单查询按完整自然年过滤', () async {
+    final now = DateTime(2026, 10, 2, 12);
+    for (final transaction in [
+      FinanceTransaction(
+        uuid: 'numeric-year-2025',
+        amountMinor: 1200,
+        transactionDate: '2025-05-15',
+        occurredAt: DateTime(2025, 5, 15, 12).millisecondsSinceEpoch,
+      ),
+      FinanceTransaction(
+        uuid: 'numeric-year-2025-h2',
+        amountMinor: 800,
+        transactionDate: '2025-08-15',
+        occurredAt: DateTime(2025, 8, 15, 12).millisecondsSinceEpoch,
+      ),
+    ]) {
+      await FinanceStorage.saveTransaction(transaction);
+    }
+
+    final range = FinanceAiContextService.resolveDateRange(
+      '2025年支出',
+      now: now,
+    );
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '2025年支出多少',
+      now: now,
+    );
+    final secondHalfRange = FinanceAiContextService.resolveDateRange(
+      '2025年下半年支出',
+      now: now,
+    );
+    final secondHalfContext = await FinanceAiContextService.buildContext(
+      userMessage: '2025年下半年支出多少',
+      now: now,
+    );
+    final followUp = FinanceAiContextService.buildContextInjectionSummary(
+      userMessage: '2025年呢',
+      conversationContext: '查看记账支出情况',
+      previousUserMessage: '2026年9月支出多少',
+      now: now,
+    );
+
+    expect(dateKey(range.from), '2025-01-01');
+    expect(dateKey(range.to), '2026-01-01');
+    expect(context, contains('[transactionId: numeric-year-2025]'));
+    expect(context, contains('[transactionId: numeric-year-2025-h2]'));
+    expect(context, isNot(contains('[transactionId: today]')));
+    expect(dateKey(secondHalfRange.from), '2025-07-01');
+    expect(dateKey(secondHalfRange.to), '2026-01-01');
+    expect(
+      secondHalfContext,
+      contains('[transactionId: numeric-year-2025-h2]'),
+    );
+    expect(
+      secondHalfContext,
+      isNot(contains('[transactionId: numeric-year-2025]')),
+    );
+    expect(
+      FinanceAiContextService.shouldInjectFor('2025年支出多少'),
+      isTrue,
+    );
+    expect(followUp, '记账明细 2025-01-01 至 2025-12-31');
+    for (final query in [
+      '0000年支出多少',
+      '0000年第二季度支出多少',
+      '0000年下半年支出多少',
+    ]) {
+      expect(FinanceAiContextService.shouldInjectFor(query), isFalse);
+    }
+  });
+
   test('近半年和近几个月查询使用滚动自然月范围', () async {
     final now = DateTime(2026, 10, 2, 12);
     for (final (query, expectedFrom) in [

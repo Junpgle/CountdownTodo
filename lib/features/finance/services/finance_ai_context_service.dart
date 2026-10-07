@@ -192,12 +192,16 @@ abstract final class FinanceAiContextService {
   );
   static final RegExp _halfYearPeriodPattern = RegExp(
     r'(?:(?:今年|本年|明年|下年|下一年|来年|去年|上一年|前一年|前年)\s*'
-    r'(?:的\s*)?)?'
+    r'(?:的\s*)?|(\d{4})\s*年\s*(?:的\s*)?)?'
     r'(?:上半年|上半年度|下半年|下半年度)',
   );
   static final RegExp _numericYearPeriodPattern = RegExp(
-    r'(?<!\d)\d{4}\s*年'
-    r'(?!\s*(?:\d{1,2}\s*月|(?:第\s*)?[零〇○一二三四五六七八九十\d]{1,4}\s*季度))',
+    r'(?<!\d)(\d{4})\s*年'
+    r'(?!\s*(?:'
+    r'\d{1,2}\s*月|'
+    r'(?:第\s*)?[零〇○一二三四五六七八九十\d]{1,4}\s*季度|'
+    r'上半年|上半年度|下半年|下半年度'
+    r'))',
   );
   static final RegExp _numericYearMonthPattern = RegExp(
     r'(?:^|[^\d])(\d{4})[-/.](\d+)(?!\d|[-/.]\d)',
@@ -407,6 +411,7 @@ abstract final class FinanceAiContextService {
         _containsAny(text, _periodWords) ||
         hasExplicitMonth ||
         _quarterPeriodPattern.hasMatch(text) ||
+        _numericYearPeriodPattern.hasMatch(text) ||
         _rollingDayPeriodPattern.hasMatch(text) ||
         _hasRollingMonthPeriod(text) ||
         _hasRollingYearPeriod(text);
@@ -715,6 +720,7 @@ abstract final class FinanceAiContextService {
         _hasRollingYearPeriod(text) ||
         _hasExplicitMonth(text) ||
         _quarterPeriodPattern.hasMatch(text) ||
+        _numericYearPeriodPattern.hasMatch(text) ||
         _calendarDatePattern.hasMatch(text) ||
         _numericYearMonthPattern.hasMatch(text);
 
@@ -866,18 +872,23 @@ abstract final class FinanceAiContextService {
     final isFirstHalfYear = _containsAny(text, ['上半年', '上半年度']);
     final isSecondHalfYear = _containsAny(text, ['下半年', '下半年度']);
     if (isFirstHalfYear || isSecondHalfYear) {
-      var year = current.year;
-      if (_containsAny(text, ['明年', '下年', '下一年', '来年'])) {
+      final halfYear = _halfYearPeriodPattern.firstMatch(text);
+      var year = int.tryParse(halfYear?.group(1) ?? '') ?? current.year;
+      if (halfYear?.group(1) == null &&
+          _containsAny(text, ['明年', '下年', '下一年', '来年'])) {
         year++;
-      } else if (text.contains('前年')) {
+      } else if (halfYear?.group(1) == null && text.contains('前年')) {
         year -= 2;
-      } else if (_containsAny(text, ['去年', '上一年', '前一年'])) {
+      } else if (halfYear?.group(1) == null &&
+          _containsAny(text, ['去年', '上一年', '前一年'])) {
         year--;
       }
       final from = DateTime(year, isFirstHalfYear ? 1 : 7);
       final to = DateTime(year, isFirstHalfYear ? 7 : 13);
       return FinanceDateRange(from, to);
     }
+    final explicitYear = _resolveExplicitYearRange(text);
+    if (explicitYear != null) return explicitYear;
     if (_containsAny(text, ['下月', '下个月', '下一个月'])) {
       final from = DateTime(current.year, current.month + 1);
       return FinanceDateRange(from, DateTime(from.year, from.month + 1));
@@ -1240,6 +1251,11 @@ abstract final class FinanceAiContextService {
         return true;
       }
     }
+    final numericYearPeriod = _numericYearPeriodPattern.firstMatch(text);
+    if (numericYearPeriod != null &&
+        (int.tryParse(numericYearPeriod.group(1)!) ?? 0) < 1) {
+      return true;
+    }
 
     for (final rollingMonth in _rollingMonthPeriodPattern.allMatches(text)) {
       final count = _parseRollingPeriodCount(rollingMonth.group(1)!);
@@ -1254,7 +1270,18 @@ abstract final class FinanceAiContextService {
     }
     for (final quarter in _quarterPeriodPattern.allMatches(text)) {
       final number = _parseQuarterNumber(quarter.group(3)!);
-      if (number == null || number < 1 || number > 4) return true;
+      final year = int.tryParse(quarter.group(2) ?? '');
+      if (number == null ||
+          number < 1 ||
+          number > 4 ||
+          (year != null && year < 1)) {
+        return true;
+      }
+    }
+    final halfYear = _halfYearPeriodPattern.firstMatch(text);
+    final halfYearNumber = int.tryParse(halfYear?.group(1) ?? '');
+    if (halfYearNumber != null && halfYearNumber < 1) {
+      return true;
     }
 
     for (final chineseMonth in _chineseMonthPattern.allMatches(text)) {
@@ -1527,6 +1554,14 @@ abstract final class FinanceAiContextService {
     final month = (quarter - 1) * 3 + 1;
     final from = DateTime(year, month);
     return FinanceDateRange(from, DateTime(year, month + 3));
+  }
+
+  static FinanceDateRange? _resolveExplicitYearRange(String text) {
+    final match = _numericYearPeriodPattern.firstMatch(text);
+    if (match == null) return null;
+    final year = int.tryParse(match.group(1) ?? '');
+    if (year == null || year < 1) return null;
+    return FinanceDateRange(DateTime(year), DateTime(year + 1));
   }
 
   static List<_ExplicitFinanceMonthToken> _explicitMonthTokens(
