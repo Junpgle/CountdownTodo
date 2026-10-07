@@ -1554,7 +1554,14 @@ class FinanceTransaction {
   int balanceEventAt({int? snapshotAt}) {
     final timestamp = occurredAt;
     final occurred = occurrenceLocalTime;
-    final dateStartAt = dateFromKey(transactionDate).millisecondsSinceEpoch;
+    final ledgerDate = dateFromKey(transactionDate);
+    final dateStartAt =
+        DateTime.utc(
+          ledgerDate.year,
+          ledgerDate.month,
+          ledgerDate.day,
+        ).millisecondsSinceEpoch -
+        timezoneOffsetMinutes * 60000;
     var eventAt = timestamp;
     if (eventAt == null || occurred == null) {
       // Legacy rows without a reliable time use their entry time, while a
@@ -1627,6 +1634,12 @@ class FinanceTransaction {
     final amount = _int(map['amount_minor'] ?? map['amountMinor']);
     final createdAt = _timestamp(map['created_at'] ?? map['createdAt']);
     final occurredAt = _nullableInt(map['occurred_at'] ?? map['occurredAt']);
+    final transactionDate =
+        _string(map['transaction_date'] ?? map['transactionDate']) ??
+        dateKey(DateTime.now());
+    final timezoneOffsetMinutes = _nullableInt(
+      map['timezone_offset_minutes'] ?? map['timezoneOffsetMinutes'],
+    );
     final transaction = FinanceTransaction(
       uuid: _string(map['uuid'] ?? map['id']) ?? const Uuid().v4(),
       type: _transactionType(map['type']),
@@ -1640,13 +1653,11 @@ class FinanceTransaction {
       paymentMethodUuid: _nullableString(
         map['payment_method_uuid'] ?? map['paymentMethodUuid'],
       ),
-      transactionDate:
-          _string(map['transaction_date'] ?? map['transactionDate']) ??
-          dateKey(DateTime.now()),
+      transactionDate: transactionDate,
       occurredAt: occurredAt,
-      timezoneOffsetMinutes: _int(
-        map['timezone_offset_minutes'] ?? map['timezoneOffsetMinutes'],
-      ),
+      timezoneOffsetMinutes:
+          timezoneOffsetMinutes ??
+          dateFromKey(transactionDate).timeZoneOffset.inMinutes,
       merchant: _nullableString(map['merchant']),
       note: _nullableString(map['note']),
       source: _entrySource(map['source']),

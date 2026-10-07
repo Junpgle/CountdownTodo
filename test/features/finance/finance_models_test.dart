@@ -159,6 +159,48 @@ void main() {
     expect(transaction.balanceEventAt(), future.millisecondsSinceEpoch);
   });
 
+  test('无发生时刻的历史账单按保存时区的日期边界计算余额', () {
+    final localOffset = DateTime(2026, 10, 2).timeZoneOffset.inMinutes;
+    if (localOffset >= 14 * 60) return;
+
+    final savedOffset = localOffset + 60;
+    final savedDateStartAt =
+        DateTime.utc(2026, 10, 2).millisecondsSinceEpoch - savedOffset * 60000;
+    final localDateStartAt = DateTime(2026, 10, 2).millisecondsSinceEpoch;
+    final createdAt =
+        savedDateStartAt + const Duration(minutes: 30).inMilliseconds;
+    final snapshotAt =
+        savedDateStartAt + const Duration(minutes: 45).inMilliseconds;
+    expect(localDateStartAt, greaterThan(snapshotAt));
+
+    final transaction = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: '2026-10-02',
+      occurredAt: null,
+      timezoneOffsetMinutes: savedOffset,
+      createdAt: createdAt,
+    )..occurredAt = null;
+
+    expect(transaction.balanceEventAt(snapshotAt: snapshotAt), createdAt);
+    final snapshot = FinanceBudget(
+      uuid: 'saved-zone-snapshot',
+      monthKey: '2026-10',
+      paymentMethodUuid: 'saved-zone-card',
+      amountMinor: 10000,
+      balanceSnapshotAt: snapshotAt,
+    );
+    expect(
+      FinanceRepository.paymentMethodBalanceAt(
+        snapshot: snapshot,
+        transactions: [transaction],
+        loanRepayments: const [],
+        loanInterestTransactionUuids: const {},
+        asOfAt: snapshotAt + const Duration(minutes: 30).inMilliseconds,
+      ),
+      10000,
+    );
+  });
+
   test('预算截止汇总排除尚未发生的同日和未来日期账单', () {
     final asOf = DateTime(2026, 10, 2, 12);
     final summary = FinanceSummary.fromTransactions(
@@ -221,7 +263,7 @@ void main() {
       amountMinor: 100,
       transactionDate: dateKey(futureDate),
       occurredAt: staleOccurrence.millisecondsSinceEpoch,
-      timezoneOffsetMinutes: 0,
+      timezoneOffsetMinutes: localCreatedAt.timeZoneOffset.inMinutes,
       createdAt: createdAt.millisecondsSinceEpoch,
     );
 
