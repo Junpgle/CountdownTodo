@@ -1133,7 +1133,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
             controller: _keywordController,
             onChanged: onKeywordChanged,
             decoration: InputDecoration(
-              hintText: '搜索商家、备注或分类',
+              hintText: '搜索商家、备注、分类、付款方式或日期',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: keyword.isEmpty
                   ? null
