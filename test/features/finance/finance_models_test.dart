@@ -26,6 +26,66 @@ void main() {
     expect(dateKey(transaction.occurrenceLocalTime!), localDate);
   });
 
+  test('移动账单日期时平移可信发生时刻并保留未知时间', () {
+    final originalOccurrence = DateTime(2027, 2, 15, 9, 42, 18, 250);
+    final transaction = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: dateKey(originalOccurrence),
+      occurredAt: originalOccurrence.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: originalOccurrence.timeZoneOffset.inMinutes,
+    );
+    final targetOccurrence = DateTime(2027, 2, 20, 9, 42, 18, 250);
+
+    expect(
+      financeOccurrenceTimestampForDate(
+        transaction,
+        dateKey(targetOccurrence),
+      ),
+      targetOccurrence.millisecondsSinceEpoch,
+    );
+
+    final now = DateTime.now();
+    final recentTransaction = FinanceTransaction(
+      type: FinanceTransactionType.expense,
+      amountMinor: 100,
+      transactionDate: dateKey(now),
+      occurredAt: now.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: now.timeZoneOffset.inMinutes,
+    );
+    final futureDate = DateTime(now.year, now.month + 2, now.day);
+    final futureOccurrenceAt = financeOccurrenceTimestampForDate(
+      recentTransaction,
+      dateKey(futureDate),
+    );
+    final movedFutureTransaction = FinanceTransaction(
+      type: FinanceTransactionType.expense,
+      amountMinor: 100,
+      transactionDate: dateKey(futureDate),
+      occurredAt: futureOccurrenceAt,
+      timezoneOffsetMinutes: recentTransaction.timezoneOffsetMinutes,
+      createdAt: now.millisecondsSinceEpoch,
+    );
+    expect(
+      movedFutureTransaction.balanceEventAt(
+        snapshotAt: now.millisecondsSinceEpoch,
+      ),
+      greaterThan(now.millisecondsSinceEpoch),
+    );
+
+    final unknownOccurrence = FinanceTransaction(
+      amountMinor: 100,
+      transactionDate: dateKey(originalOccurrence),
+      occurredAt: null,
+    )..occurredAt = null;
+    expect(
+      financeOccurrenceTimestampForDate(
+        unknownOccurrence,
+        dateKey(targetOccurrence),
+      ),
+      isNull,
+    );
+  });
+
   test(
     '回拨小时的默认发生时刻保留当前实际偏移',
     () {

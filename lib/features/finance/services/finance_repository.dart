@@ -8,6 +8,31 @@ import '../models/finance_models.dart';
 import 'finance_automation_service.dart';
 import 'finance_storage.dart';
 
+/// Moves a trusted occurrence wall time to another ledger date without
+/// changing the transaction's recorded timezone. Unknown or mismatched legacy
+/// occurrence times remain unknown.
+int? financeOccurrenceTimestampForDate(
+  FinanceTransaction transaction,
+  String targetDate,
+) {
+  final occurrence = transaction.occurrenceLocalTime;
+  if (occurrence == null || dateKey(occurrence) != transaction.transactionDate) {
+    return null;
+  }
+  final date = dateFromKey(targetDate);
+  return DateTime.utc(
+        date.year,
+        date.month,
+        date.day,
+        occurrence.hour,
+        occurrence.minute,
+        occurrence.second,
+        occurrence.millisecond,
+        occurrence.microsecond,
+      ).millisecondsSinceEpoch -
+      transaction.timezoneOffsetMinutes * 60000;
+}
+
 abstract final class FinanceRepository {
   static Future<List<FinanceTransaction>> getTransactions({
     DateTime? from,

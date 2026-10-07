@@ -609,8 +609,11 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
             isFinanceDateKey(requestedDate)
         ? requestedDate
         : existing.transactionDate;
+    final occurredAt = transactionDate == existing.transactionDate
+        ? existing.occurredAt
+        : financeOccurrenceTimestampForDate(existing, transactionDate);
 
-    return FinanceTransaction(
+    final updated = FinanceTransaction(
       uuid: existing.uuid,
       type: type,
       amountMinor: action.hasAmount && action.amountMinor != null
@@ -620,7 +623,7 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       categoryUuid: categoryUuid,
       paymentMethodUuid: paymentMethodUuid,
       transactionDate: transactionDate,
-      occurredAt: existing.occurredAt,
+      occurredAt: occurredAt,
       timezoneOffsetMinutes: existing.timezoneOffsetMinutes,
       merchant: action.hasMerchant ? action.merchant : existing.merchant,
       note: action.hasNote ? action.note : existing.note,
@@ -634,6 +637,8 @@ mixin _TodoChatActions on _TodoChatScreenStateBase {
       updatedAt: existing.updatedAt,
       deviceId: existing.deviceId,
     );
+    if (occurredAt == null) updated.occurredAt = null;
+    return updated;
   }
 
   String? _findFinanceCategoryUuid(
