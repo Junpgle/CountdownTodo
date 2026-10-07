@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../../../services/database_helper.dart';
@@ -5,9 +6,23 @@ import '../models/journal_entry.dart';
 import 'journal_media_service.dart';
 
 class JournalStorage {
-  JournalStorage._();
+  JournalStorage._({
+    required this.databaseLoader,
+    required this.reconcileMedia,
+  });
 
-  static final instance = JournalStorage._();
+  @visibleForTesting
+  factory JournalStorage.forTesting({
+    required Future<Database> Function(String accountId) databaseLoader,
+  }) =>
+      JournalStorage._(databaseLoader: databaseLoader, reconcileMedia: false);
+
+  static final instance = JournalStorage._(
+    databaseLoader: DatabaseHelper.instance.databaseForUser,
+    reconcileMedia: true,
+  );
+  final Future<Database> Function(String accountId) databaseLoader;
+  final bool reconcileMedia;
   static const _attachmentMetadataColumns = [
     'uuid',
     'entry_uuid',
@@ -29,8 +44,8 @@ class JournalStorage {
     int offset = 0,
     String? searchQuery,
   }) async {
-    final db = await DatabaseHelper.instance.databaseForUser(accountId);
-    await _reconcileMediaIfNeeded(db, accountId);
+    final db = await databaseLoader(accountId);
+    if (reconcileMedia) await _reconcileMediaIfNeeded(db, accountId);
     final query = searchQuery?.trim() ?? '';
     final hasQuery = query.isNotEmpty;
     final entryRows = await db.query(
@@ -71,9 +86,7 @@ class JournalStorage {
   }
 
   Future<JournalEntry?> loadEntry(String id, {String? accountId}) async {
-    final db = accountId == null
-        ? await DatabaseHelper.instance.database
-        : await DatabaseHelper.instance.databaseForUser(accountId);
+    final db = await _databaseFor(accountId);
     final rows = await db.query(
       'journal_entries',
       where: 'uuid = ? AND is_deleted = 0',
@@ -97,9 +110,7 @@ class JournalStorage {
   /// Native previews use the local path and do not need this query.
   Future<JournalAttachment?> loadAttachment(String id,
       {String? accountId}) async {
-    final db = accountId == null
-        ? await DatabaseHelper.instance.database
-        : await DatabaseHelper.instance.databaseForUser(accountId);
+    final db = await _databaseFor(accountId);
     final rows = await db.query(
       'journal_attachments',
       where: 'uuid = ?',
@@ -112,9 +123,7 @@ class JournalStorage {
   Future<void> saveEntry(
       JournalEntry entry, List<JournalAttachment> attachments,
       {String? accountId}) async {
-    final db = accountId == null
-        ? await DatabaseHelper.instance.database
-        : await DatabaseHelper.instance.databaseForUser(accountId);
+    final db = await _databaseFor(accountId);
     await db.transaction((txn) async {
       await txn.insert(
         'journal_entries',
@@ -144,9 +153,7 @@ class JournalStorage {
     String id, {
     String? accountId,
   }) async {
-    final db = accountId == null
-        ? await DatabaseHelper.instance.database
-        : await DatabaseHelper.instance.databaseForUser(accountId);
+    final db = await _databaseFor(accountId);
     final rows = await db.query(
       'journal_attachments',
       where: 'entry_uuid = ?',
@@ -178,4 +185,8 @@ class JournalStorage {
     );
     _reconciledMediaAccountId = accountId;
   }
+
+  Future<Database> _databaseFor(String? accountId) => accountId == null
+      ? DatabaseHelper.instance.database
+      : databaseLoader(accountId);
 }
