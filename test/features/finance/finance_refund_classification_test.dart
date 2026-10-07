@@ -152,4 +152,114 @@ void main() {
       'finance-system-category-transport': 18000,
     });
   });
+
+  test('绑定退款日期不能早于原支出日期', () async {
+    final original = FinanceTransaction(
+      uuid: 'refund-date-order-original',
+      amountMinor: 10000,
+      transactionDate: '2026-09-10',
+    );
+    await FinanceStorage.saveTransaction(original);
+
+    await expectLater(
+      FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'refund-date-order-refund',
+          type: FinanceTransactionType.refund,
+          amountMinor: 2000,
+          relatedTransactionUuid: original.uuid,
+          transactionDate: '2026-09-09',
+        ),
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('同日退款时刻不能早于原支出时刻', () async {
+    final expenseAt = DateTime(2026, 9, 10, 12);
+    final original = FinanceTransaction(
+      uuid: 'refund-same-day-order-original',
+      amountMinor: 10000,
+      transactionDate: '2026-09-10',
+      occurredAt: expenseAt.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: expenseAt.timeZoneOffset.inMinutes,
+    );
+    await FinanceStorage.saveTransaction(original);
+
+    final refundAt = DateTime(2026, 9, 10, 11, 59);
+    await expectLater(
+      FinanceStorage.saveTransaction(
+        FinanceTransaction(
+          uuid: 'refund-same-day-order-refund',
+          type: FinanceTransactionType.refund,
+          amountMinor: 2000,
+          relatedTransactionUuid: original.uuid,
+          transactionDate: '2026-09-10',
+          occurredAt: refundAt.millisecondsSinceEpoch,
+          timezoneOffsetMinutes: refundAt.timeZoneOffset.inMinutes,
+        ),
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('同一分钟录入的退款按界面精度视为同时发生', () async {
+    final expenseAt = DateTime(2026, 9, 10, 12, 0, 30);
+    final original = FinanceTransaction(
+      uuid: 'refund-same-minute-original',
+      amountMinor: 10000,
+      transactionDate: '2026-09-10',
+      occurredAt: expenseAt.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: expenseAt.timeZoneOffset.inMinutes,
+    );
+    await FinanceStorage.saveTransaction(original);
+
+    final refundAt = DateTime(2026, 9, 10, 12);
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'refund-same-minute-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 2000,
+        relatedTransactionUuid: original.uuid,
+        transactionDate: '2026-09-10',
+        occurredAt: refundAt.millisecondsSinceEpoch,
+        timezoneOffsetMinutes: refundAt.timeZoneOffset.inMinutes,
+      ),
+    );
+    expect(
+      (await FinanceStorage.getTransaction('refund-same-minute-refund'))!
+          .amountMinor,
+      2000,
+    );
+  });
+
+  test('有退款后不能把原支出日期改到退款之后', () async {
+    final original = FinanceTransaction(
+      uuid: 'refund-date-edit-original',
+      amountMinor: 10000,
+      transactionDate: '2026-09-10',
+    );
+    await FinanceStorage.saveTransaction(original);
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'refund-date-edit-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 2000,
+        relatedTransactionUuid: original.uuid,
+        transactionDate: '2026-09-12',
+      ),
+    );
+
+    original
+      ..transactionDate = '2026-09-20'
+      ..markAsChanged();
+    await expectLater(
+      FinanceStorage.saveTransaction(original),
+      throwsA(isA<StateError>()),
+    );
+    expect(
+      (await FinanceStorage.getTransaction(original.uuid))!.transactionDate,
+      '2026-09-10',
+    );
+  });
 }

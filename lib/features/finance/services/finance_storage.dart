@@ -4468,6 +4468,42 @@ abstract final class FinanceStorage {
     return _asInt(rows.first['total']);
   }
 
+  static Future<List<FinanceTransaction>> _getActiveRefundsForTransaction(
+    DatabaseExecutor db,
+    String originalUuid,
+  ) async {
+    final rows = await db.query(
+      'finance_transactions',
+      where: "type = 'refund' AND related_transaction_uuid = ? "
+          'AND is_deleted = 0',
+      whereArgs: [originalUuid],
+    );
+    return rows.map(FinanceTransaction.fromMap).toList(growable: false);
+  }
+
+  static bool _refundPrecedesOriginal(
+    FinanceTransaction refund,
+    FinanceTransaction original,
+  ) {
+    final dateOrder = refund.transactionDate.compareTo(
+      original.transactionDate,
+    );
+    if (dateOrder != 0) return dateOrder < 0;
+
+    final refundOccurrence = refund.occurrenceLocalTime;
+    final originalOccurrence = original.occurrenceLocalTime;
+    if (refund.occurredAt == null ||
+        original.occurredAt == null ||
+        refundOccurrence == null ||
+        originalOccurrence == null ||
+        dateKey(refundOccurrence) != refund.transactionDate ||
+        dateKey(originalOccurrence) != original.transactionDate) {
+      return false;
+    }
+    // The entry editor displays and preserves occurrence times to the minute.
+    return (refund.occurredAt! ~/ 60000) < (original.occurredAt! ~/ 60000);
+  }
+
   static Future<void> _validateTransactionRefundState(
     DatabaseExecutor db,
     FinanceTransaction transaction, {
@@ -4490,6 +4526,9 @@ abstract final class FinanceStorage {
       if (original.isDeleted ||
           original.type != FinanceTransactionType.expense) {
         throw StateError('只能对未删除的支出账单发起退款');
+      }
+      if (_refundPrecedesOriginal(transaction, original)) {
+        throw StateError('退款时间不能早于原支出时间');
       }
       final refunded = await _activeRefundedMinor(
         db,
@@ -4514,6 +4553,18 @@ abstract final class FinanceStorage {
             transaction.type != FinanceTransactionType.expense ||
             transaction.amountMinor < activeRefunded)) {
       throw StateError('该账单已关联退款，请先处理退款记录');
+    }
+    if (activeRefunded > 0 &&
+        transaction.type == FinanceTransactionType.expense) {
+      final refunds = await _getActiveRefundsForTransaction(
+        db,
+        transaction.uuid,
+      );
+      if (refunds.any(
+        (refund) => _refundPrecedesOriginal(refund, transaction),
+      )) {
+        throw StateError('原支出时间不能晚于关联退款时间');
+      }
     }
   }
 

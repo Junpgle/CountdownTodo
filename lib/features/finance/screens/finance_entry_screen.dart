@@ -645,10 +645,19 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
 
   Future<void> _pickDate() async {
     _dismissKeyboard();
+    final refundOriginalDate = _isBoundRefund && _originalTransaction != null
+        ? dateFromKey(_originalTransaction!.transactionDate)
+        : null;
+    if (refundOriginalDate != null &&
+        refundOriginalDate.isAfter(DateTime.now())) {
+      _showError('原支出尚未发生，不能录入退款');
+      return;
+    }
+    final firstDate = refundOriginalDate ?? DateTime(2000);
     final picked = await showAppDatePicker(
       context: context,
-      initialDate: _date,
-      firstDate: DateTime(2000),
+      initialDate: _date.isBefore(firstDate) ? firstDate : _date,
+      firstDate: firstDate,
       lastDate: DateTime.now().add(const Duration(days: 3650)),
       helpText: '选择账单日期',
     );
