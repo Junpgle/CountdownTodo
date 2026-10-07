@@ -238,6 +238,15 @@ abstract final class FinanceAiContextService {
     '上上个礼拜',
   ];
 
+  static const _rollingHalfMonthPeriodWords = [
+    '近半个月',
+    '最近半个月',
+    '过去半个月',
+    '近半月',
+    '最近半月',
+    '过去半月',
+  ];
+
   static const _periodWords = [
     '本月',
     '这个月',
@@ -262,6 +271,7 @@ abstract final class FinanceAiContextService {
     '大后日',
     ..._twoWeeksAgoCalendarWeekWords,
     ..._previousCalendarWeekWords,
+    ..._rollingHalfMonthPeriodWords,
     '上上月',
     '上上个月',
     '上上季度',
@@ -760,6 +770,10 @@ abstract final class FinanceAiContextService {
         final from = financeCalendarDayOffset(current, 1 - dayCount);
         return FinanceDateRange(from, financeCalendarDayOffset(current, 1));
       }
+    }
+    if (_containsAny(text, _rollingHalfMonthPeriodWords)) {
+      final from = financeCalendarDayOffset(current, -14);
+      return FinanceDateRange(from, financeCalendarDayOffset(current, 1));
     }
     if (_containsAny(text, [
       '这一个月',

@@ -176,6 +176,31 @@ void main() {
     expect(followUp, '记账明细 2026-08-27 至 2026-09-02');
   });
 
+  test('最近半个月查询按滚动十五个自然日跨月取账单', () async {
+    final now = DateTime(2026, 9, 2, 23, 59);
+    final range = FinanceAiContextService.resolveDateRange(
+      '最近半个月支出',
+      now: now,
+    );
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '最近半个月支出多少',
+      now: now,
+    );
+
+    expect(dateKey(range.from), '2026-08-19');
+    expect(dateKey(range.to), '2026-09-03');
+    expect(context, contains('[transactionId: august]'));
+    expect(context, contains('净支出 ¥60.00'));
+    for (final phrase in ['近半个月', '过去半个月', '最近半月']) {
+      final alias = FinanceAiContextService.resolveDateRange(
+        '$phrase支出',
+        now: now,
+      );
+      expect(dateKey(alias.from), '2026-08-19', reason: phrase);
+      expect(dateKey(alias.to), '2026-09-03', reason: phrase);
+    }
+  });
+
   test('过去两周和最近三星期查询按完整滚动范围跨月取账单', () async {
     final now = DateTime(2026, 9, 2, 23, 59);
     final twoWeekRange = FinanceAiContextService.resolveDateRange(
