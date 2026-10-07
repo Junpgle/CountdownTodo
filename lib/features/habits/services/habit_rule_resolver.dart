@@ -162,6 +162,17 @@ abstract final class HabitRuleResolver {
     }
   }
 
+  /// Daily heatmaps show a cumulative weekly or monthly goal once, on the
+  /// final logical day of its period, rather than repeating one result across
+  /// every day in that period.
+  static bool isDailyHeatmapCompletionDay(
+    HabitGoalRuleRevision rule,
+    DateTime logicalDate,
+  ) {
+    final day = DateTime(logicalDate.year, logicalDate.month, logicalDate.day);
+    return addCalendarDays(day, 1) == periodEndExclusive(rule, day);
+  }
+
   /// 周期是否已经结束。
   static bool isPeriodFinished(
     HabitGoalRuleRevision rule,

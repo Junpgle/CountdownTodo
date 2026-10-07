@@ -191,6 +191,48 @@ void main() {
       );
     });
 
+    test('周/月累计目标只在周期最后一天计入每日热力图', () {
+      final weekly = rule(HabitPeriodType.weekly);
+      expect(
+        HabitRuleResolver.isDailyHeatmapCompletionDay(
+          weekly,
+          DateTime(2026, 8, 3),
+        ),
+        false,
+      );
+      expect(
+        HabitRuleResolver.isDailyHeatmapCompletionDay(
+          weekly,
+          DateTime(2026, 8, 9),
+        ),
+        true,
+      );
+
+      final monthly = rule(HabitPeriodType.monthly);
+      expect(
+        HabitRuleResolver.isDailyHeatmapCompletionDay(
+          monthly,
+          DateTime(2026, 8, 30),
+        ),
+        false,
+      );
+      expect(
+        HabitRuleResolver.isDailyHeatmapCompletionDay(
+          monthly,
+          DateTime(2026, 8, 31),
+        ),
+        true,
+      );
+
+      expect(
+        HabitRuleResolver.isDailyHeatmapCompletionDay(
+          rule(HabitPeriodType.daily),
+          DateTime(2026, 8, 31),
+        ),
+        true,
+      );
+    });
+
     test('周期结束判断', () {
       final daily = rule(HabitPeriodType.daily);
       expect(

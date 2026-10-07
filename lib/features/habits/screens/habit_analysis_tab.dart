@@ -189,6 +189,17 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
       );
       for (final day in range) {
         if (!day.progress.isPlanned || !day.progress.goalMet) continue;
+        final rule = HabitRuleResolver.effectiveRule(
+          rules,
+          day.logicalDate,
+        );
+        if (rule == null ||
+            !HabitRuleResolver.isDailyHeatmapCompletionDay(
+              rule,
+              day.logicalDate,
+            )) {
+          continue;
+        }
         final index =
             HabitRuleResolver.calendarDayDifference(day.logicalDate, from);
         if (index >= 0 && index < 30) trend[index]++;
