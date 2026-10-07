@@ -992,4 +992,24 @@ void main() {
       expect(dateKey(range.to), expectedTo, reason: phrase);
     }
   });
+
+  test('上一个月查询使用上个自然月并排除本月账单', () async {
+    final now = DateTime(2026, 9, 2, 23, 59);
+    final range = FinanceAiContextService.resolveDateRange(
+      '上一个月支出',
+      now: now,
+    );
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '上一个月支出多少',
+      now: now,
+    );
+
+    expect(dateKey(range.from), '2026-08-01');
+    expect(dateKey(range.to), '2026-09-01');
+    expect(context, contains('查询范围: 2026-08-01 至 2026-08-31'));
+    expect(context, contains('[transactionId: august]'));
+    expect(context, isNot(contains('[transactionId: earlier-september]')));
+    expect(context, isNot(contains('[transactionId: today]')));
+    expect(context, contains('净支出 ¥10.00'));
+  });
 }

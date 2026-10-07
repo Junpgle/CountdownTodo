@@ -278,6 +278,7 @@ abstract final class FinanceAiContextService {
     '上上个季度',
     '上月',
     '上个月',
+    '上一个月',
     '这一个月',
     '最近一个月',
     '过去一个月',
@@ -851,7 +852,9 @@ abstract final class FinanceAiContextService {
       final from = DateTime(current.year, current.month - 2);
       return FinanceDateRange(from, DateTime(current.year, current.month - 1));
     }
-    if (text.contains('上月') || text.contains('上个月')) {
+    if (text.contains('上月') ||
+        text.contains('上个月') ||
+        text.contains('上一个月')) {
       final from = DateTime(current.year, current.month - 1);
       return FinanceDateRange(from, DateTime(current.year, current.month));
     }
