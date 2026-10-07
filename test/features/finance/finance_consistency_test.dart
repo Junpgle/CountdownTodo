@@ -558,6 +558,65 @@ void main() {
       );
     });
 
+    test(
+      '新建分期组跨夏令时后每期保留当地发生时刻',
+      () async {
+        final start = DateTime(2027, 2, 15, 9);
+        final expectedOccurrences = [
+          DateTime(2027, 2, 15, 9),
+          DateTime(2027, 3, 15, 9),
+          DateTime(2027, 4, 15, 9),
+        ];
+        final transaction = FinanceTransaction(
+          type: FinanceTransactionType.expense,
+          amountMinor: 30000,
+          transactionDate: dateKey(start),
+          occurredAt: start.millisecondsSinceEpoch,
+          timezoneOffsetMinutes: start.timeZoneOffset.inMinutes,
+        );
+
+        final installments = await FinanceStorage.saveInstallmentPlan(
+          transaction: transaction,
+          totalAmountMinor: 30000,
+          installmentCount: expectedOccurrences.length,
+          startDate: DateTime(start.year, start.month, start.day),
+        );
+
+        expect(
+          installments.map((item) => item.timezoneOffsetMinutes),
+          expectedOccurrences.map((item) => item.timeZoneOffset.inMinutes),
+        );
+        expect(
+          installments.map((item) => item.occurredAt),
+          expectedOccurrences.map((item) => item.millisecondsSinceEpoch),
+        );
+
+        final editedFirst = FinanceTransaction.fromMap(
+          installments.first.toMap(),
+        )
+          ..note = '补充分期备注'
+          ..markAsChanged();
+        final editedInstallments = await FinanceStorage.saveInstallmentPlan(
+          transaction: editedFirst,
+          original: installments.first,
+          totalAmountMinor: 30000,
+          installmentCount: expectedOccurrences.length,
+          startDate: DateTime(start.year, start.month, start.day),
+          existingInstallments: installments,
+        );
+        expect(
+          editedInstallments.map((item) => item.timezoneOffsetMinutes),
+          expectedOccurrences.map((item) => item.timeZoneOffset.inMinutes),
+        );
+        expect(
+          editedInstallments.map((item) => item.occurredAt),
+          expectedOccurrences.map((item) => item.millisecondsSinceEpoch),
+        );
+      },
+      skip: DateTime(2027, 2, 15, 9).timeZoneOffset ==
+          DateTime(2027, 3, 15, 9).timeZoneOffset,
+    );
+
     test('贷款利息拒绝直接修改现金流、删除和拆分，备注仍可修改', () async {
       final paid = await _payLoan();
       final interest = (await FinanceStorage.getTransaction(

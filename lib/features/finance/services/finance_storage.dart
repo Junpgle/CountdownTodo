@@ -438,6 +438,7 @@ abstract final class FinanceStorage {
         includeDeleted: true,
       );
     }
+    final isNewPlan = original == null && existing.isEmpty;
     final existingByIndex = <int, FinanceTransaction>{};
     for (final item in existing) {
       final index = item.installmentIndex;
@@ -506,16 +507,30 @@ abstract final class FinanceStorage {
         final old = existingByIndex[allocation.index];
         final previousOccurrence =
             old?.occurrenceLocalTime ?? transaction.occurrenceLocalTime;
-        final occurrenceAt = previousOccurrence == null
+        final localOccurrence = previousOccurrence == null
             ? null
-            : DateTime.utc(
+            : DateTime(
                 allocation.date.year,
                 allocation.date.month,
                 allocation.date.day,
                 previousOccurrence.hour,
                 previousOccurrence.minute,
+              );
+        final timezoneOffsetMinutes = localOccurrence != null && isNewPlan
+            ? localOccurrence.timeZoneOffset.inMinutes
+            : old?.timezoneOffsetMinutes ?? transaction.timezoneOffsetMinutes;
+        final occurrenceAt = localOccurrence == null
+            ? null
+            : DateTime.utc(
+                localOccurrence.year,
+                localOccurrence.month,
+                localOccurrence.day,
+                localOccurrence.hour,
+                localOccurrence.minute,
+                localOccurrence.second,
+                localOccurrence.millisecond,
               ).millisecondsSinceEpoch -
-                transaction.timezoneOffsetMinutes * 60000;
+                timezoneOffsetMinutes * 60000;
         final item = FinanceTransaction(
           uuid: old?.uuid ?? (allocation.index == 1 ? transaction.uuid : null),
           type: transaction.type,
@@ -525,7 +540,7 @@ abstract final class FinanceStorage {
           paymentMethodUuid: transaction.paymentMethodUuid,
           transactionDate: dateKey(allocation.date),
           occurredAt: occurrenceAt,
-          timezoneOffsetMinutes: transaction.timezoneOffsetMinutes,
+          timezoneOffsetMinutes: timezoneOffsetMinutes,
           merchant: transaction.merchant,
           note: transaction.note,
           source: transaction.source,
