@@ -2587,6 +2587,74 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    '账单详情按发生日期的本机偏移判断时区提示',
+    (tester) async {
+      await _seed(tester);
+      final changedDate = _upcomingTimezoneOffsetChangeDate()!;
+      final occurrence = DateTime(
+        changedDate.year,
+        changedDate.month,
+        changedDate.day,
+        9,
+      );
+      final transaction = FinanceTransaction(
+        uuid: 'detail-local-dst-occurrence',
+        amountMinor: 1200,
+        transactionDate: dateKey(occurrence),
+        occurredAt: occurrence.millisecondsSinceEpoch,
+        timezoneOffsetMinutes: occurrence.timeZoneOffset.inMinutes,
+        merchant: '本地夏令时账单',
+      );
+
+      await _pump(
+        tester,
+        FinanceTransactionDetailScreen(transaction: transaction),
+      );
+
+      expect(
+        find.textContaining(
+          '（${financeTimezoneLabel(occurrence.timeZoneOffset.inMinutes)}）',
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+    skip: _upcomingTimezoneOffsetChangeDate() == null,
+  );
+
+  testWidgets('账单详情仍为异地发生时刻显示记录时区', (tester) async {
+    await _seed(tester);
+    final now = DateTime.now();
+    final deviceOffset = now.timeZoneOffset.inMinutes;
+    final recordedOffset = deviceOffset == 14 * 60
+        ? -14 * 60
+        : deviceOffset + 60;
+    final occurrenceLocal = DateTime.fromMillisecondsSinceEpoch(
+      now.millisecondsSinceEpoch,
+      isUtc: true,
+    ).add(Duration(minutes: recordedOffset));
+    final transaction = FinanceTransaction(
+      uuid: 'detail-remote-timezone-occurrence',
+      amountMinor: 1200,
+      transactionDate: dateKey(occurrenceLocal),
+      occurredAt: now.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: recordedOffset,
+      merchant: '异地时区账单',
+    );
+
+    await _pump(
+      tester,
+      FinanceTransactionDetailScreen(transaction: transaction),
+    );
+
+    expect(
+      find.textContaining('（${financeTimezoneLabel(recordedOffset)}）'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('账单被删除后打开的详情停止显示旧记录', (tester) async {
     final db = await _seed(tester);
     final transaction = FinanceTransaction(

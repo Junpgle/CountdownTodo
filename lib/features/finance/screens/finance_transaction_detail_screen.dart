@@ -172,8 +172,10 @@ class _FinanceTransactionDetailScreenState
     final occurred = transaction.occurrenceLocalTime;
     if (occurred == null) return '未记录';
     final time = DateFormat('yyyy年M月d日 HH:mm').format(occurred);
-    return transaction.timezoneOffsetMinutes ==
-            DateTime.now().timeZoneOffset.inMinutes
+    final deviceOffsetAtOccurrence = DateTime.fromMillisecondsSinceEpoch(
+      transaction.occurredAt!,
+    ).timeZoneOffset.inMinutes;
+    return transaction.timezoneOffsetMinutes == deviceOffsetAtOccurrence
         ? time
         : '$time（${financeTimezoneLabel(transaction.timezoneOffsetMinutes)}）';
   }
