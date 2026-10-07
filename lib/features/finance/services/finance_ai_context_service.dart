@@ -680,13 +680,16 @@ abstract final class FinanceAiContextService {
           .toList(growable: false);
       // Budget limits belong to full calendar months even when the ledger
       // question covers only one day/week or spans several different months.
+      final currentMonthKey = financeMonthKey(nowValue);
       final budgetSummaries = {
         for (final month in budgets.map((item) => item.monthKey).toSet())
           month: FinanceSummary.fromTransactions(
             monthTransactions.where(
               (item) => item.transactionDate.startsWith('$month-'),
             ),
-            asOfAt: asOfAt,
+            asOfAt: month.compareTo(currentMonthKey) > 0
+                ? null
+                : asOfAt,
           ),
       };
       final ledger = formatContext(
@@ -1263,6 +1266,9 @@ abstract final class FinanceAiContextService {
 
     if (budgets.isNotEmpty) {
       String? displayedMonth;
+      final currentMonthKey = financeMonthKey(
+        DateTime.fromMillisecondsSinceEpoch(asOfAt),
+      );
       for (final budget in budgets.take(_maxContextBudgetDetails)) {
         if (displayedMonth != budget.monthKey) {
           displayedMonth = budget.monthKey;
@@ -1275,10 +1281,19 @@ abstract final class FinanceAiContextService {
         final scope = budget.categoryUuid == null
             ? '整体'
             : categoryName(budget.categoryUuid);
+        final isPlanned = budget.monthKey.compareTo(currentMonthKey) > 0;
+        final usedLabel = isPlanned ? '计划使用' : '已用';
+        final remainingLabel = remaining < 0
+            ? isPlanned
+                  ? '计划超出'
+                  : '超支'
+            : isPlanned
+            ? '计划剩余'
+            : '剩余';
         lines.add(
           '- $scope: 额度 ${formatFinanceAmount(budget.amountMinor)} | '
-          '已用 ${formatFinanceAmount(used)} | '
-          '${remaining < 0 ? '超支' : '剩余'} ${formatFinanceAmount(remaining.abs())}',
+          '$usedLabel ${formatFinanceAmount(used)} | '
+          '$remainingLabel ${formatFinanceAmount(remaining.abs())}',
         );
       }
       if (budgets.length > _maxContextBudgetDetails) {

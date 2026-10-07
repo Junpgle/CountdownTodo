@@ -1439,6 +1439,32 @@ void main() {
     expect(context, isNot(contains('[transactionId: today]')));
   });
 
+  test('未来月份预算统计计划账单并显示计划剩余', () async {
+    final now = DateTime(2026, 9, 2, 12);
+    await FinanceStorage.saveBudget(
+      FinanceBudget(monthKey: '2026-10', amountMinor: 10000),
+    );
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'future-budget-plan',
+        amountMinor: 3000,
+        categoryUuid: 'test-food',
+        transactionDate: '2026-10-05',
+        occurredAt: DateTime(2026, 10, 5, 12).millisecondsSinceEpoch,
+        createdAt: now.millisecondsSinceEpoch,
+      ),
+    );
+
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '下个月预算还剩多少',
+      now: now,
+    );
+
+    expect(context, contains('预算（2026-10，整月）:'));
+    expect(context, contains('整体: 额度 ¥100.00 | 计划使用 ¥30.00 | 计划剩余 ¥70.00'));
+    expect(context, contains('[transactionId: future-budget-plan]'));
+  });
+
   test('下周计划账单查询使用下一完整自然周', () async {
     final now = DateTime(2026, 9, 2, 23, 59);
     final futureAt = DateTime(2026, 9, 8, 12);
