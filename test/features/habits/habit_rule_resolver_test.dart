@@ -33,6 +33,8 @@ void main() {
       expect(key, '2026-08-01');
       expect(HabitRuleResolver.parseDayKey(key), date);
       expect(HabitRuleResolver.parseDayKey('bad'), isNull);
+      expect(HabitRuleResolver.parseDayKey('2026-02-30'), isNull);
+      expect(HabitRuleResolver.parseDayKey('2026-13-01'), isNull);
     });
   });
 

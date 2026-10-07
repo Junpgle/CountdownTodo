@@ -34,7 +34,11 @@ abstract final class HabitRuleResolver {
     final month = int.tryParse(parts[1]);
     final day = int.tryParse(parts[2]);
     if (year == null || month == null || day == null) return null;
-    return DateTime(year, month, day);
+    final parsed = DateTime(year, month, day);
+    if (parsed.year != year || parsed.month != month || parsed.day != day) {
+      return null;
+    }
+    return parsed;
   }
 
   /// 获取给定日期（逻辑日期）生效的规则版本：
