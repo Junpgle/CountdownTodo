@@ -215,6 +215,51 @@ void main() {
     expect(oneWeekContext, contains('净支出 ¥60.00'));
   });
 
+  test('最近几天未指定天数时要求澄清且不注入本月账单', () async {
+    final now = DateTime(2026, 9, 2, 23, 59);
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '最近几天支出多少',
+      now: now,
+    );
+    final preview = FinanceAiContextService.buildContextInjectionSummary(
+      userMessage: '最近几天支出多少',
+      now: now,
+    );
+
+    expect(context, contains('日期范围不明确'));
+    expect(context, contains('请先询问用户具体天数'));
+    expect(context, isNot(contains('[transactionId: earlier-september]')));
+    expect(context, isNot(contains('[transactionId: today]')));
+    expect(preview, '记账查询范围待确认');
+
+    for (final phrase in [
+      '过去几天',
+      '近几个星期',
+      '这几周',
+      '最近几个月',
+    ]) {
+      expect(
+        FinanceAiContextService.shouldInjectFor('$phrase支出多少'),
+        isFalse,
+        reason: phrase,
+      );
+    }
+
+    final explicitRange = FinanceDateRange(
+      DateTime(2026, 8, 31),
+      DateTime(2026, 9, 3),
+    );
+    final overriddenContext = await FinanceAiContextService.buildContext(
+      userMessage: '最近几天支出多少',
+      dateRangeOverride: explicitRange,
+      now: now,
+    );
+    expect(overriddenContext, isNot(contains('日期范围不明确')));
+    expect(overriddenContext, contains('[transactionId: august]'));
+    expect(overriddenContext, contains('[transactionId: earlier-september]'));
+    expect(overriddenContext, contains('净支出 ¥60.00'));
+  });
+
   test('比较多个相对账期时不静默选择其中一段', () async {
     final now = DateTime(2026, 9, 2, 23, 59);
 

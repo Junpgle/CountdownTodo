@@ -176,6 +176,11 @@ abstract final class FinanceAiContextService {
     r'(\d+|[零〇○一二两三四五六七八九十廿]{1,4})\s*'
     r'(?:个\s*)?(天|日|周|星期|礼拜)',
   );
+  static final RegExp _underspecifiedRollingPeriodPattern = RegExp(
+    r'(?:近|最近|过去|这)\s*'
+    r'(?:几个|几|一些|若干)\s*'
+    r'(?:天|日|周|星期|礼拜|个?月|年)',
+  );
   static final RegExp _rollingYearPeriodPattern = RegExp(
     r'(?:近|最近|过去)\s*'
     r'(\d+|[零〇○一二三四五六七八九十廿两百千]{1,4})\s*年',
@@ -337,6 +342,7 @@ abstract final class FinanceAiContextService {
     if (text.isEmpty) return false;
     if (!hasDateRangeOverride &&
         (_hasInvalidExplicitDateOrPeriod(text) ||
+            _underspecifiedRollingPeriodPattern.hasMatch(text) ||
             _hasMultipleRecognizedDatePeriods(text))) {
       return false;
     }
@@ -438,6 +444,16 @@ abstract final class FinanceAiContextService {
     DateTime? now,
   }) async {
     final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
+    if (dateRangeOverride == null &&
+        _shouldClarifyUnderspecifiedRange(
+          userMessage: userMessage,
+          conversationContext: conversationContext,
+          previousUserMessage: previousUserMessage,
+          rangeQueryText: rangeQueryText,
+        )) {
+      return '【记账查询日期范围不明确】用户没有指定“最近几天/几周”的具体长度。'
+          '请先询问用户具体天数，再查询账单；不要用当前月替代这个范围。';
+    }
     final hasValidRange =
         dateRangeOverride != null ||
         (!_hasInvalidExplicitDateOrPeriod(rangeQueryText) &&
@@ -589,6 +605,15 @@ abstract final class FinanceAiContextService {
   }) {
     final parts = <String>[];
     final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
+    if (dateRangeOverride == null &&
+        _shouldClarifyUnderspecifiedRange(
+          userMessage: userMessage,
+          conversationContext: conversationContext,
+          previousUserMessage: previousUserMessage,
+          rangeQueryText: rangeQueryText,
+        )) {
+      parts.add('记账查询范围待确认');
+    }
     final hasValidRange =
         dateRangeOverride != null ||
         (!_hasInvalidExplicitDateOrPeriod(rangeQueryText) &&
@@ -625,6 +650,7 @@ abstract final class FinanceAiContextService {
   ) {
     bool hasDateScope(String text) =>
         _containsAny(text, _periodWords) ||
+        _underspecifiedRollingPeriodPattern.hasMatch(text) ||
         _hasRollingMonthPeriod(text) ||
         _hasRollingYearPeriod(text) ||
         _hasExplicitMonth(text) ||
@@ -635,6 +661,27 @@ abstract final class FinanceAiContextService {
       return userMessage;
     }
     return previousUserMessage;
+  }
+
+  static bool _shouldClarifyUnderspecifiedRange({
+    required String userMessage,
+    required String conversationContext,
+    required String previousUserMessage,
+    required String rangeQueryText,
+  }) {
+    if (!_underspecifiedRollingPeriodPattern.hasMatch(rangeQueryText) ||
+        _containsAny(userMessage, _otherContextDomains)) {
+      return false;
+    }
+    final hasFinanceContext =
+        _containsAny(userMessage, _financeNouns) ||
+        _containsAny(conversationContext, _financeNouns) ||
+        _containsAny(previousUserMessage, _financeNouns);
+    final asksForData =
+        _containsAny(userMessage, _queryWords) ||
+        _containsAny(userMessage, _financeFollowUpWords) ||
+        _containsAny(userMessage, _summaryNouns);
+    return hasFinanceContext && asksForData;
   }
 
   static Future<
