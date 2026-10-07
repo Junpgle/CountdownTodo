@@ -13,6 +13,18 @@ abstract final class JsonValueParser {
     return toNullableInt(value) ?? fallback;
   }
 
+  /// Reads an enum's persisted index without letting unknown values abort a
+  /// whole row or collection parse.
+  static T enumByIndex<T extends Enum>(
+    List<T> values,
+    dynamic value, {
+    required T fallback,
+  }) {
+    final index = int.tryParse(value?.toString() ?? '');
+    if (index == null || index < 0 || index >= values.length) return fallback;
+    return values[index];
+  }
+
   /// 将数据库中的 JSON 字符串或动态 Map 安全转换为字符串键 Map。
   /// 非法 JSON 和非对象值统一视为缺失，避免单条脏数据中断整批读取。
   static Map<String, dynamic>? toMap(dynamic value) {

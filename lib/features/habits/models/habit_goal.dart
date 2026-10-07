@@ -116,12 +116,18 @@ class HabitGoal {
       uuid: json['uuid']?.toString() ?? const Uuid().v4(),
       name: json['name']?.toString() ?? '',
       icon: json['icon']?.toString() ?? '🎯',
-      sourceType: HabitSourceType
-          .values[int.tryParse(json['source_type']?.toString() ?? '') ?? 2],
+      sourceType: JsonValueParser.enumByIndex(
+        HabitSourceType.values,
+        json['source_type'],
+        fallback: HabitSourceType.quantityCheckIn,
+      ),
       sourceIds: _parseStringList(json['source_ids']),
       currentRuleUuid: json['current_rule_uuid']?.toString(),
-      displayMode: HabitDisplayMode
-          .values[int.tryParse(json['display_mode']?.toString() ?? '') ?? 0],
+      displayMode: JsonValueParser.enumByIndex(
+        HabitDisplayMode.values,
+        json['display_mode'],
+        fallback: HabitDisplayMode.habitOnly,
+      ),
       defaultFocusMinutes:
           int.tryParse(json['default_focus_minutes']?.toString() ?? ''),
       sortOrder: int.tryParse(json['sort_order']?.toString() ?? '') ?? 0,
