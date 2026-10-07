@@ -1287,4 +1287,46 @@ void main() {
     expect(context, contains('- 待发生 | [transactionId: next-year-plan]'));
     expect(context, isNot(contains('[transactionId: today]')));
   });
+
+  test('今年下半年查询只包含下半年而不混入上半年账单', () async {
+    final now = DateTime(2026, 10, 2, 12);
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'first-half-transaction',
+        amountMinor: 5000,
+        transactionDate: '2026-03-12',
+        occurredAt: DateTime(2026, 3, 12, 12).millisecondsSinceEpoch,
+        createdAt: DateTime(2026, 3, 12, 12).millisecondsSinceEpoch,
+      ),
+    );
+
+    final range = FinanceAiContextService.resolveDateRange(
+      '今年下半年支出',
+      now: now,
+    );
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '今年下半年支出多少',
+      now: now,
+    );
+
+    expect(dateKey(range.from), '2026-07-01');
+    expect(dateKey(range.to), '2027-01-01');
+    expect(context, contains('查询范围: 2026-07-01 至 2026-12-31'));
+    expect(context, contains('[transactionId: august]'));
+    expect(context, isNot(contains('[transactionId: first-half-transaction]')));
+
+    for (final (phrase, expectedFrom, expectedTo) in [
+      ('下半年', '2026-07-01', '2027-01-01'),
+      ('今年上半年', '2026-01-01', '2026-07-01'),
+      ('明年上半年', '2027-01-01', '2027-07-01'),
+      ('去年下半年', '2025-07-01', '2026-01-01'),
+    ]) {
+      final alias = FinanceAiContextService.resolveDateRange(
+        '$phrase支出',
+        now: now,
+      );
+      expect(dateKey(alias.from), expectedFrom, reason: phrase);
+      expect(dateKey(alias.to), expectedTo, reason: phrase);
+    }
+  });
 }

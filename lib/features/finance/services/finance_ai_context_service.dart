@@ -189,6 +189,11 @@ abstract final class FinanceAiContextService {
     r'(?:(?:今年|去年|前年)\s*|\d{4}\s*年\s*)?'
     r'(?:第\s*)?[一二三四1-4]\s*季度',
   );
+  static final RegExp _halfYearPeriodPattern = RegExp(
+    r'(?:(?:今年|本年|明年|下年|下一年|来年|去年|上一年|前一年|前年)\s*'
+    r'(?:的\s*)?)?'
+    r'(?:上半年|上半年度|下半年|下半年度)',
+  );
   static final RegExp _numericYearPeriodPattern = RegExp(
     r'(?<!\d)\d{4}\s*年'
     r'(?!\s*(?:\d{1,2}\s*月|(?:第\s*)?[一二三四1-4]\s*季度))',
@@ -250,6 +255,13 @@ abstract final class FinanceAiContextService {
     '上上个礼拜',
   ];
 
+  static const _halfYearPeriodWords = [
+    '上半年',
+    '上半年度',
+    '下半年',
+    '下半年度',
+  ];
+
   static const _rollingHalfMonthPeriodWords = [
     '近半个月',
     '最近半个月',
@@ -285,6 +297,7 @@ abstract final class FinanceAiContextService {
     ..._twoWeeksAgoCalendarWeekWords,
     ..._previousCalendarWeekWords,
     ..._rollingHalfMonthPeriodWords,
+    ..._halfYearPeriodWords,
     '上上月',
     '上上个月',
     '上上季度',
@@ -845,6 +858,21 @@ abstract final class FinanceAiContextService {
     }
     final explicitMonth = _resolveExplicitMonthRange(text, current);
     if (explicitMonth != null) return explicitMonth;
+    final isFirstHalfYear = _containsAny(text, ['上半年', '上半年度']);
+    final isSecondHalfYear = _containsAny(text, ['下半年', '下半年度']);
+    if (isFirstHalfYear || isSecondHalfYear) {
+      var year = current.year;
+      if (_containsAny(text, ['明年', '下年', '下一年', '来年'])) {
+        year++;
+      } else if (text.contains('前年')) {
+        year -= 2;
+      } else if (_containsAny(text, ['去年', '上一年', '前一年'])) {
+        year--;
+      }
+      final from = DateTime(year, isFirstHalfYear ? 1 : 7);
+      final to = DateTime(year, isFirstHalfYear ? 7 : 13);
+      return FinanceDateRange(from, to);
+    }
     if (_containsAny(text, ['下月', '下个月', '下一个月'])) {
       final from = DateTime(current.year, current.month + 1);
       return FinanceDateRange(from, DateTime(from.year, from.month + 1));
@@ -1270,6 +1298,7 @@ abstract final class FinanceAiContextService {
     addMatches(_rollingDayPeriodPattern);
     addMatches(_rollingYearPeriodPattern);
     addMatches(_quarterPeriodPattern);
+    addMatches(_halfYearPeriodPattern);
     addMatches(_numericYearPeriodPattern);
 
     final now = _day(DateTime.now());
