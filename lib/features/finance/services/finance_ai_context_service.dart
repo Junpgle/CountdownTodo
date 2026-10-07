@@ -333,6 +333,9 @@ abstract final class FinanceAiContextService {
     '上一个季度',
     '前一季度',
     '前一个季度',
+    '下季度',
+    '下个季度',
+    '下一个季度',
   ];
 
   static const _summaryNouns = [
@@ -844,6 +847,13 @@ abstract final class FinanceAiContextService {
     }
     final currentQuarterMonth = ((current.month - 1) ~/ 3) * 3 + 1;
     final currentQuarterStart = DateTime(current.year, currentQuarterMonth);
+    if (_containsAny(text, ['下季度', '下个季度', '下一个季度'])) {
+      final from = DateTime(
+        currentQuarterStart.year,
+        currentQuarterStart.month + 3,
+      );
+      return FinanceDateRange(from, DateTime(from.year, from.month + 3));
+    }
     if (_containsAny(text, ['上上季度', '上上个季度'])) {
       final end = DateTime(
         currentQuarterStart.year,
