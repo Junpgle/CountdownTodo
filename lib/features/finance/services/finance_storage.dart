@@ -3410,7 +3410,6 @@ abstract final class FinanceStorage {
           (map) =>
               _hasRawFinanceUuid(map) &&
               _isValidRawTransactionType(map) &&
-              _hasValidRawFinanceEntrySource(map) &&
               _hasValidRawFinanceDateKey(
                 map,
                 'transaction_date',
@@ -3422,6 +3421,7 @@ abstract final class FinanceStorage {
                 map['amount_minor'] ?? map['amountMinor'],
               ),
         )
+        .map(_normalizeRemoteFinanceEntrySource)
         .map(FinanceTransaction.fromMap)
         .where(_isValidTransaction)
         .toList(growable: false);
@@ -4613,10 +4613,17 @@ abstract final class FinanceStorage {
         const {0, 1, 2, '0', '1', '2'}.contains(value);
   }
 
-  static bool _hasValidRawFinanceEntrySource(Map<String, dynamic> raw) {
+  static Map<String, dynamic> _normalizeRemoteFinanceEntrySource(
+    Map<String, dynamic> raw,
+  ) {
     final value = raw['source'];
-    return value == null ||
-        const {'manual', 'import', 'ai', 'automation'}.contains(value);
+    if (value == null ||
+        const {'manual', 'import', 'ai', 'automation'}.contains(value)) {
+      return raw;
+    }
+    // Keep the transaction itself when an older server has malformed source
+    // metadata; losing the ledger row would also lose its amount and date.
+    return {...raw, 'source': 'manual'};
   }
 
   static bool _hasIncomingRefund(Object? rawTransactions) {

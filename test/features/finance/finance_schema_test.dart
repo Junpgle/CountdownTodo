@@ -135,7 +135,7 @@ void main() {
       );
     });
 
-    test('远程同步拒绝无效交易来源并兼容缺失来源', () async {
+    test('远程同步保留账单并将无效或缺失来源回退为手动', () async {
       final invalidSource = FinanceTransaction(
         uuid: 'remote-invalid-finance-source',
         amountMinor: 100,
@@ -145,12 +145,13 @@ void main() {
         await FinanceStorage.mergeRemoteBundle({
           'transactions': [invalidSource],
         }),
-        0,
+        1,
       );
-      expect(
-        await FinanceStorage.getTransaction('remote-invalid-finance-source'),
-        isNull,
-      );
+      final invalidSourceTransaction = (await FinanceStorage.getTransaction(
+        'remote-invalid-finance-source',
+      ))!;
+      expect(invalidSourceTransaction.amountMinor, 100);
+      expect(invalidSourceTransaction.source, FinanceEntrySource.manual);
 
       final legacyTransaction = FinanceTransaction(
         uuid: 'remote-missing-finance-source',
