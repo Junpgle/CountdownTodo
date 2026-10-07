@@ -67,6 +67,58 @@ void main() {
     expect(context, contains('净支出 ¥20.00'));
   });
 
+  test('最近一笔支出跨月查询仍能找到最近的实际账单', () async {
+    final now = DateTime(2026, 10, 1, 12);
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'recent-income',
+        type: FinanceTransactionType.income,
+        amountMinor: 7000,
+        transactionDate: '2026-09-20',
+        occurredAt: DateTime(2026, 9, 20, 12).millisecondsSinceEpoch,
+      ),
+    );
+    await FinanceStorage.saveTransaction(
+      FinanceTransaction(
+        uuid: 'future-expense',
+        amountMinor: 9000,
+        categoryUuid: 'test-food',
+        transactionDate: '2026-10-01',
+        occurredAt: DateTime.utc(2026, 10, 1, 13).millisecondsSinceEpoch,
+        timezoneOffsetMinutes: 0,
+        createdAt: now.millisecondsSinceEpoch,
+      ),
+    );
+
+    final expenseContext = await FinanceAiContextService.buildContext(
+      userMessage: '最近一笔支出是哪笔',
+      now: now,
+    );
+    final incomeContext = await FinanceAiContextService.buildContext(
+      userMessage: '最近一笔收入是哪笔',
+      now: now,
+    );
+    final recentExpensesContext = await FinanceAiContextService.buildContext(
+      userMessage: '最近两笔支出是哪两笔',
+      now: now,
+    );
+
+    expect(expenseContext, contains('[transactionId: today]'));
+    expect(expenseContext, isNot(contains('[transactionId: future-expense]')));
+    expect(expenseContext, contains('查询范围: 全部历史中最近1笔已发生账单'));
+    expect(incomeContext, contains('[transactionId: recent-income]'));
+    expect(recentExpensesContext, contains('[transactionId: today]'));
+    expect(recentExpensesContext, contains('[transactionId: earlier-september]'));
+    expect(recentExpensesContext, isNot(contains('[transactionId: august]')));
+    expect(
+      FinanceAiContextService.buildContextInjectionSummary(
+        userMessage: '最近一笔支出是哪笔',
+        now: now,
+      ),
+      '记账最近1笔账单',
+    );
+  });
+
   test('跨月周查询分别给出两个自然月预算，不能混用整周支出', () async {
     final context = await FinanceAiContextService.buildContext(
       userMessage: '本周支出和预算还有多少',

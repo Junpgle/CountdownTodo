@@ -28,6 +28,11 @@ typedef _ExplicitFinanceMonthToken = ({
   bool hasExplicitYear,
 });
 
+typedef _RecentFinanceQuery = ({
+  int count,
+  FinanceTransactionType? type,
+});
+
 /// Builds a small, query-scoped finance snapshot for the AI assistant.
 ///
 /// The snapshot is intentionally separate from the generic todo context:
@@ -38,6 +43,11 @@ abstract final class FinanceAiContextService {
   static const _maxContextCategorySummaries = 12;
   static const _maxContextBudgetDetails = 20;
   static const _maxContextTransactionDetails = 60;
+  static const _maxRecentTransactionQueryCount = 60;
+  static final RegExp _recentTransactionPattern = RegExp(
+    r'(?:最近|最新|最后)(?:的)?\s*'
+    r'(一|\d+|[零〇○一二两三四五六七八九十廿]{1,4})\s*(?:笔|条)',
+  );
 
   static const _financeNouns = [
     '记账',
@@ -505,6 +515,9 @@ abstract final class FinanceAiContextService {
     DateTime? now,
   }) async {
     final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
+    final recentQuery = dateRangeOverride == null
+        ? _resolveRecentTransactionQuery(userMessage)
+        : null;
     final samePeriodRange = dateRangeOverride == null
         ? _resolveSamePeriodYearRange(
             userMessage: userMessage,
@@ -578,13 +591,36 @@ abstract final class FinanceAiContextService {
       final monthTransactions = values[0] as List<FinanceTransaction>;
       final fromKey = dateKey(range.from);
       final toKey = dateKey(range.to);
-      final transactions = monthTransactions
+      final periodTransactions = monthTransactions
           .where(
             (item) =>
                 item.transactionDate.compareTo(fromKey) >= 0 &&
                 item.transactionDate.compareTo(toKey) < 0,
           )
           .toList(growable: false);
+      final transactions = recentQuery == null
+          ? periodTransactions
+          : (await FinanceRepository.getTransactions(
+                  to: _recentTransactionQueryEndDate(asOfAt),
+                  type: recentQuery.type,
+                ))
+                .where((item) => item.balanceEventAt() <= asOfAt)
+                .toList()
+            ..sort((left, right) {
+              final eventOrder = right
+                  .balanceEventAt()
+                  .compareTo(left.balanceEventAt());
+              if (eventOrder != 0) return eventOrder;
+              final dateOrder = right.transactionDate.compareTo(
+                left.transactionDate,
+              );
+              return dateOrder != 0
+                  ? dateOrder
+                  : right.updatedAt.compareTo(left.updatedAt);
+            });
+      final selectedTransactions = recentQuery == null
+          ? transactions
+          : transactions.take(recentQuery.count).toList(growable: false);
       final allBudgets = values[1] as List<FinanceBudget>;
       Map<String, int>? paymentMethodBalances;
       if (needsPaymentBalances) {
@@ -656,17 +692,20 @@ abstract final class FinanceAiContextService {
       final ledger = formatContext(
         range: range,
         summary: FinanceSummary.fromTransactions(
-          transactions,
+          selectedTransactions,
           asOfAt: asOfAt,
         ),
-        transactions: transactions,
+        transactions: selectedTransactions,
         categories: catalogData.categories,
         paymentMethods: catalogData.paymentMethods,
-        budgets: budgets,
+        budgets: recentQuery == null || userMessage.contains('预算')
+            ? budgets
+            : const [],
         budgetSummaries: budgetSummaries,
         asOfAt: asOfAt,
         paymentMethodBalances: paymentMethodBalances,
         paymentBalanceAsOfAt: balanceAsOfAt,
+        recentQueryCount: recentQuery?.count,
       );
       return [
         if (needsCatalog) catalog,
@@ -690,6 +729,9 @@ abstract final class FinanceAiContextService {
   }) {
     final parts = <String>[];
     final rangeQueryText = _rangeQueryText(userMessage, previousUserMessage);
+    final recentQuery = dateRangeOverride == null
+        ? _resolveRecentTransactionQuery(userMessage)
+        : null;
     final samePeriodRange = dateRangeOverride == null
         ? _resolveSamePeriodYearRange(
             userMessage: userMessage,
@@ -725,7 +767,9 @@ abstract final class FinanceAiContextService {
           hasDateRangeOverride: dateRangeOverride != null,
         )) {
       parts.add(
-        '记账明细 ${(dateRangeOverride ?? samePeriodRange ?? resolveDateRange(rangeQueryText, now: now)).label}',
+        recentQuery == null
+            ? '记账明细 ${(dateRangeOverride ?? samePeriodRange ?? resolveDateRange(rangeQueryText, now: now)).label}'
+            : '记账最近${recentQuery.count}笔账单',
       );
       if (_shouldIncludePaymentBalances(
         userMessage: userMessage,
@@ -765,6 +809,45 @@ abstract final class FinanceAiContextService {
       _numericYearPeriodPattern.hasMatch(text) ||
       _calendarDatePattern.hasMatch(text) ||
       _numericYearMonthPattern.hasMatch(text);
+
+  static _RecentFinanceQuery? _resolveRecentTransactionQuery(String text) {
+    final match = _recentTransactionPattern.firstMatch(text);
+    if (match == null) return null;
+    final remainingText =
+        '${text.substring(0, match.start)} ${text.substring(match.end)}';
+    if (_hasRecognizedDateScope(remainingText)) return null;
+
+    final requestedCount = _parseRollingPeriodCount(match.group(1)!);
+    if (requestedCount == null || requestedCount < 1) return null;
+    final mentionedTypes = <FinanceTransactionType>[
+      if (_containsAny(text, ['支出', '消费', '花费']))
+        FinanceTransactionType.expense,
+      if (text.contains('收入')) FinanceTransactionType.income,
+      if (text.contains('退款')) FinanceTransactionType.refund,
+    ];
+    if (mentionedTypes.length > 1) return null;
+    return (
+      count: requestedCount
+          .clamp(1, _maxRecentTransactionQueryCount)
+          .toInt(),
+      type: mentionedTypes.firstOrNull,
+    );
+  }
+
+  static DateTime _recentTransactionQueryEndDate(int asOfAt) {
+    // UTC+14 can put a transaction's ledger date on tomorrow while its actual
+    // instant is still before [asOfAt]. Include that date, then apply the exact
+    // occurrence-time cutoff in Dart.
+    final latestPossibleDate = DateTime.fromMillisecondsSinceEpoch(
+      asOfAt,
+      isUtc: true,
+    ).add(const Duration(hours: 14));
+    return DateTime(
+      latestPossibleDate.year,
+      latestPossibleDate.month,
+      latestPossibleDate.day + 1,
+    );
+  }
 
   static FinanceDateRange? _resolveSamePeriodYearRange({
     required String userMessage,
@@ -1076,6 +1159,7 @@ abstract final class FinanceAiContextService {
     required int asOfAt,
     Map<String, int>? paymentMethodBalances,
     int? paymentBalanceAsOfAt,
+    int? recentQueryCount,
   }) {
     final categoryMap = {for (final item in categories) item.uuid: item};
     final paymentMap = {for (final item in paymentMethods) item.uuid: item};
@@ -1095,14 +1179,22 @@ abstract final class FinanceAiContextService {
 
     final lines = <String>[
       '【相关记账上下文｜只读快照】',
-      '查询范围: ${range.label}（含首尾日期）',
+      recentQueryCount == null
+          ? '查询范围: ${range.label}（含首尾日期）'
+          : '查询范围: 全部历史中最近$recentQueryCount笔已发生账单',
       '回答要求: 直接根据以下数据回答并给出收支结论；没有记录时明确说明，不要只回复“我先读取/查看数据”。',
-      '汇总: 收入 ${formatFinanceAmount(summary.incomeMinor)} | '
-          '支出 ${formatFinanceAmount(summary.expenseMinor)} | '
-          '退款 ${formatFinanceAmount(summary.refundMinor)} | '
-          '净支出 ${formatFinanceAmount(summary.netExpenseMinor)} | '
-          '账期结余 ${formatFinanceAmount(summary.balanceMinor)} | '
-          '共${summary.transactionCount}笔',
+      recentQueryCount == null
+          ? '汇总: 收入 ${formatFinanceAmount(summary.incomeMinor)} | '
+                '支出 ${formatFinanceAmount(summary.expenseMinor)} | '
+                '退款 ${formatFinanceAmount(summary.refundMinor)} | '
+                '净支出 ${formatFinanceAmount(summary.netExpenseMinor)} | '
+                '账期结余 ${formatFinanceAmount(summary.balanceMinor)} | '
+                '共${summary.transactionCount}笔'
+          : '最近记录合计: 收入 ${formatFinanceAmount(summary.incomeMinor)} | '
+                '支出 ${formatFinanceAmount(summary.expenseMinor)} | '
+                '退款 ${formatFinanceAmount(summary.refundMinor)} | '
+                '净支出 ${formatFinanceAmount(summary.netExpenseMinor)} | '
+                '共${summary.transactionCount}笔',
       '本期结余不代表付款方式实际余额。',
       '以上汇总只统计截至 ${DateTime.fromMillisecondsSinceEpoch(asOfAt).toString()} 已发生的账单；未来账单在明细中标记为待发生。',
     ];
@@ -1200,7 +1292,9 @@ abstract final class FinanceAiContextService {
 
     lines.add('账单明细（每条都有真实 transactionId，只能用于用户明确的修改/删除；禁止编造ID）:');
     if (transactions.isEmpty) {
-      lines.add('- 当前范围没有账单');
+      lines.add(
+        recentQueryCount == null ? '- 当前范围没有账单' : '- 没有找到已发生的账单',
+      );
     } else {
       for (final transaction
           in transactions.take(_maxContextTransactionDetails)) {
