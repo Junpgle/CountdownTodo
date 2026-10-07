@@ -778,6 +778,7 @@ void main() {
           ),
         ),
       );
+      expect(find.textContaining('按记录时区'), findsNothing);
 
       await _tap(tester, find.text('保存账单'));
       final rows = await _waitForSavedTransactions(tester, db);

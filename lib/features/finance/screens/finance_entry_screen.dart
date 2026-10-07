@@ -1801,6 +1801,9 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
 
   Widget _buildOccurrenceTimeField(ColorScheme colorScheme) {
     final occurredAt = _occurredAt;
+    final localTimezoneOffset = occurredAt == null
+        ? null
+        : _deviceTimezoneOffsetForOccurrence(occurredAt);
     final timeLabel = occurredAt == null
         ? '补充时间'
         : '${occurredAt.hour.toString().padLeft(2, '0')}:'
@@ -1868,8 +1871,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           ),
         ],
         if (occurredAt != null &&
-            _timezoneOffsetMinutes !=
-                DateTime.now().timeZoneOffset.inMinutes) ...[
+            _timezoneOffsetMinutes != localTimezoneOffset) ...[
           const SizedBox(height: 6),
           Text(
             '按记录时区 ${financeTimezoneLabel(_timezoneOffsetMinutes)} 显示',
@@ -1881,6 +1883,24 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         ],
       ],
     );
+  }
+
+  int _deviceTimezoneOffsetForOccurrence(DateTime occurrence) {
+    final occurrenceAt =
+        DateTime.utc(
+          occurrence.year,
+          occurrence.month,
+          occurrence.day,
+          occurrence.hour,
+          occurrence.minute,
+          occurrence.second,
+          occurrence.millisecond,
+          occurrence.microsecond,
+        ).millisecondsSinceEpoch -
+        _timezoneOffsetMinutes * 60000;
+    return DateTime.fromMillisecondsSinceEpoch(
+      occurrenceAt,
+    ).timeZoneOffset.inMinutes;
   }
 
   Widget _buildInstallmentField(ColorScheme colorScheme) {
