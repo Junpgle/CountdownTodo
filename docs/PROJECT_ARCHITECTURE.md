@@ -1,6 +1,6 @@
 # Project architecture
 
-Last reconciled with code: 2026-10-07. Flutter package version: **6.6.106**.
+Last reconciled with code: 2026-10-07. Flutter package version: **6.6.107**.
 
 ## Repository map
 
@@ -62,6 +62,8 @@ as part of normal client work.
 - Payment-method balances replay transactions and loan repayments after a dated
   snapshot. A repayment recorded after a snapshot in the same minute takes effect
   from its record update time, matching transaction balance handling.
+- An open finance home reconciles the current period when recurring rules change,
+  so a rule added or enabled after its due time does not wait until the next launch.
 - Global search combines FTS5/FTS4/`LIKE` database search with feature-module and
   remote catalog adapters. See [`features/global-search.md`](features/global-search.md)
   for coverage, openable destinations, animation behavior and server limits.

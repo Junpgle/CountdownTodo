@@ -1436,6 +1436,60 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('首页打开后新增已到期的自动账单会补生成当前周期', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(() => db.delete('finance_recurring_rules'));
+    final actualNow = DateTime.now();
+    final clockNow = DateTime(actualNow.year, actualNow.month + 1, 15, 10);
+    final dueDate = DateTime(clockNow.year, clockNow.month, 15, 9);
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.runAsync(
+      () => FinanceStorage.saveRecurringRule(
+        FinanceRecurringRule(
+          uuid: 'late-added-auto-rule',
+          name: '迟录房租',
+          amountMinor: 250000,
+          dayOfMonth: 15,
+          startDate: dateKey(DateTime(actualNow.year, actualNow.month, 1)),
+        ),
+      ),
+    );
+
+    var rows = (await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'source = ? AND transaction_date = ?',
+        whereArgs: [FinanceEntrySource.automation.name, dateKey(dueDate)],
+      ),
+    ))!;
+    for (var attempt = 0; attempt < 40 && rows.isEmpty; attempt++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+      rows = (await tester.runAsync(
+        () => db.query(
+          'finance_transactions',
+          where: 'source = ? AND transaction_date = ?',
+          whereArgs: [FinanceEntrySource.automation.name, dateKey(dueDate)],
+        ),
+      ))!;
+    }
+
+    expect(rows, hasLength(1));
+    expect(rows.single['merchant'], '迟录房租');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('云端同步后已打开的账单列表会刷新', (tester) async {
     await _seed(tester);
     final now = DateTime.now();

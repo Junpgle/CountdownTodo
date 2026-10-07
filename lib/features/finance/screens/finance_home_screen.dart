@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -82,6 +83,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
   int _loadGeneration = 0;
   bool _maintenanceScheduled = false;
   Future<void>? _maintenanceFuture;
+  String? _lastRecurringRuleSignature;
   Timer? _upcomingTransactionTimer;
   Timer? _autoGenerationTimer;
   Timer? _financeChangeRefreshTimer;
@@ -159,6 +161,9 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       _paymentMethods = initialData.paymentMethods;
       _overviewTransactions = initialData.overviewTransactions;
       _recurringRules = initialData.recurringRules;
+      _lastRecurringRuleSignature = _recurringRuleSignature(
+        initialData.recurringRules,
+      );
       _isLoading = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -205,6 +210,13 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     try {
       final data = await _loadOverviewData();
       if (!mounted || generation != _loadGeneration) return;
+      final recurringRuleSignature = _recurringRuleSignature(
+        data.recurringRules,
+      );
+      final shouldReconcileRecurringRules =
+          _lastRecurringRuleSignature != null &&
+          _lastRecurringRuleSignature != recurringRuleSignature;
+      _lastRecurringRuleSignature = recurringRuleSignature;
       setState(() {
         _transactions = data.transactions;
         _summary = data.summary;
@@ -216,7 +228,12 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
       });
       _scheduleUpcomingTransactionRefresh();
       _scheduleNextAutoGeneration();
-      if (!_isCategoryLedgerRoute) _startBackgroundMaintenance(generation);
+      if (!_isCategoryLedgerRoute) {
+        _startBackgroundMaintenance(generation);
+        if (shouldReconcileRecurringRules) {
+          unawaited(_reconcileAutoGeneration());
+        }
+      }
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
       if (showLoading) {
@@ -226,6 +243,36 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         });
       }
     }
+  }
+
+  String _recurringRuleSignature(Iterable<FinanceRecurringRule> rules) {
+    final values = rules
+        .map(
+          (rule) => [
+            rule.uuid,
+            rule.name,
+            rule.type.name,
+            rule.amountMinor,
+            rule.currencyCode,
+            rule.categoryUuid,
+            rule.paymentMethodUuid,
+            rule.merchant,
+            rule.note,
+            rule.frequency.name,
+            rule.dayOfMonth,
+            rule.monthOfYear,
+            rule.startDate,
+            rule.endDate,
+            rule.reminderMinutes,
+            rule.autoGenerate,
+            rule.isEnabled,
+          ],
+        )
+        .toList()
+      ..sort(
+        (left, right) => left.first.toString().compareTo(right.first.toString()),
+      );
+    return jsonEncode(values);
   }
 
   Future<_FinanceHomeData> _loadOverviewData() async {
