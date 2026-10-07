@@ -28,6 +28,38 @@ void main() {
       expect(summary, isNot(contains('2026-10-01')));
     });
 
+    test('calendar ranges stay aligned after a daylight-saving transition', () {
+      final yesterday =
+          HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看昨天的习惯进度',
+        goals: const [],
+        now: DateTime(2026, 3, 9, 12),
+      );
+      final rollingWeek =
+          HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看最近7天的习惯进度',
+        goals: const [],
+        now: DateTime(2026, 3, 9, 12),
+      );
+      final previousMonth =
+          HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看上个月的习惯进度',
+        goals: const [],
+        now: DateTime(2026, 4, 10, 12),
+      );
+      final previousQuarter =
+          HabitAiContextService.buildContextInjectionSummary(
+        userMessage: '查看上季度的习惯进度',
+        goals: const [],
+        now: DateTime(2026, 4, 10, 12),
+      );
+
+      expect(yesterday, contains('2026-03-08'));
+      expect(rollingWeek, contains('2026-03-03 至 2026-03-09'));
+      expect(previousMonth, contains('2026-03-01 至 2026-03-31'));
+      expect(previousQuarter, contains('2026-01-01 至 2026-03-31'));
+    });
+
     test('resolves older-day aliases and uses them in follow-ups', () {
       final testNow = DateTime(2026, 10, 3, 12);
       for (final (period, expectedDate) in [

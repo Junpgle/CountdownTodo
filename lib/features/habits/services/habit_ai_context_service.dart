@@ -496,9 +496,9 @@ abstract final class HabitAiContextService {
       final endExclusive = DateTime(year, month + 1);
       return (
         from: from,
-        to: endExclusive.subtract(const Duration(days: 1)),
+        to: HabitRuleResolver.addCalendarDays(endExclusive, -1),
         label:
-            '${_dateKey(from)} 至 ${_dateKey(endExclusive.subtract(const Duration(days: 1)))}',
+            '${_dateKey(from)} 至 ${_dateKey(HabitRuleResolver.addCalendarDays(endExclusive, -1))}',
       );
     }
     if (_quarterPeriodPattern.hasMatch(text)) {
@@ -511,10 +511,13 @@ abstract final class HabitAiContextService {
           currentQuarterStart.year,
           currentQuarterStart.month - 6,
         );
-        to = DateTime(
-          currentQuarterStart.year,
-          currentQuarterStart.month - 3,
-        ).subtract(const Duration(days: 1));
+        to = HabitRuleResolver.addCalendarDays(
+          DateTime(
+            currentQuarterStart.year,
+            currentQuarterStart.month - 3,
+          ),
+          -1,
+        );
       } else if (text.contains('上季度') ||
           text.contains('上个季度') ||
           text.contains('上一季度') ||
@@ -524,7 +527,7 @@ abstract final class HabitAiContextService {
           currentQuarterStart.year,
           currentQuarterStart.month - 3,
         );
-        to = currentQuarterStart.subtract(const Duration(days: 1));
+        to = HabitRuleResolver.addCalendarDays(currentQuarterStart, -1);
       } else if (text.contains('本季度') ||
           text.contains('本季') ||
           text.contains('这个季度') ||
@@ -559,8 +562,9 @@ abstract final class HabitAiContextService {
             ? today.year - 1
             : today.year;
         from = DateTime(year, (quarter - 1) * 3 + 1);
-        to = DateTime(year, from.month + 3).subtract(
-          const Duration(days: 1),
+        to = HabitRuleResolver.addCalendarDays(
+          DateTime(year, from.month + 3),
+          -1,
         );
       }
       return (
@@ -573,39 +577,40 @@ abstract final class HabitAiContextService {
     DateTime from = day;
     DateTime to = day;
     if (text.contains('大前天') || text.contains('大前日')) {
-      from = day.subtract(const Duration(days: 3));
+      from = HabitRuleResolver.addCalendarDays(day, -3);
       to = from;
     } else if (text.contains('前天') || text.contains('前日')) {
-      from = day.subtract(const Duration(days: 2));
+      from = HabitRuleResolver.addCalendarDays(day, -2);
       to = from;
     } else if (text.contains('昨天') ||
         text.contains('昨日') ||
         text.contains('yesterday')) {
-      from = day.subtract(const Duration(days: 1));
+      from = HabitRuleResolver.addCalendarDays(day, -1);
       to = from;
     } else if (text.contains('今天') || text.contains('今日')) {
       from = day;
       to = day;
     } else if (text.contains('上上个月') || text.contains('上上月')) {
       from = DateTime(day.year, day.month - 2);
-      to = DateTime(day.year, day.month - 1).subtract(
-        const Duration(days: 1),
+      to = HabitRuleResolver.addCalendarDays(
+        DateTime(day.year, day.month - 1),
+        -1,
       );
     } else if (text.contains('上个月') || text.contains('上月')) {
       from = DateTime(day.year, day.month - 1);
-      to = DateTime(day.year, day.month).subtract(const Duration(days: 1));
+      to = HabitRuleResolver.addCalendarDays(DateTime(day.year, day.month), -1);
     } else if (text.contains('本月') ||
         text.contains('这个月') ||
         text.contains('当月')) {
       from = DateTime(day.year, day.month);
     } else if (text.contains('前年')) {
       from = DateTime(day.year - 2);
-      to = DateTime(day.year - 1).subtract(const Duration(days: 1));
+      to = HabitRuleResolver.addCalendarDays(DateTime(day.year - 1), -1);
     } else if (text.contains('去年') ||
         text.contains('上一年') ||
         text.contains('前一年')) {
       from = DateTime(day.year - 1);
-      to = DateTime(day.year).subtract(const Duration(days: 1));
+      to = HabitRuleResolver.addCalendarDays(DateTime(day.year), -1);
     } else if (text.contains('今年') || text.contains('本年')) {
       from = DateTime(day.year);
     } else if (text.contains('上上周') ||
@@ -615,8 +620,8 @@ abstract final class HabitAiContextService {
         text.contains('上上礼拜') ||
         text.contains('上上个礼拜')) {
       final thisMonday = _mondayOf(day);
-      from = thisMonday.subtract(const Duration(days: 14));
-      to = thisMonday.subtract(const Duration(days: 8));
+      from = HabitRuleResolver.addCalendarDays(thisMonday, -14);
+      to = HabitRuleResolver.addCalendarDays(thisMonday, -8);
     } else if (text.contains('上周') ||
         text.contains('上星期') ||
         text.contains('上个周') ||
@@ -624,8 +629,8 @@ abstract final class HabitAiContextService {
         text.contains('上礼拜') ||
         text.contains('上个礼拜')) {
       final thisMonday = _mondayOf(day);
-      from = thisMonday.subtract(const Duration(days: 7));
-      to = thisMonday.subtract(const Duration(days: 1));
+      from = HabitRuleResolver.addCalendarDays(thisMonday, -7);
+      to = HabitRuleResolver.addCalendarDays(thisMonday, -1);
     } else if (text.contains('本周') ||
         text.contains('本星期') ||
         text.contains('本礼拜') ||
@@ -634,9 +639,9 @@ abstract final class HabitAiContextService {
         text.contains('这礼拜')) {
       from = _mondayOf(day);
     } else if (_containsAny(text, _recent30DayTerms)) {
-      from = day.subtract(const Duration(days: 29));
+      from = HabitRuleResolver.addCalendarDays(day, -29);
     } else if (_containsAny(text, _recent7DayTerms)) {
-      from = day.subtract(const Duration(days: 6));
+      from = HabitRuleResolver.addCalendarDays(day, -6);
     }
     return (
       from: from,
@@ -871,7 +876,10 @@ abstract final class HabitAiContextService {
   }
 
   static DateTime _mondayOf(DateTime date) =>
-      _day(date).subtract(Duration(days: date.weekday - DateTime.monday));
+      HabitRuleResolver.addCalendarDays(
+        _day(date),
+        DateTime.monday - date.weekday,
+      );
 
   static String _formatProgressValue(
     HabitGoal goal,
