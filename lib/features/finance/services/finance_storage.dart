@@ -3194,6 +3194,9 @@ abstract final class FinanceStorage {
         skipped++;
         continue;
       }
+      if (current != null) {
+        _preserveBalanceSnapshotForUnchangedAmount(item, current);
+      }
       await _deleteOtherBudgetsInScope(db, item);
       await db.insert(
         'finance_budgets',
@@ -4159,14 +4162,7 @@ abstract final class FinanceStorage {
         }
         continue;
       }
-      if (item.isPaymentMethod &&
-          item.balanceSnapshotAt == null &&
-          item.amountMinor == current.amountMinor) {
-        // Older clients do not send an explicit snapshot time. A note or
-        // deletion update must not turn the update time into a new balance
-        // baseline when the recorded amount itself did not change.
-        item.balanceSnapshotAt = current.effectiveBalanceSnapshotAt;
-      }
+      _preserveBalanceSnapshotForUnchangedAmount(item, current);
       await _deleteBudgetsInScope(db, item);
       await db.insert('finance_budgets', _remoteValues(item.toMap()));
       changed++;
@@ -4200,6 +4196,22 @@ abstract final class FinanceStorage {
       return !incoming.isDeleted;
     }
     return incoming.version > current.version;
+  }
+
+  static void _preserveBalanceSnapshotForUnchangedAmount(
+    FinanceBudget incoming,
+    FinanceBudget current,
+  ) {
+    if (incoming.isPaymentMethod &&
+        current.isPaymentMethod &&
+        incoming.balanceSnapshotAt == null &&
+        incoming.monthKey == current.monthKey &&
+        incoming.paymentMethodUuid == current.paymentMethodUuid &&
+        incoming.amountMinor == current.amountMinor) {
+      // Older clients and backups omit the snapshot time. A note or deletion
+      // update must not turn their update time into a new balance baseline.
+      incoming.balanceSnapshotAt = current.effectiveBalanceSnapshotAt;
+    }
   }
 
   static Future<int> _mergeRecurringRules(

@@ -229,6 +229,51 @@ void main() {
       );
     });
 
+    test('旧备份备注更新不会覆盖本地付款余额快照时间', () async {
+      final now = DateTime.now();
+      final month = DateTime(now.year, now.month - 1);
+      final snapshotAt = DateTime(
+        month.year,
+        month.month,
+        15,
+        10,
+      ).millisecondsSinceEpoch;
+      const paymentMethodUuid = 'legacy-backup-card';
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: paymentMethodUuid,
+          name: '旧备份测试卡',
+        ).toMap(),
+      );
+      final budget = FinanceBudget(
+        monthKey: financeMonthKey(month),
+        paymentMethodUuid: paymentMethodUuid,
+        amountMinor: 10000,
+        balanceSnapshotAt: snapshotAt,
+        createdAt: snapshotAt - 1000,
+        updatedAt: snapshotAt,
+      );
+      await FinanceStorage.saveBudget(
+        budget,
+        balanceSnapshotAt: snapshotAt,
+      );
+      final saved = (await FinanceStorage.getBudget(budget.uuid))!;
+      final oldBackup = FinanceBudget.fromMap(saved.toMap())
+        ..note = '旧备份修改备注'
+        ..balanceSnapshotAt = null
+        ..updatedAt = snapshotAt + const Duration(hours: 1).inMilliseconds
+        ..version = saved.version + 1
+        ..pendingSync = false;
+
+      await FinanceStorage.importBundle({
+        'budgets': [oldBackup.toMap()],
+      });
+
+      final restored = (await FinanceStorage.getBudget(saved.uuid))!;
+      expect(restored.effectiveBalanceSnapshotAt, snapshotAt);
+    });
+
     test('本地账单保存拒绝超过总期数的分期期次', () async {
       final transaction = FinanceTransaction(
         uuid: 'local-out-of-range-installment-index',
