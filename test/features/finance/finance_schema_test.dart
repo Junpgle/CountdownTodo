@@ -135,6 +135,42 @@ void main() {
       );
     });
 
+    test('远程同步拒绝无效交易来源并兼容缺失来源', () async {
+      final invalidSource = FinanceTransaction(
+        uuid: 'remote-invalid-finance-source',
+        amountMinor: 100,
+        transactionDate: '2026-09-10',
+      ).toMap()..['source'] = 'unsupported';
+      expect(
+        await FinanceStorage.mergeRemoteBundle({
+          'transactions': [invalidSource],
+        }),
+        0,
+      );
+      expect(
+        await FinanceStorage.getTransaction('remote-invalid-finance-source'),
+        isNull,
+      );
+
+      final legacyTransaction = FinanceTransaction(
+        uuid: 'remote-missing-finance-source',
+        amountMinor: 100,
+        transactionDate: '2026-09-10',
+      ).toMap()..remove('source');
+      expect(
+        await FinanceStorage.mergeRemoteBundle({
+          'transactions': [legacyTransaction],
+        }),
+        1,
+      );
+      expect(
+        (await FinanceStorage.getTransaction(
+          'remote-missing-finance-source',
+        ))!.source,
+        FinanceEntrySource.manual,
+      );
+    });
+
     test('旧客户端同步备注不会把余额快照时间前移', () async {
       final now = DateTime.now();
       final month = DateTime(now.year, now.month - 1);

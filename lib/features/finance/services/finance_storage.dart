@@ -3410,6 +3410,7 @@ abstract final class FinanceStorage {
           (map) =>
               _hasRawFinanceUuid(map) &&
               _isValidRawTransactionType(map) &&
+              _hasValidRawFinanceEntrySource(map) &&
               _hasValidRawFinanceDateKey(
                 map,
                 'transaction_date',
@@ -4610,6 +4611,12 @@ abstract final class FinanceStorage {
     final value = raw['type'];
     return const {'expense', 'income', 'refund'}.contains(value) ||
         const {0, 1, 2, '0', '1', '2'}.contains(value);
+  }
+
+  static bool _hasValidRawFinanceEntrySource(Map<String, dynamic> raw) {
+    final value = raw['source'];
+    return value == null ||
+        const {'manual', 'import', 'ai', 'automation'}.contains(value);
   }
 
   static bool _hasIncomingRefund(Object? rawTransactions) {
