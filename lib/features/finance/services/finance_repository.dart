@@ -491,6 +491,11 @@ abstract final class FinanceRepository {
       ...transactions.map((transaction) {
         final category = categories[transaction.categoryUuid];
         final payment = paymentMethods[transaction.paymentMethodUuid];
+        final paymentLabel = payment != null
+            ? '${payment.icon} ${payment.name}'
+            : (transaction.paymentMethodUuid?.trim().isNotEmpty == true
+                  ? '已删除或未知付款方式'
+                  : '未指定');
         final amount = transaction.type == FinanceTransactionType.expense
             ? -transaction.amountMinor
             : transaction.amountMinor;
@@ -503,9 +508,7 @@ abstract final class FinanceRepository {
                 ? '未分类'
                 : '${category.icon} ${financeCategoryDisplayName(category, categories.values)}',
           ),
-          sanitizeFinanceCsvText(
-            payment == null ? '未指定' : '${payment.icon} ${payment.name}',
-          ),
+          sanitizeFinanceCsvText(paymentLabel),
           sanitizeFinanceCsvText(transaction.merchant ?? ''),
           sanitizeFinanceCsvText(transaction.note ?? ''),
           transaction.source.label,

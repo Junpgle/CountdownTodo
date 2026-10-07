@@ -1163,6 +1163,31 @@ void main() {
     expect(context, contains('其余1笔没有逐笔列出'));
   });
 
+  test('AI 记账上下文区分已删除和未指定的付款方式', () {
+    final transaction = FinanceTransaction(
+      uuid: 'context-deleted-payment-method',
+      amountMinor: 1500,
+      paymentMethodUuid: 'deleted-payment-method',
+      transactionDate: '2026-09-02',
+      occurredAt: DateTime(2026, 9, 2, 12).millisecondsSinceEpoch,
+      createdAt: DateTime(2026, 9, 2, 12).millisecondsSinceEpoch,
+      merchant: '旧账户账单',
+    );
+    final context = FinanceAiContextService.formatContext(
+      range: FinanceDateRange(DateTime(2026, 9), DateTime(2026, 10)),
+      summary: FinanceSummary.fromTransactions([transaction]),
+      transactions: [transaction],
+      categories: const [],
+      paymentMethods: const [],
+      budgets: const [],
+      budgetSummaries: const {},
+      asOfAt: DateTime(2026, 9, 3).millisecondsSinceEpoch,
+    );
+
+    expect(context, contains('付款方式: 已删除或未知付款方式'));
+    expect(context, isNot(contains('付款方式: 未指定')));
+  });
+
   test('今年查询按实际月份给出预算，账单汇总仍按全年', () async {
     final context = await FinanceAiContextService.buildContext(
       userMessage: '今年支出和预算还有多少',

@@ -1177,7 +1177,7 @@ abstract final class FinanceAiContextService {
 
     String paymentName(String? uuid) {
       if (uuid == null || uuid.isEmpty) return '未指定';
-      return paymentMap[uuid]?.name ?? '未指定';
+      return paymentMap[uuid]?.name ?? '已删除或未知付款方式';
     }
 
     final lines = <String>[

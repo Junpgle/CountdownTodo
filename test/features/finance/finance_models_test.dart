@@ -797,6 +797,7 @@ void main() {
         FinanceTransaction(
           amountMinor: 100,
           transactionDate: '=1+1',
+          paymentMethodUuid: 'deleted-payment-method',
         ),
       ],
       categories: const {},
@@ -806,6 +807,7 @@ void main() {
     expect(path, isNotNull);
     final csv = await File(path!).readAsString();
     expect(csv, contains("\n'=1+1,支出,-1.00"));
+    expect(csv, contains("\n'=1+1,支出,-1.00,未分类,已删除或未知付款方式"));
   });
 
   test('汇总会将退款从实际支出中扣除', () {
