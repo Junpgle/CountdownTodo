@@ -3977,6 +3977,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await _tap(tester, find.text('恢复整组'));
     await _waitFor(tester, () => find.text('没有找到匹配记录').evaluate().isNotEmpty);
+    expect(find.text('整组分期账单已恢复'), findsOneWidget);
     final restored = (await tester.runAsync(
       () => db.query(
         'finance_transactions',

@@ -121,8 +121,10 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
           )
         : 'single';
     if (restoreMode == null || !mounted) return;
+    final restoreGroup =
+        restoreMode == 'group' && transaction.installmentGroupUuid != null;
     try {
-      if (restoreMode == 'group' && transaction.installmentGroupUuid != null) {
+      if (restoreGroup) {
         await FinanceRepository.restoreInstallmentGroup(
           transaction.installmentGroupUuid!,
         );
@@ -140,7 +142,9 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
     if (!mounted) return;
     AppSnackBars.showSnackBar(
       context,
-      const SnackBar(content: Text('账单已恢复')),
+      SnackBar(
+        content: Text(restoreGroup ? '整组分期账单已恢复' : '账单已恢复'),
+      ),
     );
   }
 
