@@ -2419,6 +2419,83 @@ void main() {
     );
   });
 
+  test('旧余额表单改金额时保留同步后更新的快照时间', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'stale-balance-snapshot-edit-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    FinanceStorage.databaseOverride = db;
+    await FinanceStorage.ensureReady();
+    await db.insert(
+      'finance_payment_methods',
+      FinancePaymentMethod(
+        uuid: 'stale-snapshot-card',
+        name: '同步中的银行卡',
+      ).toMap(),
+    );
+
+    final now = DateTime.now();
+    final month = DateTime(now.year, now.month - 1);
+    final firstSnapshotAt = DateTime(
+      month.year,
+      month.month,
+      10,
+      10,
+    ).millisecondsSinceEpoch;
+    final synchronizedSnapshotAt = DateTime(
+      month.year,
+      month.month,
+      11,
+      10,
+    ).millisecondsSinceEpoch;
+    final original = FinanceBudget(
+      monthKey: financeMonthKey(month),
+      paymentMethodUuid: 'stale-snapshot-card',
+      amountMinor: 10000,
+      createdAt: firstSnapshotAt - 1000,
+      updatedAt: firstSnapshotAt,
+    );
+    await FinanceStorage.saveBudget(
+      original,
+      balanceSnapshotAt: firstSnapshotAt,
+    );
+    final staleOriginal = FinanceBudget.fromMap(
+      (await FinanceStorage.getBudget(original.uuid))!.toMap(),
+    );
+
+    final remoteEdit = FinanceBudget.fromMap(staleOriginal.toMap())
+      ..amountMinor = 15000
+      ..balanceSnapshotAt = synchronizedSnapshotAt
+      ..updatedAt = synchronizedSnapshotAt
+      ..version = staleOriginal.version + 1
+      ..pendingSync = false;
+    await FinanceStorage.mergeRemoteBundle({
+      'budgets': [remoteEdit.toMap()],
+    });
+
+    final localEdit = FinanceBudget.fromMap(staleOriginal.toMap())
+      ..amountMinor = 12000
+      ..markAsChanged();
+    await FinanceStorage.saveBudget(
+      localEdit,
+      original: staleOriginal,
+      balanceSnapshotAt: firstSnapshotAt,
+    );
+
+    final saved = (await FinanceStorage.getBudget(original.uuid))!;
+    expect(saved.amountMinor, 12000, reason: '保留本地实际修改的余额数值');
+    expect(
+      saved.balanceSnapshotAt,
+      synchronizedSnapshotAt,
+      reason: '本地没有改对应时间时，保留同步期间更新的快照时间',
+    );
+  });
+
   test('已有系统分类表升级时新增名称自定义标记', () async {
     final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
     addTearDown(db.close);

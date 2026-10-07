@@ -1840,6 +1840,23 @@ abstract final class FinanceStorage {
                 current.updatedAt != original.updatedAt);
         if (baselineChanged) {
           _mergeBudgetEdits(current, original, budget);
+          final snapshotTimeUnchanged =
+              balanceSnapshotAt == original.effectiveBalanceSnapshotAt;
+          final currentSnapshotStillMatchesScope =
+              current.isPaymentMethod &&
+              budget.isPaymentMethod &&
+              current.monthKey == original.monthKey &&
+              current.paymentMethodUuid == original.paymentMethodUuid &&
+              budget.monthKey == current.monthKey &&
+              budget.paymentMethodUuid == current.paymentMethodUuid;
+          if (snapshotTimeUnchanged &&
+              currentSnapshotStillMatchesScope &&
+              current.effectiveBalanceSnapshotAt !=
+                  original.effectiveBalanceSnapshotAt) {
+            // A stale amount edit must not restore the old snapshot instant
+            // when another device has updated that instant in the meantime.
+            balanceSnapshotAt = current.effectiveBalanceSnapshotAt;
+          }
           budget
             ..version = current.version
             ..updatedAt = current.updatedAt
