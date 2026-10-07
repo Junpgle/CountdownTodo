@@ -844,6 +844,62 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    '编辑未来日期旧账单时不沿用不匹配的旧发生时刻',
+    (tester) async {
+      final db = await _seed(tester);
+      final now = DateTime.now();
+      final createdAt = now.subtract(const Duration(days: 2));
+      final staleOccurrence = now.subtract(const Duration(days: 1));
+      final futureDate = DateTime(now.year, now.month, now.day + 1);
+      final transaction = FinanceTransaction(
+        uuid: 'future-ledger-with-stale-occurrence',
+        amountMinor: 1250,
+        categoryUuid: 'test-food',
+        transactionDate: dateKey(futureDate),
+        occurredAt: staleOccurrence.millisecondsSinceEpoch,
+        timezoneOffsetMinutes: now.timeZoneOffset.inMinutes,
+        createdAt: createdAt.millisecondsSinceEpoch,
+        updatedAt: createdAt.millisecondsSinceEpoch,
+      );
+      await tester.runAsync(() => FinanceStorage.saveTransaction(transaction));
+
+      expect(
+        transaction.balanceEventAt(snapshotAt: now.millisecondsSinceEpoch),
+        lessThan(now.millisecondsSinceEpoch),
+        reason: '旧时间戳会让这笔未来账单提前进入余额',
+      );
+      await _pump(tester, FinanceEntryScreen(transaction: transaction));
+      expect(find.text('补充时间'), findsOneWidget);
+      await _tap(tester, find.text('保存账单'));
+
+      var row = <String, Object?>{};
+      for (var attempt = 0; attempt < 100; attempt++) {
+        row = (await tester.runAsync(
+          () => db.query(
+            'finance_transactions',
+            where: 'uuid = ?',
+            whereArgs: [transaction.uuid],
+          ),
+        ))!.single;
+        if (row['version'] == 2) break;
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(row['version'], 2);
+      expect(row['occurred_at'], isNull);
+      final saved = FinanceTransaction.fromMap(row);
+      expect(
+        saved.balanceEventAt(snapshotAt: now.millisecondsSinceEpoch),
+        DateTime(now.year, now.month, now.day + 1).millisecondsSinceEpoch,
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('编辑大额账单后原样保存不会因金额回填丢一分', (tester) async {
     final db = await _seed(tester);
     const amountMinor = maxFinanceAmountMinor - 1;

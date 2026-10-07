@@ -1010,7 +1010,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       deviceId: old?.deviceId,
     );
     if (old != null && _occurredAt == null) {
-      transaction.occurredAt = old.occurredAt;
+      // This form state means the saved occurrence is missing or does not
+      // match the ledger date. Keeping a stale timestamp can make a future
+      // bill look as though it already happened.
+      transaction.occurredAt = null;
     }
     if (old != null) transaction.markAsChanged();
 
