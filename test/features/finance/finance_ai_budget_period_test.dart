@@ -110,6 +110,31 @@ void main() {
     expect(followUp, '记账明细 2026-08-27 至 2026-09-02');
   });
 
+  test('过去两周和最近三星期查询按完整滚动范围跨月取账单', () async {
+    final now = DateTime(2026, 9, 2, 23, 59);
+    final twoWeekRange = FinanceAiContextService.resolveDateRange(
+      '过去两周支出',
+      now: now,
+    );
+    final twoWeekContext = await FinanceAiContextService.buildContext(
+      userMessage: '过去两周支出多少',
+      now: now,
+    );
+    final threeWeekRange = FinanceAiContextService.resolveDateRange(
+      '最近3星期支出',
+      now: now,
+    );
+
+    expect(dateKey(twoWeekRange.from), '2026-08-20');
+    expect(dateKey(twoWeekRange.to), '2026-09-03');
+    expect(twoWeekContext, contains('[transactionId: august]'));
+    expect(twoWeekContext, contains('[transactionId: earlier-september]'));
+    expect(twoWeekContext, contains('[transactionId: today]'));
+    expect(twoWeekContext, contains('净支出 ¥60.00'));
+    expect(dateKey(threeWeekRange.from), '2026-08-13');
+    expect(dateKey(threeWeekRange.to), '2026-09-03');
+  });
+
   test('比较多个相对账期时不静默选择其中一段', () async {
     final now = DateTime(2026, 9, 2, 23, 59);
 

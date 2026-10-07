@@ -171,6 +171,11 @@ abstract final class FinanceAiContextService {
     r'(?:近|最近|过去)\s*'
     r'(\d+|[零〇○一二三四五六七八九十廿两百千]{1,4})\s*个?月',
   );
+  static final RegExp _rollingDayPeriodPattern = RegExp(
+    r'(?:近|最近|过去)\s*'
+    r'(\d+|[零〇○一二两三四五六七八九十廿]{1,4})\s*'
+    r'(天|日|周|星期|礼拜)',
+  );
   static final RegExp _rollingYearPeriodPattern = RegExp(
     r'(?:近|最近|过去)\s*'
     r'(\d+|[零〇○一二三四五六七八九十廿两百千]{1,4})\s*年',
@@ -320,6 +325,7 @@ abstract final class FinanceAiContextService {
     final hasPeriod =
         _containsAny(text, _periodWords) ||
         hasExplicitMonth ||
+        _rollingDayPeriodPattern.hasMatch(text) ||
         _hasRollingMonthPeriod(text) ||
         _hasRollingYearPeriod(text);
     final followsFinanceConversation =
@@ -676,18 +682,20 @@ abstract final class FinanceAiContextService {
       final from = _mondayOf(current);
       return FinanceDateRange(from, financeCalendarDayOffset(from, 7));
     }
+    final rollingDays = _rollingDayPeriodPattern.firstMatch(text);
+    if (rollingDays != null) {
+      final dayCount = _parseRollingDayCount(rollingDays);
+      if (dayCount != null) {
+        final from = financeCalendarDayOffset(current, 1 - dayCount);
+        return FinanceDateRange(from, financeCalendarDayOffset(current, 1));
+      }
+    }
     if (_containsAny(text, [
       '这一个月',
       '最近一个月',
       '过去一个月',
       '近一个月',
       '一个月内',
-      '最近30天',
-      '最近三十天',
-      '过去30天',
-      '过去三十天',
-      '近30天',
-      '近三十天',
     ])) {
       final from = financeCalendarDayOffset(current, -29);
       return FinanceDateRange(from, financeCalendarDayOffset(current, 1));
@@ -769,20 +777,6 @@ abstract final class FinanceAiContextService {
     if (text.contains('本月') || text.contains('这个月') || text.contains('当月')) {
       final from = DateTime(current.year, current.month);
       return FinanceDateRange(from, DateTime(current.year, current.month + 1));
-    }
-    if (_containsAny(text, [
-      '最近7天',
-      '最近七天',
-      '过去7天',
-      '过去七天',
-      '近7天',
-      '近七天',
-      '最近一周',
-      '过去一周',
-      '近一周',
-    ])) {
-      final from = financeCalendarDayOffset(current, -6);
-      return FinanceDateRange(from, financeCalendarDayOffset(current, 1));
     }
     // A bare “账单/支出/余额” query defaults to the current month.  This is
     // predictable and avoids sending the entire lifetime ledger to a model.
@@ -1071,6 +1065,9 @@ abstract final class FinanceAiContextService {
       final count = _parseRollingPeriodCount(rollingMonth.group(1)!);
       if (count == null || count < 1 || count > 36) return true;
     }
+    for (final rollingDays in _rollingDayPeriodPattern.allMatches(text)) {
+      if (_parseRollingDayCount(rollingDays) == null) return true;
+    }
     for (final rollingYear in _rollingYearPeriodPattern.allMatches(text)) {
       final count = _parseRollingPeriodCount(rollingYear.group(1)!);
       if (count == null || count < 1 || count > 10) return true;
@@ -1123,6 +1120,7 @@ abstract final class FinanceAiContextService {
       }
     }
     addMatches(_rollingMonthPeriodPattern);
+    addMatches(_rollingDayPeriodPattern);
     addMatches(_rollingYearPeriodPattern);
     addMatches(_quarterPeriodPattern);
     addMatches(_numericYearPeriodPattern);
@@ -1430,6 +1428,16 @@ abstract final class FinanceAiContextService {
 
   static int? _parseRollingPeriodCount(String value) =>
       int.tryParse(value) ?? _parseCalendarDayNumber(value);
+
+  static int? _parseRollingDayCount(RegExpMatch match) {
+    final count = _parseRollingPeriodCount(match.group(1)!);
+    if (count == null || count < 1) return null;
+    final unit = match.group(2)!;
+    final multiplier =
+        unit == '周' || unit == '星期' || unit == '礼拜' ? 7 : 1;
+    if (count > 3650 ~/ multiplier) return null;
+    return count * multiplier;
+  }
 
   static DateTime _day(DateTime value) =>
       DateTime(value.year, value.month, value.day);
