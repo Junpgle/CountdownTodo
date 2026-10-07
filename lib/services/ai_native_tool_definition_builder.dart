@@ -432,8 +432,8 @@ class AiNativeToolDefinitionBuilder {
                     'description': '逐字使用待办上下文中的真实期次todoId',
                   },
                   'groupId': {
-                    'type': 'string',
-                    'description': '逐字使用待办上下文中的真实分类ID',
+                    'type': ['string', 'null'],
+                    'description': '逐字使用待办上下文中的真实分类ID；用户要求移出分类时填写null',
                   },
                 },
                 'required': const ['todoId', 'groupId'],

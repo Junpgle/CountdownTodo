@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:countdown_todo/features/finance/models/finance_ai_action.dart';
 import 'package:countdown_todo/features/finance/services/finance_ai_context_service.dart';
 import 'package:countdown_todo/features/finance/services/finance_text_parser.dart';
+import 'package:countdown_todo/services/ai_action_parser.dart';
 import 'package:countdown_todo/services/ai_chat_service.dart';
 import 'package:countdown_todo/services/ai_native_tool_call_parser.dart';
 import 'package:countdown_todo/services/ai_native_tool_definition_builder.dart';
@@ -60,6 +61,58 @@ void main() {
         'update_finance',
       });
       expect(FinanceAiContextService.shouldInjectFor(request), isTrue);
+    });
+
+    test('待办移出分类允许空分类并保留真实待办ID', () {
+      const request = '把这个待办移出当前分类';
+      final systemPrompt = AiTodoContextBuilder.buildSystemPrompt(
+        customPrompt: '',
+        promptEnabled: false,
+        todos: const [],
+        todoGroups: const [],
+      );
+      final tools = AiNativeToolDefinitionBuilder.buildNativeToolDefinitions(
+        request,
+      );
+      final actionTool = tools.singleWhere(
+        (tool) =>
+            (tool['function'] as Map<String, dynamic>)['name'] ==
+            'propose_cdt_actions',
+      );
+      final function = actionTool['function'] as Map<String, dynamic>;
+      final parameters = function['parameters'] as Map<String, dynamic>;
+      final properties = parameters['properties'] as Map<String, dynamic>;
+      final actions = properties['actions'] as Map<String, dynamic>;
+      final actionItems = actions['items'] as Map<String, dynamic>;
+      final actionProperties =
+          actionItems['properties'] as Map<String, dynamic>;
+      final updates = actionProperties['updates'] as Map<String, dynamic>;
+      final updateItems = updates['items'] as Map<String, dynamic>;
+      final updateProperties = updateItems['properties'] as Map<String, dynamic>;
+
+      expect(systemPrompt, contains('新分类ID或null（移出分类时）'));
+      expect(AiNativeToolDefinitionBuilder.allowedCdtActionNames(tools), {
+        'categorize_todo',
+      });
+      expect(
+        updateProperties['groupId'],
+        containsPair('type', ['string', 'null']),
+      );
+      expect(
+        (updateProperties['groupId'] as Map<String, dynamic>)['description'],
+        contains('填写null'),
+      );
+
+      final parsed = AiActionParser.extractTodoActions(
+        '[ACTION_START]{"action":"categorize_todo","updates":[{"todoId":"todo-1","groupId":null}]}[ACTION_END]',
+        originalText: request,
+        existingTodoTitles: const {'todo-1': '准备周报'},
+      );
+
+      expect(parsed, hasLength(1));
+      expect(parsed.single.todoId, 'todo-1');
+      expect(parsed.single.groupId, isNull);
+      expect(parsed.single.type.name, 'categorizeTodo');
     });
 
     test('offers finance updates for correction and adjustment wording', () {

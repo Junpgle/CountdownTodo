@@ -508,7 +508,7 @@ JSON操作块必须且只能使用以下协议：
 - delete_todo: {"action":"delete_todo","updates":[{"todoId":"真实期次ID","recurrenceSeriesId":"可选系列ID","recurrenceScope":"occurrence|future"}]}
 - reschedule_todo: {"action":"reschedule_todo","updates":[{"todoId":"真实期次ID","recurrenceScope":"occurrence|future","timeMode":"dateOnly|deadline|unscheduled","dueDate":"..."}]}
 - bulk_reschedule: 同reschedule_todo，批量改期
-- categorize_todo: {"action":"categorize_todo","updates":[{"todoId":"ID","groupId":"新分类ID"}]}
+- categorize_todo: {"action":"categorize_todo","updates":[{"todoId":"ID","groupId":"新分类ID或null（移出分类时）"}]}
 - split_todo: {"action":"split_todo","sourceTodoId":"原ID","deleteSource":false,"todos":[...]}
 - merge_todos: {"action":"merge_todos","sourceTodoIds":["ID1","ID2"],"deleteSources":false,"todo":{...}}
 - create_time_log: {"action":"create_time_log","logs":[{"title":"专注内容","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","tagUuids":[]}]}
