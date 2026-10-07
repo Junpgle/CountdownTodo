@@ -162,7 +162,10 @@ class _FinanceTransactionDetailScreenState
 
   String _paymentMethodLabel() {
     final value = paymentMethod;
-    return value == null ? '未指定' : '${value.icon} ${value.name}';
+    if (value != null) return '${value.icon} ${value.name}';
+    return transaction.paymentMethodUuid?.trim().isNotEmpty == true
+        ? '已删除或未知付款方式'
+        : '未指定';
   }
 
   String _occurredAtLabel() {

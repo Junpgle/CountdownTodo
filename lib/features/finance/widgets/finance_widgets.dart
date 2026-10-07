@@ -1109,6 +1109,10 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
       final query = keyword.trim().toLowerCase();
       final category = categories[transaction.categoryUuid];
       final payment = paymentMethods[transaction.paymentMethodUuid];
+      final paymentName = payment?.name ??
+          (transaction.paymentMethodUuid?.trim().isNotEmpty == true
+              ? '已删除或未知付款方式'
+              : null);
       final categoryName = category == null
           ? '未分类'
           : financeCategoryDisplayName(category, categories.values);
@@ -1116,7 +1120,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         transaction.merchant,
         transaction.note,
         categoryName,
-        payment?.name,
+        paymentName,
       ].whereType<String>().join(' ').toLowerCase();
       return content.contains(query) ||
           _matchesFinanceLedgerDate(transaction.transactionDate, query);
@@ -1331,7 +1335,10 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     final subtitleParts = <String>[
       if (transaction.balanceEventAt() > asOfAt) '待发生',
       category == null ? '未分类' : '${category.icon} $categoryName',
-      if (payment != null) '${payment.icon} ${payment.name}',
+      if (payment != null)
+        '${payment.icon} ${payment.name}'
+      else if (transaction.paymentMethodUuid?.trim().isNotEmpty == true)
+        '已删除或未知付款方式',
       if (transaction.installmentLabel != null)
         '分期 ${transaction.installmentLabel}',
       if (transaction.note?.isNotEmpty == true) transaction.note!,

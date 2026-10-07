@@ -2343,6 +2343,58 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('账单列表保留已删除付款方式的关联提示并支持搜索', (tester) async {
+    final transaction = FinanceTransaction(
+      uuid: 'ledger-deleted-payment-method',
+      amountMinor: 1500,
+      paymentMethodUuid: 'deleted-payment-method',
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '已删除账户账单',
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          transactions: [transaction],
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '已删除或未知付款方式',
+          filterType: null,
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('已删除账户账单'), findsOneWidget);
+    expect(find.text('已删除或未知付款方式'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('账单详情区分未指定和已删除付款方式', (tester) async {
+    await _seed(tester);
+    final transaction = FinanceTransaction(
+      uuid: 'detail-deleted-payment-method',
+      amountMinor: 1500,
+      paymentMethodUuid: 'deleted-payment-method',
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '已删除账户详情',
+    );
+    await tester.runAsync(() => FinanceStorage.saveTransaction(transaction));
+
+    await _pump(tester, FinanceTransactionDetailScreen(transaction: transaction));
+    await _waitFor(tester, () => find.text('付款方式').evaluate().isNotEmpty);
+
+    expect(find.text('已删除或未知付款方式'), findsOneWidget);
+    expect(find.text('未指定'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('账单被删除后打开的详情停止显示旧记录', (tester) async {
     final db = await _seed(tester);
     final transaction = FinanceTransaction(
