@@ -1,6 +1,6 @@
 # Project architecture
 
-Last reconciled with code: 2026-10-07. Flutter package version: **6.6.108**.
+Last reconciled with code: 2026-10-07. Flutter package version: **6.6.109**.
 
 ## Repository map
 
@@ -66,6 +66,8 @@ as part of normal client work.
   so a rule added or enabled after its due time does not wait until the next launch.
 - Payment balance refresh timers use the same effective event time as balance
   reconstruction, including repayments entered after a same-minute snapshot.
+- AI balance context uses the shared snapshot selection rules, including
+  month-key tolerance for cross-timezone month-end snapshots.
 - Global search combines FTS5/FTS4/`LIKE` database search with feature-module and
   remote catalog adapters. See [`features/global-search.md`](features/global-search.md)
   for coverage, openable destinations, animation behavior and server limits.

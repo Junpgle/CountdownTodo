@@ -626,9 +626,7 @@ abstract final class FinanceAiContextService {
       if (needsPaymentBalances) {
         final snapshots = FinanceRepository.latestPaymentBalanceSnapshots(
           allBudgets.where(
-            (budget) =>
-                budget.isPaymentMethod &&
-                budget.effectiveBalanceSnapshotAt <= balanceAsOfAt,
+            (budget) => budget.isPaymentMethod,
           ),
           asOfAt: balanceAsOfAt,
           nowAt: asOfAt,

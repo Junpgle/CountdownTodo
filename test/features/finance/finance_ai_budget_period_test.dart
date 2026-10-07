@@ -1113,6 +1113,34 @@ void main() {
     );
   });
 
+  test('AI 历史余额按快照月份识别跨时区后的月末快照', () async {
+    final snapshotAt = DateTime(2026, 10, 1, 20);
+    await db.insert(
+      'finance_payment_methods',
+      FinancePaymentMethod(uuid: 'timezone-ai-card', name: '异地银行卡').toMap(),
+    );
+    await FinanceStorage.saveBudget(
+      FinanceBudget(
+        uuid: 'timezone-ai-card-snapshot',
+        monthKey: '2026-09',
+        paymentMethodUuid: 'timezone-ai-card',
+        amountMinor: 10000,
+        balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+        createdAt: snapshotAt.millisecondsSinceEpoch,
+        updatedAt: snapshotAt.millisecondsSinceEpoch,
+      ),
+      balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+    );
+
+    final context = await FinanceAiContextService.buildContext(
+      userMessage: '上个月银行卡余额多少',
+      now: DateTime(2026, 10, 7, 12),
+    );
+
+    expect(context, contains('- 异地银行卡: ¥100.00'));
+    expect(context, contains('付款方式实际余额（截至 2026-09-30 23:59:59.999'));
+  });
+
   test('AI 财务上下文会说明账单和预算明细被截断', () {
     final categories = [
       for (var index = 0; index < 21; index++)
