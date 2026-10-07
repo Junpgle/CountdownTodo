@@ -7,6 +7,7 @@ import '../../services/reminder_schedule_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/scheduled_reminder_registry.dart';
 import '../../services/storage/app_settings_storage.dart';
+import '../../features/finance/services/finance_automation_service.dart';
 import '../../utils/app_dialogs.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/time_utils.dart';
@@ -224,13 +225,13 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     if (enabled) {
       await AppSettingsStorage.setPomodoroEndNotificationEnabled(true);
       await AppSettingsStorage.setReminderNotificationEnabled(true);
-      await AppSettingsStorage.setFinanceBudgetAlertEnabled(true);
+      await FinanceAutomationService.setBudgetAlertsEnabled(true);
       await AppSettingsStorage.setFinanceRecurringReminderEnabled(true);
       await _triggerReschedule();
     } else {
       await AppSettingsStorage.setPomodoroEndNotificationEnabled(false);
       await AppSettingsStorage.setReminderNotificationEnabled(false);
-      await AppSettingsStorage.setFinanceBudgetAlertEnabled(false);
+      await FinanceAutomationService.setBudgetAlertsEnabled(false);
       await AppSettingsStorage.setFinanceRecurringReminderEnabled(false);
       await _clearScheduledSource(ScheduledReminderSources.reminderSchedule);
       await _clearScheduledSource(ScheduledReminderSources.pomodoro);
@@ -240,7 +241,11 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
   Future<void> _toggleSubNotification(String key, bool value,
       Function(bool) setStateCallback, Function(bool) storageCallback) async {
-    await storageCallback(value);
+    if (key == 'finance_budget') {
+      await FinanceAutomationService.setBudgetAlertsEnabled(value);
+    } else {
+      await storageCallback(value);
+    }
     if (mounted) setState(() => setStateCallback(value));
     const schedulingKeys = {
       'course',
