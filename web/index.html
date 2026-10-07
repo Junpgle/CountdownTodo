@@ -386,7 +386,7 @@
 
       function show(title, body, tag) {
         if (!hasNotificationApi() || Notification.permission !== 'granted') {
-          return false;
+          return Promise.resolve(false);
         }
 
         var options = {
@@ -398,23 +398,28 @@
           data: { url: window.location.href }
         };
 
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.ready.then(function (reg) {
-            return reg.showNotification(title, options);
-          }).catch(function () {
-            try {
-              new Notification(title, options);
-            } catch (_) {}
-          });
-          return true;
+        function showWindowNotification() {
+          try {
+            new Notification(title, options);
+            return Promise.resolve(true);
+          } catch (_) {
+            return Promise.resolve(false);
+          }
         }
 
-        try {
-          new Notification(title, options);
-          return true;
-        } catch (_) {
-          return false;
+        if ('serviceWorker' in navigator) {
+          return navigator.serviceWorker.ready.then(function (reg) {
+            return reg.showNotification(title, options).then(function () {
+              return true;
+            }).catch(function () {
+              return showWindowNotification();
+            });
+          }).catch(function () {
+            return showWindowNotification();
+          });
         }
+
+        return showWindowNotification();
       }
 
       window.cdtNotifications = {

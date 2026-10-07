@@ -82,15 +82,11 @@ class NotificationService {
     try {
       final bridge = _browserBridge;
       if (bridge == null) return false;
-      final result = bridge.callMethodVarArgs<JSAny?>(
+      final result = bridge.callMethodVarArgs<JSPromise<JSBoolean>>(
         'show'.toJS,
-        <JSAny?>[
-          title.toJS,
-          body.toJS,
-          (tag ?? '').toJS,
-        ],
+        <JSAny?>[title.toJS, body.toJS, (tag ?? '').toJS],
       );
-      return result?.dartify() == true;
+      return (await result.toDart).toDart;
     } catch (_) {
       return false;
     }
