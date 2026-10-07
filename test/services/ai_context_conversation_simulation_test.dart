@@ -406,7 +406,7 @@ void main() {
     }
   });
 
-  test('最近课程日期范围超过30天时保留历史课程', () {
+  test('滚动课程日期范围按用户指定天数筛选历史课程', () {
     String dateText(DateTime date) => date.toIso8601String().substring(0, 10);
 
     CourseItem course(String id, DateTime date) => CourseItem(
@@ -422,13 +422,16 @@ void main() {
     );
 
     for (final (rangeDays, query) in [
+      (14, '过去两周课程安排'),
+      (21, '最近3星期课程安排'),
       (60, '最近60天课程安排'),
       (100, '过去100天课程安排'),
       (100, '最近一百天课程安排'),
       (105, '最近一百零五天课程安排'),
       (365, '过去三百六十五天课程安排'),
     ]) {
-      final inRangeDate = now.subtract(Duration(days: rangeDays - 15));
+      final inRangeAgeDays = rangeDays > 15 ? rangeDays - 15 : rangeDays ~/ 2;
+      final inRangeDate = now.subtract(Duration(days: inRangeAgeDays));
       final rangeStart = now.subtract(Duration(days: rangeDays));
       final injection = AiTodoContextBuilder.buildContextInjection(
         userMessage: query,

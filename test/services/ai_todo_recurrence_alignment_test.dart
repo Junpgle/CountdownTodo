@@ -1566,6 +1566,94 @@ void main() {
       expect(thirtyDayPreview, contains('专注记录20260903-20261002'));
     });
 
+    test('过去两周范围同时筛选效率、待办和倒计时', () {
+      final now = DateTime(2026, 10, 2, 12);
+      final timeLogs = [
+        TimeLogItem(
+          id: 'outside-two-weeks-log',
+          title: '两周前专注',
+          startTime: DateTime(2026, 9, 18, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 18, 10).millisecondsSinceEpoch,
+        ),
+        TimeLogItem(
+          id: 'inside-two-weeks-log',
+          title: '两周内专注',
+          startTime: DateTime(2026, 9, 19, 9).millisecondsSinceEpoch,
+          endTime: DateTime(2026, 9, 19, 10).millisecondsSinceEpoch,
+        ),
+      ];
+      final todos = [
+        {
+          'id': 'outside-two-weeks-todo',
+          'title': '两周前待办',
+          'dueDate': '2026-09-18T18:00:00',
+          'timeMode': 'deadline',
+        },
+        {
+          'id': 'inside-two-weeks-todo',
+          'title': '两周内待办',
+          'dueDate': '2026-09-19T18:00:00',
+          'timeMode': 'deadline',
+        },
+      ];
+      final countdowns = [
+        CountdownItem(
+          id: 'outside-two-weeks-countdown',
+          title: '两周前倒计时',
+          targetDate: DateTime(2026, 9, 18),
+        ),
+        CountdownItem(
+          id: 'inside-two-weeks-countdown',
+          title: '两周内倒计时',
+          targetDate: DateTime(2026, 9, 19),
+        ),
+      ];
+
+      final timeContext = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '分析过去两周的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final timePreview = AiTodoContextBuilder.buildContextInjectionSummary(
+        userMessage: '分析过去两周的效率',
+        courses: const [],
+        timeLogs: timeLogs,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final todoContext = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '过去两周有哪些待办',
+        courses: const [],
+        timeLogs: const [],
+        todos: todos,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+      final countdownContext = AiTodoContextBuilder.buildContextInjection(
+        userMessage: '过去两周有哪些倒计时',
+        courses: const [],
+        timeLogs: const [],
+        countdowns: countdowns,
+        conflicts: const [],
+        teams: const [],
+        now: now,
+      )!;
+
+      expect(timeContext, contains('最近14天合计'));
+      expect(timeContext, contains('inside-two-weeks-log'));
+      expect(timeContext, isNot(contains('outside-two-weeks-log')));
+      expect(timePreview, contains('专注记录20260919-20261002'));
+      expect(todoContext, contains('inside-two-weeks-todo'));
+      expect(todoContext, isNot(contains('outside-two-weeks-todo')));
+      expect(countdownContext, contains('两周内倒计时'));
+      expect(countdownContext, isNot(contains('两周前倒计时')));
+    });
+
     test('相对日期区间比较不会静默只注入一个周期', () {
       final now = DateTime(2026, 10, 2, 12);
       final timeLogs = [
