@@ -8,6 +8,7 @@ import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
 import '../services/habit_adaptation_service.dart';
+import '../services/habit_day_loader.dart';
 import '../services/habit_progress_calculator.dart';
 import '../services/habit_rule_resolver.dart';
 import '../services/habit_source_resolver.dart';
@@ -113,8 +114,11 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         isSleepGoal ? await HabitSleepCoachingService.load(username) : null;
     final rules = await HabitRepository.getRules(habitUuid: _goal.uuid);
     final today = DateTime.now();
-    final displayDate =
-        HabitSleepDurationService.displayLogicalDateFor(_goal, today);
+    final displayDate = HabitDayLoader.progressLogicalDateFor(
+      goal: _goal,
+      rules: rules,
+      date: today,
+    );
     final progress = rules.isEmpty
         ? null
         : await HabitProgressCalculator.computePeriod(

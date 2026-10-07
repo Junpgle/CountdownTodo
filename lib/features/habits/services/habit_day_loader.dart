@@ -134,7 +134,6 @@ abstract final class HabitDayLoader {
     );
   }
 
-  @visibleForTesting
   static DateTime progressLogicalDateFor({
     required HabitGoal goal,
     required List<HabitGoalRuleRevision> rules,
