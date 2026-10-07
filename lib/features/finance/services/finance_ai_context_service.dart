@@ -174,7 +174,7 @@ abstract final class FinanceAiContextService {
   static final RegExp _rollingDayPeriodPattern = RegExp(
     r'(?:近|最近|过去)\s*'
     r'(\d+|[零〇○一二两三四五六七八九十廿]{1,4})\s*'
-    r'(天|日|周|星期|礼拜)',
+    r'(?:个\s*)?(天|日|周|星期|礼拜)',
   );
   static final RegExp _rollingYearPeriodPattern = RegExp(
     r'(?:近|最近|过去)\s*'

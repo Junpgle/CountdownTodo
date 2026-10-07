@@ -124,6 +124,14 @@ void main() {
       '最近3星期支出',
       now: now,
     );
+    final oneWeekRange = FinanceAiContextService.resolveDateRange(
+      '过去一个星期支出',
+      now: now,
+    );
+    final oneWeekContext = await FinanceAiContextService.buildContext(
+      userMessage: '过去一个星期支出多少',
+      now: now,
+    );
 
     expect(dateKey(twoWeekRange.from), '2026-08-20');
     expect(dateKey(twoWeekRange.to), '2026-09-03');
@@ -133,6 +141,12 @@ void main() {
     expect(twoWeekContext, contains('净支出 ¥60.00'));
     expect(dateKey(threeWeekRange.from), '2026-08-13');
     expect(dateKey(threeWeekRange.to), '2026-09-03');
+    expect(dateKey(oneWeekRange.from), '2026-08-27');
+    expect(dateKey(oneWeekRange.to), '2026-09-03');
+    expect(oneWeekContext, contains('[transactionId: august]'));
+    expect(oneWeekContext, contains('[transactionId: earlier-september]'));
+    expect(oneWeekContext, contains('[transactionId: today]'));
+    expect(oneWeekContext, contains('净支出 ¥60.00'));
   });
 
   test('比较多个相对账期时不静默选择其中一段', () async {
