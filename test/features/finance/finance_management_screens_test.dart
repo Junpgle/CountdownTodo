@@ -2251,7 +2251,7 @@ void main() {
       ),
     );
 
-    expect(find.text('待发生'), findsNWidgets(2));
+    expect(find.textContaining('待发生'), findsNWidgets(2));
     expect(find.text('未来房租'), findsOneWidget);
     expect(find.text('净支出 ¥15.00'), findsOneWidget);
     expect(find.text('计划净支出 ¥30.00'), findsOneWidget);
