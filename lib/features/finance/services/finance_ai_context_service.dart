@@ -1175,7 +1175,10 @@ abstract final class FinanceAiContextService {
 
     String paymentName(String? uuid) {
       if (uuid == null || uuid.isEmpty) return '未指定';
-      return paymentMap[uuid]?.name ?? '已删除或未知付款方式';
+      final method = paymentMap[uuid];
+      return method == null
+          ? '已删除或未知付款方式'
+          : financePaymentMethodDisplayName(method, paymentMethods);
     }
 
     String transactionAccountName(
@@ -1185,7 +1188,9 @@ abstract final class FinanceAiContextService {
       final normalizedUuid = uuid?.trim();
       if (normalizedUuid == null || normalizedUuid.isEmpty) return '未指定';
       final method = paymentMap[normalizedUuid];
-      if (method != null) return method.name;
+      if (method != null) {
+        return financePaymentMethodDisplayName(method, paymentMethods);
+      }
       return switch (type) {
         FinanceTransactionType.expense => '已删除或未知付款方式',
         FinanceTransactionType.income => '已删除或未知到账账户',
@@ -1406,8 +1411,14 @@ abstract final class FinanceAiContextService {
     if (visiblePaymentMethods.isNotEmpty) {
       lines.add('关联账户（支出用作付款方式，收入和退款用作到账账户）:');
       for (final method in visiblePaymentMethods) {
+        final displayName = financePaymentMethodDisplayName(
+          method,
+          visiblePaymentMethods,
+        );
         lines.add(
-          '- paymentMethodUuid=${method.uuid} | paymentMethodName=${method.name}',
+          '- paymentMethodUuid=${method.uuid} | '
+          'paymentMethodName=${method.name} | '
+          'paymentMethodLabel=$displayName',
         );
       }
     }

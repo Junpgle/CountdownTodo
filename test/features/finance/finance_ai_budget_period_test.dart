@@ -1276,6 +1276,69 @@ void main() {
     );
   });
 
+  test('AI 记账目录和历史账单上下文区分同名账户', () {
+    final methods = [
+      FinancePaymentMethod(
+        uuid: 'ai-duplicate-account-first',
+        name: 'AI同名账户',
+        sortOrder: 1,
+      ),
+      FinancePaymentMethod(
+        uuid: 'ai-duplicate-account-second',
+        name: 'AI同名账户',
+        sortOrder: 2,
+      ),
+    ];
+    final catalog = FinanceAiContextService.formatCatalogContext(
+      categories: const [],
+      paymentMethods: methods,
+    );
+    expect(
+      catalog,
+      contains(
+        'paymentMethodUuid=ai-duplicate-account-first | '
+        'paymentMethodName=AI同名账户 | '
+        'paymentMethodLabel=AI同名账户（同名账户 1/2）',
+      ),
+    );
+    expect(
+      catalog,
+      contains(
+        'paymentMethodUuid=ai-duplicate-account-second | '
+        'paymentMethodName=AI同名账户 | '
+        'paymentMethodLabel=AI同名账户（同名账户 2/2）',
+      ),
+    );
+
+    final transaction = FinanceTransaction(
+      uuid: 'ai-duplicate-history-transaction',
+      amountMinor: 3200,
+      paymentMethodUuid: methods.last.uuid,
+      transactionDate: '2026-09-02',
+      occurredAt: DateTime(2026, 9, 2, 12).millisecondsSinceEpoch,
+    );
+    final history = FinanceAiContextService.formatContext(
+      range: FinanceDateRange(DateTime(2026, 9), DateTime(2026, 10)),
+      summary: FinanceSummary.fromTransactions([transaction]),
+      transactions: [transaction],
+      categories: const [],
+      paymentMethods: methods,
+      budgets: const [],
+      budgetSummaries: const {},
+      asOfAt: DateTime(2026, 9, 3).millisecondsSinceEpoch,
+      paymentMethodBalances: {
+        methods.first.uuid: 8000,
+        methods.last.uuid: 12000,
+      },
+    );
+    expect(
+      history,
+      contains('付款方式: AI同名账户（同名账户 2/2）'),
+    );
+    expect(history, contains('AI同名账户（同名账户 1/2）: ¥80.00'));
+    expect(history, contains('AI同名账户（同名账户 2/2）: ¥120.00'));
+  });
+
   test('今年查询按实际月份给出预算，账单汇总仍按全年', () async {
     final context = await FinanceAiContextService.buildContext(
       userMessage: '今年支出和预算还有多少',
