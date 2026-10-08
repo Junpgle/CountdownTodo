@@ -1078,6 +1078,9 @@ abstract final class FinanceStorage {
         if (paymentDate.isAfter(DateTime.now()) || paymentDate.year < 2000) {
           throw ArgumentError('还款时间必须在 2000 年之后且不晚于现在');
         }
+        if (dateKey(paymentDate).compareTo(loan.startDate) < 0) {
+          throw ArgumentError('还款时间不能早于贷款借款日期');
+        }
         final methodUuid = paymentMethodUuid?.trim();
         if (methodUuid != null && methodUuid.isNotEmpty) {
           final method = await _findByUuid(

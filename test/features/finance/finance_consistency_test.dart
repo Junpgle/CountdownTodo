@@ -130,6 +130,41 @@ void main() {
       expect(interest.merchant, '贷款利息 · 教育分期（同名贷款 2/2）');
     });
 
+    test('贷款还款不能早于借款日期', () async {
+      final startDate = DateTime.now().subtract(const Duration(days: 2));
+      final loan = FinanceLoan(
+        uuid: 'repayment-before-loan-start',
+        name: '新借款',
+        principalMinor: 100000,
+        annualInterestRateBps: 0,
+        termMonths: 1,
+        startDate: dateKey(startDate),
+        repaymentDay: 1,
+      );
+      await FinanceStorage.saveLoan(loan);
+      final installment =
+          (await FinanceStorage.getLoanInstallments(loan.uuid)).single;
+      final paidAt = DateTime(
+        startDate.year,
+        startDate.month,
+        startDate.day - 1,
+        12,
+      );
+
+      await expectLater(
+        FinanceStorage.setLoanInstallmentPaid(
+          installment.uuid,
+          true,
+          paidAt: paidAt,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        (await FinanceStorage.getLoanInstallment(installment.uuid))!.isPaid,
+        false,
+      );
+    });
+
     for (final reverse in [false, true]) {
       test('同时间的余额替换保留有效新记录，顺序反转=$reverse', () async {
         final old = FinanceBudget(
