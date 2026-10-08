@@ -665,6 +665,51 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('AI草稿遇到重复账户名称时不会猜测到账账户', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'duplicate-income-card-one', name: '工资卡')
+            .toMap(),
+      );
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(uuid: 'duplicate-income-card-two', name: '工资卡')
+            .toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceEntryScreen(
+        initialDraft: FinanceEntryDraft(
+          type: FinanceTransactionType.income,
+          amountMinor: 50000,
+          transactionDate: dateKey(DateTime.now()),
+          paymentMethodName: '工资卡',
+          source: FinanceEntrySource.ai,
+        ),
+      ),
+    );
+    await _waitFor(
+      tester,
+      () => find.text('未匹配到账账户：工资卡').evaluate().isNotEmpty,
+    );
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['payment_method_uuid'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('表单打开期间归档分类和账户后新账单会清除旧关联', (tester) async {
     final db = await _seed(tester);
     final category = FinanceCategory(

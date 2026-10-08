@@ -451,18 +451,28 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _archivedCategoryRequiresSelection = true;
     }
     final draftPaymentMethodName = draft.paymentMethodName?.trim();
-    if (!_paymentMethodSelectionEdited &&
-        _paymentMethodUuid == null &&
-        draftPaymentMethodName?.isNotEmpty == true) {
-      final wanted = _normalizeOptionName(draftPaymentMethodName!);
-      final matched = _paymentMethods
-          .where((item) => !item.isArchived && !item.isDeleted)
-          .where((item) => _normalizeOptionName(item.name) == wanted)
-          .firstOrNull;
-      _paymentMethodUuid = matched?.uuid;
-      _unmatchedDraftPaymentMethodName = matched == null
-          ? draftPaymentMethodName
-          : null;
+    if (!_paymentMethodSelectionEdited) {
+      final hasValidPaymentMethodUuid = _paymentMethods.any(
+        (item) =>
+            item.uuid == _paymentMethodUuid &&
+            !item.isArchived &&
+            !item.isDeleted,
+      );
+      if (!hasValidPaymentMethodUuid) {
+        _paymentMethodUuid = null;
+        if (draftPaymentMethodName?.isNotEmpty == true) {
+          final wanted = _normalizeOptionName(draftPaymentMethodName!);
+          final matches = _paymentMethods
+              .where((item) => !item.isArchived && !item.isDeleted)
+              .where((item) => _normalizeOptionName(item.name) == wanted)
+              .toList();
+          final matched = matches.length == 1 ? matches.single : null;
+          _paymentMethodUuid = matched?.uuid;
+          _unmatchedDraftPaymentMethodName = matched == null
+              ? draftPaymentMethodName
+              : null;
+        }
+      }
     }
   }
 
