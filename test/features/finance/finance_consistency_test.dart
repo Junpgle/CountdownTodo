@@ -90,6 +90,46 @@ void main() {
       await db.close();
     });
 
+    test('同名贷款生成的利息账单保留对应贷款标识', () async {
+      final loans = [
+        FinanceLoan(
+          uuid: 'same-name-loan-first',
+          name: '教育分期',
+          principalMinor: 100000,
+          annualInterestRateBps: 1200,
+          termMonths: 1,
+          startDate: '2026-01-01',
+          repaymentDay: 1,
+          createdAt: 100,
+        ),
+        FinanceLoan(
+          uuid: 'same-name-loan-second',
+          name: '教育分期',
+          principalMinor: 100000,
+          annualInterestRateBps: 1200,
+          termMonths: 1,
+          startDate: '2026-01-01',
+          repaymentDay: 1,
+          createdAt: 200,
+        ),
+      ];
+      for (final loan in loans) {
+        await FinanceStorage.saveLoan(loan);
+      }
+      final installment =
+          (await FinanceStorage.getLoanInstallments(loans.last.uuid)).single;
+      await FinanceStorage.setLoanInstallmentPaid(
+        installment.uuid,
+        true,
+        paidAt: DateTime.now().subtract(const Duration(minutes: 1)),
+      );
+
+      final paid = (await FinanceStorage.getLoanInstallment(installment.uuid))!;
+      final interest =
+          (await FinanceStorage.getTransaction(paid.interestTransactionUuid!))!;
+      expect(interest.merchant, '贷款利息 · 教育分期（同名贷款 2/2）');
+    });
+
     for (final reverse in [false, true]) {
       test('同时间的余额替换保留有效新记录，顺序反转=$reverse', () async {
         final old = FinanceBudget(

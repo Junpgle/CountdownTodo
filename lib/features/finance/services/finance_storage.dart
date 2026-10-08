@@ -1100,6 +1100,14 @@ abstract final class FinanceStorage {
             ? methodUuid
             : null;
         if (installment.interestMinor > 0) {
+          final loanRows = await txn.query(
+            'finance_loans',
+            where: 'is_deleted = 0',
+          );
+          final loanDisplayName = financeLoanDisplayName(
+            loan,
+            loanRows.map(FinanceLoan.fromMap),
+          );
           final stableUuid =
               installment.interestTransactionUuid ??
               _loanInterestTransactionUuid(installment.uuid);
@@ -1119,7 +1127,7 @@ abstract final class FinanceStorage {
                   transactionDate: dateKey(paymentDate),
                   occurredAt: installment.paidAt,
                   timezoneOffsetMinutes: paymentDate.timeZoneOffset.inMinutes,
-                  merchant: '贷款利息 · ${loan.name}',
+                  merchant: '贷款利息 · $loanDisplayName',
                   note:
                       '第 ${installment.installmentIndex}/${loan.termMonths} 期利息；同步归还本金',
                   source: FinanceEntrySource.automation,
@@ -1138,7 +1146,7 @@ abstract final class FinanceStorage {
               ..transactionDate = dateKey(paymentDate)
               ..occurredAt = installment.paidAt
               ..timezoneOffsetMinutes = paymentDate.timeZoneOffset.inMinutes
-              ..merchant = '贷款利息 · ${loan.name}'
+              ..merchant = '贷款利息 · $loanDisplayName'
               ..note =
                   '第 ${installment.installmentIndex}/${loan.termMonths} 期利息；同步归还本金'
               ..source = FinanceEntrySource.automation
