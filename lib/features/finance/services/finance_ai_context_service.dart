@@ -777,14 +777,14 @@ abstract final class FinanceAiContextService {
         conversationContext: conversationContext,
         previousUserMessage: previousUserMessage,
       )) {
-        parts.add('付款方式实际余额');
+        parts.add('关联账户实际余额');
       }
     }
     if (shouldInjectCatalogFor(
       userMessage,
       conversationContext: conversationContext,
     )) {
-      parts.add('记账分类与付款方式');
+      parts.add('记账分类与关联账户');
     }
     return parts.isEmpty ? null : parts.join('、');
   }
@@ -1211,7 +1211,7 @@ abstract final class FinanceAiContextService {
                 '退款 ${formatFinanceAmount(summary.refundMinor)} | '
                 '净支出 ${formatFinanceAmount(summary.netExpenseMinor)} | '
                 '共${summary.transactionCount}笔',
-      '本期结余不代表付款方式实际余额。',
+      '本期结余不代表关联账户实际余额。',
       '以上汇总只统计截至 ${DateTime.fromMillisecondsSinceEpoch(asOfAt).toString()} 已发生的账单；未来账单在明细中标记为待发生。',
     ];
 
@@ -1224,12 +1224,12 @@ abstract final class FinanceAiContextService {
         return byName == 0 ? left.compareTo(right) : byName;
       });
       lines.add(
-        '付款方式实际余额（截至 '
+        '关联账户实际余额（截至 '
         '${DateTime.fromMillisecondsSinceEpoch(paymentBalanceAsOfAt ?? asOfAt).toString()}，'
         '已应用快照后的收支和还款）:',
       );
       if (balanceMethodUuids.isEmpty) {
-        lines.add('- 没有配置付款方式');
+        lines.add('- 没有配置关联账户');
       } else {
         for (final uuid in balanceMethodUuids) {
           final balance = paymentMethodBalances[uuid];

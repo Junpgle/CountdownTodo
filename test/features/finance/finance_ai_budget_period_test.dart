@@ -1016,7 +1016,7 @@ void main() {
 
     expect(context, contains('- AI银行卡: ¥135.00'));
     expect(context, contains('- 备用银行卡: 未录入余额快照，无法确定实际余额'));
-    expect(context, contains('本期结余不代表付款方式实际余额'));
+    expect(context, contains('本期结余不代表关联账户实际余额'));
 
     final colloquialContext = await FinanceAiContextService.buildContext(
       userMessage: '银行卡还有多少钱',
@@ -1028,7 +1028,7 @@ void main() {
         userMessage: '银行卡还有多少钱',
         now: DateTime(2026, 9, 2),
       ),
-      contains('付款方式实际余额'),
+      contains('关联账户实际余额'),
     );
 
     final budgetBalanceContext = await FinanceAiContextService.buildContext(
@@ -1038,14 +1038,14 @@ void main() {
     expect(budgetBalanceContext, contains('预算（2026-09，整月）'));
     expect(
       budgetBalanceContext,
-      isNot(contains('付款方式实际余额（截至')),
+      isNot(contains('关联账户实际余额（截至')),
     );
     expect(
       FinanceAiContextService.buildContextInjectionSummary(
         userMessage: '本月预算余额多少',
         now: DateTime(2026, 9, 2),
       ),
-      isNot(contains('付款方式实际余额')),
+      isNot(contains('关联账户实际余额')),
     );
   });
 
@@ -1109,7 +1109,7 @@ void main() {
     expect(historicalContext, contains('- 历史银行卡: ¥80.00'));
     expect(
       historicalContext,
-      contains('付款方式实际余额（截至 2026-08-31 23:59:59.999'),
+      contains('关联账户实际余额（截至 2026-08-31 23:59:59.999'),
     );
   });
 
@@ -1138,7 +1138,7 @@ void main() {
     );
 
     expect(context, contains('- 异地银行卡: ¥100.00'));
-    expect(context, contains('付款方式实际余额（截至 2026-09-30 23:59:59.999'));
+    expect(context, contains('关联账户实际余额（截至 2026-09-30 23:59:59.999'));
   });
 
   test('AI 财务上下文会说明账单和预算明细被截断', () {
