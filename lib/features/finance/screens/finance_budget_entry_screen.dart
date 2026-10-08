@@ -237,7 +237,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
         DropdownMenuItem(
           value: '$_paymentPrefix${method.uuid}',
           child: Text(
-            '${method.icon}  付款方式 · ${method.name}${method.isArchived ? '（已归档）' : ''}',
+            _paymentMethodOptionTitle(method),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -254,6 +254,15 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
       );
     }
     return items;
+  }
+
+  String _paymentMethodOptionTitle(FinancePaymentMethod method) {
+    final name = financePaymentMethodDisplayName(
+      method,
+      _visiblePaymentMethods,
+    );
+    final archivedLabel = method.isArchived ? '（已归档）' : '';
+    return '${method.icon}  付款方式 · $name$archivedLabel';
   }
 
   Future<void> _pickBalanceTime() async {

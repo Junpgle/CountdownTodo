@@ -609,22 +609,6 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     return result;
   }
 
-  String _paymentMethodDisplayName(FinancePaymentMethod paymentMethod) {
-    final normalizedName = _normalizeOptionName(paymentMethod.name);
-    final sameNameMethods = _visiblePaymentMethods
-        .where((item) => _normalizeOptionName(item.name) == normalizedName)
-        .toList()
-      ..sort((left, right) {
-        final sortOrder = left.sortOrder.compareTo(right.sortOrder);
-        return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
-      });
-    if (sameNameMethods.length < 2) return paymentMethod.name;
-    final index = sameNameMethods.indexWhere(
-      (item) => item.uuid == paymentMethod.uuid,
-    );
-    return '${paymentMethod.name}（同名账户 ${index + 1}/${sameNameMethods.length}）';
-  }
-
   void _normalizeSelections({
     bool notify = true,
     bool allowDefaultCategory = true,
@@ -1401,7 +1385,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           : '未指定（不更新账户余额）',
       selectedName: selectedPaymentMethod == null
           ? null
-          : _paymentMethodDisplayName(selectedPaymentMethod),
+          : financePaymentMethodDisplayName(
+              selectedPaymentMethod,
+              _visiblePaymentMethods,
+            ),
       selectedIcon: selectedPaymentMethod?.icon,
       fieldIcon: Icons.account_balance_wallet_outlined,
       onTap: _isSaving || _isLoanInterest ? null : _pickPaymentMethod,
@@ -1646,7 +1633,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       optionBuilder: (context, item, isSelected, onTap) =>
           _buildFinanceOptionTile(
             context,
-            title: _paymentMethodDisplayName(item),
+            title: financePaymentMethodDisplayName(
+              item,
+              _visiblePaymentMethods,
+            ),
             iconText: item.icon,
             accent: _optionAccent(
               item.colorValue,

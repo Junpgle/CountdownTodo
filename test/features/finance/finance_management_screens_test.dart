@@ -967,6 +967,112 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('余额卡片和录入入口区分同名账户', (tester) async {
+    final db = await _seed(tester);
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'budget-duplicate-account-one',
+      name: '共同账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'budget-duplicate-account-two',
+      name: '共同账户',
+      sortOrder: 20,
+    );
+    final snapshotAt = DateTime(2026, 9, 10, 12).millisecondsSinceEpoch;
+    await tester.runAsync(() async {
+      await db.insert('finance_payment_methods', firstMethod.toMap());
+      await db.insert('finance_payment_methods', secondMethod.toMap());
+      for (final method in [firstMethod, secondMethod]) {
+        await db.insert(
+          'finance_budgets',
+          FinanceBudget(
+            uuid: 'snapshot-${method.uuid}',
+            monthKey: financeMonthKey(_month),
+            paymentMethodUuid: method.uuid,
+            amountMinor: 10000,
+            balanceSnapshotAt: snapshotAt,
+          ).toMap(),
+        );
+      }
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(
+        initialMonth: _month,
+        clock: () => DateTime(2026, 9, 20, 12),
+      ),
+      size: const Size(1100, 1000),
+    );
+
+    expect(find.text('共同账户（同名账户 1/2）'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('共同账户（同名账户 2/2）'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('共同账户（同名账户 2/2）'), findsOneWidget);
+
+    await _tap(tester, find.byTooltip('录入付款方式余额'));
+    await tester.pumpAndSettle();
+    expect(find.text('选择付款方式'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.text('共同账户（同名账户 1/2）'),
+        matching: find.byType(ListTile),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.ancestor(
+        of: find.text('共同账户（同名账户 2/2）'),
+        matching: find.byType(ListTile),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('预算范围下拉框区分同名付款方式', (tester) async {
+    final db = await _seed(tester);
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'budget-scope-duplicate-one',
+      name: '范围同名账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'budget-scope-duplicate-two',
+      name: '范围同名账户',
+      sortOrder: 20,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_payment_methods', firstMethod.toMap());
+      await db.insert('finance_payment_methods', secondMethod.toMap());
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetEntryScreen(
+        month: _month,
+        initialPaymentMethodUuid: secondMethod.uuid,
+      ),
+    );
+
+    const secondAccountName = '范围同名账户（同名账户 2/2）';
+    expect(find.textContaining(secondAccountName), findsOneWidget);
+    await _tap(
+      tester,
+      _key('finance-budget-scope-payment:${secondMethod.uuid}'),
+    );
+    await tester.pumpAndSettle();
+    const firstAccountOption = '💼  付款方式 · 范围同名账户（同名账户 1/2）';
+    const secondAccountOption = '💼  付款方式 · 范围同名账户（同名账户 2/2）';
+    expect(find.text(firstAccountOption), findsWidgets);
+    expect(find.text(secondAccountOption), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('回收站预算明确标记已归档的分类和账户', (tester) async {
     final db = await _seed(tester);
     final archivedCategory = FinanceCategory(

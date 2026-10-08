@@ -354,7 +354,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
             for (final method in methods)
               ListTile(
                 leading: Text(method.icon),
-                title: Text(method.name),
+                title: Text(financePaymentMethodDisplayName(method, methods)),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).pop(method.uuid),
               ),
@@ -484,7 +484,12 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     if (budget.paymentMethodUuid != null) {
       final paymentMethod = _paymentMethodMap[budget.paymentMethodUuid];
       if (paymentMethod == null) return '已归档或未知付款方式';
-      return '${paymentMethod.name}${paymentMethod.isArchived ? '（已归档）' : ''}';
+      final name = financePaymentMethodDisplayName(
+        paymentMethod,
+        _paymentMethods,
+      );
+      final archivedLabel = paymentMethod.isArchived ? '（已归档）' : '';
+      return '$name$archivedLabel';
     }
     final category = _categoryMap[budget.categoryUuid];
     return category == null

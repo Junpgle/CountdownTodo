@@ -1467,6 +1467,40 @@ class FinancePaymentMethod {
   }
 }
 
+String financePaymentMethodDisplayName(
+  FinancePaymentMethod paymentMethod,
+  Iterable<FinancePaymentMethod> paymentMethods,
+) {
+  final normalizedName =
+      _normalizeFinancePaymentMethodName(paymentMethod.name);
+  final sameNameMethods = paymentMethods
+      .where(
+        (item) =>
+            !item.isDeleted &&
+            _normalizeFinancePaymentMethodName(item.name) == normalizedName,
+      )
+      .toList()
+    ..sort((left, right) {
+      final sortOrder = left.sortOrder.compareTo(right.sortOrder);
+      return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
+    });
+  if (sameNameMethods.length < 2) return paymentMethod.name;
+  final index = sameNameMethods.indexWhere(
+    (item) => item.uuid == paymentMethod.uuid,
+  );
+  if (index < 0) return paymentMethod.name;
+  final duplicateNumber = '${index + 1}/${sameNameMethods.length}';
+  return '${paymentMethod.name}（同名账户 $duplicateNumber）';
+}
+
+String _normalizeFinancePaymentMethodName(String value) {
+  return value
+      .replaceAll(RegExp(r'^[^\u4e00-\u9fffA-Za-z0-9]+'), '')
+      .replaceAll(RegExp(r'\s+'), '')
+      .trim()
+      .toLowerCase();
+}
+
 class FinanceTransaction {
   String uuid;
   FinanceTransactionType type;
