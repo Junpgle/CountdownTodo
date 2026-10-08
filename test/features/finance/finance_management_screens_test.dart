@@ -3539,6 +3539,68 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('历史账单列表和详情区分同名付款方式', (tester) async {
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'ledger-duplicate-account-one',
+      name: '历史同名账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'ledger-duplicate-account-two',
+      name: '历史同名账户',
+      sortOrder: 20,
+    );
+    final transaction = FinanceTransaction(
+      uuid: 'ledger-duplicate-account-transaction',
+      amountMinor: 3200,
+      paymentMethodUuid: secondMethod.uuid,
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '同名账户历史账单',
+    );
+    FinanceLedgerPanel ledger({String keyword = ''}) => FinanceLedgerPanel(
+      transactions: [transaction],
+      categories: const {},
+      paymentMethods: {
+        firstMethod.uuid: firstMethod,
+        secondMethod.uuid: secondMethod,
+      },
+      keyword: keyword,
+      filterType: null,
+      onOpenDetail: (_, _) {},
+      onKeywordChanged: (_) {},
+      onFilterChanged: (_) {},
+      onEdit: (_) {},
+      onDelete: (_) {},
+      onRefund: (_) {},
+    );
+
+    await _pump(tester, Scaffold(body: ledger()));
+    final row = find
+        .ancestor(of: find.text('同名账户历史账单'), matching: find.byType(ListTile))
+        .first;
+    expect(
+      find.descendant(
+        of: row,
+        matching: find.textContaining('历史同名账户（同名账户 2/2）'),
+      ),
+      findsOneWidget,
+    );
+
+    await _pump(tester, Scaffold(body: ledger(keyword: '同名账户 2/2')));
+    expect(find.text('同名账户历史账单'), findsOneWidget);
+
+    await _pump(
+      tester,
+      FinanceTransactionDetailScreen(
+        transaction: transaction,
+        paymentMethod: secondMethod,
+        paymentMethods: [firstMethod, secondMethod],
+      ),
+    );
+    expect(find.textContaining('历史同名账户（同名账户 2/2）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('账单详情区分未指定和已删除付款方式', (tester) async {
     await _seed(tester);
     final transaction = FinanceTransaction(

@@ -1114,6 +1114,9 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
       final query = keyword.trim().toLowerCase();
       final category = categories[transaction.categoryUuid];
       final payment = paymentMethods[transaction.paymentMethodUuid];
+      final paymentName = payment == null
+          ? null
+          : financePaymentMethodDisplayName(payment, paymentMethods.values);
       final unknownPaymentLabel =
           transaction.paymentMethodUuid?.trim().isNotEmpty == true
           ? switch (transaction.type) {
@@ -1130,6 +1133,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         transaction.note,
         categoryName,
         payment?.name,
+        paymentName,
         if (category?.isArchived == true || payment?.isArchived == true) '已归档',
         unknownPaymentLabel,
         if (unknownPaymentLabel != null) '已删除或未知付款方式',
@@ -1338,6 +1342,9 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     final colorScheme = Theme.of(context).colorScheme;
     final category = categories[transaction.categoryUuid];
     final payment = paymentMethods[transaction.paymentMethodUuid];
+    final paymentName = payment == null
+        ? null
+        : financePaymentMethodDisplayName(payment, paymentMethods.values);
     final categoryName = category == null
         ? null
         : financeCategoryDisplayName(category, categories.values);
@@ -1350,7 +1357,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
           ? '未分类'
           : '${category.icon} $categoryName${category.isArchived ? '（已归档）' : ''}',
       if (payment != null)
-        '${payment.icon} ${payment.name}${payment.isArchived ? '（已归档）' : ''}'
+        '${payment.icon} $paymentName${payment.isArchived ? '（已归档）' : ''}'
       else if (transaction.paymentMethodUuid?.trim().isNotEmpty == true)
         switch (transaction.type) {
           FinanceTransactionType.expense => '已删除或未知付款方式',

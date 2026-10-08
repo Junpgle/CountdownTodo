@@ -482,6 +482,7 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         category: category,
         categoryDisplayName: categoryDisplayName,
         paymentMethod: _paymentMethodMap[transaction.paymentMethodUuid],
+        paymentMethods: _paymentMethods,
       ),
       sourceKey: sourceKey,
       sourceColor: colorScheme.surfaceContainerLow,

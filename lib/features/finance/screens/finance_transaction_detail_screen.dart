@@ -20,6 +20,7 @@ class FinanceTransactionDetailScreen extends StatefulWidget {
   final FinanceCategory? category;
   final String? categoryDisplayName;
   final FinancePaymentMethod? paymentMethod;
+  final List<FinancePaymentMethod> paymentMethods;
 
   const FinanceTransactionDetailScreen({
     super.key,
@@ -27,6 +28,7 @@ class FinanceTransactionDetailScreen extends StatefulWidget {
     this.category,
     this.categoryDisplayName,
     this.paymentMethod,
+    this.paymentMethods = const [],
   });
 
   @override
@@ -40,6 +42,7 @@ class _FinanceTransactionDetailScreenState
   FinanceCategory? category;
   String? categoryDisplayName;
   FinancePaymentMethod? paymentMethod;
+  List<FinancePaymentMethod> _paymentMethods = const [];
   Timer? _financeChangeRefreshTimer;
   bool _refreshInProgress = false;
   bool _refreshPending = false;
@@ -52,6 +55,10 @@ class _FinanceTransactionDetailScreenState
     category = widget.category;
     categoryDisplayName = widget.categoryDisplayName;
     paymentMethod = widget.paymentMethod;
+    _paymentMethods = widget.paymentMethods.isEmpty &&
+            widget.paymentMethod != null
+        ? [widget.paymentMethod!]
+        : widget.paymentMethods;
     FinanceStorage.revision.addListener(_onFinanceChanged);
   }
 
@@ -70,6 +77,9 @@ class _FinanceTransactionDetailScreenState
     }
     if (!identical(oldWidget.paymentMethod, widget.paymentMethod)) {
       paymentMethod = widget.paymentMethod;
+    }
+    if (!identical(oldWidget.paymentMethods, widget.paymentMethods)) {
+      _paymentMethods = widget.paymentMethods;
     }
   }
 
@@ -127,6 +137,7 @@ class _FinanceTransactionDetailScreenState
               ? null
               : financeCategoryDisplayName(latestCategory, categories);
           paymentMethod = latestPaymentMethod;
+          _paymentMethods = paymentMethods;
         });
       } while (_refreshPending);
     } catch (error) {
@@ -163,7 +174,9 @@ class _FinanceTransactionDetailScreenState
   String _paymentMethodLabel() {
     final value = paymentMethod;
     if (value != null) {
-      return '${value.icon} ${value.name}${value.isArchived ? '（已归档）' : ''}';
+      final name = financePaymentMethodDisplayName(value, _paymentMethods);
+      final archivedLabel = value.isArchived ? '（已归档）' : '';
+      return '${value.icon} $name$archivedLabel';
     }
     return transaction.paymentMethodUuid?.trim().isNotEmpty == true
         ? switch (transaction.type) {
