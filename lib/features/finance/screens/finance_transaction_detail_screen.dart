@@ -157,12 +157,14 @@ class _FinanceTransactionDetailScreenState
     final value = category;
     return value == null
         ? '未分类'
-        : '${value.icon} ${categoryDisplayName ?? value.name}';
+        : '${value.icon} ${categoryDisplayName ?? value.name}${value.isArchived ? '（已归档）' : ''}';
   }
 
   String _paymentMethodLabel() {
     final value = paymentMethod;
-    if (value != null) return '${value.icon} ${value.name}';
+    if (value != null) {
+      return '${value.icon} ${value.name}${value.isArchived ? '（已归档）' : ''}';
+    }
     return transaction.paymentMethodUuid?.trim().isNotEmpty == true
         ? switch (transaction.type) {
             FinanceTransactionType.expense => '已删除或未知付款方式',

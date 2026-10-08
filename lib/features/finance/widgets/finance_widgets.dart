@@ -1125,6 +1125,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         transaction.note,
         categoryName,
         payment?.name,
+        if (category?.isArchived == true || payment?.isArchived == true) '已归档',
         unknownPaymentLabel,
         if (unknownPaymentLabel != null) '已删除或未知付款方式',
       ].whereType<String>().join(' ').toLowerCase();
@@ -1340,9 +1341,11 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         : categoryName ?? transaction.type.label;
     final subtitleParts = <String>[
       if (transaction.balanceEventAt() > asOfAt) '待发生',
-      category == null ? '未分类' : '${category.icon} $categoryName',
+      category == null
+          ? '未分类'
+          : '${category.icon} $categoryName${category.isArchived ? '（已归档）' : ''}',
       if (payment != null)
-        '${payment.icon} ${payment.name}'
+        '${payment.icon} ${payment.name}${payment.isArchived ? '（已归档）' : ''}'
       else if (transaction.paymentMethodUuid?.trim().isNotEmpty == true)
         switch (transaction.type) {
           FinanceTransactionType.expense => '已删除或未知付款方式',

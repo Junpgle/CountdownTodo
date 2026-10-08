@@ -3271,6 +3271,78 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('历史账单列表和详情标记已归档分类及账户', (tester) async {
+    final category = FinanceCategory(
+      uuid: 'archived-history-category',
+      name: '归档历史分类',
+      isArchived: true,
+    );
+    final paymentMethod = FinancePaymentMethod(
+      uuid: 'archived-history-payment',
+      name: '归档历史账户',
+      isArchived: true,
+    );
+    final transaction = FinanceTransaction(
+      uuid: 'archived-history-transaction',
+      amountMinor: 1500,
+      categoryUuid: category.uuid,
+      paymentMethodUuid: paymentMethod.uuid,
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '归档关联账单',
+    );
+    FinanceLedgerPanel ledger({String keyword = ''}) => FinanceLedgerPanel(
+      transactions: [transaction],
+      categories: {category.uuid: category},
+      paymentMethods: {paymentMethod.uuid: paymentMethod},
+      keyword: keyword,
+      filterType: null,
+      onOpenDetail: (_, _) {},
+      onKeywordChanged: (_) {},
+      onFilterChanged: (_) {},
+      onEdit: (_) {},
+      onDelete: (_) {},
+      onRefund: (_) {},
+    );
+
+    await _pump(tester, Scaffold(body: ledger()));
+    final row = find
+        .ancestor(of: find.text('归档关联账单'), matching: find.byType(ListTile))
+        .first;
+    expect(
+      find.descendant(
+        of: row,
+        matching: find.textContaining('归档历史分类（已归档）'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: row,
+        matching: find.textContaining('归档历史账户（已归档）'),
+      ),
+      findsOneWidget,
+    );
+
+    await _pump(
+      tester,
+      Scaffold(body: ledger(keyword: '已归档')),
+    );
+    expect(find.text('归档关联账单'), findsOneWidget);
+
+    await _pump(
+      tester,
+      FinanceTransactionDetailScreen(
+        transaction: transaction,
+        category: category,
+        categoryDisplayName: financeCategoryDisplayName(category, [category]),
+        paymentMethod: paymentMethod,
+      ),
+    );
+    expect(find.textContaining('归档历史分类（已归档）'), findsOneWidget);
+    expect(find.textContaining('归档历史账户（已归档）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('账单详情区分未指定和已删除付款方式', (tester) async {
     await _seed(tester);
     final transaction = FinanceTransaction(
