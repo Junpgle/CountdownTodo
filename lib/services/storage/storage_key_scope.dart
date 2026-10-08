@@ -5,6 +5,9 @@ abstract final class StorageKeyScope {
   static bool isChallengeDataKey(String key) =>
       key.startsWith('thirty_day_self_challenge_v1');
 
+  static bool isKeyForBase(String key, String baseKey) =>
+      key == baseKey || key.startsWith('${baseKey}_');
+
   static String scoped(String baseKey, String? username) {
     if (username == null || username.isEmpty) return baseKey;
     return '${baseKey}_$username';

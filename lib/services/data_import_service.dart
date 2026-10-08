@@ -1392,7 +1392,9 @@ class DataImportService {
 
       // 跳过敏感信息
       if (key == StorageService.keyAuthToken ||
-          key == StorageService.keyDeviceId ||
+          StorageKeyScope.isKeyForBase(key, StorageService.keyDeviceId) ||
+          StorageKeyScope.isKeyForBase(
+              key, StorageService.keyDeviceInstallId) ||
           key == StorageService.keyCurrentUser) {
         continue;
       }

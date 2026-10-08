@@ -68,6 +68,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val BACKGROUND_NOTIFICATION_CHANNEL = "com.math_quiz_app/background_notifications"
     private val APP_UPDATE_CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/app_update"
     private val DEVICE_CALENDAR_READ_CHANNEL = "countdown_todo/device_calendar_read"
+    private val DEVICE_IDENTITY_CHANNEL = "countdown_todo/device_identity"
     private val CALENDAR_PERMISSION_REQUEST = 2407
     private val LOCAL_NETWORK_PERMISSION_REQUEST = 2408
     private val CALENDAR_READ_PERMISSION_REQUEST = 2409
@@ -752,6 +753,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         private const val DEEP_LINK_DELIVERY_PREFS = "deep_link_delivery"
         private const val LAST_DELIVERED_DEEP_LINK_ID = "last_delivered_id"
     }
+
+    private fun getInstallationId(): String? =
+        Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+            ?.takeIf { it.isNotBlank() }
 
     private fun handleShortcutFromIntent(intent: Intent?) {
         val action = intent?.action ?: return
@@ -1496,6 +1501,23 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                             result.success(readDeviceCalendarEvents(startMs, endMs))
                         }
                     }
+                }
+                else -> result.notImplemented()
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            DEVICE_IDENTITY_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getInstallationId" -> try {
+                    result.success(getInstallationId())
+                } catch (error: Exception) {
+                    result.error(
+                        "INSTALLATION_ID_UNAVAILABLE",
+                        error.message ?: "Unable to read installation identity",
+                        null
+                    )
                 }
                 else -> result.notImplemented()
             }

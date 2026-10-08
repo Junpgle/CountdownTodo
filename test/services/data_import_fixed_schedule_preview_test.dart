@@ -47,6 +47,23 @@ void main() {
     }
   });
 
+  test('device identity preferences match base and account-scoped keys', () {
+    expect(StorageKeyScope.isKeyForBase('app_device_uuid', 'app_device_uuid'),
+        isTrue);
+    expect(
+      StorageKeyScope.isKeyForBase(
+          'app_device_uuid_alice', 'app_device_uuid'),
+      isTrue,
+    );
+    expect(
+      StorageKeyScope.isKeyForBase(
+          'app_device_install_id_alice', 'app_device_install_id'),
+      isTrue,
+    );
+    expect(StorageKeyScope.isKeyForBase('app_device_model_alice', 'app_device_uuid'),
+        isFalse);
+  });
+
   test('backup preview lists challenge data separately from settings',
       () async {
     final preview = await DataImportService.parseJsonString(

@@ -70,6 +70,49 @@ void main() {
     expect(ApiService.currentUserId, 0);
   });
 
+  test('preserves an existing device id while recording install ownership',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'app_device_uuid_alice': 'device-a',
+      'current_login_user': 'alice',
+    });
+    UserSessionStorage.installationIdProviderOverride =
+        () async => 'install-a';
+    addTearDown(
+      () => UserSessionStorage.installationIdProviderOverride = null,
+    );
+
+    expect(await UserSessionStorage.getDeviceIdForUser('alice'), 'device-a');
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('app_device_install_id_alice'), 'install-a');
+  });
+
+  test('rotates a restored device id once when its install owner changes',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'app_device_uuid_alice': 'device-a',
+      'app_device_install_id_alice': 'install-a',
+      'current_login_user': 'alice',
+    });
+    UserSessionStorage.installationIdProviderOverride =
+        () async => 'install-b';
+    addTearDown(
+      () => UserSessionStorage.installationIdProviderOverride = null,
+    );
+
+    final ids = await Future.wait([
+      UserSessionStorage.getDeviceIdForUser('alice'),
+      UserSessionStorage.getDeviceIdForUser('alice'),
+    ]);
+    final prefs = await SharedPreferences.getInstance();
+
+    expect(ids.first, isNot('device-a'));
+    expect(ids.last, ids.first);
+    expect(prefs.getString('app_device_uuid_alice'), ids.first);
+    expect(prefs.getString('app_device_install_id_alice'), 'install-b');
+  });
+
   test(
       'legacy semester date is migrated once and not exposed to another account',
       () async {

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -38,11 +39,18 @@ class UserSessionStorage {
   static const String _currentUser = "current_login_user";
   static const String _authToken = "auth_session_token";
   static const String _deviceId = "app_device_uuid";
+  static const String _deviceInstallId = "app_device_install_id";
+  static const MethodChannel _deviceIdentityChannel =
+      MethodChannel('countdown_todo/device_identity');
   static const String _lastScreenTimeSync = "last_screen_time_sync";
   static const String _screenTimeCache = "screen_time_cache";
   static const String _screenTimeHistory = "screen_time_history";
   static const String _localScreenTime = "local_screen_time_pending_upload";
   static int _sessionRevision = 0;
+  static Future<void> _deviceIdOperation = Future<void>.value();
+
+  @visibleForTesting
+  static Future<String?> Function()? installationIdProviderOverride;
 
   static Future<SharedPreferences> get _prefs =>
       SharedPreferences.getInstance();
@@ -184,15 +192,67 @@ class UserSessionStorage {
 
   static Future<String> getDeviceFriendlyName() => _getDetailedDeviceName();
 
-  static Future<String> _getUniqueDeviceId(String username) async {
+  static Future<String> _getUniqueDeviceId(String username) =>
+      _withDeviceIdLock(() => _resolveUniqueDeviceId(username));
+
+  static Future<String> _resolveUniqueDeviceId(String username) async {
     final prefs = await _prefs;
     final accountDeviceKey = StorageKeyScope.scoped(_deviceId, username);
+    final accountInstallKey =
+        StorageKeyScope.scoped(_deviceInstallId, username);
+    final installId = await _getInstallationId();
+    final storedInstallId = prefs.getString(accountInstallKey);
     var deviceId = prefs.getString(accountDeviceKey);
-    if (deviceId == null) {
-      deviceId = const Uuid().v4();
+    final wasRestoredToAnotherInstall = installId != null &&
+        storedInstallId != null &&
+        storedInstallId != installId;
+    if (deviceId == null || wasRestoredToAnotherInstall) {
+      deviceId = installId == null
+          ? const Uuid().v4()
+          : const Uuid().v5(
+              Namespace.url.value,
+              'countdown-todo/device-id/v1/$username/$installId',
+            );
       await prefs.setString(accountDeviceKey, deviceId);
     }
+    if (installId != null && storedInstallId != installId) {
+      await prefs.setString(accountInstallKey, installId);
+    }
     return deviceId;
+  }
+
+  static Future<String?> _getInstallationId() async {
+    final providerOverride = installationIdProviderOverride;
+    if (providerOverride != null) return providerOverride();
+    if (!AppPlatform.isAndroid) return null;
+
+    try {
+      final installId = await _deviceIdentityChannel.invokeMethod<String>(
+        'getInstallationId',
+      );
+      final normalized = installId?.trim();
+      if (normalized == null || normalized.isEmpty) return null;
+      return const Uuid().v5(
+        Namespace.url.value,
+        'countdown-todo/android-install-owner/v1/$normalized',
+      );
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
+
+  static Future<T> _withDeviceIdLock<T>(Future<T> Function() operation) async {
+    final previousOperation = _deviceIdOperation;
+    final nextOperation = Completer<void>();
+    _deviceIdOperation = nextOperation.future;
+    try {
+      await previousOperation;
+      return await operation();
+    } finally {
+      nextOperation.complete();
+    }
   }
 
   static Future<String> _getDetailedDeviceName() async {

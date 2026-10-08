@@ -111,6 +111,9 @@ class StorageService {
 
   static const String keyDeviceId = _storageService_keyDeviceId;
 
+  static const String keyDeviceInstallId =
+      _storageService_keyDeviceInstallId;
+
   static const String keySyncInterval = _storageService_keySyncInterval;
 
   static const String keyThemeMode = _storageService_keyThemeMode;

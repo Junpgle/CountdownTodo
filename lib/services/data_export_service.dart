@@ -487,6 +487,7 @@ class DataExportService {
       StorageService.keyCurrentUser,
       StorageService.keyAuthToken,
       StorageService.keyDeviceId,
+      StorageService.keyDeviceInstallId,
       StorageService.keyLastAutoSync,
       StorageService.keyLastScreenTimeSync,
       StorageService.keyLastMappingsSync,
@@ -512,6 +513,9 @@ class DataExportService {
     for (final key in keys) {
       // 跳过排除的键
       if (excludedKeys.contains(key) ||
+          StorageKeyScope.isKeyForBase(key, StorageService.keyDeviceId) ||
+          StorageKeyScope.isKeyForBase(
+              key, StorageService.keyDeviceInstallId) ||
           StorageKeyScope.isChallengeDataKey(key)) {
         continue;
       }
