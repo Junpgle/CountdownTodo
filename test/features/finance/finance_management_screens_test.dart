@@ -514,6 +514,79 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('新草稿不会把已归档分类或账户识别为可用关联', (tester) async {
+    final db = await _seed(tester);
+    final archivedCategory = FinanceCategory(
+      uuid: 'draft-archived-category',
+      name: '已归档分类',
+      isArchived: true,
+    );
+    final archivedPaymentMethod = FinancePaymentMethod(
+      uuid: 'draft-archived-payment',
+      name: '已归档账户',
+      isArchived: true,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_categories', archivedCategory.toMap());
+      await db.insert('finance_payment_methods', archivedPaymentMethod.toMap());
+    });
+    final draft = FinanceEntryDraft(
+      amountMinor: 1200,
+      transactionDate: dateKey(DateTime.now()),
+      categoryUuid: archivedCategory.uuid,
+      categoryName: archivedCategory.name,
+      paymentMethodUuid: archivedPaymentMethod.uuid,
+      paymentMethodName: archivedPaymentMethod.name,
+      source: FinanceEntrySource.ai,
+    );
+
+    await _pump(tester, FinanceEntryScreen(initialDraft: draft));
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['category_uuid'], isNot(archivedCategory.uuid));
+    expect(rows.single['payment_method_uuid'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('自然语言草稿匹配到已归档分类时不会自动换成其他分类', (tester) async {
+    final db = await _seed(tester);
+    final archivedCategory = FinanceCategory(
+      uuid: 'quick-archived-category',
+      name: '已归档分类',
+      isArchived: true,
+    );
+    await tester.runAsync(
+      () => db.insert('finance_categories', archivedCategory.toMap()),
+    );
+
+    await _pump(tester, const FinanceEntryScreen());
+    await tester.enterText(
+      find.byKey(const ValueKey('finance-quick-entry-input')),
+      '类型: 支出\n金额: 12\n分类: 已归档分类',
+    );
+    await _tap(tester, find.text('识别账单'));
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['category_uuid'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('计算器拒绝超过金额安全上限的结果并保留边界值', (tester) async {
     Future<void> pumpCalculator(String expression) => tester.pumpWidget(
       MaterialApp(

@@ -58,7 +58,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   String? _paymentMethodUuid;
   String? _unmatchedDraftPaymentMethodName;
   bool _paymentMethodSelectionEdited = false;
-  bool _templateCategoryRequiresSelection = false;
+  bool _archivedCategoryRequiresSelection = false;
   String? _selectedTemplateUuid;
   String? _amountExpression;
   List<FinanceTransaction> _existingInstallments = const [];
@@ -323,13 +323,13 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         }
         _isLoading = false;
       });
-      _clearArchivedTemplateAssociations();
+      _clearArchivedNewEntryAssociations();
       _resolveDraftSelections();
       _normalizeSelections(
         allowDefaultCategory:
             widget.transaction == null &&
             widget.originalTransaction == null &&
-            !_templateCategoryRequiresSelection &&
+            !_archivedCategoryRequiresSelection &&
             !_shouldKeepUnresolvedDraftCategory(),
         preserveUnresolvedCategory:
             widget.transaction != null || widget.originalTransaction != null,
@@ -357,6 +357,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       (item) =>
           item.uuid == _categoryUuid &&
           item.type == categoryType &&
+          !item.isArchived &&
           !item.isDeleted,
     );
     if (!hasValidCategoryUuid && draft.categoryName != null) {
@@ -366,7 +367,12 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         _type,
       );
       final candidates = _categories
-          .where((item) => item.type == categoryType && !item.isDeleted)
+          .where(
+            (item) =>
+                item.type == categoryType &&
+                !item.isArchived &&
+                !item.isDeleted,
+          )
           .toList();
       final exact = candidates
           .where(
@@ -389,18 +395,53 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
               .map((item) => item.uuid)
               .firstOrNull;
     }
+    final resolvedCategory = _categories.any(
+      (item) =>
+          item.uuid == _categoryUuid &&
+          item.type == categoryType &&
+          !item.isArchived &&
+          !item.isDeleted,
+    );
+    final requestedCategoryUuid = draft.categoryUuid?.trim();
+    final requestedCategoryName = draft.categoryName?.trim();
+    if (!resolvedCategory &&
+        _categories.any((item) {
+          if (item.type != categoryType || !item.isArchived || item.isDeleted) {
+            return false;
+          }
+          if (item.uuid == requestedCategoryUuid) return true;
+          if (requestedCategoryName == null || requestedCategoryName.isEmpty) {
+            return false;
+          }
+          final wanted = _normalizeOptionName(requestedCategoryName);
+          final semanticWanted = FinanceTextParser.inferCategoryName(
+            requestedCategoryName,
+            _type,
+          );
+          return _normalizeOptionName(item.name) == wanted ||
+              _normalizeOptionName(
+                    financeCategoryDisplayName(item, _categories),
+                  ) ==
+                  wanted ||
+              (semanticWanted != null &&
+                  FinanceTextParser.inferCategoryName(item.name, _type) ==
+                      semanticWanted);
+        })) {
+      _archivedCategoryRequiresSelection = true;
+    }
     final draftPaymentMethodName = draft.paymentMethodName?.trim();
     if (!_paymentMethodSelectionEdited &&
         _paymentMethodUuid == null &&
         draftPaymentMethodName?.isNotEmpty == true) {
       final wanted = _normalizeOptionName(draftPaymentMethodName!);
       final matched = _paymentMethods
-          .where((item) => !item.isDeleted)
+          .where((item) => !item.isArchived && !item.isDeleted)
           .where((item) => _normalizeOptionName(item.name) == wanted)
           .firstOrNull;
       _paymentMethodUuid = matched?.uuid;
-      _unmatchedDraftPaymentMethodName =
-          matched == null ? draftPaymentMethodName : null;
+      _unmatchedDraftPaymentMethodName = matched == null
+          ? draftPaymentMethodName
+          : null;
     }
   }
 
@@ -425,6 +466,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           (item) =>
               item.uuid == _categoryUuid &&
               item.type == categoryType &&
+              !item.isArchived &&
               !item.isDeleted,
         );
     return !resolved;
@@ -563,17 +605,15 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     if (notify && mounted) setState(() {});
   }
 
-  void _clearArchivedTemplateAssociations() {
-    if (_selectedTemplateUuid == null ||
-        widget.transaction != null ||
-        widget.originalTransaction != null) {
-      _templateCategoryRequiresSelection = false;
+  void _clearArchivedNewEntryAssociations() {
+    if (widget.transaction != null || widget.originalTransaction != null) {
+      _archivedCategoryRequiresSelection = false;
       return;
     }
 
     final category = _categoryByUuid(_categoryUuid);
-    _templateCategoryRequiresSelection = category?.isArchived == true;
-    if (_templateCategoryRequiresSelection) _categoryUuid = null;
+    _archivedCategoryRequiresSelection = category?.isArchived == true;
+    if (_archivedCategoryRequiresSelection) _categoryUuid = null;
 
     final paymentMethod = _paymentMethods
         .where((item) => item.uuid == _paymentMethodUuid)
@@ -802,14 +842,17 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _noteController.text = draft.note ?? '';
       _categoryUuid = draft.categoryUuid;
       _paymentMethodUuid = draft.paymentMethodUuid;
-      _templateCategoryRequiresSelection = false;
+      _archivedCategoryRequiresSelection = false;
       _unmatchedDraftPaymentMethodName = null;
       _paymentMethodSelectionEdited = false;
       _selectedTemplateUuid = null;
+      _clearArchivedNewEntryAssociations();
       _resolveSelectionsFromDraft(draft);
       _normalizeSelections(
         notify: false,
-        allowDefaultCategory: !_shouldKeepUnresolvedDraftCategory(),
+        allowDefaultCategory:
+            !_archivedCategoryRequiresSelection &&
+            !_shouldKeepUnresolvedDraftCategory(),
       );
     });
     _showMessage('已识别并填入表单，请核对后保存');
@@ -1457,7 +1500,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _dismissKeyboard();
       setState(() {
         _categoryUuid = selectedParent.uuid;
-        _templateCategoryRequiresSelection = false;
+        _archivedCategoryRequiresSelection = false;
       });
       return;
     }
@@ -1493,7 +1536,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     _dismissKeyboard();
     setState(() {
       _categoryUuid = selected!.value!.uuid;
-      _templateCategoryRequiresSelection = false;
+      _archivedCategoryRequiresSelection = false;
     });
   }
 
@@ -2334,27 +2377,29 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 label: type.label,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(10),
-                  onTap: _isSaving || _isLoanInterest ? null : () {
-                    _dismissKeyboard();
-                    if (type == _type ||
-                        _isEditingInstallment ||
-                        _hasRefundBinding) {
-                      return;
-                    }
-                    setState(() {
-                      _type = type;
-                      _templateCategoryRequiresSelection = false;
-                      if (type != FinanceTransactionType.expense) {
-                        _installmentEnabled = false;
-                      }
-                      _normalizeSelections(
-                        notify: false,
-                        preserveUnresolvedPaymentMethod:
-                            widget.transaction != null ||
-                            widget.originalTransaction != null,
-                      );
-                    });
-                  },
+                  onTap: _isSaving || _isLoanInterest
+                      ? null
+                      : () {
+                          _dismissKeyboard();
+                          if (type == _type ||
+                              _isEditingInstallment ||
+                              _hasRefundBinding) {
+                            return;
+                          }
+                          setState(() {
+                            _type = type;
+                            _archivedCategoryRequiresSelection = false;
+                            if (type != FinanceTransactionType.expense) {
+                              _installmentEnabled = false;
+                            }
+                            _normalizeSelections(
+                              notify: false,
+                              preserveUnresolvedPaymentMethod:
+                                  widget.transaction != null ||
+                                  widget.originalTransaction != null,
+                            );
+                          });
+                        },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 160),
                     curve: Curves.easeOut,
@@ -2611,10 +2656,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _paymentMethodUuid = selected.paymentMethodUuid;
       _unmatchedDraftPaymentMethodName = null;
       _paymentMethodSelectionEdited = true;
-      _clearArchivedTemplateAssociations();
+      _clearArchivedNewEntryAssociations();
       _normalizeSelections(
         notify: false,
-        allowDefaultCategory: !_templateCategoryRequiresSelection,
+        allowDefaultCategory: !_archivedCategoryRequiresSelection,
       );
     });
     _dismissKeyboard();
