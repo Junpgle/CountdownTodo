@@ -333,6 +333,48 @@ void main() {
       expect(find.text('📖', skipOffstage: false), findsOneWidget);
     });
 
+    testWidgets('container content accepts taps after the entrance completes', (
+      WidgetTester tester,
+    ) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'enable_lazy_load': true,
+        'container_content_start': 28,
+        'animation_duration': 100,
+      });
+      await PageTransitions.init();
+
+      final navigatorKey = GlobalKey<NavigatorState>();
+      var taps = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigatorKey,
+          theme: ThemeData(pageTransitionsTheme: PageTransitions.theme),
+          home: const Scaffold(body: SizedBox.shrink()),
+        ),
+      );
+      navigatorKey.currentState!.push(
+        ContainerTransformRoute<void>(
+          page: Scaffold(
+            body: Center(
+              child: TextButton(
+                key: const ValueKey('transform-action'),
+                onPressed: () => taps++,
+                child: const Text('action'),
+              ),
+            ),
+          ),
+          sourceRect: const Rect.fromLTWH(40, 40, 120, 80),
+          sourceColor: Colors.blue,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('transform-action')));
+
+      expect(taps, 1);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('container transform closes with a nonlinear curve',
         (WidgetTester tester) async {
       SharedPreferences.setMockInitialValues(<String, Object>{

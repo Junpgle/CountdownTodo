@@ -1193,7 +1193,8 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
                   child: !_contentVisible
                       ? Center(child: _buildPlaceholder(context))
                       : IgnorePointer(
-                          ignoring: fadeIn < 1.0,
+                          // A completed animation can round to 0.9999999999999999.
+                          ignoring: fadeIn < 1.0 - _epsilon,
                           child: content,
                         ),
                 ),
