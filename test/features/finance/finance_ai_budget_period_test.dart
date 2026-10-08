@@ -1216,6 +1216,48 @@ void main() {
     expect(context, isNot(contains('付款方式: 未指定')));
   });
 
+  test('AI 账单上下文按收入和退款类型标注到账账户', () {
+    FinanceTransaction transaction({
+      required String uuid,
+      required FinanceTransactionType type,
+      required String merchant,
+    }) => FinanceTransaction(
+      uuid: uuid,
+      amountMinor: 1500,
+      type: type,
+      paymentMethodUuid: 'deleted-$uuid',
+      transactionDate: '2026-09-02',
+      occurredAt: DateTime(2026, 9, 2, 12).millisecondsSinceEpoch,
+      createdAt: DateTime(2026, 9, 2, 12).millisecondsSinceEpoch,
+      merchant: merchant,
+    );
+
+    final income = transaction(
+      uuid: 'context-income-account',
+      type: FinanceTransactionType.income,
+      merchant: '未知收入账户',
+    );
+    final refund = transaction(
+      uuid: 'context-refund-account',
+      type: FinanceTransactionType.refund,
+      merchant: '未知退款账户',
+    );
+    final context = FinanceAiContextService.formatContext(
+      range: FinanceDateRange(DateTime(2026, 9), DateTime(2026, 10)),
+      summary: FinanceSummary.fromTransactions([income, refund]),
+      transactions: [income, refund],
+      categories: const [],
+      paymentMethods: const [],
+      budgets: const [],
+      budgetSummaries: const {},
+      asOfAt: DateTime(2026, 9, 3).millisecondsSinceEpoch,
+    );
+
+    expect(context, contains('到账账户: 已删除或未知到账账户'));
+    expect(context, contains('退款到账账户: 已删除或未知退款到账账户'));
+    expect(context, isNot(contains('付款方式:')));
+  });
+
   test('今年查询按实际月份给出预算，账单汇总仍按全年', () async {
     final context = await FinanceAiContextService.buildContext(
       userMessage: '今年支出和预算还有多少',

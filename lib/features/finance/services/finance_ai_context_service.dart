@@ -1178,6 +1178,21 @@ abstract final class FinanceAiContextService {
       return paymentMap[uuid]?.name ?? '已删除或未知付款方式';
     }
 
+    String transactionAccountName(
+      String? uuid,
+      FinanceTransactionType type,
+    ) {
+      final normalizedUuid = uuid?.trim();
+      if (normalizedUuid == null || normalizedUuid.isEmpty) return '未指定';
+      final method = paymentMap[normalizedUuid];
+      if (method != null) return method.name;
+      return switch (type) {
+        FinanceTransactionType.expense => '已删除或未知付款方式',
+        FinanceTransactionType.income => '已删除或未知到账账户',
+        FinanceTransactionType.refund => '已删除或未知退款到账账户',
+      };
+    }
+
     final lines = <String>[
       '【相关记账上下文｜只读快照】',
       recentQueryCount == null
@@ -1318,15 +1333,20 @@ abstract final class FinanceAiContextService {
             ? ' | 商家: ${transaction.merchant}'
             : '';
         final category = ' | 分类: ${categoryName(transaction.categoryUuid)}';
-        final payment =
-            ' | 付款方式: ${paymentName(transaction.paymentMethodUuid)}';
+        final accountLabel = switch (transaction.type) {
+          FinanceTransactionType.expense => '付款方式',
+          FinanceTransactionType.income => '到账账户',
+          FinanceTransactionType.refund => '退款到账账户',
+        };
+        final account =
+            ' | $accountLabel: ${transactionAccountName(transaction.paymentMethodUuid, transaction.type)}';
         final note = transaction.note?.trim().isNotEmpty == true
             ? ' | 备注: ${_shorten(transaction.note!.trim(), 100)}'
             : '';
         final status = transaction.balanceEventAt() > asOfAt ? '待发生 | ' : '';
         lines.add(
           '- $status[transactionId: ${transaction.uuid}] ${transaction.transactionDate} | '
-          '${transaction.type.label} $signed$category$merchant$payment$note',
+          '${transaction.type.label} $signed$category$merchant$account$note',
         );
       }
       if (transactions.length > _maxContextTransactionDetails) {
