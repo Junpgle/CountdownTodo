@@ -4108,6 +4108,68 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('窄屏大字号分类详情容纳重名完整路径', (tester) async {
+    final firstParent = FinanceCategory(
+      uuid: 'narrow-duplicate-parent-first',
+      name: '很长的重名家庭生活支出分类',
+      sortOrder: 10,
+    );
+    final secondParent = FinanceCategory(
+      uuid: 'narrow-duplicate-parent-second',
+      name: '很长的重名家庭生活支出分类',
+      sortOrder: 20,
+    );
+    final firstChild = FinanceCategory(
+      uuid: 'narrow-duplicate-child-first',
+      name: '很长的重名日常用品购物分类',
+      parentUuid: firstParent.uuid,
+      sortOrder: 10,
+    );
+    final secondChild = FinanceCategory(
+      uuid: 'narrow-duplicate-child-second',
+      name: '很长的重名日常用品购物分类',
+      parentUuid: firstParent.uuid,
+      sortOrder: 20,
+    );
+    final categories = {
+      for (final category in [
+        firstParent,
+        secondParent,
+        firstChild,
+        secondChild,
+      ])
+        category.uuid: category,
+    };
+
+    await _pump(
+      tester,
+      FinanceCategoryDetailScreen(
+        periodTitle: '2026年9月',
+        rootCategoryUuid: firstParent.uuid,
+        transactions: [
+          FinanceTransaction(
+            uuid: 'narrow-duplicate-transaction-first',
+            amountMinor: 2500,
+            categoryUuid: firstChild.uuid,
+            transactionDate: '2026-09-05',
+          ),
+          FinanceTransaction(
+            uuid: 'narrow-duplicate-transaction-second',
+            amountMinor: 3800,
+            categoryUuid: secondChild.uuid,
+            transactionDate: '2026-09-06',
+          ),
+        ],
+        categories: categories,
+      ),
+      size: const Size(320, 640),
+      scale: 1.8,
+    );
+
+    expect(find.textContaining('同名分类'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('周视图分类详情进入账单时保留选中周范围', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final inWeek = FinanceTransaction(
