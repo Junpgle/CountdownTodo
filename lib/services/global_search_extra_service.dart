@@ -647,17 +647,22 @@ abstract final class GlobalSearchExtraService {
 
   static Future<void> _loadRemote(String username) async {
     final records = <SearchResult>[];
+    var remoteSourceAvailable = false;
+    var teamsRequestSucceeded = false;
     final teamsFuture = ApiService.fetchTeams()
         .timeout(const Duration(seconds: 4))
+        .then((teams) {
+          teamsRequestSucceeded = true;
+          return teams;
+        })
         .catchError((Object error) {
-      debugPrint('Team global search warmup failed: $error');
-      return <dynamic>[];
-    });
+          debugPrint('Team global search warmup failed: $error');
+          return <dynamic>[];
+        });
     final cloud = CloudChallengeService();
     try {
-      final cached = await cloud.readCachedCatalog();
-      final catalog = cached?.catalog ??
-          await cloud.fetchCatalog().timeout(const Duration(seconds: 4));
+      final catalog = await cloud.loadCatalogForSearch();
+      remoteSourceAvailable = true;
       for (final template in catalog.challenges) {
         records.add(_result(
           id: 'challenge_template_${template.id}',
@@ -681,6 +686,7 @@ abstract final class GlobalSearchExtraService {
 
     try {
       final rawTeams = await teamsFuture;
+      remoteSourceAvailable |= teamsRequestSucceeded;
       final teams = rawTeams
           .whereType<Map>()
           .map((raw) => Team.fromJson(Map<String, dynamic>.from(raw)))
@@ -761,8 +767,13 @@ abstract final class GlobalSearchExtraService {
       debugPrint('Team global search warmup failed: $error');
     }
     if (_remoteUsername == username) {
-      _remoteRecords = records;
-      _remoteLoadedAt = DateTime.now();
+      if (remoteSourceAvailable) {
+        _remoteRecords = records;
+        _remoteLoadedAt = DateTime.now();
+      } else {
+        // Retain previously loaded results, but retry on the next search.
+        _remoteLoadedAt = null;
+      }
     }
   }
 
