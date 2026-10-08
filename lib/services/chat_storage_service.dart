@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,6 +51,8 @@ class ChatSession {
 }
 
 class ChatStorageService {
+  static Future<void> _sessionCreationQueue = Future<void>.value();
+
   static const String _sessionsKey = 'chat_sessions';
   static const String _activeSessionKey = 'chat_active_session';
   static const String _customPromptKey = 'chat_custom_prompt';
@@ -189,12 +192,46 @@ class ChatStorageService {
   }
 
   static Future<ChatSession> createSession({String? title}) async {
+    return _withSessionCreationLock(() => _createSession(title: title));
+  }
+
+  static Future<ChatSession> _createSession({String? title}) async {
     final sessions = await loadSessions();
     final newSession = ChatSession(title: title ?? '新对话');
     sessions.insert(0, newSession);
     await saveSessions(sessions);
     await setActiveSessionId(newSession.id);
     return newSession;
+  }
+
+  /// Opens the assistant without history, reusing only the last empty session.
+  static Future<ChatSession> openEmptySession() async {
+    return _withSessionCreationLock(() async {
+      final sessions = await loadSessions();
+      final activeId = await getActiveSessionId();
+      final previousSession = sessions
+          .where((session) => session.id == activeId)
+          .firstOrNull;
+      if (previousSession != null &&
+          (await loadHistory(previousSession.id)).isEmpty) {
+        return previousSession;
+      }
+      return _createSession();
+    });
+  }
+
+  static Future<T> _withSessionCreationLock<T>(
+    Future<T> Function() action,
+  ) async {
+    final previous = _sessionCreationQueue;
+    final release = Completer<void>();
+    _sessionCreationQueue = release.future;
+    await previous;
+    try {
+      return await action();
+    } finally {
+      release.complete();
+    }
   }
 
   static Future<void> deleteSession(String sessionId) async {
