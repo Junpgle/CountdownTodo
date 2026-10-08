@@ -1404,7 +1404,7 @@ abstract final class FinanceAiContextService {
       }
     }
     if (visiblePaymentMethods.isNotEmpty) {
-      lines.add('付款方式:');
+      lines.add('关联账户（支出用作付款方式，收入和退款用作到账账户）:');
       for (final method in visiblePaymentMethods) {
         lines.add(
           '- paymentMethodUuid=${method.uuid} | paymentMethodName=${method.name}',

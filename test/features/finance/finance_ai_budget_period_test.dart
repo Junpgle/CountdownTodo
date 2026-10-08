@@ -1258,6 +1258,24 @@ void main() {
     expect(context, isNot(contains('付款方式:')));
   });
 
+  test('AI 记账目录说明关联账户在不同交易类型中的用途', () {
+    final context = FinanceAiContextService.formatCatalogContext(
+      categories: const [],
+      paymentMethods: [
+        FinancePaymentMethod(uuid: 'ai-bank-account', name: '建设银行'),
+      ],
+    );
+
+    expect(
+      context,
+      contains('关联账户（支出用作付款方式，收入和退款用作到账账户）:'),
+    );
+    expect(
+      context,
+      contains('paymentMethodUuid=ai-bank-account | paymentMethodName=建设银行'),
+    );
+  });
+
   test('今年查询按实际月份给出预算，账单汇总仍按全年', () async {
     final context = await FinanceAiContextService.buildContext(
       userMessage: '今年支出和预算还有多少',
