@@ -4189,7 +4189,7 @@ void main() {
 
     expect(find.text('未分类支出'), findsOneWidget);
     expect(find.text('分类支出'), findsNothing);
-    expect(find.text('删除分类后保留的账单'), findsOneWidget);
+    expect(find.text('删除分类后保留的账单'), findsNothing);
     expect(find.text('分类 · 未分类'), findsOneWidget);
     expect(
       find.descendant(
@@ -4208,6 +4208,42 @@ void main() {
       find.byKey(const ValueKey('finance-ledger-category-filter')),
     );
     expect(changedCategoryUuid, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('分类已删除的历史账单仍可从分类账单入口查看', (tester) async {
+    final transaction = FinanceTransaction(
+      uuid: 'ledger-deleted-category-detail',
+      amountMinor: 900,
+      categoryUuid: 'deleted-food-category',
+      transactionDate: '2026-09-04',
+      merchant: '删除分类后的历史账单',
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceLedgerPanel(
+          transactions: [transaction],
+          categories: const {},
+          paymentMethods: const {},
+          keyword: '',
+          filterType: null,
+          categoryUuid: 'deleted-food-category',
+          onOpenDetail: (_, _) {},
+          onKeywordChanged: (_) {},
+          onFilterChanged: (_) {},
+          onCategoryChanged: (_) {},
+          onEdit: (_) {},
+          onDelete: (_) {},
+          onRefund: (_) {},
+        ),
+      ),
+    );
+
+    expect(find.text('删除分类后的历史账单'), findsOneWidget);
+    expect(find.text('分类已删除或不可用'), findsOneWidget);
+    expect(find.text('未分类'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -4277,6 +4313,46 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('归档大类 - 归档小类（已归档）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('概览将已删除分类的历史支出单独列出', (tester) async {
+    final now = DateTime.now();
+    final transaction = FinanceTransaction(
+      uuid: 'deleted-overview-category-transaction',
+      amountMinor: 3200,
+      categoryUuid: 'deleted-overview-category',
+      transactionDate: dateKey(now),
+      merchant: '保留分类关联的历史支出',
+    );
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: DateTime(now.year, now.month),
+          clock: () => now,
+          summary: FinanceSummary.fromTransactions([transaction]),
+          transactions: [transaction],
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+    await tester.scrollUntilVisible(
+      _key('finance-overview-category-deleted-overview-category'),
+      250,
+      maxScrolls: 20,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.text('分类已删除或不可用'), findsOneWidget);
+    expect(
+      _key('finance-overview-category-deleted-overview-category'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 

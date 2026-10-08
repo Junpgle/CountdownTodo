@@ -592,9 +592,10 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     final category = entry.categoryUuid == null
         ? null
         : categories[entry.categoryUuid];
-    final categoryName = category == null
-        ? '未分类'
-        : financeCategoryDisplayName(category, categories.values);
+    final categoryName = financeCategoryReferenceDisplayName(
+      entry.categoryUuid,
+      categories.values,
+    );
     final categoryLabel = category == null
         ? categoryName
         : '${category.isArchived ? '已归档 ' : ''}$categoryName';
@@ -620,7 +621,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
               SizedBox(
                 width: 105,
                 child: Text(
-                  category == null ? '未分类' : '${category.icon} $categoryLabel',
+                  category == null
+                      ? categoryLabel
+                      : '${category.icon} $categoryLabel',
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -665,8 +668,13 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
         FinanceTransactionType.income => 0,
       };
       if (amount == 0) continue;
-      final category = categories[transaction.categoryUuid];
-      final rootUuid = category == null ? '' : _rootCategory(category).uuid;
+      final categoryUuid = transaction.categoryUuid?.trim();
+      final category = categoryUuid == null || categoryUuid.isEmpty
+          ? null
+          : categories[categoryUuid];
+      final rootUuid = category == null
+          ? categoryUuid ?? ''
+          : _rootCategory(category).uuid;
       totals[rootUuid] = (totals[rootUuid] ?? 0) + amount;
     }
     final result = [
@@ -1106,7 +1114,7 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         final matchesCategory =
             categoryUuid == financeUncategorizedCategoryFilterUuid
             ? transaction.categoryUuid == null ||
-                  !categories.containsKey(transaction.categoryUuid)
+                  transaction.categoryUuid!.trim().isEmpty
             : transaction.categoryUuid == categoryUuid;
         if (!matchesCategory) return false;
       }
@@ -1125,9 +1133,10 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
               FinanceTransactionType.refund => '已删除或未知退款到账账户',
             }
           : null;
-      final categoryName = category == null
-          ? '未分类'
-          : financeCategoryDisplayName(category, categories.values);
+      final categoryName = financeCategoryReferenceDisplayName(
+        transaction.categoryUuid,
+        categories.values,
+      );
       final content = [
         transaction.merchant,
         transaction.note,
@@ -1345,16 +1354,24 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     final paymentName = payment == null
         ? null
         : financePaymentMethodDisplayName(payment, paymentMethods.values);
-    final categoryName = category == null
-        ? null
-        : financeCategoryDisplayName(category, categories.values);
+    final categoryName = financeCategoryReferenceDisplayName(
+      transaction.categoryUuid,
+      categories.values,
+    );
     final title = transaction.merchant?.isNotEmpty == true
         ? transaction.merchant!
-        : categoryName ?? transaction.type.label;
+        : category == null &&
+              (transaction.categoryUuid == null ||
+                  transaction.categoryUuid!.trim().isEmpty)
+        ? transaction.type.label
+        : categoryName;
     final subtitleParts = <String>[
       if (transaction.balanceEventAt() > asOfAt) '待发生',
       category == null
-          ? '未分类'
+          ? financeCategoryReferenceDisplayName(
+              transaction.categoryUuid,
+              categories.values,
+            )
           : '${category.icon} $categoryName${category.isArchived ? '（已归档）' : ''}',
       if (payment != null)
         '${payment.icon} $paymentName${payment.isArchived ? '（已归档）' : ''}'

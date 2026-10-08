@@ -547,7 +547,10 @@ abstract final class FinanceRepository {
           formatFinanceAmount(amount, withSymbol: false),
           sanitizeFinanceCsvText(
             category == null
-                ? '未分类'
+                ? financeCategoryReferenceDisplayName(
+                    transaction.categoryUuid,
+                    categories.values,
+                  )
                 : '${category.icon} ${financeCategoryDisplayName(category, categories.values)}',
           ),
           sanitizeFinanceCsvText(paymentLabel),

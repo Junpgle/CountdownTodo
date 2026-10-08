@@ -205,7 +205,9 @@ void main() {
       amountMinor: 3200,
       categoryUuid: root.uuid,
       transactionDate: dateKey(now),
+      merchant: '保留的历史账单',
     );
+    List<FinanceTransaction>? selectedTransactions;
     await tester.runAsync(() async {
       await FinanceStorage.saveCategory(root);
       await FinanceStorage.saveTransaction(transaction);
@@ -221,6 +223,9 @@ void main() {
           rootCategoryUuid: root.uuid,
           transactions: [transaction],
           categories: {root.uuid: root},
+          onCategorySelected: (_, _, periodTransactions) async {
+            selectedTransactions = periodTransactions;
+          },
         ),
       ),
     );
@@ -239,7 +244,17 @@ void main() {
 
     await _waitFor(tester, () => find.text('分类已删除').evaluate().isNotEmpty);
     expect(find.text('未分类'), findsNothing);
-    expect(find.text('这个分类已删除或不可用'), findsOneWidget);
+    expect(find.text('分类已删除或不可用'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey('finance-category-detail-deleted-detail-root')),
+      findsOneWidget,
+    );
+    expect(find.text('1 笔账单 · 点击查看'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('finance-category-detail-deleted-detail-root')),
+    );
+    await tester.pumpAndSettle();
+    expect(selectedTransactions?.single.merchant, '保留的历史账单');
     expect(tester.takeException(), isNull);
   });
 

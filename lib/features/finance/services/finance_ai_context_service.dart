@@ -1162,15 +1162,10 @@ abstract final class FinanceAiContextService {
     int? paymentBalanceAsOfAt,
     int? recentQueryCount,
   }) {
-    final categoryMap = {for (final item in categories) item.uuid: item};
     final paymentMap = {for (final item in paymentMethods) item.uuid: item};
 
     String categoryName(String? uuid) {
-      if (uuid == null || uuid.isEmpty) return '未分类';
-      final category = categoryMap[uuid];
-      return category == null
-          ? '未分类'
-          : financeCategoryDisplayName(category, categories);
+      return financeCategoryReferenceDisplayName(uuid, categories);
     }
 
     String paymentName(String? uuid) {

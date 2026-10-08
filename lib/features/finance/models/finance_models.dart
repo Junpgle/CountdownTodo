@@ -1418,6 +1418,20 @@ String financeCategoryDisplayName(
   return names.join(separator);
 }
 
+String financeCategoryReferenceDisplayName(
+  String? categoryUuid,
+  Iterable<FinanceCategory> categories,
+) {
+  final normalizedUuid = categoryUuid?.trim();
+  if (normalizedUuid == null || normalizedUuid.isEmpty) return '未分类';
+  for (final category in categories) {
+    if (category.uuid == normalizedUuid) {
+      return financeCategoryDisplayName(category, categories);
+    }
+  }
+  return '分类已删除或不可用';
+}
+
 /// Adds a stable ordinal when a category has a same-type sibling with the
 /// same normalized name. Use this in lists where the surrounding hierarchy is
 /// already visible.

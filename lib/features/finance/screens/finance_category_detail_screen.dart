@@ -212,7 +212,11 @@ class _FinanceCategoryDetailScreenState
     final category = categories[transaction.categoryUuid];
     final root = _rootCategory;
     if (root == null) {
-      return rootCategoryUuid == null && category == null;
+      if (rootCategoryUuid != null) {
+        return transaction.categoryUuid == rootCategoryUuid;
+      }
+      return transaction.categoryUuid == null ||
+          transaction.categoryUuid!.trim().isEmpty;
     }
     return category != null && _rootFor(category).uuid == root.uuid;
   }
@@ -248,13 +252,15 @@ class _FinanceCategoryDetailScreenState
   ) {
     final root = _rootCategory;
     if (root == null) {
-      if (rootCategoryUuid != null) return const [];
       final amount = _netExpense(matchingTransactions);
       if (matchingTransactions.isEmpty) return const [];
+      final isUncategorized = rootCategoryUuid == null;
       return [
         _FinanceCategoryDetailItem(
-          categoryUuid: financeUncategorizedCategoryFilterUuid,
-          title: '未分类',
+          categoryUuid: isUncategorized
+              ? financeUncategorizedCategoryFilterUuid
+              : rootCategoryUuid!,
+          title: isUncategorized ? '未分类' : '分类已删除或不可用',
           icon: '💰',
           amountMinor: amount,
           transactionCount: matchingTransactions.length,
@@ -314,7 +320,7 @@ class _FinanceCategoryDetailScreenState
     final isPlanned = _isPlanned;
     if (root == null) {
       categoryTitle = rootCategoryUuid == null ? '未分类' : '分类已删除';
-      sectionTitle = rootCategoryUuid == null ? '未分类账单' : '分类不可用';
+      sectionTitle = rootCategoryUuid == null ? '未分类账单' : '历史账单';
       if (rootCategoryUuid == null) {
         emptyMessage = isPlanned ? '没有可筛选的计划分类账单' : '没有可筛选的分类账单';
       } else {

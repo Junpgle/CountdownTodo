@@ -167,7 +167,9 @@ class _FinanceTransactionDetailScreenState
   String _categoryLabel() {
     final value = category;
     return value == null
-        ? '未分类'
+        ? transaction.categoryUuid?.trim().isNotEmpty == true
+              ? '分类已删除或不可用'
+              : '未分类'
         : '${value.icon} ${categoryDisplayName ?? value.name}${value.isArchived ? '（已归档）' : ''}';
   }
 
