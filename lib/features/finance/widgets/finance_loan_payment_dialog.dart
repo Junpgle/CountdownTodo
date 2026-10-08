@@ -94,6 +94,15 @@ class _FinanceLoanPaymentDialogState extends State<FinanceLoanPaymentDialog> {
     );
   }
 
+  String _paymentMethodOptionTitle(
+    FinancePaymentMethod method,
+    List<FinancePaymentMethod> methods,
+  ) {
+    final name = financePaymentMethodDisplayName(method, methods);
+    final archivedLabel = method.isArchived ? '（已归档）' : '';
+    return '${method.icon} $name$archivedLabel';
+  }
+
   @override
   Widget build(BuildContext context) {
     final methods = widget.paymentMethods
@@ -131,7 +140,7 @@ class _FinanceLoanPaymentDialogState extends State<FinanceLoanPaymentDialog> {
                       DropdownMenuItem(
                         value: method.uuid,
                         child: Text(
-                          '${method.icon} ${method.name}${method.isArchived ? '（已归档）' : ''}',
+                          _paymentMethodOptionTitle(method, methods),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),

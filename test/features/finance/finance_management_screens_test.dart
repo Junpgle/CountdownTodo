@@ -5719,6 +5719,98 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('还款账户选择器区分同名账户并保存正确账户', (tester) async {
+    final db = await _seed(tester);
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'loan-duplicate-account-one',
+      name: '还款同名账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'loan-duplicate-account-two',
+      name: '还款同名账户',
+      sortOrder: 20,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_payment_methods', firstMethod.toMap());
+      await db.insert('finance_payment_methods', secondMethod.toMap());
+    });
+
+    await _pump(tester, FinanceLoanDetailScreen(loan: _loan()));
+    await _tap(tester, _key('finance-loan-paid-test-installment-2'));
+    await tester.pumpAndSettle();
+    await tester.tap(_key('finance-loan-payment-method'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('💼 还款同名账户（同名账户 1/2）'), findsOneWidget);
+    await tester.tap(find.text('💼 还款同名账户（同名账户 2/2）'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('还款同名账户（同名账户 2/2）'), findsWidgets);
+    await tester.tap(_key('finance-loan-payment-save'));
+    await _waitFor(
+      tester,
+      () => _key('finance-loan-payment-save').evaluate().isEmpty,
+    );
+
+    final paid = (await tester.runAsync(
+      () => FinanceStorage.getLoanInstallment('test-installment-2'),
+    ))!;
+    expect(paid.paymentMethodUuid, secondMethod.uuid);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('已还期次详情区分同名还款账户', (tester) async {
+    final db = await _seed(tester);
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'loan-detail-duplicate-one',
+      name: '历史还款账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'loan-detail-duplicate-two',
+      name: '历史还款账户',
+      sortOrder: 20,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_payment_methods', firstMethod.toMap());
+      await db.insert('finance_payment_methods', secondMethod.toMap());
+      final installment =
+          (await FinanceStorage.getLoanInstallment('test-installment-2'))!;
+      installment
+        ..isPaid = true
+        ..paidAt = DateTime(2026, 10, 1, 12).millisecondsSinceEpoch
+        ..paymentMethodUuid = secondMethod.uuid;
+      await db.update(
+        'finance_loan_installments',
+        installment.toMap(),
+        where: 'uuid = ?',
+        whereArgs: [installment.uuid],
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceLoanDetailScreen(loan: _loan()),
+      size: const Size(1100, 1000),
+    );
+    await _tap(tester, _key('finance-loan-filter-paid'));
+    await tester.pumpAndSettle();
+    final installmentCard = _key('finance-loan-installment-test-installment-2');
+    await tester.scrollUntilVisible(
+      installmentCard,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(
+        of: installmentCard,
+        matching: find.text('还款账户：历史还款账户（同名账户 2/2）'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('还款分组与标记操作保留利息账单的生成及撤销语义', (tester) async {
     final db = await _seed(tester);
     await _pump(tester, FinanceLoanDetailScreen(loan: _loan()));

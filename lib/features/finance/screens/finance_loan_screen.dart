@@ -718,7 +718,12 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
         .where((item) => item.uuid == paymentMethodUuid)
         .firstOrNull;
     if (paymentMethod == null) return '还款账户：未知账户';
-    return '还款账户：${paymentMethod.name}${paymentMethod.isArchived ? '（已归档）' : ''}';
+    final name = financePaymentMethodDisplayName(
+      paymentMethod,
+      _paymentMethods,
+    );
+    final archivedLabel = paymentMethod.isArchived ? '（已归档）' : '';
+    return '还款账户：$name$archivedLabel';
   }
 
   Widget _buildInstallmentTile(
