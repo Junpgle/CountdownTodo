@@ -4538,7 +4538,7 @@ void main() {
       tester,
       () => find
           .text(
-            '这是第 1/3 期。删除后不会计入统计；已发生期次会相应增加付款方式余额，未发生期次会从未来计划中移除。',
+            '这是第 1/3 期。删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，未发生期次会从未来计划中移除。',
           )
           .evaluate()
           .isNotEmpty,
@@ -4546,10 +4546,85 @@ void main() {
 
     expect(
       find.text(
-        '这是第 1/3 期。删除后不会计入统计；已发生期次会相应增加付款方式余额，未发生期次会从未来计划中移除。',
+        '这是第 1/3 期。删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，未发生期次会从未来计划中移除。',
       ),
       findsOneWidget,
     );
+    await tester.tap(find.widgetWithText(TextButton, '取消'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('删除已计入余额快照的分期不会承诺余额增减', (tester) async {
+    final db = await _seed(tester);
+    final actualNow = DateTime.now();
+    final clockNow = DateTime(actualNow.year, actualNow.month, 15, 12);
+    final transactionAt = clockNow.subtract(const Duration(days: 2));
+    final snapshotAt = clockNow.subtract(const Duration(days: 1));
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'installment-delete-included-snapshot',
+          monthKey: financeMonthKey(snapshotAt),
+          paymentMethodUuid: 'finance-system-payment-cash',
+          amountMinor: 10000,
+          balanceSnapshotAt: snapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_transactions',
+        FinanceTransaction(
+          uuid: 'installment-delete-included-snapshot-transaction',
+          amountMinor: 1200,
+          paymentMethodUuid: 'finance-system-payment-cash',
+          transactionDate: dateKey(transactionAt),
+          occurredAt: transactionAt.millisecondsSinceEpoch,
+          timezoneOffsetMinutes: transactionAt.timeZoneOffset.inMinutes,
+          createdAt: transactionAt.millisecondsSinceEpoch,
+          merchant: '已计入余额快照的分期',
+          installmentGroupUuid: 'installment-delete-included-snapshot-group',
+          installmentIndex: 1,
+          installmentCount: 3,
+          installmentTotalMinor: 3600,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceHomeScreen(username: 'default', clock: () => clockNow),
+      size: const Size(1100, 1000),
+    );
+    await tester.tap(find.text('账单').hitTestable().last);
+    await tester.pumpAndSettle();
+    final row = find
+        .ancestor(
+          of: find.text('已计入余额快照的分期'),
+          matching: find.byType(ListTile),
+        )
+        .first;
+    await _tap(
+      tester,
+      find.descendant(
+        of: row,
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    await _waitFor(
+      tester,
+      () => find.text('删除分期账单？').evaluate().isNotEmpty,
+    );
+
+    expect(
+      find.textContaining('余额按余额快照和剩余流水重新计算'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('增加付款方式余额'), findsNothing);
+    expect(find.textContaining('减少付款方式余额'), findsNothing);
     await tester.tap(find.widgetWithText(TextButton, '取消'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);

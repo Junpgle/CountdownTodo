@@ -615,15 +615,16 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
     );
     final installmentDeleteDescription = switch (transaction.type) {
       FinanceTransactionType.expense => hasPaymentMethod
-          ? '删除后不会计入统计；已发生期次会相应增加付款方式余额，'
+          ? '删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，'
               '未发生期次会从未来计划中移除。'
           : '删除后不会计入统计；未发生期次会从未来计划中移除。',
       FinanceTransactionType.income => hasPaymentMethod
-          ? '删除后不会计入统计；已发生期次会相应减少付款方式余额，'
+          ? '删除后不会计入统计；已发生期次会从账户流水中移除，余额按余额快照和剩余流水重新计算，'
               '未发生期次会从未来计划中移除。'
           : '删除后不会计入统计；未发生期次会从未来计划中移除。',
       FinanceTransactionType.refund => hasPaymentMethod
-          ? '删除后不会计入统计；已发生期次不再抵扣净支出，也不再增加付款方式余额，'
+          ? '删除后不会计入统计，也不再抵扣净支出；已发生期次会从账户流水中移除，'
+              '余额按余额快照和剩余流水重新计算，'
               '未发生期次会从未来计划中移除。'
           : '删除后不会计入统计；未发生期次会从未来计划中移除。',
     };
