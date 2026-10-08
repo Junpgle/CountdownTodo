@@ -3877,6 +3877,53 @@ void main() {
     );
   });
 
+  test('AI ledger keeps working after its monthly bill is deleted', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'ai-cost-deleted-ledger-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+    await AiUsageCostService.savePricing(
+      const AiUsagePricing(
+        provider: 'custom',
+        model: 'ledger-delete-test',
+        inputMicrosPerMillion: 1000000,
+      ),
+    );
+
+    Future<void> recordCall() async {
+      await AiUsageCostService.recordUsage(
+        provider: 'custom',
+        model: 'ledger-delete-test',
+        operation: 'chat',
+        promptTokens: 1000000,
+        completionTokens: 0,
+        totalTokens: 1000000,
+        now: DateTime(2026, 8, 30, 10),
+      );
+    }
+
+    await recordCall();
+    final originalBill = (await db.query('finance_transactions')).single;
+    await FinanceRepository.deleteTransaction(originalBill['uuid'] as String);
+
+    await recordCall();
+
+    final bills = await db.query('finance_transactions');
+    expect(bills.where((row) => row['is_deleted'] == 1), hasLength(1));
+    final activeBills = bills.where((row) => row['is_deleted'] == 0).toList();
+    expect(activeBills, hasLength(1));
+    expect(activeBills.single['amount_minor'], 200);
+  });
+
   test('pricing settings preserve tier and peak metadata', () {
     const pricing = AiUsagePricing(
       provider: 'deepseek',

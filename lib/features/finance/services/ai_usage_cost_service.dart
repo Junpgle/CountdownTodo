@@ -1102,10 +1102,17 @@ abstract final class AiUsageCostService {
               _isLegacyDailyLedgerKey(key, monthKey, provider, model);
         })
         .toList(growable: false);
-    final linkedUuids = links
-        .map((row) => row['finance_transaction_uuid']?.toString() ?? '')
-        .where((uuid) => uuid.isNotEmpty)
-        .toSet();
+    final stableTransactionUuid = _monthlyLedgerTransactionUuid(
+      monthKey,
+      provider,
+      model,
+    );
+    final linkedUuids = {
+      ...links
+          .map((row) => row['finance_transaction_uuid']?.toString() ?? '')
+          .where((uuid) => uuid.isNotEmpty),
+      stableTransactionUuid,
+    };
     final linkedTransactions = <String, FinanceTransaction>{};
     if (linkedUuids.isNotEmpty) {
       final placeholders = List.filled(linkedUuids.length, '?').join(',');
@@ -1126,7 +1133,9 @@ abstract final class AiUsageCostService {
     final transaction =
         existing ??
         FinanceTransaction(
-          uuid: _monthlyLedgerTransactionUuid(monthKey, provider, model),
+          uuid: linkedTransactions[stableTransactionUuid]?.isDeleted == true
+              ? const Uuid().v4()
+              : stableTransactionUuid,
           type: FinanceTransactionType.expense,
           amountMinor: amountMinor,
           categoryUuid: _aiCategoryUuid,
