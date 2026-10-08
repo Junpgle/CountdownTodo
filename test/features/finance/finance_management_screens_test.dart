@@ -2654,24 +2654,23 @@ void main() {
       transactionDate: dateKey(DateTime.now()),
       merchant: '已删除到账账户收入',
     );
+    FinanceLedgerPanel ledger(String keyword) => FinanceLedgerPanel(
+      transactions: [transaction, income],
+      categories: const {},
+      paymentMethods: const {},
+      keyword: keyword,
+      filterType: null,
+      onOpenDetail: (_, _) {},
+      onKeywordChanged: (_) {},
+      onFilterChanged: (_) {},
+      onEdit: (_) {},
+      onDelete: (_) {},
+      onRefund: (_) {},
+    );
 
     await _pump(
       tester,
-      Scaffold(
-        body: FinanceLedgerPanel(
-          transactions: [transaction, income],
-          categories: const {},
-          paymentMethods: const {},
-          keyword: '已删除或未知付款方式',
-          filterType: null,
-          onOpenDetail: (_, _) {},
-          onKeywordChanged: (_) {},
-          onFilterChanged: (_) {},
-          onEdit: (_) {},
-          onDelete: (_) {},
-          onRefund: (_) {},
-        ),
-      ),
+      Scaffold(body: ledger('已删除或未知付款方式')),
     );
 
     final expenseRow = find
@@ -2694,6 +2693,12 @@ void main() {
       ),
       findsOneWidget,
     );
+    await _pump(
+      tester,
+      Scaffold(body: ledger('已删除或未知到账账户')),
+    );
+    expect(find.text('已删除到账账户收入'), findsOneWidget);
+    expect(find.text('已删除账户账单'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

@@ -1109,10 +1109,14 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
       final query = keyword.trim().toLowerCase();
       final category = categories[transaction.categoryUuid];
       final payment = paymentMethods[transaction.paymentMethodUuid];
-      final paymentName = payment?.name ??
-          (transaction.paymentMethodUuid?.trim().isNotEmpty == true
-              ? '已删除或未知付款方式'
-              : null);
+      final unknownPaymentLabel =
+          transaction.paymentMethodUuid?.trim().isNotEmpty == true
+          ? switch (transaction.type) {
+              FinanceTransactionType.expense => '已删除或未知付款方式',
+              FinanceTransactionType.income => '已删除或未知到账账户',
+              FinanceTransactionType.refund => '已删除或未知退款到账账户',
+            }
+          : null;
       final categoryName = category == null
           ? '未分类'
           : financeCategoryDisplayName(category, categories.values);
@@ -1120,7 +1124,9 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
         transaction.merchant,
         transaction.note,
         categoryName,
-        paymentName,
+        payment?.name,
+        unknownPaymentLabel,
+        if (unknownPaymentLabel != null) '已删除或未知付款方式',
       ].whereType<String>().join(' ').toLowerCase();
       return content.contains(query) ||
           _matchesFinanceLedgerDate(transaction.transactionDate, query);
