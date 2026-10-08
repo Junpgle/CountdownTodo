@@ -150,6 +150,40 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('快捷模板列表可区分同名模板并保留对应操作对象', (tester) async {
+    final templates = [
+      FinanceEntryTemplate(
+        uuid: 'duplicate-template-first',
+        name: '通勤',
+        amountMinor: 2500,
+        createdAt: 100,
+      ),
+      FinanceEntryTemplate(
+        uuid: 'duplicate-template-second',
+        name: '通勤',
+        amountMinor: 2500,
+        createdAt: 200,
+      ),
+    ];
+    FinanceEntryTemplate? used;
+    await _pump(
+      tester,
+      _manager(
+        rules: const [],
+        templates: templates,
+        onUse: (template) async => used = template,
+      ),
+    );
+
+    await _tap(tester, _key('finance-automation-tab-templates'));
+    expect(find.text('通勤（同名模板 1/2）'), findsOneWidget);
+    expect(find.text('通勤（同名模板 2/2）'), findsOneWidget);
+    await _tap(tester, _key('finance-automation-use-duplicate-template-second'));
+
+    expect(used?.uuid, 'duplicate-template-second');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('周期账单和模板都能按付款方式名称搜索', (tester) async {
     final rule = _rule()..paymentMethodUuid = 'bank';
     final template = _template()..paymentMethodUuid = 'bank';

@@ -462,8 +462,13 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
       key: ValueKey('finance-automation-template-${template.uuid}'),
       onTap: busy ? null : use,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _heading(template.name, Icons.bolt_outlined, key, edit,
-            () => _run(key, () => widget.onDeleteTemplate(template))),
+        _heading(
+          financeEntryTemplateDisplayName(template, _templates),
+          Icons.bolt_outlined,
+          key,
+          edit,
+          () => _run(key, () => widget.onDeleteTemplate(template)),
+        ),
         _amount(template.amountMinor, template.type),
         _metadata(
           template.categoryUuid,

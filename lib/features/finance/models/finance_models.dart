@@ -2415,6 +2415,34 @@ class FinanceEntryTemplate {
   }
 }
 
+/// Adds a stable ordinal when active entry templates share the same name.
+String financeEntryTemplateDisplayName(
+  FinanceEntryTemplate template,
+  Iterable<FinanceEntryTemplate> templates,
+) {
+  final normalizedName = _normalizeFinanceEntryTemplateName(template.name);
+  final sameNameTemplates = templates
+      .where(
+        (item) =>
+            !item.isDeleted &&
+            _normalizeFinanceEntryTemplateName(item.name) == normalizedName,
+      )
+      .toList()
+    ..sort((left, right) {
+      final createdAt = left.createdAt.compareTo(right.createdAt);
+      return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+    });
+  if (sameNameTemplates.length < 2) return template.name;
+  final index = sameNameTemplates.indexWhere(
+    (item) => item.uuid == template.uuid,
+  );
+  if (index < 0) return template.name;
+  return '${template.name}（同名模板 ${index + 1}/${sameNameTemplates.length}）';
+}
+
+String _normalizeFinanceEntryTemplateName(String value) =>
+    value.replaceAll(RegExp(r'\s+'), '').trim().toLowerCase();
+
 class FinanceSummary {
   final int incomeMinor;
   final int expenseMinor;

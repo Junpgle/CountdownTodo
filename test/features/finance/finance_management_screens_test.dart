@@ -519,6 +519,52 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('记账表单可区分同名快捷模板并填入所选模板', (tester) async {
+    final db = await _seed(tester);
+    final templates = [
+      FinanceEntryTemplate(
+        uuid: 'commute-template-first',
+        name: '通勤',
+        amountMinor: 2500,
+        categoryUuid: 'test-food',
+        merchant: '地铁',
+        createdAt: 100,
+      ),
+      FinanceEntryTemplate(
+        uuid: 'commute-template-second',
+        name: '通勤',
+        amountMinor: 2500,
+        categoryUuid: 'test-food',
+        merchant: '网约车',
+        createdAt: 200,
+      ),
+    ];
+    await tester.runAsync(() async {
+      for (final template in templates) {
+        await db.insert('finance_entry_templates', template.toMap());
+      }
+    });
+    await _pump(tester, const FinanceEntryScreen());
+
+    await _tap(tester, find.text('快捷模板'));
+    expect(find.text('通勤（同名模板 1/2）'), findsOneWidget);
+    expect(find.text('通勤（同名模板 2/2）'), findsOneWidget);
+    await _tap(tester, find.text('通勤（同名模板 2/2）'));
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['merchant'], '网约车');
+    expect(rows.single['amount_minor'], 2500);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('新草稿不会把已归档分类或账户识别为可用关联', (tester) async {
     final db = await _seed(tester);
     final archivedCategory = FinanceCategory(

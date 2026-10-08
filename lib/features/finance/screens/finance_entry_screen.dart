@@ -2652,6 +2652,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
 
   Future<void> _showTemplatePicker() async {
     _dismissKeyboard();
+    final templates = _templates;
     final selected = await showAppModalBottomSheet<FinanceEntryTemplate>(
       context: context,
       showDragHandle: true,
@@ -2665,14 +2666,16 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
               title: Text('选择快捷模板'),
               subtitle: Text('模板只填充默认内容，保存前仍可修改'),
             ),
-            for (final template in _templates)
+            for (final template in templates)
               ListTile(
                 leading: Icon(
                   template.type == FinanceTransactionType.income
                       ? Icons.arrow_downward_rounded
                       : Icons.arrow_upward_rounded,
                 ),
-                title: Text(template.name),
+                title: Text(
+                  financeEntryTemplateDisplayName(template, templates),
+                ),
                 subtitle: Text(
                   '${template.type.label} · ${formatFinanceAmount(template.amountMinor)}',
                 ),
