@@ -164,8 +164,22 @@ class _FinanceTransactionDetailScreenState
     final value = paymentMethod;
     if (value != null) return '${value.icon} ${value.name}';
     return transaction.paymentMethodUuid?.trim().isNotEmpty == true
-        ? '已删除或未知付款方式'
-        : '未指定';
+        ? switch (transaction.type) {
+            FinanceTransactionType.expense => '已删除或未知付款方式',
+            FinanceTransactionType.income => '已删除或未知到账账户',
+            FinanceTransactionType.refund => '已删除或未知退款到账账户',
+          }
+        : transaction.type == FinanceTransactionType.expense
+        ? '未指定'
+        : '未指定（不更新账户余额）';
+  }
+
+  String _paymentMethodTitle() {
+    return switch (transaction.type) {
+      FinanceTransactionType.expense => '付款方式',
+      FinanceTransactionType.income => '到账账户',
+      FinanceTransactionType.refund => '退款到账账户',
+    };
   }
 
   String _occurredAtLabel() {
@@ -293,7 +307,7 @@ class _FinanceTransactionDetailScreenState
             ),
             AppDetailWideCard(
               icon: Icons.account_balance_wallet_outlined,
-              title: '付款方式',
+              title: _paymentMethodTitle(),
               value: _paymentMethodLabel(),
             ),
             if (transaction.isInstallment)

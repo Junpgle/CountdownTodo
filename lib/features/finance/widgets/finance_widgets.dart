@@ -1338,7 +1338,11 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
       if (payment != null)
         '${payment.icon} ${payment.name}'
       else if (transaction.paymentMethodUuid?.trim().isNotEmpty == true)
-        '已删除或未知付款方式',
+        switch (transaction.type) {
+          FinanceTransactionType.expense => '已删除或未知付款方式',
+          FinanceTransactionType.income => '已删除或未知到账账户',
+          FinanceTransactionType.refund => '已删除或未知退款到账账户',
+        },
       if (transaction.installmentLabel != null)
         '分期 ${transaction.installmentLabel}',
       if (transaction.note?.isNotEmpty == true) transaction.note!,

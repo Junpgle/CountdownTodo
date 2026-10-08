@@ -2646,12 +2646,20 @@ void main() {
       transactionDate: dateKey(DateTime.now()),
       merchant: '已删除账户账单',
     );
+    final income = FinanceTransaction(
+      uuid: 'ledger-income-deleted-account',
+      type: FinanceTransactionType.income,
+      amountMinor: 2500,
+      paymentMethodUuid: 'deleted-income-account',
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '已删除到账账户收入',
+    );
 
     await _pump(
       tester,
       Scaffold(
         body: FinanceLedgerPanel(
-          transactions: [transaction],
+          transactions: [transaction, income],
           categories: const {},
           paymentMethods: const {},
           keyword: '已删除或未知付款方式',
@@ -2666,8 +2674,26 @@ void main() {
       ),
     );
 
-    expect(find.text('已删除账户账单'), findsOneWidget);
-    expect(find.text('已删除或未知付款方式'), findsOneWidget);
+    final expenseRow = find
+        .ancestor(of: find.text('已删除账户账单'), matching: find.byType(ListTile))
+        .first;
+    final incomeRow = find
+        .ancestor(of: find.text('已删除到账账户收入'), matching: find.byType(ListTile))
+        .first;
+    expect(
+      find.descendant(
+        of: expenseRow,
+        matching: find.textContaining('已删除或未知付款方式'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: incomeRow,
+        matching: find.textContaining('已删除或未知到账账户'),
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -2687,6 +2713,52 @@ void main() {
 
     expect(find.text('已删除或未知付款方式'), findsOneWidget);
     expect(find.text('未指定'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('收入和退款详情按类型显示到账账户状态', (tester) async {
+    await _seed(tester);
+    final now = dateKey(DateTime.now());
+    final income = FinanceTransaction(
+      uuid: 'detail-income-unknown-account',
+      type: FinanceTransactionType.income,
+      amountMinor: 2500,
+      paymentMethodUuid: 'deleted-income-account',
+      transactionDate: now,
+      merchant: '收入详情未知账户',
+    );
+    final original = FinanceTransaction(
+      uuid: 'detail-refund-original',
+      amountMinor: 5000,
+      transactionDate: now,
+      merchant: '退款详情原单',
+    );
+    final refund = FinanceTransaction(
+      uuid: 'detail-refund-unassigned',
+      type: FinanceTransactionType.refund,
+      amountMinor: 1000,
+      transactionDate: now,
+      relatedTransactionUuid: original.uuid,
+      merchant: '未指定退款到账账户',
+    );
+    await tester.runAsync(() async {
+      await FinanceStorage.saveTransaction(income);
+      await FinanceStorage.saveTransaction(original);
+      await FinanceStorage.saveTransaction(refund);
+    });
+
+    await _pump(tester, FinanceTransactionDetailScreen(transaction: income));
+    await _waitFor(tester, () => find.text('到账账户').evaluate().isNotEmpty);
+    expect(find.text('已删除或未知到账账户'), findsOneWidget);
+    expect(find.text('付款方式'), findsNothing);
+
+    await _pump(tester, FinanceTransactionDetailScreen(transaction: refund));
+    await _waitFor(
+      tester,
+      () => find.text('退款到账账户').evaluate().isNotEmpty,
+    );
+    expect(find.text('未指定（不更新账户余额）'), findsOneWidget);
+    expect(find.text('付款方式'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
