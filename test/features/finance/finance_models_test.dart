@@ -940,7 +940,7 @@ void main() {
     expect(sanitizeFinanceCsvText(' 午餐'), ' 午餐');
   });
 
-  test('CSV 导出会防护从导入记录读取的公式日期', () async {
+  test('CSV 导出会防护公式日期并按类型标注关联账户', () async {
     TestWidgetsFlutterBinding.ensureInitialized();
     final directory = await Directory.systemTemp.createTemp(
       'finance-csv-export-',
@@ -962,9 +962,24 @@ void main() {
     final path = await FinanceRepository.exportCsv(
       transactions: [
         FinanceTransaction(
+          uuid: 'csv-deleted-expense-account',
           amountMinor: 100,
           transactionDate: '=1+1',
           paymentMethodUuid: 'deleted-payment-method',
+        ),
+        FinanceTransaction(
+          uuid: 'csv-deleted-income-account',
+          type: FinanceTransactionType.income,
+          amountMinor: 250,
+          transactionDate: '2026-09-03',
+          paymentMethodUuid: 'deleted-income-account',
+        ),
+        FinanceTransaction(
+          uuid: 'csv-deleted-refund-account',
+          type: FinanceTransactionType.refund,
+          amountMinor: 70,
+          transactionDate: '2026-09-04',
+          paymentMethodUuid: 'deleted-refund-account',
         ),
       ],
       categories: const {},
@@ -973,8 +988,17 @@ void main() {
 
     expect(path, isNotNull);
     final csv = await File(path!).readAsString();
+    expect(csv, contains('日期,类型,金额,分类,关联账户'));
     expect(csv, contains("\n'=1+1,支出,-1.00"));
     expect(csv, contains("\n'=1+1,支出,-1.00,未分类,已删除或未知付款方式"));
+    expect(
+      csv,
+      contains('2026-09-03,收入,2.50,未分类,已删除或未知到账账户'),
+    );
+    expect(
+      csv,
+      contains('2026-09-04,退款,0.70,未分类,已删除或未知退款到账账户'),
+    );
   });
 
   test('汇总会将退款从实际支出中扣除', () {

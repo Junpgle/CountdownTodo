@@ -522,15 +522,19 @@ abstract final class FinanceRepository {
     required Map<String, FinancePaymentMethod> paymentMethods,
   }) async {
     final rows = <List<String>>[
-      ['日期', '类型', '金额', '分类', '付款方式', '商家', '备注', '来源', '分期', '分期总额'],
+      ['日期', '类型', '金额', '分类', '关联账户', '商家', '备注', '来源', '分期', '分期总额'],
       ...transactions.map((transaction) {
         final category = categories[transaction.categoryUuid];
         final payment = paymentMethods[transaction.paymentMethodUuid];
         final paymentLabel = payment != null
             ? '${payment.icon} ${payment.name}'
-            : (transaction.paymentMethodUuid?.trim().isNotEmpty == true
-                  ? '已删除或未知付款方式'
-                  : '未指定');
+            : transaction.paymentMethodUuid?.trim().isNotEmpty == true
+            ? switch (transaction.type) {
+                FinanceTransactionType.expense => '已删除或未知付款方式',
+                FinanceTransactionType.income => '已删除或未知到账账户',
+                FinanceTransactionType.refund => '已删除或未知退款到账账户',
+              }
+            : '未指定';
         final amount = transaction.type == FinanceTransactionType.expense
             ? -transaction.amountMinor
             : transaction.amountMinor;
