@@ -425,6 +425,95 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('快捷模板不会把已归档分类或账户带入新账单', (tester) async {
+    final db = await _seed(tester);
+    final archivedCategory = FinanceCategory(
+      uuid: 'archived-template-category',
+      name: '已归档分类',
+      isArchived: true,
+    );
+    final archivedPaymentMethod = FinancePaymentMethod(
+      uuid: 'archived-template-payment',
+      name: '已归档账户',
+      isArchived: true,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_categories', archivedCategory.toMap());
+      await db.insert(
+        'finance_payment_methods',
+        archivedPaymentMethod.toMap(),
+      );
+    });
+    final template = FinanceEntryTemplate(
+      uuid: 'archived-template',
+      name: '旧分类模板',
+      amountMinor: 1200,
+      categoryUuid: archivedCategory.uuid,
+      paymentMethodUuid: archivedPaymentMethod.uuid,
+    );
+
+    await _pump(tester, FinanceEntryScreen(initialTemplate: template));
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['category_uuid'], isNot(archivedCategory.uuid));
+    expect(rows.single['payment_method_uuid'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('从表单选择的快捷模板也不会使用已归档分类或账户', (tester) async {
+    final db = await _seed(tester);
+    final archivedCategory = FinanceCategory(
+      uuid: 'picked-archived-template-category',
+      name: '已归档分类',
+      isArchived: true,
+    );
+    final archivedPaymentMethod = FinancePaymentMethod(
+      uuid: 'picked-archived-template-payment',
+      name: '已归档账户',
+      isArchived: true,
+    );
+    final template = FinanceEntryTemplate(
+      uuid: 'picked-archived-template',
+      name: '旧分类模板',
+      amountMinor: 1200,
+      categoryUuid: archivedCategory.uuid,
+      paymentMethodUuid: archivedPaymentMethod.uuid,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_categories', archivedCategory.toMap());
+      await db.insert(
+        'finance_payment_methods',
+        archivedPaymentMethod.toMap(),
+      );
+      await db.insert('finance_entry_templates', template.toMap());
+    });
+
+    await _pump(tester, const FinanceEntryScreen());
+    await _tap(tester, find.text('快捷模板'));
+    await _tap(tester, find.text('旧分类模板'));
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['category_uuid'], isNot(archivedCategory.uuid));
+    expect(rows.single['payment_method_uuid'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('计算器拒绝超过金额安全上限的结果并保留边界值', (tester) async {
     Future<void> pumpCalculator(String expression) => tester.pumpWidget(
       MaterialApp(

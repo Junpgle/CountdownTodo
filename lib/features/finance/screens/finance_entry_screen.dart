@@ -58,6 +58,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   String? _paymentMethodUuid;
   String? _unmatchedDraftPaymentMethodName;
   bool _paymentMethodSelectionEdited = false;
+  bool _templateCategoryRequiresSelection = false;
   String? _selectedTemplateUuid;
   String? _amountExpression;
   List<FinanceTransaction> _existingInstallments = const [];
@@ -322,11 +323,13 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         }
         _isLoading = false;
       });
+      _clearArchivedTemplateAssociations();
       _resolveDraftSelections();
       _normalizeSelections(
         allowDefaultCategory:
             widget.transaction == null &&
             widget.originalTransaction == null &&
+            !_templateCategoryRequiresSelection &&
             !_shouldKeepUnresolvedDraftCategory(),
         preserveUnresolvedCategory:
             widget.transaction != null || widget.originalTransaction != null,
@@ -560,6 +563,24 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     if (notify && mounted) setState(() {});
   }
 
+  void _clearArchivedTemplateAssociations() {
+    if (_selectedTemplateUuid == null ||
+        widget.transaction != null ||
+        widget.originalTransaction != null) {
+      _templateCategoryRequiresSelection = false;
+      return;
+    }
+
+    final category = _categoryByUuid(_categoryUuid);
+    _templateCategoryRequiresSelection = category?.isArchived == true;
+    if (_templateCategoryRequiresSelection) _categoryUuid = null;
+
+    final paymentMethod = _paymentMethods
+        .where((item) => item.uuid == _paymentMethodUuid)
+        .firstOrNull;
+    if (paymentMethod?.isArchived == true) _paymentMethodUuid = null;
+  }
+
   void _dismissKeyboard() {
     FocusManager.instance.primaryFocus?.unfocus(
       disposition: UnfocusDisposition.scope,
@@ -781,6 +802,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _noteController.text = draft.note ?? '';
       _categoryUuid = draft.categoryUuid;
       _paymentMethodUuid = draft.paymentMethodUuid;
+      _templateCategoryRequiresSelection = false;
       _unmatchedDraftPaymentMethodName = null;
       _paymentMethodSelectionEdited = false;
       _selectedTemplateUuid = null;
@@ -1433,7 +1455,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     final children = _childrenOf(selectedParent);
     if (children.isEmpty) {
       _dismissKeyboard();
-      setState(() => _categoryUuid = selectedParent.uuid);
+      setState(() {
+        _categoryUuid = selectedParent.uuid;
+        _templateCategoryRequiresSelection = false;
+      });
       return;
     }
 
@@ -1466,7 +1491,10 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     );
     if (!mounted || selected?.value == null) return;
     _dismissKeyboard();
-    setState(() => _categoryUuid = selected!.value!.uuid);
+    setState(() {
+      _categoryUuid = selected!.value!.uuid;
+      _templateCategoryRequiresSelection = false;
+    });
   }
 
   Future<FinanceCategory?> _addSubcategory(FinanceCategory parent) async {
@@ -2315,6 +2343,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                     }
                     setState(() {
                       _type = type;
+                      _templateCategoryRequiresSelection = false;
                       if (type != FinanceTransactionType.expense) {
                         _installmentEnabled = false;
                       }
@@ -2582,7 +2611,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _paymentMethodUuid = selected.paymentMethodUuid;
       _unmatchedDraftPaymentMethodName = null;
       _paymentMethodSelectionEdited = true;
-      _normalizeSelections(notify: false);
+      _clearArchivedTemplateAssociations();
+      _normalizeSelections(
+        notify: false,
+        allowDefaultCategory: !_templateCategoryRequiresSelection,
+      );
     });
     _dismissKeyboard();
   }
