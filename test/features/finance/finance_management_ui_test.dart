@@ -386,6 +386,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('回收站空状态说明包含所有可恢复类型', (tester) async {
+    await _pump(tester, const FinanceTrashManager(entries: []));
+
+    expect(
+      find.text('删除的账单、预算、贷款、周期账单和快捷模板会保留在这里。'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('管理页在窄屏大字体深色模式与宽屏均无溢出', (tester) async {
     await _pump(tester, _manager(),
         size: const Size(320, 740), scale: 2, brightness: Brightness.dark);

@@ -103,7 +103,7 @@ class _FinanceTrashManagerState extends State<FinanceTrashManager> {
         const FinanceEmptyState(
           icon: Icons.inventory_2_outlined,
           title: '回收站是空的',
-          description: '删除的账单、预算、贷款和模板会保留在这里。',
+          description: '删除的账单、预算、贷款、周期账单和快捷模板会保留在这里。',
         )
       else ...[
         TextField(
