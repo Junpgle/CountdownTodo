@@ -170,6 +170,8 @@ abstract final class ThirtyDayChallengeRepository {
       bundle['habit_center_promotion_dismissed'] == true,
     );
     final corruptBackupKey = await _scopedCorruptBackupKey(username);
+    // An omitted field preserves target-only recovery data; an explicit empty
+    // string clears it.
     if (bundle.containsKey('corrupt_state_backup')) {
       if (corruptStateBackup is String && corruptStateBackup.isNotEmpty) {
         await prefs.setString(corruptBackupKey, corruptStateBackup);

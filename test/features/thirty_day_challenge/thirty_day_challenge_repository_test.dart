@@ -12,7 +12,7 @@ void main() {
   });
 
   test(
-    'importing a valid backup clears a stale corrupt-state recovery copy',
+    'an explicitly empty recovery field clears a stale corrupt-state copy',
     () async {
       const username = 'challenge-restore-test';
       final prefs = await SharedPreferences.getInstance();
@@ -37,6 +37,7 @@ void main() {
       await ThirtyDayChallengeRepository.importBackup({
         'state': restoredState.toJson(),
         'started': true,
+        'corrupt_state_backup': '',
       }, username: username);
 
       expect(
