@@ -93,6 +93,11 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
 
   void _onFinanceChanged() => _load(showLoading: false);
 
+  String _displayName(FinanceLoan loan) => financeLoanDisplayName(
+    loan,
+    _overviews.map((overview) => overview.loan),
+  );
+
   Future<void> _load({bool showLoading = true}) async {
     final generation = ++_loadGeneration;
     if (mounted && showLoading) {
@@ -146,10 +151,11 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
   }
 
   Future<void> _deleteLoan(FinanceLoan loan) async {
+    final displayName = _displayName(loan);
     final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除贷款？'),
+        title: Text('删除“$displayName”？'),
         content: const Text(
           '贷款和还款计划会进入记账回收站，已发生的还款扣款和利息账单会保留。'
           '如需恢复余额，请先撤销对应还款。',
@@ -189,6 +195,7 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final loan = overview.loan;
+    final displayName = _displayName(loan);
     final due = overview.nextInstallment;
     final isOverdue = due?.isOverdueAt(widget.clock()) == true;
     final progress = overview.installments.isEmpty
@@ -208,7 +215,7 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      loan.name,
+                      displayName,
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -229,7 +236,7 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
                 ),
               ),
               PopupMenuButton<String>(
-                tooltip: '${loan.name}的更多操作',
+                tooltip: '$displayName的更多操作',
                 onSelected: (value) {
                   if (value == 'edit') _openEditor(loan);
                   if (value == 'delete') _deleteLoan(loan);

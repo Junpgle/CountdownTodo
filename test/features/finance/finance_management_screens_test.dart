@@ -885,6 +885,44 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('贷款列表可区分同名贷款', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(() async {
+      await db.update(
+        'finance_loans',
+        {'created_at': 100},
+        where: 'uuid = ?',
+        whereArgs: ['test-loan'],
+      );
+      await db.insert(
+        'finance_loans',
+        FinanceLoan(
+          uuid: 'duplicate-loan',
+          name: '电脑分期',
+          lender: '测试出借方',
+          principalMinor: 120000,
+          annualInterestRateBps: 400,
+          termMonths: 3,
+          startDate: '2026-09-01',
+          repaymentDay: 15,
+          createdAt: 200,
+        ).toMap(),
+      );
+    });
+
+    await _pump(tester, const FinanceLoanScreen());
+    final firstCard = _key('finance-loan-card-test-loan');
+    final secondCard = _key('finance-loan-card-duplicate-loan');
+    await _waitFor(
+      tester,
+      () => firstCard.evaluate().isNotEmpty && secondCard.evaluate().isNotEmpty,
+    );
+
+    expect(find.text('电脑分期（同名贷款 1/2）'), findsOneWidget);
+    expect(find.text('电脑分期（同名贷款 2/2）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('贷款详情中的已还记录明确标记已归档账户', (tester) async {
     final db = await _seed(tester);
     final paymentMethod = FinancePaymentMethod(
