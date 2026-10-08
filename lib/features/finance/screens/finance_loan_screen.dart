@@ -712,6 +712,15 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
     );
   }
 
+  String _repaymentAccountLabel(String? paymentMethodUuid) {
+    if (paymentMethodUuid == null) return '未关联还款账户';
+    final paymentMethod = _paymentMethods
+        .where((item) => item.uuid == paymentMethodUuid)
+        .firstOrNull;
+    if (paymentMethod == null) return '还款账户：未知账户';
+    return '还款账户：${paymentMethod.name}${paymentMethod.isArchived ? '（已归档）' : ''}';
+  }
+
   Widget _buildInstallmentTile(
     BuildContext context,
     FinanceLoanInstallment installment,
@@ -784,11 +793,7 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
           ),
           const SizedBox(height: 14),
           if (installment.isPaid) ...[
-            Text(
-              installment.paymentMethodUuid == null
-                  ? '未关联还款账户'
-                  : '还款账户：${_paymentMethods.where((item) => item.uuid == installment.paymentMethodUuid).firstOrNull?.name ?? '未知账户'}',
-            ),
+            Text(_repaymentAccountLabel(installment.paymentMethodUuid)),
             if (installment.paidAt != null)
               Text(
                 '实际还款：${DateFormat('yyyy年M月d日 HH:mm').format(DateTime.fromMillisecondsSinceEpoch(installment.paidAt!))}',

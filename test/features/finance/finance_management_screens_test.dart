@@ -742,6 +742,35 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('贷款详情中的已还记录明确标记已归档账户', (tester) async {
+    final db = await _seed(tester);
+    final paymentMethod = FinancePaymentMethod(
+      uuid: 'archived-loan-history-payment-method',
+      name: '已归档还款卡',
+      isArchived: true,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_payment_methods', paymentMethod.toMap());
+      await db.update(
+        'finance_loan_installments',
+        {'payment_method_uuid': paymentMethod.uuid},
+        where: 'uuid = ?',
+        whereArgs: ['test-installment-1'],
+      );
+    });
+
+    await _pump(tester, FinanceLoanDetailScreen(loan: _loan()));
+    await tester.scrollUntilVisible(
+      _key('finance-loan-installment-test-installment-1'),
+      250,
+      maxScrolls: 20,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.text('还款账户：已归档还款卡（已归档）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('表单打开期间归档分类和账户后新账单会清除旧关联', (tester) async {
     final db = await _seed(tester);
     final category = FinanceCategory(
