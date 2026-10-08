@@ -204,6 +204,9 @@ class _FinanceCategoryDetailScreenState
     return current;
   }
 
+  String _categoryLabel(FinanceCategory category) =>
+      '${category.name}${category.isArchived ? '（已归档）' : ''}';
+
   bool _belongsToRoot(FinanceTransaction transaction) {
     final category = categories[transaction.categoryUuid];
     final root = _rootCategory;
@@ -266,13 +269,15 @@ class _FinanceCategoryDetailScreenState
           .toList();
       if (categoryTransactions.isEmpty) continue;
       final amount = _netExpense(categoryTransactions);
-      result.add(_FinanceCategoryDetailItem(
-        categoryUuid: category.uuid,
-        title: category.name,
-        icon: category.icon,
-        amountMinor: amount,
-        transactionCount: categoryTransactions.length,
-      ));
+      result.add(
+        _FinanceCategoryDetailItem(
+          categoryUuid: category.uuid,
+          title: _categoryLabel(category),
+          icon: category.icon,
+          amountMinor: amount,
+          transactionCount: categoryTransactions.length,
+        ),
+      );
     }
 
     final directTransactions = matchingTransactions
@@ -280,13 +285,15 @@ class _FinanceCategoryDetailScreenState
         .toList();
     final directAmount = _netExpense(directTransactions);
     if (directTransactions.isNotEmpty) {
-      result.add(_FinanceCategoryDetailItem(
-        categoryUuid: root.uuid,
-        title: root.name,
-        icon: root.icon,
-        amountMinor: directAmount,
-        transactionCount: directTransactions.length,
-      ));
+      result.add(
+        _FinanceCategoryDetailItem(
+          categoryUuid: root.uuid,
+          title: _categoryLabel(root),
+          icon: root.icon,
+          amountMinor: directAmount,
+          transactionCount: directTransactions.length,
+        ),
+      );
     }
     result.sort((a, b) => b.amountMinor.compareTo(a.amountMinor));
     return result;
@@ -313,7 +320,7 @@ class _FinanceCategoryDetailScreenState
         emptyMessage = '这个分类已删除或不可用';
       }
     } else {
-      categoryTitle = root.name;
+      categoryTitle = _categoryLabel(root);
       if (hasSubcategories) {
         sectionTitle = isPlanned ? '计划小类' : '小类';
         emptyMessage = isPlanned

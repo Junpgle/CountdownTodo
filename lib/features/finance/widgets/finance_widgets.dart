@@ -592,7 +592,12 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     final category = entry.categoryUuid == null
         ? null
         : categories[entry.categoryUuid];
-    final categoryName = category == null ? '未分类' : category.name;
+    final categoryName = category == null
+        ? '未分类'
+        : financeCategoryDisplayName(category, categories.values);
+    final categoryLabel = category == null
+        ? categoryName
+        : '${category.isArchived ? '已归档 ' : ''}$categoryName';
     final categoryKey = ValueKey(
       'finance-overview-category-${entry.categoryUuid ?? 'uncategorized'}',
     );
@@ -603,7 +608,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     return Semantics(
       key: categoryKey,
       button: true,
-      label: '查看$categoryName支出详情',
+      label: '查看$categoryLabel支出详情',
       child: InkWell(
         key: sourceKey,
         borderRadius: BorderRadius.circular(12),
@@ -613,9 +618,9 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
           child: Row(
             children: [
               SizedBox(
-                width: 82,
+                width: 105,
                 child: Text(
-                  category == null ? '未分类' : '${category.icon} $categoryName',
+                  category == null ? '未分类' : '${category.icon} $categoryLabel',
                   overflow: TextOverflow.ellipsis,
                 ),
               ),

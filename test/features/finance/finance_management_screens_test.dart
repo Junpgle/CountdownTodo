@@ -5,6 +5,7 @@ import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/screens/finance_automation_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_budget_entry_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_budget_screen.dart';
+import 'package:countdown_todo/features/finance/screens/finance_category_detail_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_entry_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_home_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_loan_entry_screen.dart';
@@ -3636,6 +3637,75 @@ void main() {
       find.byKey(const ValueKey('finance-ledger-category-filter')),
     );
     expect(changedCategoryUuid, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('分类汇总和详情明确标记已归档分类', (tester) async {
+    final now = DateTime.now();
+    final root = FinanceCategory(
+      uuid: 'archived-summary-root',
+      name: '归档大类',
+      icon: '🍜',
+      isArchived: true,
+    );
+    final child = FinanceCategory(
+      uuid: 'archived-summary-child',
+      name: '归档小类',
+      parentUuid: root.uuid,
+      isArchived: true,
+    );
+    final transaction = FinanceTransaction(
+      uuid: 'archived-summary-transaction',
+      amountMinor: 3500,
+      categoryUuid: child.uuid,
+      transactionDate: dateKey(now),
+      occurredAt: now.millisecondsSinceEpoch,
+      timezoneOffsetMinutes: now.timeZoneOffset.inMinutes,
+      merchant: '归档分类账单',
+    );
+    final categories = {root.uuid: root, child.uuid: child};
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: DateTime(now.year, now.month),
+          clock: () => now,
+          summary: FinanceSummary.fromTransactions([transaction]),
+          transactions: [transaction],
+          categories: categories,
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+    );
+    await tester.scrollUntilVisible(
+      _key('finance-overview-category-${root.uuid}'),
+      250,
+      maxScrolls: 20,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.textContaining('已归档 归档大类'), findsOneWidget);
+
+    await _pump(
+      tester,
+      FinanceCategoryDetailScreen(
+        periodTitle: '本月',
+        clock: () => now,
+        rootCategoryUuid: root.uuid,
+        transactions: [transaction],
+        categories: categories,
+      ),
+    );
+    expect(find.text('归档大类（已归档）'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('归档小类（已归档）'),
+      250,
+      maxScrolls: 20,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('归档小类（已归档）'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
