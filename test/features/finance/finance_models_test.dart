@@ -1004,6 +1004,12 @@ void main() {
           transactionDate: '2026-09-06',
           paymentMethodUuid: 'csv-account-second',
         ),
+        FinanceTransaction(
+          uuid: 'csv-deleted-category',
+          amountMinor: 100,
+          transactionDate: '2026-09-07',
+          categoryUuid: 'deleted-category',
+        ),
       ],
       categories: const {},
       paymentMethods: {
@@ -1042,6 +1048,10 @@ void main() {
     expect(
       csv,
       contains('2026-09-06,收入,2.00,未分类,💳 导出同名账户（同名账户 2/2）'),
+    );
+    expect(
+      csv,
+      contains('2026-09-07,支出,-1.00,分类已删除或不可用,未指定'),
     );
   });
 

@@ -139,6 +139,38 @@ void main() {
     expect(context, contains('已发生午餐'));
   });
 
+  test('AI上下文区分已删除分类与未分类账单', () {
+    final pastAt = now.subtract(const Duration(hours: 1));
+    final transaction = FinanceTransaction(
+      uuid: 'context-deleted-category',
+      amountMinor: 1000,
+      categoryUuid: 'deleted-context-category',
+      transactionDate: dateKey(now),
+      occurredAt: pastAt.millisecondsSinceEpoch,
+      createdAt: pastAt.millisecondsSinceEpoch,
+    );
+    final asOfAt = now.millisecondsSinceEpoch;
+    final context = FinanceAiContextService.formatContext(
+      range: FinanceDateRange(
+        DateTime(now.year, now.month),
+        DateTime(now.year, now.month + 1),
+      ),
+      summary: FinanceSummary.fromTransactions(
+        [transaction],
+        asOfAt: asOfAt,
+      ),
+      transactions: [transaction],
+      categories: const [],
+      paymentMethods: const [],
+      budgets: const [],
+      budgetSummaries: const {},
+      asOfAt: asOfAt,
+    );
+
+    expect(context, contains('分类已删除或不可用'));
+    expect(context, isNot(contains('分类: 未分类')));
+  });
+
   test('动作协议覆盖查询、修改、删除和真实ID安全规则', () {
     final prompt =
         AiTodoContextBuilder.buildActionProtocolPrompt('查询本月账单并统计餐饮支出');
