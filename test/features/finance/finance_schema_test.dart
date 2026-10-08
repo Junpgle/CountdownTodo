@@ -3953,6 +3953,46 @@ void main() {
     expect(deviceBTransaction['pending_sync'], 1);
   });
 
+  test('reenabling AI auto ledger reconciles unposted current-month usage',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'ai-cost-reenable-ledger-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+    await AiUsageCostService.setAutoLedgerEnabled(false);
+    await AiUsageCostService.savePricing(
+      const AiUsagePricing(
+        provider: 'custom',
+        model: 'reenable-ledger-test',
+        inputMicrosPerMillion: 1000000,
+      ),
+    );
+    await AiUsageCostService.recordUsage(
+      provider: 'custom',
+      model: 'reenable-ledger-test',
+      operation: 'chat',
+      promptTokens: 1000000,
+      completionTokens: 0,
+      totalTokens: 1000000,
+      now: DateTime.now(),
+    );
+    expect(await db.query('finance_transactions'), isEmpty);
+
+    await AiUsageCostService.setAutoLedgerEnabled(true);
+    final transactions = await db.query('finance_transactions');
+    expect(transactions, hasLength(1));
+    expect(transactions.single['amount_minor'], 100);
+  });
+
   test('AI ledger keeps working after its monthly bill is deleted', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'ai-cost-deleted-ledger-test',
