@@ -1135,15 +1135,32 @@ class ApiService {
   // ==========================================
 
   static Future<List<dynamic>> fetchTeams() async {
+    final result = await fetchTeamsWithStatus();
+    return result.teams;
+  }
+
+  /// Returns whether the teams request actually succeeded, even when the user
+  /// has no teams. Search warmup uses this to avoid caching network failures as
+  /// a valid empty result.
+  static Future<({bool succeeded, List<dynamic> teams})> fetchTeamsWithStatus({
+    http.Client? client,
+  }) async {
     try {
-      final response = await _request('GET', '/api/teams');
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['teams'] ?? [];
+      final response = await _request('GET', '/api/teams', client: client);
+      if (response.statusCode != 200) {
+        return (succeeded: false, teams: const <dynamic>[]);
       }
-      return [];
-    } catch (e) {
-      return [];
+
+      final data = jsonDecode(response.body);
+      if (data is! Map) return (succeeded: false, teams: const <dynamic>[]);
+      final rawTeams = data['teams'];
+      if (rawTeams == null) return (succeeded: true, teams: const <dynamic>[]);
+      if (rawTeams is! List) {
+        return (succeeded: false, teams: const <dynamic>[]);
+      }
+      return (succeeded: true, teams: List<dynamic>.from(rawTeams));
+    } catch (_) {
+      return (succeeded: false, teams: const <dynamic>[]);
     }
   }
 

@@ -649,11 +649,11 @@ abstract final class GlobalSearchExtraService {
     final records = <SearchResult>[];
     var remoteSourceAvailable = false;
     var teamsRequestSucceeded = false;
-    final teamsFuture = ApiService.fetchTeams()
+    final teamsFuture = ApiService.fetchTeamsWithStatus()
         .timeout(const Duration(seconds: 4))
-        .then((teams) {
-          teamsRequestSucceeded = true;
-          return teams;
+        .then((result) {
+          teamsRequestSucceeded = result.succeeded;
+          return result.teams;
         })
         .catchError((Object error) {
           debugPrint('Team global search warmup failed: $error');
