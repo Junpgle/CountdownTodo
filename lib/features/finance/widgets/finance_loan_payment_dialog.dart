@@ -131,7 +131,7 @@ class _FinanceLoanPaymentDialogState extends State<FinanceLoanPaymentDialog> {
                       DropdownMenuItem(
                         value: method.uuid,
                         child: Text(
-                          '${method.icon} ${method.name}',
+                          '${method.icon} ${method.name}${method.isArchived ? '（已归档）' : ''}',
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),

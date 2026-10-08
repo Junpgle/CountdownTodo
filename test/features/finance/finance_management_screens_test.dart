@@ -15,6 +15,7 @@ import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/features/finance/services/finance_repository.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_amount_calculator.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_catalog_editor.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_loan_payment_dialog.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_management_widgets.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_today_section.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_widgets.dart';
@@ -707,6 +708,37 @@ void main() {
     );
     expect(rows, hasLength(1));
     expect(rows!.single['payment_method_uuid'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('还款账户已归档时在账户选择器中明确标记', (tester) async {
+    final paymentMethod = FinancePaymentMethod(
+      uuid: 'archived-loan-payment-method',
+      name: '旧银行卡',
+      isArchived: true,
+    );
+    final installment = FinanceLoanInstallment(
+      uuid: 'archived-loan-installment',
+      loanUuid: 'test-loan',
+      installmentIndex: 1,
+      dueDate: '2026-10-15',
+      paymentMinor: 11000,
+      principalMinor: 10000,
+      interestMinor: 1000,
+      remainingPrincipalMinor: 90000,
+      paymentMethodUuid: paymentMethod.uuid,
+    );
+
+    await _pump(
+      tester,
+      FinanceLoanPaymentDialog(
+        installment: installment,
+        paymentMethods: [paymentMethod],
+      ),
+    );
+
+    expect(find.textContaining('旧银行卡'), findsOneWidget);
+    expect(find.textContaining('（已归档）'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
