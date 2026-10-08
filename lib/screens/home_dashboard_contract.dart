@@ -241,7 +241,7 @@ mixin _HomeDashboardContract {
 
   void _tryAnotherRandomWallpaper();
 
-  Future<void> _fetchBingWallpaper({bool isFallback = false});
+  Future<void> _fetchBingWallpaper();
 
   Future<void> _initManifestWallpaper();
 
@@ -253,7 +253,7 @@ mixin _HomeDashboardContract {
 
   void _disposeWallpaperListeners();
 
-  Future<void> _fetchRandomWallpaper({bool isFallback = false});
+  Future<void> _fetchRandomWallpaper();
 
   Widget _buildSemesterProgressBar(bool isLight);
 

@@ -34,6 +34,7 @@ import '../services/external_share_handler.dart';
 import '../services/browser_file_service.dart';
 import '../services/island_todo_snapshot.dart';
 import '../services/wallpaper_cache_service.dart';
+import '../services/wallpaper_url_selector.dart';
 import '../services/pomodoro_service.dart';
 import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_sync_service.dart';

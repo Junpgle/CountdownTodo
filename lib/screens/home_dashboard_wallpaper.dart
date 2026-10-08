@@ -31,14 +31,14 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
     if (_wallpaperRetryCount == 1) {
       // If manifest failed (or was first), try provider
       if (provider == 'bing') {
-        _fetchBingWallpaper(isFallback: true);
+        _fetchBingWallpaper();
       } else {
-        _fetchRandomWallpaper(isFallback: true);
+        _fetchRandomWallpaper();
       }
     } else if (_wallpaperRetryCount == 2) {
       // If provider failed, try random (if not already tried)
       if (provider == 'bing') {
-        _fetchRandomWallpaper(isFallback: true);
+        _fetchRandomWallpaper();
       } else {
         _tryAnotherRandomWallpaper();
       }
@@ -48,15 +48,7 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
     } else if (_wallpaperRetryCount == 6) {
       // 🚀 Final Fallback: Local Asset
       // debugPrint("[Wallpaper] Using local asset fallback.");
-      if (mounted) {
-        setState(() {
-          _wallpaperDominantColor = null;
-          _extractedWallpaperUrl = null;
-          StorageService.setAppWallpaperColor(null);
-          _wallpaperUrl = 'assets/images/default_wallpaper.webp';
-          _isWallpaperLoadingError = false; // Reset to allow this to show
-        });
-      }
+      _showDefaultWallpaper();
     } else {
       // Total failure
       // debugPrint("[Wallpaper] All fallbacks exhausted. Disabling wallpaper.");
@@ -70,23 +62,84 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
   }
 
   void _tryAnotherRandomWallpaper() {
-    if (_randomWallpaperUrls.isNotEmpty) {
-      final nextUrl =
-          _randomWallpaperUrls[Random().nextInt(_randomWallpaperUrls.length)];
-      if (mounted) {
-        setState(() {
-          _wallpaperDominantColor = null;
-          _extractedWallpaperUrl = null;
-          StorageService.setAppWallpaperColor(null);
-          _wallpaperUrl = nextUrl;
-        });
-      }
-    } else {
-      _fetchRandomWallpaper(isFallback: true);
+    if (_randomWallpaperUrls.isEmpty) {
+      _fetchRandomWallpaper();
+      return;
+    }
+
+    final nextUrl = WallpaperUrlSelector.chooseAlternative(
+      _randomWallpaperUrls,
+      currentUrl: _wallpaperUrl,
+    );
+    if (nextUrl == null) {
+      _showDefaultWallpaper();
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _wallpaperDominantColor = null;
+      _extractedWallpaperUrl = null;
+      StorageService.setAppWallpaperColor(null);
+      _wallpaperUrl = nextUrl;
+    });
+  }
+
+  void _showDefaultWallpaper() {
+    if (!mounted) return;
+    setState(() {
+      _wallpaperShow = true;
+      _wallpaperDominantColor = null;
+      _extractedWallpaperUrl = null;
+      _wallpaperCopyright = null;
+      _wallpaperRetryCount = 0;
+      StorageService.setAppWallpaperColor(null);
+      _wallpaperUrl = 'assets/images/default_wallpaper.webp';
+      _isWallpaperLoadingError = false;
+    });
+  }
+
+  Future<Map<String, String?>?> _fetchBingWallpaperFromArchive({
+    required int index,
+    required String mkt,
+  }) async {
+    final archiveUrl = Uri.https('cn.bing.com', '/HPImageArchive.aspx', {
+      'format': 'js',
+      'idx': index.toString(),
+      'n': '1',
+      'mkt': mkt,
+    });
+
+    try {
+      final response = await http
+          .get(archiveUrl)
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) return null;
+
+      final payload = jsonDecode(response.body);
+      if (payload is! Map || payload['images'] is! List) return null;
+      final images = payload['images'] as List;
+      if (images.isEmpty || images.first is! Map) return null;
+
+      final image = Map<String, dynamic>.from(images.first as Map);
+      final rawUrl = image['url'];
+      final copyright = image['copyright'];
+      final imageUrl = rawUrl is String ? rawUrl.trim() : null;
+      final imageCopyright = copyright is String ? copyright.trim() : null;
+      if (imageUrl == null || imageUrl.isEmpty) return null;
+
+      return {
+        'url': Uri.parse('https://cn.bing.com').resolve(imageUrl).toString(),
+        'copyright': imageCopyright == null || imageCopyright.isEmpty
+            ? null
+            : imageCopyright,
+      };
+    } catch (_) {
+      return null;
     }
   }
 
-  Future<void> _fetchBingWallpaper({bool isFallback = false}) async {
+  Future<void> _fetchBingWallpaper() async {
     final format = await StorageService.getWallpaperImageFormat();
     final index = await StorageService.getWallpaperIndex();
     final mkt = await StorageService.getWallpaperMkt();
@@ -94,29 +147,61 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
 
     final String bingApiUrl =
         "https://bing.biturl.top/?resolution=$resolution&format=json&index=$index&mkt=$mkt&image_format=$format";
+    String? url;
+    String? copyright;
     try {
-      final response = await http.get(Uri.parse(bingApiUrl));
+      final response = await http
+          .get(Uri.parse(bingApiUrl))
+          .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final String? url = data['url'];
-        final String? copyright = data['copyright'];
-        if (url != null && url.isNotEmpty && mounted) {
-          setState(() {
-            _wallpaperShow = true;
-            _wallpaperDominantColor = null;
-            StorageService.setAppWallpaperColor(null);
-            _wallpaperUrl = url;
-            _wallpaperCopyright = copyright;
-          });
+        if (data is Map) {
+          final rawUrl = data['url'];
+          final rawCopyright = data['copyright'];
+          final responseUrl = rawUrl is String ? rawUrl.trim() : null;
+          final responseCopyright = rawCopyright is String
+              ? rawCopyright.trim()
+              : null;
+          if (responseUrl != null && responseUrl.isNotEmpty) {
+            url = responseUrl;
+            copyright = responseCopyright == null || responseCopyright.isEmpty
+                ? null
+                : responseCopyright;
+          }
         }
-      } else {
-        // 失败兜底
-        _fetchRandomWallpaper();
       }
     } catch (e) {
       // debugPrint("获取Bing壁纸失败: $e");
-      if (!isFallback) _fetchRandomWallpaper();
     }
+
+    if ((url == null || copyright == null) && !AppPlatform.isWeb) {
+      final archiveImage = await _fetchBingWallpaperFromArchive(
+        index: index,
+        mkt: mkt,
+      );
+      if (archiveImage != null) {
+        // Both requests use the same Bing index and market. Keep the primary
+        // URL (and its requested resolution) when it is already available.
+        url ??= archiveImage['url'];
+        copyright ??= archiveImage['copyright'];
+      }
+    }
+
+    if (url != null && url.isNotEmpty && mounted) {
+      setState(() {
+        _wallpaperShow = true;
+        _wallpaperDominantColor = null;
+        StorageService.setAppWallpaperColor(null);
+        _wallpaperUrl = url;
+        _wallpaperCopyright = copyright;
+      });
+      return;
+    }
+
+    // Remote API failures do not produce an Image error callback. Always
+    // advance explicitly so a fallback request cannot leave the dashboard
+    // waiting on a URL that was never set.
+    await _fetchRandomWallpaper();
   }
 
   Future<void> _initManifestWallpaper() async {
@@ -245,32 +330,56 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
     }
   }
 
-  Future<void> _fetchRandomWallpaper({bool isFallback = false}) async {
+  Future<void> _fetchRandomWallpaper() async {
     const String repoApiUrl =
         "https://api.github.com/repos/Junpgle/math_quiz_app/contents/wallpaper";
     try {
       final response = await _githubResourceService.get(Uri.parse(repoApiUrl));
       if (response.statusCode == 200) {
-        List<dynamic> files = jsonDecode(response.body);
-        List<String> urls = files
-            .where((f) =>
-                f['name'].toString().toLowerCase().endsWith('.jpg') ||
-                f['name'].toString().toLowerCase().endsWith('.png'))
-            .map((f) => f['download_url'].toString())
-            .toList();
+        final payload = jsonDecode(response.body);
+        final urls = <String>[];
+        if (payload is List) {
+          for (final file in payload) {
+            if (file is! Map) continue;
+            final name = file['name'];
+            final rawUrl = file['download_url'];
+            if (name is! String || rawUrl is! String) continue;
+            final extension = name.toLowerCase();
+            if (!extension.endsWith('.jpg') && !extension.endsWith('.png')) {
+              continue;
+            }
+            final uri = Uri.tryParse(rawUrl.trim());
+            if (uri == null ||
+                (uri.scheme != 'https' && uri.scheme != 'http') ||
+                uri.host.isEmpty) {
+              continue;
+            }
+            urls.add(uri.toString());
+          }
+        }
         if (urls.isNotEmpty && mounted) {
           _randomWallpaperUrls = urls;
+          final selectedUrl = WallpaperUrlSelector.chooseAlternative(
+            urls,
+            currentUrl: _wallpaperUrl,
+          );
+          if (selectedUrl == null) {
+            _showDefaultWallpaper();
+            return;
+          }
           setState(() {
             _wallpaperShow = true;
             _wallpaperDominantColor = null;
             StorageService.setAppWallpaperColor(null);
-            _wallpaperUrl = urls[Random().nextInt(urls.length)];
+            _wallpaperUrl = selectedUrl;
           });
+          return;
         }
       }
     } catch (e) {
       // debugPrint("获取壁纸失败: $e");
     }
+    _showDefaultWallpaper();
   }
 
   Widget _buildSemesterProgressBar(bool isLight) {
