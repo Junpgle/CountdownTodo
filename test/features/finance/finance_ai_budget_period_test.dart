@@ -1309,6 +1309,12 @@ void main() {
         'paymentMethodLabel=AI同名账户（同名账户 2/2）',
       ),
     );
+    expect(
+      catalog,
+      contains(
+        '展示标签只用于辨认；输出 categoryName/paymentMethodName 时照抄原始名称',
+      ),
+    );
 
     final transaction = FinanceTransaction(
       uuid: 'ai-duplicate-history-transaction',
