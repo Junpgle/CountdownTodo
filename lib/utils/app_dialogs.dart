@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../services/liquid_glass_effect_service.dart';
+import 'semester_week_context.dart';
 import 'system_ui_style.dart';
 import 'theme_color_tokens.dart';
 
@@ -225,7 +226,17 @@ Future<DateTime?> showAppDatePicker({
   Icon? switchToCalendarEntryModeIcon,
   CalendarDelegate<DateTime> calendarDelegate =
       const GregorianCalendarDelegate(),
+  SemesterWeekContext? semesterWeekContext,
 }) {
+  final effectiveCalendarDelegate = semesterWeekContext == null
+      ? calendarDelegate
+      : SemesterWeekCalendarDelegate(
+          semesterWeekContext: semesterWeekContext,
+          base: calendarDelegate,
+          landscapeHeader:
+              MediaQuery.orientationOf(context) == Orientation.landscape,
+        );
+
   return showDatePicker(
     context: context,
     initialDate: initialDate,
@@ -258,7 +269,7 @@ Future<DateTime?> showAppDatePicker({
     onDatePickerModeChange: onDatePickerModeChange,
     switchToInputEntryModeIcon: switchToInputEntryModeIcon,
     switchToCalendarEntryModeIcon: switchToCalendarEntryModeIcon,
-    calendarDelegate: calendarDelegate,
+    calendarDelegate: effectiveCalendarDelegate,
   );
 }
 

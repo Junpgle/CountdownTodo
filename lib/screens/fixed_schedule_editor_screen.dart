@@ -11,6 +11,7 @@ import '../services/reminder_schedule_service.dart';
 import '../services/schedule_conflict_service.dart';
 import '../storage_service.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/semester_week_context.dart';
 
 class FixedScheduleEditorScreen extends StatefulWidget {
   const FixedScheduleEditorScreen({
@@ -66,6 +67,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   bool _saving = false;
   bool _canChangeTeam = true;
   int? _currentUserId;
+  SemesterWeekContext? _semesterWeekContext;
 
   bool get _editing => widget.item != null;
 
@@ -105,6 +107,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     );
     _selectedTeamUuid = item?.teamUuid ?? widget.initialTeamUuid;
     _seriesItems = item == null ? [] : [item];
+    _loadSemesterWeekContext();
     _loadEditorContext();
   }
 
@@ -123,6 +126,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
       initialDate: _date,
+      semesterWeekContext: _semesterWeekContext,
     );
     if (picked != null && mounted) {
       setState(() {
@@ -163,11 +167,22 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       lastDate: DateTime(_date.year + 5, 12, 31),
       initialDate:
           _recurrenceEndDate.isBefore(_date) ? _date : _recurrenceEndDate,
+      semesterWeekContext: _semesterWeekContext,
     );
     if (picked != null && mounted) {
       setState(() => _recurrenceEndDate = picked);
     }
   }
+
+  Future<void> _loadSemesterWeekContext() async {
+    final semesterWeekContext = await SemesterWeekContext.loadForToday();
+    if (!mounted) return;
+    setState(() => _semesterWeekContext = semesterWeekContext);
+  }
+
+  String _dateWithSemesterWeek(DateTime date, String formattedDate) =>
+      _semesterWeekContext?.appendWeekLabel(date, formattedDate) ??
+      formattedDate;
 
   Future<void> _loadEditorContext() async {
     final results = await Future.wait<dynamic>([
@@ -544,7 +559,10 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                     title: Text(
                       _recurrence == RecurrenceType.none ? '日期' : '首次日期',
                     ),
-                    subtitle: Text(DateFormat('yyyy-MM-dd').format(_date)),
+                    subtitle: Text(_dateWithSemesterWeek(
+                      _date,
+                      DateFormat('yyyy-MM-dd').format(_date),
+                    )),
                     onTap: _pickDate,
                   ),
                   LiquidGlassSwitchListTile(
@@ -622,7 +640,10 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                       leading: const Icon(Icons.event_repeat_rounded),
                       title: const Text('重复结束日期'),
                       subtitle: Text(
-                        DateFormat('yyyy-MM-dd').format(_recurrenceEndDate),
+                        _dateWithSemesterWeek(
+                          _recurrenceEndDate,
+                          DateFormat('yyyy-MM-dd').format(_recurrenceEndDate),
+                        ),
                       ),
                       onTap: _pickRecurrenceEndDate,
                     ),
