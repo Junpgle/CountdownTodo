@@ -215,6 +215,16 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
           _categories = categories;
           _paymentMethods = paymentMethods;
           _templates = templates;
+          if (widget.transaction == null &&
+              widget.originalTransaction == null) {
+            _clearArchivedNewEntryAssociations();
+            _normalizeSelections(
+              notify: false,
+              allowDefaultCategory:
+                  !_archivedCategoryRequiresSelection &&
+                  !_shouldKeepUnresolvedDraftCategory(),
+            );
+          }
         });
       } while (_catalogRefreshPending);
     } catch (error) {

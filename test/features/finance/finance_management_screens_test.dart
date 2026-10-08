@@ -587,6 +587,54 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('表单打开期间归档分类和账户后新账单会清除旧关联', (tester) async {
+    final db = await _seed(tester);
+    final category = FinanceCategory(
+      uuid: 'live-archived-category',
+      name: '待归档分类',
+    );
+    final paymentMethod = FinancePaymentMethod(
+      uuid: 'live-archived-payment',
+      name: '待归档账户',
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_categories', category.toMap());
+      await db.insert('finance_payment_methods', paymentMethod.toMap());
+    });
+    final draft = FinanceEntryDraft(
+      amountMinor: 1200,
+      transactionDate: dateKey(DateTime.now()),
+      categoryUuid: category.uuid,
+      paymentMethodUuid: paymentMethod.uuid,
+      source: FinanceEntrySource.ai,
+    );
+
+    await _pump(tester, FinanceEntryScreen(initialDraft: draft));
+    expect(find.text('待归档分类'), findsOneWidget);
+    await tester.runAsync(() async {
+      await FinanceStorage.archiveCategory(category.uuid);
+      await FinanceStorage.archivePaymentMethod(paymentMethod.uuid);
+    });
+    await _waitFor(
+      tester,
+      () => find.text('待归档分类').evaluate().isEmpty,
+    );
+
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['category_uuid'], isNot(category.uuid));
+    expect(rows.single['payment_method_uuid'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('计算器拒绝超过金额安全上限的结果并保留边界值', (tester) async {
     Future<void> pumpCalculator(String expression) => tester.pumpWidget(
       MaterialApp(
