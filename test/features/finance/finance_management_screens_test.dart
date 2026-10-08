@@ -10,6 +10,7 @@ import 'package:countdown_todo/features/finance/screens/finance_entry_screen.dar
 import 'package:countdown_todo/features/finance/screens/finance_home_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_loan_entry_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_loan_screen.dart';
+import 'package:countdown_todo/features/finance/screens/finance_settings_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_transaction_detail_screen.dart';
 import 'package:countdown_todo/features/finance/screens/finance_trash_screen.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
@@ -1031,6 +1032,40 @@ void main() {
         of: find.text('共同账户（同名账户 2/2）'),
         matching: find.byType(ListTile),
       ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('归档同名账户时确认框区分目标账户', (tester) async {
+    final db = await _seed(tester);
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'settings-duplicate-account-one',
+      name: '设置同名账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'settings-duplicate-account-two',
+      name: '设置同名账户',
+      sortOrder: 20,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_payment_methods', firstMethod.toMap());
+      await db.insert('finance_payment_methods', secondMethod.toMap());
+    });
+
+    await _pump(tester, const FinanceSettingsScreen(username: 'test-user'));
+    await _tap(tester, find.text('付款方式'));
+    await _tap(
+      tester,
+      find.byTooltip('管理设置同名账户（同名账户 2/2）'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('归档').last);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(
+      find.text('归档“设置同名账户（同名账户 2/2）”？'),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);

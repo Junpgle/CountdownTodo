@@ -238,8 +238,10 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
 
   Future<void> _archivePaymentMethod(FinancePaymentMethod method) async {
     if (method.isSystem) return;
+    final displayName =
+        financePaymentMethodDisplayName(method, _paymentMethods);
     final confirmed = await _confirmArchive(
-      title: '归档“${method.name}”？',
+      title: '归档“$displayName”？',
       message: '归档后，新建账单中不再显示该付款方式；历史账单不受影响。',
     );
     if (confirmed != true) return;
