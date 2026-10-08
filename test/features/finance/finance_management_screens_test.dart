@@ -588,6 +588,49 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('文本识别未匹配到账账户名称会在编辑表单中保留', (tester) async {
+    await _seed(tester);
+    await _pump(
+      tester,
+      FinanceEntryScreen(
+        initialDraft: FinanceEntryDraft(
+          type: FinanceTransactionType.income,
+          amountMinor: 50000,
+          transactionDate: dateKey(DateTime.now()),
+          categoryName: '工资',
+          paymentMethodName: '未添加的工资卡',
+        ),
+      ),
+    );
+
+    await _waitFor(
+      tester,
+      () => find.text('未匹配到账账户：未添加的工资卡').evaluate().isNotEmpty,
+    );
+    expect(find.text('未匹配到账账户：未添加的工资卡'), findsOneWidget);
+    expect(find.text('未指定（不更新账户余额）'), findsNothing);
+
+    await _tap(tester, _key('finance-payment-null'));
+    expect(find.text('暂不记录到账账户'), findsOneWidget);
+    await _tap(tester, find.text('未指定'));
+    await tester.pumpAndSettle();
+    expect(find.text('未指定（不更新账户余额）'), findsOneWidget);
+
+    await tester.runAsync(
+      () => FinanceStorage.savePaymentMethod(
+        FinancePaymentMethod(
+          uuid: 'synced-payroll-card',
+          name: '未添加的工资卡',
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    expect(find.text('未指定（不更新账户余额）'), findsOneWidget);
+    expect(find.text('未匹配到账账户：未添加的工资卡'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('自然语言历史账单没有时刻时提示按录入时间估算', (tester) async {
     await _seed(tester);
     await _pump(
@@ -1123,6 +1166,7 @@ void main() {
     await _tap(tester, _key('finance-payment-refund-destination-card'));
     expect(find.text('选择退款到账账户'), findsOneWidget);
     expect(find.text('退款会加到所选账户已录入的余额'), findsOneWidget);
+    expect(find.text('暂不记录退款到账账户'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1143,6 +1187,9 @@ void main() {
     expect(find.text('到账账户（可选）'), findsOneWidget);
     expect(find.text('已删除或未知到账账户'), findsOneWidget);
     expect(find.text('已删除或未知付款方式'), findsNothing);
+    await _tap(tester, _key('finance-payment-deleted-payment-method'));
+    expect(find.text('选择到账账户'), findsOneWidget);
+    expect(find.text('暂不记录到账账户'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

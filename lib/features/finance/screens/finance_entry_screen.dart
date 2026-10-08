@@ -56,6 +56,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   List<FinanceEntryTemplate> _templates = const [];
   String? _categoryUuid;
   String? _paymentMethodUuid;
+  String? _unmatchedDraftPaymentMethodName;
+  bool _paymentMethodSelectionEdited = false;
   String? _selectedTemplateUuid;
   String? _amountExpression;
   List<FinanceTransaction> _existingInstallments = const [];
@@ -384,13 +386,18 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
               .map((item) => item.uuid)
               .firstOrNull;
     }
-    if (_paymentMethodUuid == null && draft.paymentMethodName != null) {
-      final wanted = _normalizeOptionName(draft.paymentMethodName!);
-      _paymentMethodUuid = _paymentMethods
+    final draftPaymentMethodName = draft.paymentMethodName?.trim();
+    if (!_paymentMethodSelectionEdited &&
+        _paymentMethodUuid == null &&
+        draftPaymentMethodName?.isNotEmpty == true) {
+      final wanted = _normalizeOptionName(draftPaymentMethodName!);
+      final matched = _paymentMethods
           .where((item) => !item.isDeleted)
           .where((item) => _normalizeOptionName(item.name) == wanted)
-          .map((item) => item.uuid)
           .firstOrNull;
+      _paymentMethodUuid = matched?.uuid;
+      _unmatchedDraftPaymentMethodName =
+          matched == null ? draftPaymentMethodName : null;
     }
   }
 
@@ -774,6 +781,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _noteController.text = draft.note ?? '';
       _categoryUuid = draft.categoryUuid;
       _paymentMethodUuid = draft.paymentMethodUuid;
+      _unmatchedDraftPaymentMethodName = null;
+      _paymentMethodSelectionEdited = false;
       _selectedTemplateUuid = null;
       _resolveSelectionsFromDraft(draft);
       _normalizeSelections(
@@ -1266,6 +1275,15 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
               FinanceTransactionType.income => '已删除或未知到账账户',
               FinanceTransactionType.refund => '已删除或未知退款到账账户',
             }
+          : _unmatchedDraftPaymentMethodName != null
+          ? switch (_type) {
+              FinanceTransactionType.expense =>
+                '未匹配付款方式：$_unmatchedDraftPaymentMethodName',
+              FinanceTransactionType.income =>
+                '未匹配到账账户：$_unmatchedDraftPaymentMethodName',
+              FinanceTransactionType.refund =>
+                '未匹配退款到账账户：$_unmatchedDraftPaymentMethodName',
+            }
           : _type == FinanceTransactionType.expense
           ? '未指定'
           : '未指定（不更新账户余额）',
@@ -1500,6 +1518,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       selectedUuid: _paymentMethodUuid,
       optionUuid: (item) => item.uuid,
       includeUnset: true,
+      unsetSubtitle: switch (_type) {
+        FinanceTransactionType.expense => '暂不记录付款方式',
+        FinanceTransactionType.income => '暂不记录到账账户',
+        FinanceTransactionType.refund => '暂不记录退款到账账户',
+      },
       optionBuilder: (context, item, isSelected, onTap) =>
           _buildFinanceOptionTile(
             context,
@@ -1515,7 +1538,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     );
     if (!mounted || selected == null) return;
     _dismissKeyboard();
-    setState(() => _paymentMethodUuid = selected.value?.uuid);
+    setState(() {
+      _paymentMethodUuid = selected.value?.uuid;
+      _unmatchedDraftPaymentMethodName = null;
+      _paymentMethodSelectionEdited = true;
+    });
   }
 
   Future<_FinanceOptionSelection<T>?> _showFinanceOptionPicker<T>({
@@ -1533,6 +1560,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     )
     optionBuilder,
     bool includeUnset = false,
+    String unsetSubtitle = '暂不记录付款方式',
     String? addTooltip,
     Future<T?> Function()? onAdd,
   }) async {
@@ -1640,7 +1668,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                     return _buildFinanceOptionTile(
                       context,
                       title: '未指定',
-                      subtitle: '暂不记录付款方式',
+                      subtitle: unsetSubtitle,
                       icon: Icons.remove_rounded,
                       accent: colorScheme.outline,
                       isSelected: selectedUuid == null,
@@ -2552,6 +2580,8 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       _noteController.text = selected.note ?? '';
       _categoryUuid = selected.categoryUuid;
       _paymentMethodUuid = selected.paymentMethodUuid;
+      _unmatchedDraftPaymentMethodName = null;
+      _paymentMethodSelectionEdited = true;
       _normalizeSelections(notify: false);
     });
     _dismissKeyboard();
