@@ -3820,6 +3820,10 @@ void main() {
           find.byType(FinanceBudgetEntryScreen).evaluate().isNotEmpty &&
           _key('finance-budget-amount').evaluate().isNotEmpty,
     );
+    expect(
+      find.text('关联此付款方式的支出会扣减余额；收入和退款记到此账户时会加回。'),
+      findsOneWidget,
+    );
     await tester.enterText(_field('finance-budget-amount'), '100');
     await _tap(tester, find.text('保存余额'));
     expect(find.text('请先选择该月份内的余额对应时间'), findsOneWidget);

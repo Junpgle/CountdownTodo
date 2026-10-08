@@ -503,7 +503,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
                                   title: _isPaymentScope ? '付款方式' : '预算范围',
                                   icon: Icons.track_changes_outlined,
                                   description: _isPaymentScope
-                                      ? '记到此付款方式的支出会扣减余额，收入和退款会加回。'
+                                      ? '关联此付款方式的支出会扣减余额；收入和退款记到此账户时会加回。'
                                       : '总预算覆盖全部支出；分类预算和付款方式余额独立统计。',
                                   child: DropdownButtonFormField<String>(
                                     key: ValueKey(
