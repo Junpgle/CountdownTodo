@@ -69,7 +69,8 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
           if (!method.isDeleted)
             _CatalogEntry(
               uuid: method.uuid,
-              name: method.name,
+              name: financePaymentMethodDisplayName(
+                  method, widget.paymentMethods),
               icon: method.icon,
               isSystem: method.isSystem,
               isArchived: method.isArchived,

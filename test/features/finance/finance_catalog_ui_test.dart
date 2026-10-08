@@ -36,6 +36,7 @@ Future<void> _pumpCatalog(
   double textScale = 1,
   Brightness brightness = Brightness.light,
   List<FinanceCategory>? categories,
+  List<FinancePaymentMethod>? paymentMethods,
   Future<FinanceCategory?> Function(FinanceCategoryType)? onAdd,
   Future<void> Function(FinanceCategory)? onAddSubcategory,
   Future<void> Function(FinanceCategory)? onEdit,
@@ -60,7 +61,7 @@ Future<void> _pumpCatalog(
         padding: const EdgeInsets.all(16),
         child: FinanceCatalogManager(
           categories: categories ?? _categories(),
-          paymentMethods: [
+          paymentMethods: paymentMethods ?? [
             FinancePaymentMethod(
                 uuid: 'wechat', name: '微信', icon: '💬', isSystem: true),
             FinancePaymentMethod(uuid: 'card', name: '日常银行卡', icon: '💳'),
@@ -182,6 +183,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('日常银行卡'), findsOneWidget);
     expect(find.text('微信'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('付款方式目录区分同名账户', (tester) async {
+    await _pumpCatalog(
+      tester,
+      paymentMethods: [
+        FinancePaymentMethod(
+          uuid: 'duplicate-account-first',
+          name: '目录同名账户',
+          sortOrder: 1,
+        ),
+        FinancePaymentMethod(
+          uuid: 'duplicate-account-second',
+          name: '目录同名账户',
+          sortOrder: 2,
+        ),
+      ],
+    );
+
+    await tester.tap(find.text('付款方式'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('目录同名账户（同名账户 1/2）'), findsOneWidget);
+    expect(find.text('目录同名账户（同名账户 2/2）'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
