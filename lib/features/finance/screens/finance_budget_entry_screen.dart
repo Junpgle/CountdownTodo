@@ -229,14 +229,17 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
         DropdownMenuItem(
           value: '$_categoryPrefix${category.uuid}',
           child: Text(
-              '${category.icon}  分类 · ${financeCategoryDisplayName(category, _categories)}',
-              overflow: TextOverflow.ellipsis),
+            '${category.icon}  分类 · ${financeCategoryDisplayName(category, _categories)}${category.isArchived ? '（已归档）' : ''}',
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       for (final method in _visiblePaymentMethods)
         DropdownMenuItem(
           value: '$_paymentPrefix${method.uuid}',
-          child: Text('${method.icon}  付款方式 · ${method.name}',
-              overflow: TextOverflow.ellipsis),
+          child: Text(
+            '${method.icon}  付款方式 · ${method.name}${method.isArchived ? '（已归档）' : ''}',
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
     ];
     if (_scopeValue != _overallValue &&
