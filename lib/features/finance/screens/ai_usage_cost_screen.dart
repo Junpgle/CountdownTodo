@@ -489,7 +489,7 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
             leading: const Icon(Icons.auto_awesome_outlined),
             title: Text('${item.provider} · ${item.model}'),
             subtitle: Text(
-              '${item.calls} 次 · ${NumberFormat.decimalPattern().format(item.totalTokens)} Token'
+              '${item.calls} 次 · ${_usageDescription(item.provider, item.model, item.totalTokens, item.audioSeconds)}'
               '${item.cachedPromptTokens == 0 ? '' : ' · 缓存 ${item.cachedPromptTokens}'}'
               '${item.imageTokens == 0 ? '' : ' · 图片 ${item.imageTokens}'}'
               '${item.unpricedCalls == 0 ? '' : ' · ${item.unpricedCalls} 次待定价'}',
@@ -512,10 +512,9 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
           contentPadding: const EdgeInsets.symmetric(horizontal: 4),
           title: Text('${item.provider} · ${item.model}'),
           subtitle: Text(
-            '${item.operation} · ${NumberFormat.decimalPattern().format(item.totalTokens)} Token'
+            '${item.operation == 'voice_asr' || item.operation == 'asr' ? '语音识别' : item.operation} · ${_usageDescription(item.provider, item.model, item.totalTokens, item.audioSeconds)}'
             '${item.cachedPromptTokens == 0 ? '' : ' · 缓存 ${item.cachedPromptTokens}'}'
-            '${item.imageTokens == 0 ? '' : ' · 图片 ${item.imageTokens}'}'
-            '${item.audioSeconds == 0 ? '' : ' · 音频 ${item.audioSeconds}s'}',
+            '${item.imageTokens == 0 ? '' : ' · 图片 ${item.imageTokens}'}',
           ),
           trailing: Text(
             item.isPriced
@@ -525,6 +524,22 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
         ),
       ),
   ];
+
+  String _usageDescription(
+    String provider,
+    String model,
+    int totalTokens,
+    int audioSeconds,
+  ) {
+    final normalizedProvider = provider.toLowerCase();
+    if ((normalizedProvider == 'mimo' ||
+            normalizedProvider == 'mimo_token_plan') &&
+        model == 'mimo-v2.5-asr') {
+      return audioSeconds > 0 ? '录音 $audioSeconds 秒' : '录音时长未返回';
+    }
+    return '${NumberFormat.decimalPattern().format(totalTokens)} Token'
+        '${audioSeconds == 0 ? '' : ' · 音频 ${audioSeconds}s'}';
+  }
 
   Widget _buildMonthPicker() {
     final currentMonth = DateTime(DateTime.now().year, DateTime.now().month);
