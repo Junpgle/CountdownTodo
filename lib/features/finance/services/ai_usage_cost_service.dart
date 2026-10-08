@@ -962,7 +962,7 @@ abstract final class AiUsageCostService {
     // MiMo ASR is billed by audio duration, not by the token fields in the
     // response. Other models use duration pricing only when an hourly rate is
     // configured; a duration metadata field alone must not discard token cost.
-    if (model == 'mimo-v2.5-asr' ||
+    if ((isMimo && model == 'mimo-v2.5-asr') ||
         (audioSeconds > 0 && rates.audioMicrosPerHour > 0)) {
       if (audioSeconds <= 0 || rates.audioMicrosPerHour <= 0) return null;
       return _roundProduct(audioSeconds, rates.audioMicrosPerHour, 3600);

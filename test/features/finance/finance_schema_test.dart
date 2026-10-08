@@ -4006,6 +4006,46 @@ void main() {
     expect(records.single.isPriced, isTrue);
   });
 
+  test('same model name from another provider keeps its token pricing',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'custom-asr-model-cost-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+    await AiUsageCostService.savePricing(
+      const AiUsagePricing(
+        provider: 'custom',
+        model: 'mimo-v2.5-asr',
+        inputMicrosPerMillion: 1000000,
+        outputMicrosPerMillion: 2000000,
+      ),
+    );
+
+    await AiUsageCostService.recordUsage(
+      provider: 'custom',
+      model: 'mimo-v2.5-asr',
+      operation: 'audio_chat',
+      promptTokens: 1000,
+      completionTokens: 500,
+      totalTokens: 1500,
+      audioSeconds: 4,
+      now: DateTime(2026, 8, 30, 10),
+    );
+
+    final record = (await AiUsageCostService.getRecords()).single;
+    expect(record.isPriced, isTrue);
+    expect(record.costMicros, 2000);
+  });
+
   test('MiMo token-priced audio usage keeps token pricing when seconds exist',
       () async {
     SharedPreferences.setMockInitialValues({
