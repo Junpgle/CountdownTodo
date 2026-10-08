@@ -71,6 +71,45 @@ void main() {
     );
   });
 
+  test('AI 费用计算避免单价与 Token 相乘时溢出', () async {
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': 'ai-cost-overflow-test',
+    });
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await DatabaseHelper.ensureFinanceSchema(db);
+    await DatabaseHelper.ensureAiUsageSchema(db);
+    AiUsageCostService.databaseOverride = db;
+    FinanceStorage.databaseOverride = db;
+    await AiUsageCostService.savePricing(
+      const AiUsagePricing(
+        provider: 'custom',
+        model: 'overflow-safe-model',
+        inputMicrosPerMillion: 1000000000000000,
+      ),
+    );
+
+    final record = await AiUsageCostService.recordUsage(
+      provider: 'custom',
+      model: 'overflow-safe-model',
+      operation: 'chat',
+      promptTokens: 1000000,
+      completionTokens: 0,
+      totalTokens: 1000000,
+      now: DateTime(2026, 8, 31, 10),
+    );
+
+    expect(record?.costMicros, 1000000000000000);
+    final storedRecord = (await db.query('ai_usage_records')).single;
+    expect(storedRecord['cost_micros'], 1000000000000000);
+    final transaction = (await db.query('finance_transactions')).single;
+    expect(transaction['amount_minor'], 100000000000);
+  });
+
   test('保留旧版按日 AI 账单并为新记录生成设备月账单', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'ai-legacy-ledger-test',

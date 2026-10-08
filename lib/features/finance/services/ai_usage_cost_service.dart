@@ -1019,15 +1019,19 @@ abstract final class AiUsageCostService {
     // prompt token total. Do not add a per-image fee on top of those tokens.
     // For other providers, retain the existing optional fixed image fee.
     final tokenNumerator =
-        uncachedTokens * rates.inputMicrosPerMillion +
-        cachedTokens * cachedInputRate +
-        normalizedCompletionTokens * rates.outputMicrosPerMillion;
+        BigInt.from(uncachedTokens) * BigInt.from(rates.inputMicrosPerMillion) +
+        BigInt.from(cachedTokens) * BigInt.from(cachedInputRate) +
+        BigInt.from(normalizedCompletionTokens) *
+            BigInt.from(rates.outputMicrosPerMillion);
     final tokenCostMicros =
-        (tokenNumerator + (_tokensPerMillion ~/ 2)) ~/ _tokensPerMillion;
-    return tokenCostMicros +
-        (imageTokensIncluded || isMimo
-            ? 0
-            : imageCount * rates.imageMicrosPerImage);
+        (tokenNumerator + BigInt.from(_tokensPerMillion ~/ 2)) ~/
+        BigInt.from(_tokensPerMillion);
+    final imageCostMicros = imageTokensIncluded || isMimo
+        ? BigInt.zero
+        : BigInt.from(imageCount) * BigInt.from(rates.imageMicrosPerImage);
+    final totalCostMicros = tokenCostMicros + imageCostMicros;
+    if (totalCostMicros > BigInt.from(maxFinanceAmountMinor)) return null;
+    return totalCostMicros.toInt();
   }
 
   static _AiUsageRates? _ratesFor(
@@ -1086,9 +1090,12 @@ abstract final class AiUsageCostService {
         (minute >= 14 * 60 && minute < 18 * 60);
   }
 
-  static int _roundProduct(int value, int microsPerUnit, int divisor) {
-    final numerator = value * microsPerUnit;
-    return (numerator + (divisor ~/ 2)) ~/ divisor;
+  static int? _roundProduct(int value, int microsPerUnit, int divisor) {
+    final numerator = BigInt.from(value) * BigInt.from(microsPerUnit);
+    final rounded =
+        (numerator + BigInt.from(divisor ~/ 2)) ~/ BigInt.from(divisor);
+    if (rounded > BigInt.from(maxFinanceAmountMinor)) return null;
+    return rounded.toInt();
   }
 
   static Future<bool> _syncLedgerAggregate({
@@ -1206,8 +1213,7 @@ abstract final class AiUsageCostService {
     String provider,
     String model,
     String deviceId,
-  ) =>
-      '$_deviceMonthlyLedgerKeyPrefix|$monthKey|$provider|$model|$deviceId';
+  ) => '$_deviceMonthlyLedgerKeyPrefix|$monthKey|$provider|$model|$deviceId';
 
   static String _deviceMonthlyLedgerTransactionUuid(
     String monthKey,
