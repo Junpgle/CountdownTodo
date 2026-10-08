@@ -1152,7 +1152,9 @@ class ApiService {
       }
 
       final data = jsonDecode(response.body);
-      if (data is! Map) return (succeeded: false, teams: const <dynamic>[]);
+      if (data is! Map || data['success'] == false) {
+        return (succeeded: false, teams: const <dynamic>[]);
+      }
       final rawTeams = data['teams'];
       if (rawTeams == null) return (succeeded: true, teams: const <dynamic>[]);
       if (rawTeams is! List) {

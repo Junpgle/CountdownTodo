@@ -64,6 +64,14 @@ void main() {
           (_) async => http.Response('{"error":"offline"}', 503),
         ),
       );
+      final rejectedResult = await ApiService.fetchTeamsWithStatus(
+        client: MockClient(
+          (_) async => http.Response(
+            '{"success":false,"teams":[]}',
+            200,
+          ),
+        ),
+      );
       final malformedResult = await ApiService.fetchTeamsWithStatus(
         client: MockClient((_) async => http.Response('{"teams":{}}', 200)),
       );
@@ -72,6 +80,8 @@ void main() {
       expect(emptyResult.teams, isEmpty);
       expect(failedResult.succeeded, isFalse);
       expect(failedResult.teams, isEmpty);
+      expect(rejectedResult.succeeded, isFalse);
+      expect(rejectedResult.teams, isEmpty);
       expect(malformedResult.succeeded, isFalse);
       expect(malformedResult.teams, isEmpty);
     },
