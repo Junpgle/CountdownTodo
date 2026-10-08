@@ -378,6 +378,16 @@ void main() {
     expect(drafts.map((draft) => draft.amountMinor).toList(), [2000, 3000]);
   });
 
+  test('自然语言快速记账不会把账单中的其中明细拆成第二笔', () {
+    final drafts = FinanceTextParser.parseQuickEntries(
+      '今天午餐30元，其中米饭5元',
+      now: DateTime(2026, 10, 2),
+    );
+
+    expect(drafts, hasLength(1));
+    expect(drafts.single.amountMinor, 3000);
+  });
+
   test('自然语言快速记账支持大前天到大后天', () {
     final now = DateTime(2026, 10, 2);
     final cases = [

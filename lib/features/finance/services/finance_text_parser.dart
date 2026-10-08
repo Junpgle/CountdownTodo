@@ -705,7 +705,7 @@ abstract final class FinanceTextParser {
   }
 
   static bool _isAmountClarificationClause(String value) => RegExp(
-    r'^(?:(?:每)?满\s*\d+(?:[,.]\d+)?\s*(?:元|块钱?)?\s*减|'
+    r'^(?:其中|包括|包含|(?:每)?满\s*\d+(?:[,.]\d+)?\s*(?:元|块钱?)?\s*减|'
     r'原价|(?:(?:会员|平台|商家|店铺|支付宝|微信|银联|信用卡|银行卡|云闪付|花呗|白条)'
     r'(?:支付|付款)?)?'
     r'(?:优惠|折扣|减免|立减|满减|补贴)|'
