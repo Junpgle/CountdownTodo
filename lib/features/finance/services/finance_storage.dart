@@ -5263,8 +5263,13 @@ abstract final class FinanceStorage {
 
   static bool _isSystemUuid(String uuid) => uuid.startsWith('finance-system-');
 
+  static final Set<String> _systemCategoryUuids = FinanceDefaults.categories
+      .map((category) => category['uuid'])
+      .whereType<String>()
+      .toSet();
+
   static bool _isSystemCategoryUuid(String uuid) =>
-      uuid.startsWith('finance-system-category-');
+      _systemCategoryUuids.contains(uuid);
 
   static int _asInt(dynamic value) {
     if (value is num) return value.toInt();

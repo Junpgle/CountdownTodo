@@ -39,6 +39,30 @@ void main() {
     await db.close();
   });
 
+  test('同步合并拒绝伪造的内置分类 UUID', () async {
+    final fakeSystemCategory = FinanceCategory(
+      uuid: 'finance-system-category-fake',
+      name: '伪造系统分类',
+      isSystem: true,
+      nameCustomized: true,
+    );
+
+    expect(
+      await FinanceStorage.mergeRemoteBundle({
+        'categories': [fakeSystemCategory.toMap()],
+      }),
+      0,
+    );
+    expect(
+      await db.query(
+        'finance_categories',
+        where: 'uuid = ?',
+        whereArgs: [fakeSystemCategory.uuid],
+      ),
+      isEmpty,
+    );
+  });
+
   testWidgets('未分类净额为负时仍显示并打开账单明细', (tester) async {
     final transactions = [
       FinanceTransaction(
