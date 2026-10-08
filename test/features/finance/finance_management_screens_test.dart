@@ -4114,13 +4114,13 @@ void main() {
     await _waitFor(
       tester,
       () => find
-          .text('删除后，这笔退款不再抵扣净支出，也不再增加该付款方式的余额。确认继续吗？')
+          .text('删除后，这笔退款不再抵扣净支出，也不再增加退款到账账户的余额。确认继续吗？')
           .evaluate()
           .isNotEmpty,
     );
 
     expect(
-      find.text('删除后，这笔退款不再抵扣净支出，也不再增加该付款方式的余额。确认继续吗？'),
+      find.text('删除后，这笔退款不再抵扣净支出，也不再增加退款到账账户的余额。确认继续吗？'),
       findsOneWidget,
     );
     await tester.tap(find.widgetWithText(TextButton, '取消'));
@@ -4167,7 +4167,7 @@ void main() {
       ),
       (
         '删除后余额减少的收入',
-        '删除后，这笔收入不再计入统计，付款方式余额会相应减少。确认继续吗？',
+        '删除后，这笔收入不再计入统计，到账账户余额会相应减少。确认继续吗？',
       ),
     ]) {
       final row = find

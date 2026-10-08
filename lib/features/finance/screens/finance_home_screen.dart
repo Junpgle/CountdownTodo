@@ -544,7 +544,11 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
         FinanceTransactionType.refund => '退款',
       };
       final effect = hasPaymentMethod
-          ? '，不会影响当前付款方式余额'
+          ? switch (transaction.type) {
+              FinanceTransactionType.expense => '，不会影响当前付款方式余额',
+              FinanceTransactionType.income => '，不会影响当前到账账户余额',
+              FinanceTransactionType.refund => '，不会影响当前退款到账账户余额',
+            }
           : transaction.type == FinanceTransactionType.refund
           ? '，不再抵扣净支出'
           : '';
@@ -567,10 +571,10 @@ class _FinanceHomeScreenState extends State<FinanceHomeScreen> {
           ? '删除后，这笔支出不再计入统计，付款方式余额会相应增加。确认继续吗？'
           : '删除后不会计入统计，确认继续吗？',
       FinanceTransactionType.income => hasPaymentMethod
-          ? '删除后，这笔收入不再计入统计，付款方式余额会相应减少。确认继续吗？'
+          ? '删除后，这笔收入不再计入统计，到账账户余额会相应减少。确认继续吗？'
           : '删除后不会计入统计，确认继续吗？',
       FinanceTransactionType.refund => hasPaymentMethod
-          ? '删除后，这笔退款不再抵扣净支出，也不再增加该付款方式的余额。确认继续吗？'
+          ? '删除后，这笔退款不再抵扣净支出，也不再增加退款到账账户的余额。确认继续吗？'
           : '删除后，这笔退款不再抵扣净支出。确认继续吗？',
     };
   }
