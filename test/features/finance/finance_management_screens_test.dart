@@ -936,6 +936,62 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('回收站预算明确标记已归档的分类和账户', (tester) async {
+    final db = await _seed(tester);
+    final archivedCategory = FinanceCategory(
+      uuid: 'trash-archived-category',
+      name: '归档回收站分类',
+      isArchived: true,
+    );
+    final archivedPaymentMethod = FinancePaymentMethod(
+      uuid: 'trash-archived-payment',
+      name: '归档回收站账户',
+      isArchived: true,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_categories', archivedCategory.toMap());
+      await db.insert('finance_payment_methods', archivedPaymentMethod.toMap());
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'trash-archived-category-budget',
+          monthKey: financeMonthKey(_month),
+          categoryUuid: archivedCategory.uuid,
+          amountMinor: 12000,
+          isDeleted: true,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'trash-archived-payment-snapshot',
+          monthKey: financeMonthKey(_month),
+          paymentMethodUuid: archivedPaymentMethod.uuid,
+          amountMinor: 24000,
+          balanceSnapshotAt: DateTime(2026, 9, 10, 12).millisecondsSinceEpoch,
+          isDeleted: true,
+        ).toMap(),
+      );
+    });
+
+    await _pump(tester, const FinanceTrashScreen());
+    await tester.scrollUntilVisible(
+      find.textContaining('归档回收站分类'),
+      250,
+      maxScrolls: 20,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('归档回收站分类（已归档）预算'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.textContaining('归档回收站账户'),
+      250,
+      maxScrolls: 20,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('归档回收站账户（已归档）余额'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('计算器拒绝超过金额安全上限的结果并保留边界值', (tester) async {
     Future<void> pumpCalculator(String expression) => tester.pumpWidget(
       MaterialApp(

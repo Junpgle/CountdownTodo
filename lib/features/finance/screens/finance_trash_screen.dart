@@ -209,6 +209,18 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
     final paymentMethods = {
       for (final method in _paymentMethods) method.uuid: method
     };
+    String categoryName(String? uuid) {
+      final category = categories[uuid];
+      if (category == null) return '已归档或未知分类';
+      return '${financeCategoryDisplayName(category, _categories)}${category.isArchived ? '（已归档）' : ''}';
+    }
+
+    String paymentMethodName(String? uuid) {
+      final method = paymentMethods[uuid];
+      if (method == null) return '已归档或未知付款方式';
+      return '${method.name}${method.isArchived ? '（已归档）' : ''}';
+    }
+
     return [
       for (final item in _transactions)
         FinanceTrashEntry(
@@ -237,10 +249,10 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
           uuid: item.uuid,
           kind: FinanceTrashKind.budget,
           title: item.isPaymentMethod
-              ? '${paymentMethods[item.paymentMethodUuid]?.name ?? '已归档或未知付款方式'}余额'
+              ? '${paymentMethodName(item.paymentMethodUuid)}余额'
               : item.isOverall
                   ? '全部支出预算'
-                  : '${categories[item.categoryUuid] == null ? '已归档或未知分类' : financeCategoryDisplayName(categories[item.categoryUuid]!, _categories)}预算',
+                  : '${categoryName(item.categoryUuid)}预算',
           details: [
             item.monthKey,
             if (item.isPaymentMethod)
