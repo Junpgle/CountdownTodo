@@ -26,7 +26,9 @@ Future<Database> _setUpDatabase(WidgetTester tester) async {
 
 Future<void> _pumpLoaded(WidgetTester tester, Widget screen) async {
   await tester.pumpWidget(MaterialApp(home: screen));
-  for (var attempt = 0; attempt < 100; attempt++) {
+  // The full finance suite can load the database-backed screen more slowly
+  // than this test file does on its own.
+  for (var attempt = 0; attempt < 500; attempt++) {
     if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
       await tester.pumpAndSettle();
       return;

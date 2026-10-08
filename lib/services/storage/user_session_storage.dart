@@ -47,7 +47,6 @@ class UserSessionStorage {
   static const String _screenTimeHistory = "screen_time_history";
   static const String _localScreenTime = "local_screen_time_pending_upload";
   static int _sessionRevision = 0;
-  static Future<void> _deviceIdOperation = Future<void>.value();
 
   @visibleForTesting
   static Future<String?> Function()? installationIdProviderOverride;
@@ -193,7 +192,7 @@ class UserSessionStorage {
   static Future<String> getDeviceFriendlyName() => _getDetailedDeviceName();
 
   static Future<String> _getUniqueDeviceId(String username) =>
-      _withDeviceIdLock(() => _resolveUniqueDeviceId(username));
+      _resolveUniqueDeviceId(username);
 
   static Future<String> _resolveUniqueDeviceId(String username) async {
     final prefs = await _prefs;
@@ -240,18 +239,6 @@ class UserSessionStorage {
       return null;
     } on PlatformException {
       return null;
-    }
-  }
-
-  static Future<T> _withDeviceIdLock<T>(Future<T> Function() operation) async {
-    final previousOperation = _deviceIdOperation;
-    final nextOperation = Completer<void>();
-    _deviceIdOperation = nextOperation.future;
-    try {
-      await previousOperation;
-      return await operation();
-    } finally {
-      nextOperation.complete();
     }
   }
 
