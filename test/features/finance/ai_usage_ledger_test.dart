@@ -5,6 +5,7 @@ import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/services/ai_usage_cost_service.dart';
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/services/database_helper.dart';
+import 'package:countdown_todo/services/storage/user_session_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -65,11 +66,12 @@ void main() {
     expect(links, hasLength(1));
     expect(
       links.single['ledger_key'],
-      'finance-ai-month-v2|2026-08|mimo|mimo-v2.5',
+      'finance-ai-device-month-v1|2026-08|mimo|mimo-v2.5|'
+      '${await UserSessionStorage.getDeviceId()}',
     );
   });
 
-  test('本月记账会合并旧版按日 AI 账单并软删除重复项', () async {
+  test('保留旧版按日 AI 账单并为新记录生成设备月账单', () async {
     SharedPreferences.setMockInitialValues({
       'current_login_user': 'ai-legacy-ledger-test',
     });
@@ -83,6 +85,7 @@ void main() {
     await DatabaseHelper.ensureAiUsageSchema(db);
     AiUsageCostService.databaseOverride = db;
     FinanceStorage.databaseOverride = db;
+    await AiUsageCostService.setAutoLedgerEnabled(false);
 
     final firstTimestamp = DateTime(2026, 8, 30, 10);
     final secondTimestamp = DateTime(2026, 8, 31, 10);
@@ -138,6 +141,21 @@ void main() {
       });
     }
 
+    await AiUsageCostService.recordUsage(
+      provider: 'mimo',
+      model: 'mimo-v2.5',
+      operation: 'vision_todo',
+      promptTokens: 10000,
+      completionTokens: 2000,
+      totalTokens: 12000,
+      cachedPromptTokens: 8000,
+      imageTokens: 500,
+      imageCount: 1,
+      now: DateTime(2026, 8, 31, 11),
+    );
+    expect(await db.query('finance_transactions'), hasLength(2));
+    await AiUsageCostService.setAutoLedgerEnabled(true);
+
     await AiUsageCostService.reconcileCurrentMonth(
       now: DateTime(2026, 8, 31, 12),
     );
@@ -146,21 +164,26 @@ void main() {
       from: DateTime(2026, 8, 1),
       to: DateTime(2026, 9, 1),
     );
-    expect(activeTransactions, hasLength(1));
-    expect(activeTransactions.single.amountMinor, 1);
+    expect(activeTransactions, hasLength(3));
+    final deviceMonthlyTransaction = activeTransactions.singleWhere(
+      (transaction) => transaction.transactionDate == '2026-08-01',
+    );
+    expect(deviceMonthlyTransaction.amountMinor, 1);
     final allTransactions = await db.query(
       'finance_transactions',
       orderBy: 'uuid ASC',
     );
-    expect(allTransactions, hasLength(2));
+    expect(allTransactions, hasLength(3));
+    expect(allTransactions.where((row) => row['is_deleted'] == 1), isEmpty);
+    final links = await db.query('ai_usage_ledger_links');
+    expect(links, hasLength(3));
     expect(
-      allTransactions.where((row) => row['is_deleted'] == 1),
+      links.where(
+        (row) => row['ledger_key'].toString().startsWith(
+          'finance-ai-device-month-v1|',
+        ),
+      ),
       hasLength(1),
-    );
-    expect(await db.query('ai_usage_ledger_links'), hasLength(1));
-    expect(
-      (await db.query('ai_usage_ledger_links')).single['ledger_key'],
-      'finance-ai-month-v2|2026-08|mimo|mimo-v2.5',
     );
   });
 }
