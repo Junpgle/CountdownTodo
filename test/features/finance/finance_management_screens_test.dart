@@ -712,6 +712,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('记账账户选择器可区分同名同图标账户', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: 'picker-duplicate-account-one',
+          name: '工资卡',
+          sortOrder: 10,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: 'picker-duplicate-account-two',
+          name: '工资卡',
+          sortOrder: 20,
+        ).toMap(),
+      );
+    });
+
+    await _pump(tester, FinanceEntryScreen());
+    await _tap(tester, _key('finance-payment-null'));
+
+    expect(find.text('工资卡（同名账户 1/2）'), findsOneWidget);
+    await _tap(tester, find.text('工资卡（同名账户 2/2）'));
+    await tester.pumpAndSettle();
+    expect(find.text('工资卡（同名账户 2/2）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('还款账户已归档时在账户选择器中明确标记', (tester) async {
     final paymentMethod = FinancePaymentMethod(
       uuid: 'archived-loan-payment-method',
