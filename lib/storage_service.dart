@@ -340,6 +340,25 @@ class StorageService {
       _storage.savePlanBlocks(username, items,
           sync: sync, isSyncSource: isSyncSource);
 
+  /// Editor-only conditional write; synchronization retains its existing path.
+  static Future<TodoPlanBlock> savePlanBlockEdited(
+    String username,
+    TodoPlanBlock draft, {
+    int? expectedVersion,
+    int? expectedUpdatedAt,
+    Future<void> Function(DatabaseExecutor executor)? beforeWrite,
+    bool sync = true,
+    TodoPlanStatus? newStatus,
+  }) => _storage.savePlanBlockEdited(
+    username,
+    draft,
+    expectedVersion: expectedVersion,
+    expectedUpdatedAt: expectedUpdatedAt,
+    beforeWrite: beforeWrite,
+    sync: sync,
+    newStatus: newStatus,
+  );
+
   static Future<List<TodoPlanBlock>> getPlanBlocks(String username,
           {bool includeDeleted = false}) =>
       _storage.getPlanBlocks(username, includeDeleted: includeDeleted);

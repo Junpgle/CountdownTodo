@@ -1180,6 +1180,8 @@ class PomodoroService {
     // debugPrint(
     //     '[PomodoroService] addRecord OK (SQL+Cache), uuid=${record.uuid}');
 
+    StorageService.triggerRefresh({DataRefreshDomain.pomodoro});
+
     // 3. 立即尝试同步
     if (!isSyncSource) {
       final username = prefs.getString(StorageService.keyCurrentUser) ?? '';

@@ -3,13 +3,15 @@ part of 'storage_service.dart';
 
 mixin _StorageSync on _StorageServiceBase {
   Future<void> saveTimeLogs(String username, List<TimeLogItem> items,
-          {bool sync = true}) =>
-      PomodoroStorage.saveTimeLogs(
-        username,
-        items,
-        sync: sync,
-        requestSync: requestSync,
-      );
+          {bool sync = true}) async {
+    await PomodoroStorage.saveTimeLogs(
+      username,
+      items,
+      sync: sync,
+      requestSync: requestSync,
+    );
+    triggerRefresh({DataRefreshDomain.timeLogs});
+  }
   Future<List<TimeLogItem>> getTimeLogs(String username, {int? limit}) =>
       PomodoroStorage.getTimeLogs(
         username,
