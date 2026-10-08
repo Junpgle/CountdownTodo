@@ -144,7 +144,11 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) =>
-            FinanceLoanDetailScreen(loan: overview.loan, clock: widget.clock),
+            FinanceLoanDetailScreen(
+              loan: overview.loan,
+              loanDisplayName: _displayName(overview.loan),
+              clock: widget.clock,
+            ),
       ),
     );
     if (mounted) await _load();
@@ -478,11 +482,13 @@ class _FinanceLoanScreenState extends State<FinanceLoanScreen>
 
 class FinanceLoanDetailScreen extends StatefulWidget {
   final FinanceLoan loan;
+  final String? loanDisplayName;
   final DateTime Function() clock;
 
   const FinanceLoanDetailScreen({
     super.key,
     required this.loan,
+    this.loanDisplayName,
     this.clock = DateTime.now,
   });
 
@@ -639,7 +645,7 @@ class _FinanceLoanDetailScreenState extends State<FinanceLoanDetailScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            overview.loan.name,
+            widget.loanDisplayName ?? overview.loan.name,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
               color: colors.onPrimaryContainer,
               fontWeight: FontWeight.w700,

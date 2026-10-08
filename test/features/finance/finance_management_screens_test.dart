@@ -885,7 +885,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('贷款列表可区分同名贷款', (tester) async {
+  testWidgets('贷款列表和详情可区分同名贷款', (tester) async {
     final db = await _seed(tester);
     await tester.runAsync(() async {
       await db.update(
@@ -920,6 +920,14 @@ void main() {
 
     expect(find.text('电脑分期（同名贷款 1/2）'), findsOneWidget);
     expect(find.text('电脑分期（同名贷款 2/2）'), findsOneWidget);
+    await _tap(tester, secondCard);
+    final detailScreen = find.byType(FinanceLoanDetailScreen);
+    final detailName = find.descendant(
+      of: detailScreen,
+      matching: find.text('电脑分期（同名贷款 2/2）'),
+    );
+    await _waitFor(tester, () => detailName.evaluate().isNotEmpty);
+    expect(detailName, findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
