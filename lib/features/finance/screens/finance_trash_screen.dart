@@ -218,7 +218,9 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
     String paymentMethodName(String? uuid) {
       final method = paymentMethods[uuid];
       if (method == null) return '已归档或未知付款方式';
-      return '${method.name}${method.isArchived ? '（已归档）' : ''}';
+      final name = financePaymentMethodDisplayName(method, _paymentMethods);
+      final archivedLabel = method.isArchived ? '（已归档）' : '';
+      return '$name$archivedLabel';
     }
 
     return [

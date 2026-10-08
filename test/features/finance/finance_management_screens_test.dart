@@ -1131,6 +1131,51 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('回收站余额快照区分同名账户', (tester) async {
+    final db = await _seed(tester);
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'trash-duplicate-account-one',
+      name: '回收站同名账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'trash-duplicate-account-two',
+      name: '回收站同名账户',
+      sortOrder: 20,
+    );
+    final snapshotAt = DateTime(2026, 9, 10, 12).millisecondsSinceEpoch;
+    await tester.runAsync(() async {
+      await db.insert('finance_payment_methods', firstMethod.toMap());
+      await db.insert('finance_payment_methods', secondMethod.toMap());
+      for (final method in [firstMethod, secondMethod]) {
+        await db.insert(
+          'finance_budgets',
+          FinanceBudget(
+            uuid: 'trash-snapshot-${method.uuid}',
+            monthKey: financeMonthKey(_month),
+            paymentMethodUuid: method.uuid,
+            amountMinor: 24000,
+            balanceSnapshotAt: snapshotAt,
+            isDeleted: true,
+          ).toMap(),
+        );
+      }
+    });
+
+    await _pump(
+      tester,
+      const FinanceTrashScreen(),
+      size: const Size(1100, 1000),
+    );
+    expect(find.text('找回需要的记录'), findsOneWidget);
+    expect(find.byType(Scrollable), findsWidgets);
+    await tester.enterText(_key('finance-trash-search'), '回收站同名账户');
+    await tester.pumpAndSettle();
+    expect(find.text('回收站同名账户（同名账户 1/2）余额'), findsOneWidget);
+    expect(find.text('回收站同名账户（同名账户 2/2）余额'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('计算器拒绝超过金额安全上限的结果并保留边界值', (tester) async {
     Future<void> pumpCalculator(String expression) => tester.pumpWidget(
       MaterialApp(
