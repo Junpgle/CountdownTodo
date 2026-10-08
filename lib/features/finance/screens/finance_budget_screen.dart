@@ -482,12 +482,14 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   String _budgetTitle(FinanceBudget budget) {
     if (budget.isOverall) return '全部支出';
     if (budget.paymentMethodUuid != null) {
-      return _paymentMethodMap[budget.paymentMethodUuid]?.name ?? '已归档或未知付款方式';
+      final paymentMethod = _paymentMethodMap[budget.paymentMethodUuid];
+      if (paymentMethod == null) return '已归档或未知付款方式';
+      return '${paymentMethod.name}${paymentMethod.isArchived ? '（已归档）' : ''}';
     }
     final category = _categoryMap[budget.categoryUuid];
     return category == null
         ? '已归档或未知分类'
-        : financeCategoryDisplayName(category, _categories);
+        : '${financeCategoryDisplayName(category, _categories)}${category.isArchived ? '（已归档）' : ''}';
   }
 
   String _budgetIcon(FinanceBudget budget) {

@@ -851,6 +851,61 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('预算总览卡片明确标记已归档的分类和账户', (tester) async {
+    final db = await _seed(tester);
+    final archivedCategory = FinanceCategory(
+      uuid: 'budget-overview-archived-category',
+      name: '预算归档分类',
+      isArchived: true,
+    );
+    final archivedPaymentMethod = FinancePaymentMethod(
+      uuid: 'budget-overview-archived-payment',
+      name: '余额归档账户',
+      isArchived: true,
+    );
+    await tester.runAsync(() async {
+      await db.insert('finance_categories', archivedCategory.toMap());
+      await db.insert('finance_payment_methods', archivedPaymentMethod.toMap());
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'budget-overview-archived-category-budget',
+          monthKey: financeMonthKey(_month),
+          categoryUuid: archivedCategory.uuid,
+          amountMinor: 12000,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'budget-overview-archived-payment-snapshot',
+          monthKey: financeMonthKey(_month),
+          paymentMethodUuid: archivedPaymentMethod.uuid,
+          amountMinor: 24000,
+          balanceSnapshotAt: DateTime(2026, 9, 10, 12).millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(
+        initialMonth: _month,
+        clock: () => DateTime(2026, 9, 20, 12),
+      ),
+    );
+
+    expect(find.text('预算归档分类（已归档）'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('余额归档账户（已归档）'),
+      250,
+      maxScrolls: 20,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('余额归档账户（已归档）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('计算器拒绝超过金额安全上限的结果并保留边界值', (tester) async {
     Future<void> pumpCalculator(String expression) => tester.pumpWidget(
       MaterialApp(
