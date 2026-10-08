@@ -162,7 +162,10 @@ void main() {
 
     await _pumpLoaded(tester, const AiUsageCostScreen());
 
-    expect(find.text('同一月份、同一服务商与模型的费用会汇总成一笔“AI 服务”支出'), findsOneWidget);
+    expect(
+      find.text('同一设备内按月份、服务商与模型合并为一笔支出；多设备账单分别记录并累计'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('内置价格提供可见的恢复入口并在恢复前确认', (tester) async {

@@ -512,7 +512,7 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
     SwitchListTile.adaptive(
       contentPadding: const EdgeInsets.symmetric(horizontal: 4),
       title: const Text('自动写入记账'),
-      subtitle: const Text('同一月份、同一服务商与模型的费用会汇总成一笔“AI 服务”支出'),
+      subtitle: const Text('同一设备内按月份、服务商与模型合并为一笔支出；多设备账单分别记录并累计'),
       value: _autoLedger,
       onChanged: _toggleAutoLedger,
     ),
