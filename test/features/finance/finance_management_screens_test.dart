@@ -1069,6 +1069,7 @@ void main() {
 
     await _pump(tester, FinanceEntryScreen(originalTransaction: original));
     expect(find.text('未分类'), findsOneWidget);
+    expect(find.text('已删除或未知退款到账账户'), findsOneWidget);
     await _tap(tester, find.text('保存账单'));
     var rows = <Map<String, Object?>>[];
     for (var attempt = 0; attempt < 100; attempt++) {
@@ -1118,6 +1119,26 @@ void main() {
     await _tap(tester, _key('finance-payment-refund-destination-card'));
     expect(find.text('选择退款到账账户'), findsOneWidget);
     expect(find.text('退款会加到所选账户已录入的余额'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('收入表单将未知付款方式标为未知到账账户', (tester) async {
+    await _seed(tester);
+    final income = FinanceTransaction(
+      uuid: 'income-with-unknown-account',
+      type: FinanceTransactionType.income,
+      amountMinor: 5000,
+      paymentMethodUuid: 'deleted-payment-method',
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '未知到账账户测试',
+    );
+    await tester.runAsync(() => FinanceStorage.saveTransaction(income));
+
+    await _pump(tester, FinanceEntryScreen(transaction: income));
+
+    expect(find.text('到账账户（可选）'), findsOneWidget);
+    expect(find.text('已删除或未知到账账户'), findsOneWidget);
+    expect(find.text('已删除或未知付款方式'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

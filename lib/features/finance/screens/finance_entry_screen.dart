@@ -1261,7 +1261,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         FinanceTransactionType.refund => '退款到账账户（可选）',
       },
       placeholder: _paymentMethodUuid != null && selectedPaymentMethod == null
-          ? '已删除或未知付款方式'
+          ? switch (_type) {
+              FinanceTransactionType.expense => '已删除或未知付款方式',
+              FinanceTransactionType.income => '已删除或未知到账账户',
+              FinanceTransactionType.refund => '已删除或未知退款到账账户',
+            }
           : _type == FinanceTransactionType.expense
           ? '未指定'
           : '未指定（不更新账户余额）',
