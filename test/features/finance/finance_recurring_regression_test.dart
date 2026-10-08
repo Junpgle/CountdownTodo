@@ -170,6 +170,58 @@ void main() {
       );
     });
 
+    test('同名周期账单的提醒标题可区分规则', () async {
+      for (final rule in [
+        FinanceRecurringRule(
+          uuid: 'duplicate-reminder-rule-first',
+          name: '月度订阅',
+          amountMinor: 1000,
+          dayOfMonth: 2,
+          startDate: '2026-01-01',
+          reminderMinutes: 60,
+          autoGenerate: false,
+          createdAt: 100,
+        ),
+        FinanceRecurringRule(
+          uuid: 'duplicate-reminder-rule-second',
+          name: '月度订阅',
+          amountMinor: 1000,
+          dayOfMonth: 2,
+          startDate: '2026-01-01',
+          reminderMinutes: 60,
+          autoGenerate: false,
+          createdAt: 200,
+        ),
+        FinanceRecurringRule(
+          uuid: 'duplicate-reminder-rule-paused',
+          name: '月度订阅',
+          amountMinor: 1000,
+          dayOfMonth: 2,
+          startDate: '2026-01-01',
+          reminderMinutes: 60,
+          autoGenerate: false,
+          isEnabled: false,
+          createdAt: 300,
+        ),
+      ]) {
+        await FinanceStorage.saveRecurringRule(rule);
+      }
+
+      final reminders = await FinanceAutomationService.buildRecurringReminders(
+        now: DateTime(2026, 10, 1, 7),
+        limit: DateTime(2026, 10, 3),
+      );
+
+      expect(reminders, hasLength(2));
+      expect(
+        reminders.map((reminder) => reminder['title']).toSet(),
+        {
+          '💳 周期账单：月度订阅（同名周期账单 1/3）',
+          '💳 周期账单：月度订阅（同名周期账单 2/3）',
+        },
+      );
+    });
+
     test('周期账单提醒保留大额金额的分精度', () async {
       await FinanceStorage.saveRecurringRule(
         FinanceRecurringRule(

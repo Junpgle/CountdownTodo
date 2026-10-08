@@ -395,6 +395,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
   Widget _ruleCard(FinanceRecurringRule rule) {
     final key = 'rule-${rule.uuid}';
     final busy = _busy.contains(key);
+    final displayName = financeRecurringRuleDisplayName(rule, _rules);
     void edit() => _run(key, () => widget.onEditRule(rule));
     final schedule = rule.frequency == FinanceRecurringFrequency.yearly
         ? '每年 ${rule.monthOfYear} 月 ${rule.dayOfMonth} 日'
@@ -403,7 +404,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
       key: ValueKey('finance-automation-rule-${rule.uuid}'),
       onTap: busy ? null : edit,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _heading(rule.name, Icons.event_repeat_outlined, key, edit,
+        _heading(displayName, Icons.event_repeat_outlined, key, edit,
             () => _run(key, () => widget.onDeleteRule(rule))),
         _amount(rule.amountMinor, rule.type),
         Wrap(spacing: 8, runSpacing: 8, children: [
@@ -432,7 +433,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
               child: Text(rule.isEnabled ? '已启用' : '已暂停',
                   style: Theme.of(context).textTheme.labelLarge)),
           Semantics(
-            label: '${rule.isEnabled ? '暂停' : '启用'}${rule.name}',
+            label: '${rule.isEnabled ? '暂停' : '启用'}$displayName',
             child: LiquidGlassSwitch(
               key: ValueKey('finance-automation-toggle-${rule.uuid}'),
               value: rule.isEnabled,

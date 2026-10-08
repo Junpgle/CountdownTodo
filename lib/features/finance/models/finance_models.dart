@@ -2315,6 +2315,32 @@ class FinanceRecurringRule {
   }
 }
 
+/// Adds a stable ordinal when non-deleted recurring rules share the same name.
+String financeRecurringRuleDisplayName(
+  FinanceRecurringRule rule,
+  Iterable<FinanceRecurringRule> rules,
+) {
+  final normalizedName = _normalizeFinanceRecurringRuleName(rule.name);
+  final sameNameRules = rules
+      .where(
+        (item) =>
+            !item.isDeleted &&
+            _normalizeFinanceRecurringRuleName(item.name) == normalizedName,
+      )
+      .toList()
+    ..sort((left, right) {
+      final createdAt = left.createdAt.compareTo(right.createdAt);
+      return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+    });
+  if (sameNameRules.length < 2) return rule.name;
+  final index = sameNameRules.indexWhere((item) => item.uuid == rule.uuid);
+  if (index < 0) return rule.name;
+  return '${rule.name}（同名周期账单 ${index + 1}/${sameNameRules.length}）';
+}
+
+String _normalizeFinanceRecurringRuleName(String value) =>
+    value.replaceAll(RegExp(r'\s+'), '').trim().toLowerCase();
+
 /// 快捷记账模板。模板只保存默认字段，不会直接产生账单。
 class FinanceEntryTemplate {
   String uuid;

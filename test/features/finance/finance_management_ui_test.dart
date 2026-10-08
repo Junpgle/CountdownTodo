@@ -184,6 +184,54 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('周期账单列表和开关读屏标签可区分同名规则', (tester) async {
+    final rules = [
+      FinanceRecurringRule(
+        uuid: 'duplicate-rule-first',
+        name: '月度订阅',
+        amountMinor: 2500,
+        startDate: '2026-01-01',
+        createdAt: 100,
+      ),
+      FinanceRecurringRule(
+        uuid: 'duplicate-rule-second',
+        name: '月度订阅',
+        amountMinor: 2500,
+        startDate: '2026-01-01',
+        createdAt: 200,
+      ),
+    ];
+    FinanceRecurringRule? toggled;
+    bool? enabled;
+    await _pump(
+      tester,
+      _manager(
+        rules: rules,
+        templates: const [],
+        onToggle: (rule, value) async {
+          toggled = rule;
+          enabled = value;
+        },
+      ),
+    );
+
+    expect(find.text('月度订阅（同名周期账单 1/2）'), findsOneWidget);
+    expect(find.text('月度订阅（同名周期账单 2/2）'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('暂停月度订阅（同名周期账单 1/2）'),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel('暂停月度订阅（同名周期账单 2/2）'),
+      findsOneWidget,
+    );
+    await _tap(tester, _key('finance-automation-toggle-duplicate-rule-second'));
+
+    expect(toggled?.uuid, 'duplicate-rule-second');
+    expect(enabled, false);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('周期账单和模板都能按付款方式名称搜索', (tester) async {
     final rule = _rule()..paymentMethodUuid = 'bank';
     final template = _template()..paymentMethodUuid = 'bank';

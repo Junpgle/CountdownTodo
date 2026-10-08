@@ -398,9 +398,10 @@ abstract final class FinanceAutomationService {
     final current = now ?? DateTime.now();
     final end = limit ?? current.add(const Duration(days: 7));
     if (!end.isAfter(current)) return const [];
-    final rules = await FinanceStorage.getRecurringRules(enabledOnly: true);
+    final allRules = await FinanceStorage.getRecurringRules();
+    final enabledRules = allRules.where((rule) => rule.isEnabled);
     final reminders = <Map<String, dynamic>>[];
-    for (final rule in rules) {
+    for (final rule in enabledRules) {
       if (rule.reminderMinutes <= 0) continue;
       final calendarLeadDays = (rule.reminderMinutes + 1439) ~/ 1440;
       // The due time is later than its reminder trigger. Scan the current
@@ -411,7 +412,12 @@ abstract final class FinanceAutomationService {
         limit: _calendarDateTimeOffset(end, calendarLeadDays + 1),
       );
       for (final due in dues) {
-        final reminder = _buildReminder(due, current: current, limit: end);
+        final reminder = _buildReminder(
+          due,
+          rules: allRules,
+          current: current,
+          limit: end,
+        );
         if (reminder['withinWindow'] == true) reminders.add(reminder);
       }
     }
@@ -450,6 +456,7 @@ abstract final class FinanceAutomationService {
 
   static Map<String, dynamic> _buildReminder(
     FinanceRecurringDue due, {
+    required Iterable<FinanceRecurringRule> rules,
     required DateTime current,
     required DateTime limit,
   }) {
@@ -468,7 +475,8 @@ abstract final class FinanceAutomationService {
     return {
       'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
       'startAtMs': due.dueAt.toUtc().millisecondsSinceEpoch,
-      'title': '💳 周期账单：${due.rule.name}',
+      'title':
+          '💳 周期账单：${financeRecurringRuleDisplayName(due.rule, rules)}',
       'text': '${dateKey(due.dueAt)} · ${_formatAmount(due.rule.amountMinor)}'
           '${due.rule.autoGenerate ? ' · 到期自动记账' : ' · 请确认是否记账'}',
       'notifId': notificationIdFor(due.rule.uuid, due.periodKey),
