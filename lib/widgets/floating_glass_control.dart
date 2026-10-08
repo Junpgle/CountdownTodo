@@ -2952,31 +2952,40 @@ class _FloatingGlassControlFallback extends StatelessWidget {
       ],
     );
 
-    final content = Stack(
-      fit: height == null ? StackFit.passthrough : StackFit.expand,
-      clipBehavior: allowChildOverflow ? Clip.none : Clip.hardEdge,
-      children: [
-        // Keep the neutral fallback inexpensive on Android while preserving
-        // the frosted read on platforms where a small bounded blur is cheap.
-        if (!AppPlatform.isAndroid)
-          Positioned.fill(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(borderRadius),
-              child: BackdropFilter(
-                filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-        child,
-      ],
-    );
-
     return Container(
       height: height,
       margin: margin,
       decoration: decoration,
-      child: content,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // A right- or left-positioned control can have unbounded width. An
+          // expanding Stack turns that infinity into a tight child constraint,
+          // which fails during layout. Let the child choose its width there;
+          // retain the existing fill behavior when both axes are bounded.
+          final fit = height != null && constraints.hasBoundedWidth
+              ? StackFit.expand
+              : StackFit.passthrough;
+          return Stack(
+            fit: fit,
+            clipBehavior: allowChildOverflow ? Clip.none : Clip.hardEdge,
+            children: [
+              // Keep the Android fallback inexpensive while preserving a
+              // frosted surface elsewhere, where a small blur is cheap.
+              if (!AppPlatform.isAndroid)
+                Positioned.fill(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(borderRadius),
+                    child: BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                ),
+              child,
+            ],
+          );
+        },
+      ),
     );
   }
 }

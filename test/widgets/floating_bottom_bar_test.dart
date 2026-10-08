@@ -198,6 +198,40 @@ void main() {
     expect(find.byType(GlassContainer), findsNothing);
   });
 
+  testWidgets('fixed-height fallback tolerates an unbounded positioned width',
+      (tester) async {
+    const childKey = Key('unbounded-fallback-child');
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                left: 12,
+                top: 12,
+                child: FloatingGlassControl(
+                  height: 48,
+                  margin: EdgeInsets.zero,
+                  mobilePortraitOnly: false,
+                  useLiquidGlass: false,
+                  child: Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Text('Positioned fallback', key: childKey),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(childKey), findsOneWidget);
+    expect(tester.getSize(find.byKey(childKey)).width, lessThan(400));
+    expect(tester.takeException(), isNull);
+  });
+
   test('resolves the shared top-bar title reveal progress', () {
     expect(
       floatingGlassTopBarTitleProgress(
