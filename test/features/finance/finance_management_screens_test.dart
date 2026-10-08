@@ -587,6 +587,84 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('AI草稿遇到重复分类名称时保留歧义并支持完整分类路径', (tester) async {
+    final db = await _seed(tester);
+    final parentOne = FinanceCategory(
+      uuid: 'duplicate-category-parent-one',
+      name: '工作',
+    );
+    final parentTwo = FinanceCategory(
+      uuid: 'duplicate-category-parent-two',
+      name: '生活',
+    );
+    final categoryOne = FinanceCategory(
+      uuid: 'duplicate-category-one',
+      name: '其他',
+      parentUuid: parentOne.uuid,
+    );
+    final categoryTwo = FinanceCategory(
+      uuid: 'duplicate-category-two',
+      name: '其他',
+      parentUuid: parentTwo.uuid,
+    );
+    await tester.runAsync(() async {
+      for (final category in [parentOne, parentTwo, categoryOne, categoryTwo]) {
+        await db.insert('finance_categories', category.toMap());
+      }
+    });
+
+    await _pump(
+      tester,
+      FinanceEntryScreen(
+        initialDraft: FinanceEntryDraft(
+          amountMinor: 1200,
+          transactionDate: dateKey(DateTime.now()),
+          categoryName: '其他',
+          source: FinanceEntrySource.ai,
+        ),
+      ),
+    );
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+
+    final rows = await tester.runAsync(
+      () => db.query('finance_transactions', where: 'is_deleted = 0'),
+    );
+    expect(rows, hasLength(1));
+    expect(rows!.single['category_uuid'], isNull);
+
+    await _pump(
+      tester,
+      FinanceEntryScreen(
+        initialDraft: FinanceEntryDraft(
+          amountMinor: 1200,
+          transactionDate: dateKey(DateTime.now()),
+          categoryName: '工作 - 其他',
+          merchant: '完整路径分类',
+          source: FinanceEntrySource.ai,
+        ),
+      ),
+    );
+    await _tap(tester, find.text('保存账单'));
+    await _waitFor(
+      tester,
+      () => find.byType(FinanceEntryScreen).evaluate().isEmpty,
+    );
+    final pathRows = await tester.runAsync(
+      () => db.query(
+        'finance_transactions',
+        where: 'merchant = ? AND is_deleted = 0',
+        whereArgs: ['完整路径分类'],
+      ),
+    );
+    expect(pathRows, hasLength(1));
+    expect(pathRows!.single['category_uuid'], categoryOne.uuid);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('表单打开期间归档分类和账户后新账单会清除旧关联', (tester) async {
     final db = await _seed(tester);
     final category = FinanceCategory(

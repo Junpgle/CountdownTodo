@@ -384,26 +384,37 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                 !item.isDeleted,
           )
           .toList();
-      final exact = candidates
+      final displayMatches = candidates
           .where(
             (item) =>
-                _normalizeOptionName(item.name) == wanted ||
                 _normalizeOptionName(
-                      financeCategoryDisplayName(item, _categories),
-                    ) ==
-                    wanted,
+                  financeCategoryDisplayName(item, _categories),
+                ) ==
+                wanted,
           )
-          .firstOrNull;
-      _categoryUuid =
-          exact?.uuid ??
-          candidates
-              .where((item) {
-                if (semanticWanted == null) return false;
-                return FinanceTextParser.inferCategoryName(item.name, _type) ==
-                    semanticWanted;
-              })
-              .map((item) => item.uuid)
-              .firstOrNull;
+          .toList();
+      final nameMatches = candidates
+          .where((item) => _normalizeOptionName(item.name) == wanted)
+          .toList();
+      final exactMatches = nameMatches.isNotEmpty
+          ? nameMatches
+          : displayMatches;
+      if (exactMatches.length == 1) {
+        _categoryUuid = exactMatches.single.uuid;
+      } else if (exactMatches.isEmpty && semanticWanted != null) {
+        final semanticMatches = candidates
+            .where(
+              (item) =>
+                  FinanceTextParser.inferCategoryName(item.name, _type) ==
+                  semanticWanted,
+            )
+            .toList();
+        _categoryUuid = semanticMatches.length == 1
+            ? semanticMatches.single.uuid
+            : null;
+      } else {
+        _categoryUuid = null;
+      }
     }
     final resolvedCategory = _categories.any(
       (item) =>
