@@ -510,7 +510,13 @@ Future<T?> showAppModalBottomSheet<T>({
                     constraints: BoxConstraints(maxHeight: maxHeight),
                     child: SizedBox(
                       width: double.infinity,
-                      child: builder(sheetContext),
+                      // GlassSheet 不像 showModalBottomSheet 的 _BottomSheet
+                      // 那样自带 Material 表面，ListTile/InkWell 会找不到祖先。
+                      // 补一层透明 Material 保持与原生弹层一致的行为。
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: builder(sheetContext),
+                      ),
                     ),
                   ),
                 ),

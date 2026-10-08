@@ -117,4 +117,56 @@ void main() {
       lessThanOrEqualTo(500),
     );
   });
+
+  testWidgets('glass sheet keeps ListTile working without Material ancestor', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) {
+              return TextButton(
+                onPressed: () => showAppModalBottomSheet<String>(
+                  context: context,
+                  showDragHandle: true,
+                  builder: (sheetContext) => SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.event_available_rounded),
+                          title: const Text('新增固定日程'),
+                          onTap: () => Navigator.pop(sheetContext, 'fixed'),
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.view_week_outlined),
+                          title: const Text('打开规划界面'),
+                          onTap: () => Navigator.pop(sheetContext, 'plan'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                child: const Text('打开弹层'),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开弹层'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('新增固定日程'), findsOneWidget);
+    expect(find.text('打开规划界面'), findsOneWidget);
+
+    await tester.tap(find.text('新增固定日程'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(tester.takeException(), isNull);
+  });
 }
