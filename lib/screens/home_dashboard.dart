@@ -30,6 +30,7 @@ import '../services/permission_request_coordinator.dart';
 import '../services/macos_pomodoro_status_bar_service.dart';
 import '../services/course_service.dart';
 import '../services/course_calendar_adjustment_service.dart';
+import '../utils/semester_week_context.dart';
 import '../services/external_share_handler.dart';
 import '../services/browser_file_service.dart';
 import '../services/island_todo_snapshot.dart';
@@ -171,6 +172,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   bool _semesterEnabled = false;
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
+  int? _currentSemesterWeek;
   Map<String, dynamic> _homeTextConfig = {};
 
   List<String> _leftSections = ['courses', 'todos', 'math'];

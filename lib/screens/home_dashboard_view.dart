@@ -115,6 +115,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                       username: widget.username,
                       timeSalutation: _timeSalutation,
                       currentGreeting: _currentGreeting,
+                      semesterWeek: _currentSemesterWeek,
                       textConfig: HomeTextConfig(
                         customTimeSalutation:
                             _homeTextConfig['customTimeSalutation'] as String?,
