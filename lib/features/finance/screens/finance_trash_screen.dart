@@ -269,7 +269,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
         FinanceTrashEntry(
           uuid: item.uuid,
           kind: FinanceTrashKind.loan,
-          title: item.name,
+          title: financeLoanDisplayName(item, _loans, includeDeleted: true),
           details:
               '${item.startDate} · ${item.repaymentMethod.label} · 年利率 ${formatFinanceInterestRate(item.annualInterestRateBps)}',
           amountLabel: '借款本金',
@@ -280,7 +280,11 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
         FinanceTrashEntry(
           uuid: item.uuid,
           kind: FinanceTrashKind.rule,
-          title: item.name,
+          title: financeRecurringRuleDisplayName(
+            item,
+            _rules,
+            includeDeleted: true,
+          ),
           details: item.frequency == FinanceRecurringFrequency.yearly
               ? '每年 ${item.monthOfYear} 月 ${item.dayOfMonth} 日'
               : '每月 ${item.dayOfMonth} 日',
@@ -292,7 +296,11 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
         FinanceTrashEntry(
           uuid: item.uuid,
           kind: FinanceTrashKind.template,
-          title: item.name,
+          title: financeEntryTemplateDisplayName(
+            item,
+            _templates,
+            includeDeleted: true,
+          ),
           details: [
             if (item.merchant?.isNotEmpty == true) item.merchant!,
             if (item.note?.isNotEmpty == true) item.note!,

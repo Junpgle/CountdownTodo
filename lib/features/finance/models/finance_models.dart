@@ -409,6 +409,29 @@ class FinanceLoan {
   }
 }
 
+String financeLoanDisplayName(
+  FinanceLoan loan,
+  Iterable<FinanceLoan> loans, {
+  bool includeDeleted = false,
+}) {
+  final normalizedName = _normalizeFinanceDisplayName(loan.name);
+  final sameNameLoans = loans
+      .where(
+        (item) =>
+            (includeDeleted || !item.isDeleted) &&
+            _normalizeFinanceDisplayName(item.name) == normalizedName,
+      )
+      .toList()
+    ..sort((left, right) {
+      final createdAt = left.createdAt.compareTo(right.createdAt);
+      return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+    });
+  if (sameNameLoans.length < 2) return loan.name;
+  final index = sameNameLoans.indexWhere((item) => item.uuid == loan.uuid);
+  if (index < 0) return loan.name;
+  return '${loan.name}（同名贷款 ${index + 1}/${sameNameLoans.length}）';
+}
+
 /// 贷款的一期还款记录，保存计划金额和是否已完成还款。
 class FinanceLoanInstallment {
   String uuid;
@@ -2318,14 +2341,15 @@ class FinanceRecurringRule {
 /// Adds a stable ordinal when non-deleted recurring rules share the same name.
 String financeRecurringRuleDisplayName(
   FinanceRecurringRule rule,
-  Iterable<FinanceRecurringRule> rules,
-) {
-  final normalizedName = _normalizeFinanceRecurringRuleName(rule.name);
+  Iterable<FinanceRecurringRule> rules, {
+  bool includeDeleted = false,
+}) {
+  final normalizedName = _normalizeFinanceDisplayName(rule.name);
   final sameNameRules = rules
       .where(
         (item) =>
-            !item.isDeleted &&
-            _normalizeFinanceRecurringRuleName(item.name) == normalizedName,
+            (includeDeleted || !item.isDeleted) &&
+            _normalizeFinanceDisplayName(item.name) == normalizedName,
       )
       .toList()
     ..sort((left, right) {
@@ -2337,9 +2361,6 @@ String financeRecurringRuleDisplayName(
   if (index < 0) return rule.name;
   return '${rule.name}（同名周期账单 ${index + 1}/${sameNameRules.length}）';
 }
-
-String _normalizeFinanceRecurringRuleName(String value) =>
-    value.replaceAll(RegExp(r'\s+'), '').trim().toLowerCase();
 
 /// 快捷记账模板。模板只保存默认字段，不会直接产生账单。
 class FinanceEntryTemplate {
@@ -2444,14 +2465,15 @@ class FinanceEntryTemplate {
 /// Adds a stable ordinal when active entry templates share the same name.
 String financeEntryTemplateDisplayName(
   FinanceEntryTemplate template,
-  Iterable<FinanceEntryTemplate> templates,
-) {
-  final normalizedName = _normalizeFinanceEntryTemplateName(template.name);
+  Iterable<FinanceEntryTemplate> templates, {
+  bool includeDeleted = false,
+}) {
+  final normalizedName = _normalizeFinanceDisplayName(template.name);
   final sameNameTemplates = templates
       .where(
         (item) =>
-            !item.isDeleted &&
-            _normalizeFinanceEntryTemplateName(item.name) == normalizedName,
+            (includeDeleted || !item.isDeleted) &&
+            _normalizeFinanceDisplayName(item.name) == normalizedName,
       )
       .toList()
     ..sort((left, right) {
@@ -2466,7 +2488,7 @@ String financeEntryTemplateDisplayName(
   return '${template.name}（同名模板 ${index + 1}/${sameNameTemplates.length}）';
 }
 
-String _normalizeFinanceEntryTemplateName(String value) =>
+String _normalizeFinanceDisplayName(String value) =>
     value.replaceAll(RegExp(r'\s+'), '').trim().toLowerCase();
 
 class FinanceSummary {

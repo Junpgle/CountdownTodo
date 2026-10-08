@@ -1319,6 +1319,86 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('回收站中的同名贷款、周期账单和模板可以区分', (tester) async {
+    final db = await _seed(tester);
+    await tester.runAsync(() async {
+      for (final loan in [
+        FinanceLoan(
+          uuid: 'trash-duplicate-loan-first',
+          name: '旧订阅分期',
+          principalMinor: 200000,
+          termMonths: 12,
+          startDate: '2026-01-01',
+          repaymentDay: 15,
+          isDeleted: true,
+          createdAt: 100,
+        ),
+        FinanceLoan(
+          uuid: 'trash-duplicate-loan-second',
+          name: '旧订阅分期',
+          principalMinor: 200000,
+          termMonths: 12,
+          startDate: '2026-01-01',
+          repaymentDay: 15,
+          isDeleted: true,
+          createdAt: 200,
+        ),
+      ]) {
+        await db.insert('finance_loans', loan.toMap());
+      }
+      for (final rule in [
+        FinanceRecurringRule(
+          uuid: 'trash-duplicate-rule-first',
+          name: '旧会员订阅',
+          amountMinor: 1000,
+          startDate: '2026-01-01',
+          isDeleted: true,
+          createdAt: 100,
+        ),
+        FinanceRecurringRule(
+          uuid: 'trash-duplicate-rule-second',
+          name: '旧会员订阅',
+          amountMinor: 1000,
+          startDate: '2026-01-01',
+          isDeleted: true,
+          createdAt: 200,
+        ),
+      ]) {
+        await db.insert('finance_recurring_rules', rule.toMap());
+      }
+      for (final template in [
+        FinanceEntryTemplate(
+          uuid: 'trash-duplicate-template-first',
+          name: '旧早餐模板',
+          amountMinor: 1800,
+          isDeleted: true,
+          createdAt: 100,
+        ),
+        FinanceEntryTemplate(
+          uuid: 'trash-duplicate-template-second',
+          name: '旧早餐模板',
+          amountMinor: 1800,
+          isDeleted: true,
+          createdAt: 200,
+        ),
+      ]) {
+        await db.insert('finance_entry_templates', template.toMap());
+      }
+    });
+
+    await _pump(tester, const FinanceTrashScreen(), size: const Size(1100, 1000));
+    await tester.enterText(_key('finance-trash-search'), '旧');
+    await tester.pumpAndSettle();
+
+    expect(find.text('旧订阅分期（同名贷款 1/2）'), findsOneWidget);
+    expect(find.text('旧订阅分期（同名贷款 2/2）'), findsOneWidget);
+    expect(find.text('旧会员订阅（同名周期账单 1/2）'), findsOneWidget);
+    expect(find.text('旧会员订阅（同名周期账单 2/2）'), findsOneWidget);
+    expect(find.text('旧早餐模板（同名模板 1/2）'), findsOneWidget);
+    expect(find.text('旧早餐模板（同名模板 2/2）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('计算器拒绝超过金额安全上限的结果并保留边界值', (tester) async {
     Future<void> pumpCalculator(String expression) => tester.pumpWidget(
       MaterialApp(
