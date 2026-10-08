@@ -310,7 +310,7 @@ abstract final class AiUsageCostService {
   static const _settingsPrefix = 'ai_usage_cost_settings';
   static const _aiCategoryUuid = 'finance-system-category-ai-service';
   static const _otherPaymentMethodUuid = 'finance-system-payment-other';
-  static const _monthlyLedgerKeyPrefix = 'finance-ai-month-v2';
+  static const _deviceMonthlyLedgerKeyPrefix = 'finance-ai-device-month-v1';
   static const _ledgerUuidNamespace = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
   static const _microsPerYuan = 1000000;
   static const _microsPerFen = 10000;
@@ -781,9 +781,17 @@ abstract final class AiUsageCostService {
             at: timestamp,
           )
         : null;
-    final ledgerKey = costMicros == null
+    final deviceId = costMicros == null
         ? null
-        : _monthlyLedgerKey(financeMonthKey(timestamp), provider, model);
+        : await UserSessionStorage.getDeviceId();
+    final ledgerKey = costMicros == null || deviceId == null
+        ? null
+        : _deviceMonthlyLedgerKey(
+            financeMonthKey(timestamp),
+            provider,
+            model,
+            deviceId,
+          );
     final uuid = const Uuid().v4();
     final record = AiUsageRecord(
       uuid: uuid,
@@ -833,6 +841,7 @@ abstract final class AiUsageCostService {
         monthEnd: DateTime(timestamp.year, timestamp.month + 1),
         provider: provider,
         model: model,
+        deviceId: deviceId!,
       );
     }
     return record;
@@ -848,6 +857,7 @@ abstract final class AiUsageCostService {
     final current = now ?? DateTime.now();
     final monthStart = DateTime(current.year, current.month);
     final monthEnd = DateTime(current.year, current.month + 1);
+    final deviceId = await UserSessionStorage.getDeviceId();
     final db = await _database;
     await DatabaseHelper.ensureFinanceSchema(db);
     await DatabaseHelper.ensureAiUsageSchema(db);
@@ -890,10 +900,11 @@ abstract final class AiUsageCostService {
         {
           'cost_micros': costMicros,
           'is_priced': 1,
-          'ledger_key': _monthlyLedgerKey(
+          'ledger_key': _deviceMonthlyLedgerKey(
             financeMonthKey(record.createdAt),
             record.provider,
             record.model,
+            deviceId,
           ),
         },
         where: 'uuid = ? AND is_priced = 0',
@@ -904,14 +915,26 @@ abstract final class AiUsageCostService {
     if (!settings.autoLedger) return changed;
 
     final providersAndModels = await db.rawQuery(
-      'SELECT DISTINCT provider, model FROM ai_usage_records '
-      'WHERE is_priced = 1 AND created_at >= ? AND created_at < ?',
-      [monthStart.millisecondsSinceEpoch, monthEnd.millisecondsSinceEpoch],
+      'SELECT DISTINCT provider, model, ledger_key FROM ai_usage_records '
+      'WHERE is_priced = 1 AND created_at >= ? AND created_at < ? '
+      'AND ledger_key LIKE ?',
+      [
+        monthStart.millisecondsSinceEpoch,
+        monthEnd.millisecondsSinceEpoch,
+        '$_deviceMonthlyLedgerKeyPrefix|%',
+      ],
     );
     for (final row in providersAndModels) {
       final provider = row['provider']?.toString() ?? '';
       final model = row['model']?.toString() ?? '';
       if (provider.isEmpty || model.isEmpty) continue;
+      final ledgerKey = _deviceMonthlyLedgerKey(
+        financeMonthKey(monthStart),
+        provider,
+        model,
+        deviceId,
+      );
+      if (row['ledger_key'] != ledgerKey) continue;
       changed =
           await _syncLedgerAggregate(
             db: db,
@@ -919,6 +942,7 @@ abstract final class AiUsageCostService {
             monthEnd: monthEnd,
             provider: provider,
             model: model,
+            deviceId: deviceId,
           ) ||
           changed;
     }
@@ -1073,20 +1097,27 @@ abstract final class AiUsageCostService {
     required DateTime monthEnd,
     required String provider,
     required String model,
+    required String deviceId,
   }) async {
     final monthKey = financeMonthKey(monthStart);
-    final ledgerKey = _monthlyLedgerKey(monthKey, provider, model);
+    final ledgerKey = _deviceMonthlyLedgerKey(
+      monthKey,
+      provider,
+      model,
+      deviceId,
+    );
     final totalMicros =
         Sqflite.firstIntValue(
           await db.rawQuery(
             'SELECT COALESCE(SUM(cost_micros), 0) FROM ai_usage_records '
             'WHERE provider = ? AND model = ? AND is_priced = 1 '
-            'AND created_at >= ? AND created_at < ?',
+            'AND created_at >= ? AND created_at < ? AND ledger_key = ?',
             [
               provider,
               model,
               monthStart.millisecondsSinceEpoch,
               monthEnd.millisecondsSinceEpoch,
+              ledgerKey,
             ],
           ),
         ) ??
@@ -1094,18 +1125,16 @@ abstract final class AiUsageCostService {
     final amountMinor = (totalMicros + (_microsPerFen ~/ 2)) ~/ _microsPerFen;
     if (amountMinor <= 0) return false;
 
-    final allLinks = await db.query('ai_usage_ledger_links');
-    final links = allLinks
-        .where((row) {
-          final key = row['ledger_key']?.toString() ?? '';
-          return key == ledgerKey ||
-              _isLegacyDailyLedgerKey(key, monthKey, provider, model);
-        })
-        .toList(growable: false);
-    final stableTransactionUuid = _monthlyLedgerTransactionUuid(
+    final links = await db.query(
+      'ai_usage_ledger_links',
+      where: 'ledger_key = ?',
+      whereArgs: [ledgerKey],
+    );
+    final stableTransactionUuid = _deviceMonthlyLedgerTransactionUuid(
       monthKey,
       provider,
       model,
+      deviceId,
     );
     final linkedUuids = {
       ...links
@@ -1144,6 +1173,7 @@ abstract final class AiUsageCostService {
           merchant: '$provider · $model',
           note: 'AI 调用费用自动汇总（$monthKey）',
           source: FinanceEntrySource.ai,
+          deviceId: deviceId,
         );
     final shouldSaveTransaction =
         existing == null || existing.amountMinor != amountMinor;
@@ -1156,21 +1186,12 @@ abstract final class AiUsageCostService {
       await FinanceRepository.saveTransaction(transaction);
     }
 
-    // 同一月份的旧按日账单已包含在本次月度总额中，保留一笔即可。
+    // Device-scoped aggregates remain independent on finance sync, allowing
+    // usage from separate local databases to add up without overwriting.
     for (final duplicate in linkedTransactions.values) {
       if (duplicate.uuid == transaction.uuid || duplicate.isDeleted) continue;
       await FinanceRepository.deleteTransaction(duplicate.uuid);
       changed = true;
-    }
-    for (final link in links) {
-      final key = link['ledger_key']?.toString() ?? '';
-      if (key != ledgerKey) {
-        await db.delete(
-          'ai_usage_ledger_links',
-          where: 'ledger_key = ?',
-          whereArgs: [key],
-        );
-      }
     }
     await db.insert('ai_usage_ledger_links', {
       'ledger_key': ledgerKey,
@@ -1180,29 +1201,23 @@ abstract final class AiUsageCostService {
     return changed;
   }
 
-  static String _monthlyLedgerKey(
+  static String _deviceMonthlyLedgerKey(
     String monthKey,
     String provider,
     String model,
-  ) => '$_monthlyLedgerKeyPrefix|$monthKey|$provider|$model';
+    String deviceId,
+  ) =>
+      '$_deviceMonthlyLedgerKeyPrefix|$monthKey|$provider|$model|$deviceId';
 
-  static bool _isLegacyDailyLedgerKey(
-    String key,
+  static String _deviceMonthlyLedgerTransactionUuid(
     String monthKey,
     String provider,
     String model,
-  ) {
-    return key.startsWith('$monthKey-') && key.endsWith('|$provider|$model');
-  }
-
-  static String _monthlyLedgerTransactionUuid(
-    String monthKey,
-    String provider,
-    String model,
+    String deviceId,
   ) {
     return const Uuid().v5(
       _ledgerUuidNamespace,
-      'countdown-todo/finance-ai-ledger/v2/$monthKey/$provider/$model',
+      'countdown-todo/finance-ai-ledger/device-v1/$deviceId/$monthKey/$provider/$model',
     );
   }
 

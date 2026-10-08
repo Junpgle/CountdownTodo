@@ -2,6 +2,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:countdown_todo/features/finance/services/ai_usage_cost_service.dart';
 import 'package:countdown_todo/features/finance/services/finance_repository.dart';
@@ -3875,6 +3876,81 @@ void main() {
       transactions.single['category_uuid'],
       'finance-system-category-ai-service',
     );
+  });
+
+  test('AI usage ledgers from different devices use distinct transaction UUIDs',
+      () async {
+    const username = 'ai-cost-multi-device-ledger-test';
+    final devicePreferenceKey = 'app_device_uuid_$username';
+    SharedPreferences.setMockInitialValues({
+      'current_login_user': username,
+      devicePreferenceKey: 'device-a',
+    });
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      'countdown_ai_ledger_multi_device_',
+    );
+    final deviceADb = await databaseFactoryFfi.openDatabase(
+      '${tempDirectory.path}/device-a.sqlite',
+    );
+    final deviceBDb = await databaseFactoryFfi.openDatabase(
+      '${tempDirectory.path}/device-b.sqlite',
+    );
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await deviceADb.close();
+      await deviceBDb.close();
+      await tempDirectory.delete(recursive: true);
+    });
+    await DatabaseHelper.ensureFinanceSchema(deviceADb);
+    await DatabaseHelper.ensureAiUsageSchema(deviceADb);
+    await DatabaseHelper.ensureFinanceSchema(deviceBDb);
+    await DatabaseHelper.ensureAiUsageSchema(deviceBDb);
+    await AiUsageCostService.savePricing(
+      const AiUsagePricing(
+        provider: 'custom',
+        model: 'multi-device-ledger-test',
+        inputMicrosPerMillion: 1000000,
+      ),
+    );
+
+    AiUsageCostService.databaseOverride = deviceADb;
+    FinanceStorage.databaseOverride = deviceADb;
+    await AiUsageCostService.recordUsage(
+      provider: 'custom',
+      model: 'multi-device-ledger-test',
+      operation: 'chat',
+      promptTokens: 1000000,
+      completionTokens: 0,
+      totalTokens: 1000000,
+      now: DateTime(2026, 8, 30, 10),
+    );
+    final deviceATransaction =
+        (await deviceADb.query('finance_transactions')).single;
+
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(devicePreferenceKey, 'device-b');
+    AiUsageCostService.databaseOverride = deviceBDb;
+    FinanceStorage.databaseOverride = deviceBDb;
+    await AiUsageCostService.recordUsage(
+      provider: 'custom',
+      model: 'multi-device-ledger-test',
+      operation: 'chat',
+      promptTokens: 1000000,
+      completionTokens: 0,
+      totalTokens: 1000000,
+      now: DateTime(2026, 8, 30, 10),
+    );
+    final deviceBTransaction =
+        (await deviceBDb.query('finance_transactions')).single;
+
+    expect(deviceATransaction['uuid'], isNot(deviceBTransaction['uuid']));
+    expect(deviceATransaction['amount_minor'], 100);
+    expect(deviceBTransaction['amount_minor'], 100);
+    expect(deviceATransaction['device_id'], 'device-a');
+    expect(deviceBTransaction['device_id'], 'device-b');
+    expect(deviceATransaction['pending_sync'], 1);
+    expect(deviceBTransaction['pending_sync'], 1);
   });
 
   test('AI ledger keeps working after its monthly bill is deleted', () async {
