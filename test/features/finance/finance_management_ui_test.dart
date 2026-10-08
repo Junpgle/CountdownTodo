@@ -174,6 +174,39 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('自动化卡片按交易类型显示关联账户状态', (tester) async {
+    final unassignedIncome = _rule(uuid: 'unassigned-income')
+      ..type = FinanceTransactionType.income
+      ..categoryUuid = null;
+    final unknownIncome = _rule(uuid: 'unknown-income')
+      ..type = FinanceTransactionType.income
+      ..paymentMethodUuid = 'deleted-income-account';
+    final unknownExpense = _rule(uuid: 'unknown-expense')
+      ..paymentMethodUuid = 'deleted-expense-account';
+    final linkedIncome = _rule(uuid: 'linked-income')
+      ..type = FinanceTransactionType.income
+      ..paymentMethodUuid = 'bank';
+
+    await _pump(
+      tester,
+      _manager(
+        rules: [
+          unassignedIncome,
+          unknownIncome,
+          unknownExpense,
+          linkedIncome,
+        ],
+        paymentMethods: [FinancePaymentMethod(uuid: 'bank', name: '工资卡')],
+      ),
+    );
+
+    expect(find.textContaining('未指定到账账户（不更新余额）'), findsOneWidget);
+    expect(find.textContaining('已归档或未知到账账户'), findsOneWidget);
+    expect(find.textContaining('已归档或未知付款方式'), findsOneWidget);
+    expect(find.textContaining('到账账户 · 工资卡'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('编辑、暂停与记一笔调用对应项目，保存新增后清除旧筛选', (tester) async {
     String? edited;
     String? used;

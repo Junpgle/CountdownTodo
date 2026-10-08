@@ -103,11 +103,21 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
     return uuid == null ? '未指定分类' : '已归档或未知分类';
   }
 
-  String _paymentName(String? uuid) {
-    for (final method in widget.paymentMethods) {
-      if (method.uuid == uuid) return method.name;
+  String _paymentName(String? uuid, FinanceTransactionType type) {
+    final label = type == FinanceTransactionType.income ? '到账账户' : '付款方式';
+    if (uuid == null || uuid.trim().isEmpty) {
+      return type == FinanceTransactionType.income
+          ? '未指定到账账户（不更新余额）'
+          : '未指定付款方式';
     }
-    return '';
+    for (final method in widget.paymentMethods) {
+      if (method.uuid == uuid) {
+        return '$label · ${method.name}${method.isArchived ? '（已归档）' : ''}';
+      }
+    }
+    return type == FinanceTransactionType.income
+        ? '已归档或未知到账账户'
+        : '已归档或未知付款方式';
   }
 
   bool _matches(
@@ -116,6 +126,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
     String? note,
     String? category,
     String? paymentMethod,
+    FinanceTransactionType type,
   ) {
     final query = _search.text.trim().toLowerCase();
     return query.isEmpty ||
@@ -124,7 +135,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
           merchant,
           note,
           _categoryName(category),
-          _paymentName(paymentMethod),
+          _paymentName(paymentMethod, type),
         ].whereType<String>().join(' ').toLowerCase().contains(query);
   }
 
@@ -143,6 +154,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
                 rule.note,
                 rule.categoryUuid,
                 rule.paymentMethodUuid,
+                rule.type,
               ),
         )
         .toList();
@@ -154,6 +166,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
             template.note,
             template.categoryUuid,
             template.paymentMethodUuid,
+            template.type,
           ),
         )
         .toList();
@@ -353,13 +366,18 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
     );
   }
 
-  Widget _metadata(String? category, String? payment, {String? extra}) {
+  Widget _metadata(
+    String? category,
+    String? payment,
+    FinanceTransactionType type, {
+    String? extra,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: Text(
           [
             _categoryName(category),
-            if (_paymentName(payment).isNotEmpty) _paymentName(payment),
+            _paymentName(payment, type),
             ?extra,
           ].join(' · '),
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -398,7 +416,7 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
                       : Icons.edit_outlined,
               highlighted: rule.isEnabled),
         ]),
-        _metadata(rule.categoryUuid, rule.paymentMethodUuid,
+        _metadata(rule.categoryUuid, rule.paymentMethodUuid, rule.type,
             extra: rule.endDate == null ? null : '至 ${rule.endDate}'),
         const Padding(
             padding: EdgeInsets.symmetric(vertical: 10),
@@ -441,7 +459,11 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
         _heading(template.name, Icons.bolt_outlined, key, edit,
             () => _run(key, () => widget.onDeleteTemplate(template))),
         _amount(template.amountMinor, template.type),
-        _metadata(template.categoryUuid, template.paymentMethodUuid),
+        _metadata(
+          template.categoryUuid,
+          template.paymentMethodUuid,
+          template.type,
+        ),
         const Padding(
             padding: EdgeInsets.symmetric(vertical: 14),
             child: Divider(height: 1)),
