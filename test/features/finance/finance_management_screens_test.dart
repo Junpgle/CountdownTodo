@@ -3117,7 +3117,7 @@ void main() {
     final db = await _seed(tester);
     final now = DateTime.now();
     final previousSnapshotAt = DateTime(now.year, now.month - 1, 15, 12);
-    final currentSnapshotAt = DateTime(now.year, now.month, 2, 12);
+    final currentSnapshotAt = now.subtract(const Duration(minutes: 1));
     await tester.runAsync(() async {
       await db.insert(
         'finance_payment_methods',
@@ -3173,6 +3173,24 @@ void main() {
     expect(
       find.text(
         '删除这条余额快照后，会按更早的余额快照和账单重新计算；如果没有更早快照，该付款方式将不再显示余额。已有账单不会删除。',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    await _waitFor(
+      tester,
+      () =>
+          _key('finance-budget-card-snapshot-delete-current')
+              .evaluate()
+              .isEmpty &&
+          _key('finance-budget-card-snapshot-delete-previous')
+              .evaluate()
+              .isNotEmpty,
+    );
+    expect(
+      find.descendant(
+        of: _key('finance-budget-card-snapshot-delete-previous'),
+        matching: find.text('当前余额 ¥90.00'),
       ),
       findsOneWidget,
     );
