@@ -950,7 +950,7 @@ void main() {
     expect(sanitizeFinanceCsvText(' 午餐'), ' 午餐');
   });
 
-  test('CSV 导出会防护公式日期并按类型标注关联账户', () async {
+  test('CSV 导出防护公式日期、标注账户类型并区分同名账户', () async {
     TestWidgetsFlutterBinding.ensureInitialized();
     final directory = await Directory.systemTemp.createTemp(
       'finance-csv-export-',
@@ -991,9 +991,35 @@ void main() {
           transactionDate: '2026-09-04',
           paymentMethodUuid: 'deleted-refund-account',
         ),
+        FinanceTransaction(
+          uuid: 'csv-duplicate-account-first',
+          amountMinor: 100,
+          transactionDate: '2026-09-05',
+          paymentMethodUuid: 'csv-account-first',
+        ),
+        FinanceTransaction(
+          uuid: 'csv-duplicate-account-second',
+          type: FinanceTransactionType.income,
+          amountMinor: 200,
+          transactionDate: '2026-09-06',
+          paymentMethodUuid: 'csv-account-second',
+        ),
       ],
       categories: const {},
-      paymentMethods: const {},
+      paymentMethods: {
+        'csv-account-first': FinancePaymentMethod(
+          uuid: 'csv-account-first',
+          name: '导出同名账户',
+          icon: '💳',
+          sortOrder: 10,
+        ),
+        'csv-account-second': FinancePaymentMethod(
+          uuid: 'csv-account-second',
+          name: '导出同名账户',
+          icon: '💳',
+          sortOrder: 20,
+        ),
+      },
     );
 
     expect(path, isNotNull);
@@ -1008,6 +1034,14 @@ void main() {
     expect(
       csv,
       contains('2026-09-04,退款,0.70,未分类,已删除或未知退款到账账户'),
+    );
+    expect(
+      csv,
+      contains('2026-09-05,支出,-1.00,未分类,💳 导出同名账户（同名账户 1/2）'),
+    );
+    expect(
+      csv,
+      contains('2026-09-06,收入,2.00,未分类,💳 导出同名账户（同名账户 2/2）'),
     );
   });
 

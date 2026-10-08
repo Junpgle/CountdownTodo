@@ -527,7 +527,10 @@ abstract final class FinanceRepository {
         final category = categories[transaction.categoryUuid];
         final payment = paymentMethods[transaction.paymentMethodUuid];
         final paymentLabel = payment != null
-            ? '${payment.icon} ${payment.name}'
+            ? '${payment.icon} ${financePaymentMethodDisplayName(
+                payment,
+                paymentMethods.values,
+              )}'
             : transaction.paymentMethodUuid?.trim().isNotEmpty == true
             ? switch (transaction.type) {
                 FinanceTransactionType.expense => '已删除或未知付款方式',
