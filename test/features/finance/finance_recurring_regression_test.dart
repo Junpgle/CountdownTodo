@@ -323,6 +323,41 @@ void main() {
       expect(FinanceStorage.revision.value, greaterThan(revisionBefore));
     });
 
+    test('同名周期规则生成的账单保留对应规则标识', () async {
+      final rules = [
+        FinanceRecurringRule(
+          uuid: 'same-name-recurring-first',
+          name: '水电费',
+          amountMinor: 10000,
+          startDate: '2026-01-01',
+          createdAt: 100,
+        ),
+        FinanceRecurringRule(
+          uuid: 'same-name-recurring-second',
+          name: '水电费',
+          amountMinor: 10000,
+          startDate: '2026-01-01',
+          createdAt: 200,
+        ),
+      ];
+      for (final rule in rules) {
+        await FinanceStorage.saveRecurringRule(rule);
+      }
+
+      expect(
+        await FinanceStorage.materializeRecurringRule(
+          rules.last,
+          dueAt: DateTime(2026, 10, 1, 9),
+          periodKey: '2026-10',
+        ),
+        true,
+      );
+
+      final generated = (await FinanceStorage.getTransactions()).single;
+      expect(generated.merchant, '水电费（同名周期账单 2/2）');
+      expect(generated.note, contains('自动生成 · 水电费（同名周期账单 2/2）'));
+    });
+
     test('其他设备删除周期账单后拒绝保存旧页面中的编辑', () async {
       final rule = FinanceRecurringRule(
         uuid: 'stale-edit-deleted-recurring-rule',

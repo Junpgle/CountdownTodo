@@ -2260,9 +2260,17 @@ abstract final class FinanceStorage {
         return false;
       }
 
+      final siblingRuleRows = await txn.query(
+        'finance_recurring_rules',
+        where: 'is_deleted = 0',
+      );
+      final displayName = financeRecurringRuleDisplayName(
+        current,
+        siblingRuleRows.map(FinanceRecurringRule.fromMap),
+      );
       final detail = <String>[
         if (current.note?.trim().isNotEmpty == true) current.note!.trim(),
-        '自动生成 · ${current.name}',
+        '自动生成 · $displayName',
       ].join(' · ');
       final transaction = FinanceTransaction(
         uuid: stableTransactionUuid,
@@ -2276,7 +2284,7 @@ abstract final class FinanceStorage {
         timezoneOffsetMinutes: dueAt.timeZoneOffset.inMinutes,
         merchant: current.merchant?.trim().isNotEmpty == true
             ? current.merchant!.trim()
-            : current.name,
+            : displayName,
         note: detail,
         source: FinanceEntrySource.automation,
         deviceId: current.deviceId,
