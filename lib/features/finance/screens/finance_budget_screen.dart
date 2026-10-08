@@ -377,11 +377,14 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
 
   Future<void> _deleteBudget(FinanceBudget budget) async {
     final itemName = budget.isPaymentMethod ? '付款方式余额' : '预算';
+    final warning = budget.isPaymentMethod
+        ? '删除这条余额快照后，会按更早的余额快照和账单重新计算；如果没有更早快照，该付款方式将不再显示余额。已有账单不会删除。'
+        : '删除预算记录不会影响已有账单。';
     final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('删除$itemName？'),
-        content: Text('删除$itemName记录不会影响已有账单。'),
+        content: Text(warning),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),

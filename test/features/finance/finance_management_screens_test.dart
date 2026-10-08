@@ -3113,6 +3113,72 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('删除付款方式余额快照会说明后续余额将重新计算', (tester) async {
+    final db = await _seed(tester);
+    final now = DateTime.now();
+    final previousSnapshotAt = DateTime(now.year, now.month - 1, 15, 12);
+    final currentSnapshotAt = DateTime(now.year, now.month, 2, 12);
+    await tester.runAsync(() async {
+      await db.insert(
+        'finance_payment_methods',
+        FinancePaymentMethod(
+          uuid: 'snapshot-delete-card',
+          name: '快照删除银行卡',
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'snapshot-delete-previous',
+          monthKey: financeMonthKey(previousSnapshotAt),
+          paymentMethodUuid: 'snapshot-delete-card',
+          amountMinor: 9000,
+          balanceSnapshotAt: previousSnapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+      await db.insert(
+        'finance_budgets',
+        FinanceBudget(
+          uuid: 'snapshot-delete-current',
+          monthKey: financeMonthKey(currentSnapshotAt),
+          paymentMethodUuid: 'snapshot-delete-card',
+          amountMinor: 10000,
+          balanceSnapshotAt: currentSnapshotAt.millisecondsSinceEpoch,
+        ).toMap(),
+      );
+    });
+
+    await _pump(
+      tester,
+      FinanceBudgetScreen(initialMonth: now),
+      size: const Size(1100, 1000),
+    );
+    final card = _key('finance-budget-card-snapshot-delete-current');
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await _tap(
+      tester,
+      find.descendant(
+        of: card,
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('移入回收站').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        '删除这条余额快照后，会按更早的余额快照和账单重新计算；如果没有更早快照，该付款方式将不再显示余额。已有账单不会删除。',
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('银行卡余额计入录入后的收入、退款和支出', (tester) async {
     final db = await _seed(tester);
     final now = DateTime.now();
