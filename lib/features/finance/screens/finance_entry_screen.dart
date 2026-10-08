@@ -1255,12 +1255,16 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
     final payment = _buildFinancePickerField(
       key: ValueKey('finance-payment-$_paymentMethodUuid'),
       colorScheme: colorScheme,
-      label: _type == FinanceTransactionType.income ? '到账账户（可选）' : '付款方式（可选）',
+      label: switch (_type) {
+        FinanceTransactionType.expense => '付款方式（可选）',
+        FinanceTransactionType.income => '到账账户（可选）',
+        FinanceTransactionType.refund => '退款到账账户（可选）',
+      },
       placeholder: _paymentMethodUuid != null && selectedPaymentMethod == null
           ? '已删除或未知付款方式'
-          : _type == FinanceTransactionType.income
-              ? '未指定（不更新账户余额）'
-              : '未指定',
+          : _type == FinanceTransactionType.expense
+          ? '未指定'
+          : '未指定（不更新账户余额）',
       selectedName: selectedPaymentMethod?.name,
       selectedIcon: selectedPaymentMethod?.icon,
       fieldIcon: Icons.account_balance_wallet_outlined,
@@ -1477,10 +1481,16 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
   Future<void> _pickPaymentMethod() async {
     _dismissKeyboard();
     final selected = await _showFinanceOptionPicker<FinancePaymentMethod>(
-      title: _type == FinanceTransactionType.income ? '选择到账账户' : '选择付款方式',
-      subtitle: _type == FinanceTransactionType.income
-          ? '收入会加到所选账户已录入的余额'
-          : '记录这笔账单使用的支付渠道',
+      title: switch (_type) {
+        FinanceTransactionType.expense => '选择付款方式',
+        FinanceTransactionType.income => '选择到账账户',
+        FinanceTransactionType.refund => '选择退款到账账户',
+      },
+      subtitle: switch (_type) {
+        FinanceTransactionType.expense => '记录这笔账单使用的支付渠道',
+        FinanceTransactionType.income => '收入会加到所选账户已录入的余额',
+        FinanceTransactionType.refund => '退款会加到所选账户已录入的余额',
+      },
       headerIcon: Icons.account_balance_wallet_outlined,
       options: _visiblePaymentMethods,
       selectedUuid: _paymentMethodUuid,

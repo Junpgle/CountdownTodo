@@ -1093,6 +1093,34 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('退款表单明确说明到账账户会增加余额', (tester) async {
+    await _seed(tester);
+    final paymentMethod = FinancePaymentMethod(
+      uuid: 'refund-destination-card',
+      name: '退款到账卡',
+    );
+    final original = FinanceTransaction(
+      uuid: 'refund-destination-original',
+      amountMinor: 5000,
+      paymentMethodUuid: paymentMethod.uuid,
+      transactionDate: dateKey(DateTime.now()),
+      merchant: '退款账户文案原账单',
+    );
+    await tester.runAsync(() async {
+      await FinanceStorage.savePaymentMethod(paymentMethod);
+      await FinanceStorage.saveTransaction(original);
+    });
+
+    await _pump(tester, FinanceEntryScreen(originalTransaction: original));
+
+    expect(find.text('退款到账账户（可选）'), findsOneWidget);
+    expect(find.text('退款到账卡'), findsOneWidget);
+    await _tap(tester, _key('finance-payment-refund-destination-card'));
+    expect(find.text('选择退款到账账户'), findsOneWidget);
+    expect(find.text('退款会加到所选账户已录入的余额'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('当前月预算不提前统计尚未发生的未来账单', (tester) async {
     final db = await _seed(tester);
     var clockNow = DateTime(2026, 9, 15, 12);
