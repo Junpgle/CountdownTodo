@@ -97,7 +97,8 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
   String _categoryName(String? uuid) {
     for (final category in widget.categories) {
       if (category.uuid == uuid) {
-        return '${category.icon} ${financeCategoryDisplayName(category, widget.categories)}';
+        return '${category.icon} ${financeCategoryDisplayName(category, widget.categories)}'
+            '${category.isArchived ? '（已归档）' : ''}';
       }
     }
     return uuid == null ? '未指定分类' : '已归档或未知分类';

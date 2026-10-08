@@ -174,6 +174,26 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('自动化卡片标记已归档分类并支持按状态搜索', (tester) async {
+    final rule = _rule()..categoryUuid = 'archived';
+    final template = _template()..categoryUuid = 'archived';
+    await _pump(
+      tester,
+      _manager(rules: [rule], templates: [template]),
+    );
+
+    expect(find.textContaining('旧分类（已归档）'), findsOneWidget);
+    await tester.enterText(_key('finance-automation-search'), '已归档');
+    await tester.pumpAndSettle();
+    expect(_key('finance-automation-rule-rent'), findsOneWidget);
+
+    await _tap(tester, _key('finance-automation-tab-templates'));
+    await tester.enterText(_key('finance-automation-search'), '已归档');
+    await tester.pumpAndSettle();
+    expect(_key('finance-automation-template-breakfast'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('自动化卡片按交易类型显示关联账户状态', (tester) async {
     final unassignedIncome = _rule(uuid: 'unassigned-income')
       ..type = FinanceTransactionType.income
