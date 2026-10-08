@@ -826,7 +826,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              '请逐笔核对后保存，缺少分类或付款方式可在编辑页补充',
+                              '请逐笔核对后保存，缺少分类或关联账户可在编辑页补充',
                               style: TextStyle(
                                 color: colorScheme.onSurfaceVariant,
                                 fontSize: 12,

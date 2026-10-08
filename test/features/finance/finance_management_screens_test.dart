@@ -574,6 +574,10 @@ void main() {
     await _tap(tester, find.text('识别账单'));
 
     expect(find.text('识别到 2 笔账单'), findsOneWidget);
+    expect(
+      find.text('请逐笔核对后保存，缺少分类或关联账户可在编辑页补充'),
+      findsOneWidget,
+    );
     expect(find.textContaining('· 早餐 · 早餐 · 微信'), findsOneWidget);
     expect(find.textContaining('· 午餐 ·'), findsOneWidget);
     expect(find.text('逐笔确认'), findsOneWidget);
@@ -2671,6 +2675,14 @@ void main() {
     await _pump(
       tester,
       Scaffold(body: ledger('已删除或未知付款方式')),
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText == '搜索商家、备注、分类、关联账户或日期',
+      ),
+      findsOneWidget,
     );
 
     final expenseRow = find
