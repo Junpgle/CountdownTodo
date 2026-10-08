@@ -19,7 +19,7 @@ abstract final class FinanceTextParser {
 付款方式: 微信
 备注: 工作日午餐
 
-类型支持：支出、收入、退款。金额单位为元，日期可写今天/昨天/本周一/上周五或具体日期，省略时默认为今天。''';
+类型支持：支出、收入、退款。支出可写“付款方式”，收入或退款可写“到账账户”或“退款到账账户”。金额单位为元，日期可写今天/昨天/本周一/上周五或具体日期，省略时默认为今天。''';
 
   /// The natural-language shortcut shown in the normal entry form.
   ///
@@ -28,11 +28,11 @@ abstract final class FinanceTextParser {
   /// bills in the same input.
   static const String quickEntryExample = '今天早餐 8 元，微信；中午午餐 25 元，支付宝';
   static const String quickEntryHelp =
-      '直接描述一笔或多笔账单；多笔请用换行或分号分开，缺少分类和付款方式也可以稍后补充';
+      '直接描述一笔或多笔账单；多笔请用换行或分号分开，缺少分类和付款/到账账户也可以稍后补充';
 
   /// Kept for callers that still use the old single-sentence wording.
   static const String oneSentenceExample = '今天午餐花了 28.5 元，微信支付，分类餐饮';
-  static const String oneSentenceHelp = '说法：时间 + 事项 + 金额 + 付款方式 + 分类\n'
+  static const String oneSentenceHelp = '说法：时间 + 事项 + 金额 + 付款/到账账户 + 分类\n'
       '示例：今天午餐花了 28.5 元，微信支付，分类餐饮';
 
   static const Map<String, String> _sentencePaymentAliases = {
@@ -299,7 +299,8 @@ abstract final class FinanceTextParser {
       _extractSentenceValue(
         text,
         RegExp(
-          r'(?:付款方式|支付方式|付款(?!给)|支付(?!宝|给)|用(?!于)|通过)'
+          r'(?:退款到账账户|到账账户|关联账户|账户|付款方式|支付方式|'
+          r'付款(?!给)|支付(?!宝|给)|用(?!于)|通过)'
           r'\s*[:=]?\s*([^,，。；;]+)',
         ),
       ),
@@ -350,7 +351,8 @@ abstract final class FinanceTextParser {
 
     final structuredText = normalized.replaceAll('：', ':');
     final hasStructuredFields = RegExp(
-      r'(?:^|\n)\s*(?:#?记账|类型|方向|收支|金额|分类|日期|付款方式)\s*[:=]',
+      r'(?:^|\n)\s*(?:#?记账|类型|方向|收支|金额|分类|日期|'
+      r'付款方式|到账账户|退款到账账户|关联账户)\s*[:=]',
       multiLine: true,
     ).hasMatch(structuredText);
     if (_blockMarker.hasMatch(structuredText) || hasStructuredFields) {
@@ -795,6 +797,9 @@ abstract final class FinanceTextParser {
     ]);
     final category = _first(fields, const ['分类', '类别', 'category']);
     final payment = _first(fields, const [
+      '退款到账账户',
+      '到账账户',
+      '关联账户',
       '付款方式',
       '支付方式',
       '支付',
@@ -950,7 +955,9 @@ abstract final class FinanceTextParser {
         .replaceFirst(RegExp(r'[,，。；;、\s]+$'), '')
         .trim();
     final nextField = RegExp(
-      r'(?:^|\s)(?:分类|类别|归类为?|记到|付款方式|支付方式|付款|支付|备注|说明|商家|商户|店铺|项目|名称)\s*[:=]?',
+      r'(?:^|\s)(?:分类|类别|归类为?|记到|退款到账账户|到账账户|'
+      r'关联账户|账户|付款方式|支付方式|付款|支付|备注|说明|'
+      r'商家|商户|店铺|项目|名称)\s*[:=]?',
     ).firstMatch(normalized);
     if (nextField != null) {
       if (nextField.start == 0) return null;
@@ -1074,7 +1081,9 @@ abstract final class FinanceTextParser {
           _sameSentenceValue(value, payment) ||
           _sameSentenceValue(value, note) ||
           _knownSentencePayment(value) != null ||
-          RegExp(r'^(?:分类|类别|付款方式|支付方式|备注|说明)').hasMatch(value)) {
+          RegExp(
+            r'^(?:分类|类别|退款到账账户|到账账户|关联账户|账户|付款方式|支付方式|备注|说明)',
+          ).hasMatch(value)) {
         continue;
       }
       return value;

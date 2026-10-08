@@ -227,6 +227,39 @@ void main() {
       expect(draft.categoryName, '工资');
     });
 
+    test('收入和退款的一句话记账识别到账账户字段', () {
+      final incomeDrafts = FinanceTextParser.parseQuickEntries(
+        '今天收到工资 2,000 元，到账账户: 建设银行',
+        now: now,
+      );
+      final refundDrafts = FinanceTextParser.parseQuickEntries(
+        '今天退款 20 元，退款到账账户: 工商银行',
+        now: now,
+      );
+
+      expect(incomeDrafts, hasLength(1));
+      expect(incomeDrafts.single.type, FinanceTransactionType.income);
+      expect(incomeDrafts.single.paymentMethodName, '建设银行');
+      expect(refundDrafts, hasLength(1));
+      expect(refundDrafts.single.type, FinanceTransactionType.refund);
+      expect(refundDrafts.single.paymentMethodName, '工商银行');
+    });
+
+    test('结构化收入记录识别到账账户字段', () {
+      final drafts = FinanceTextParser.parseQuickEntries(
+        '''#记账
+类型: 收入
+金额: 2,000
+日期: 2026-08-30
+到账账户: 建设银行''',
+        now: now,
+      );
+
+      expect(drafts, hasLength(1));
+      expect(drafts.single.type, FinanceTransactionType.income);
+      expect(drafts.single.paymentMethodName, '建设银行');
+    });
+
     test('识别本周和上周的具体星期，不把日期词拼进商家', () {
       final previousWeek = FinanceTextParser.parseOneSentence(
         '上周五午餐花了 30 元，微信支付',
