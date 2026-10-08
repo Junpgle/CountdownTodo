@@ -240,4 +240,40 @@ void main() {
       1000000,
     );
   });
+
+  testWidgets('无效或溢出的单价不会被保存为零', (tester) async {
+    final db = await _setUpDatabase(tester);
+    addTearDown(() async {
+      AiUsageCostService.databaseOverride = null;
+      FinanceStorage.databaseOverride = null;
+      await db.close();
+    });
+    await _pumpLoaded(tester, const AiUsageCostScreen(managePricing: true));
+
+    await tester.tap(find.text('添加单价'));
+    await tester.pumpAndSettle();
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'custom');
+    await tester.enterText(fields.at(1), 'overflow-model');
+    await tester.enterText(fields.at(3), '1e309');
+    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('单价须为有限的非负数字，留空按 0 处理'), findsOneWidget);
+    var pricing = await tester.runAsync(AiUsageCostService.getPricing) ?? [];
+    expect(pricing.any((item) => item.id == 'custom::overflow-model'), isFalse);
+    expect(tester.takeException(), isNull);
+
+    await tester.enterText(fields.at(3), '1.25');
+    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.pumpAndSettle();
+    pricing = await tester.runAsync(AiUsageCostService.getPricing) ?? [];
+    expect(
+      pricing
+          .firstWhere((item) => item.id == 'custom::overflow-model')
+          .inputMicrosPerMillion,
+      1250000,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }

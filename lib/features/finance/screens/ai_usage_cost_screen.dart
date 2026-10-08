@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../widgets/floating_glass_control.dart';
+import '../models/finance_models.dart';
 import '../services/ai_usage_cost_service.dart';
 import '../../../utils/app_dialogs.dart';
 
@@ -93,6 +94,18 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
     await AiUsageCostService.setAutoLedgerEnabled(value);
   }
 
+  bool _hasInvalidPriceField(Iterable<TextEditingController> controllers) {
+    for (final controller in controllers) {
+      final value = controller.text.trim();
+      if (value.isEmpty) continue;
+      final parsed = double.tryParse(value);
+      if (parsed == null || !parsed.isFinite || parsed < 0) return true;
+      final micros = parsed * 1000000;
+      if (!micros.isFinite || micros > maxFinanceAmountMinor) return true;
+    }
+    return false;
+  }
+
   Future<void> _editPricing([AiUsagePricing? current]) async {
     final provider = TextEditingController(text: current?.provider ?? 'zhipu');
     final model = TextEditingController(text: current?.model ?? '');
@@ -140,182 +153,213 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
           ? ''
           : AiUsageCostService.microsToYuan(current.audioMicrosPerHour),
     );
+    String? validationError;
+    void disposeControllers() {
+      provider.dispose();
+      model.dispose();
+      cachedInput.dispose();
+      input.dispose();
+      output.dispose();
+      peakCachedInput.dispose();
+      peakInput.dispose();
+      peakOutput.dispose();
+      image.dispose();
+      audio.dispose();
+    }
+
     final result = await showAppDialog<AiUsagePricing>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(current == null ? '添加模型单价' : '编辑模型单价'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: provider,
-                decoration: const InputDecoration(labelText: '服务商标识，例如 zhipu'),
+      builder: (context) => _DisposeOnUnmount(
+        onDispose: disposeControllers,
+        child: StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text(current == null ? '添加模型单价' : '编辑模型单价'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: provider,
+                    decoration: const InputDecoration(labelText: '服务商标识，例如 zhipu'),
+                  ),
+                  TextField(
+                    controller: model,
+                    decoration: const InputDecoration(labelText: '模型 ID'),
+                  ),
+                  TextField(
+                    controller: cachedInput,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: '缓存输入 ¥ / 百万 Token（可选）',
+                    ),
+                  ),
+                  TextField(
+                    controller: input,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: '输入 ¥ / 百万 Token'),
+                  ),
+                  TextField(
+                    controller: output,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: '输出 ¥ / 百万 Token'),
+                  ),
+                  TextField(
+                    controller: peakCachedInput,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: '高峰缓存输入 ¥ / 百万 Token（DeepSeek 可选）',
+                    ),
+                  ),
+                  TextField(
+                    controller: peakInput,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: '高峰输入 ¥ / 百万 Token（DeepSeek 可选）',
+                    ),
+                  ),
+                  TextField(
+                    controller: peakOutput,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: '高峰输出 ¥ / 百万 Token（DeepSeek 可选）',
+                    ),
+                  ),
+                  TextField(
+                    controller: image,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: '图片固定费 ¥ / 张（非 MiMo 可选）',
+                    ),
+                  ),
+                  TextField(
+                    controller: audio,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: '音频 ¥ / 小时（可选）'),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    '智谱内置分段单价会按输入/输出 Token 自动匹配；DeepSeek 内置北京时间工作日高峰价（09:00–12:00、14:00–18:00）。MiMo、智谱视觉和 DeepSeek 视觉的媒体 Token 已计入输入 Token，不另加图片费。NVIDIA NIM 与自定义模型没有统一公价，请手动配置；Token Plan 额度不按按量价格自动折算。',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  if (validationError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      validationError!,
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                  ],
+                ],
               ),
-              TextField(
-                controller: model,
-                decoration: const InputDecoration(labelText: '模型 ID'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消'),
               ),
-              TextField(
-                controller: cachedInput,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: '缓存输入 ¥ / 百万 Token（可选）',
-                ),
-              ),
-              TextField(
-                controller: input,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(labelText: '输入 ¥ / 百万 Token'),
-              ),
-              TextField(
-                controller: output,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(labelText: '输出 ¥ / 百万 Token'),
-              ),
-              TextField(
-                controller: peakCachedInput,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: '高峰缓存输入 ¥ / 百万 Token（DeepSeek 可选）',
-                ),
-              ),
-              TextField(
-                controller: peakInput,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: '高峰输入 ¥ / 百万 Token（DeepSeek 可选）',
-                ),
-              ),
-              TextField(
-                controller: peakOutput,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: '高峰输出 ¥ / 百万 Token（DeepSeek 可选）',
-                ),
-              ),
-              TextField(
-                controller: image,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: '图片固定费 ¥ / 张（非 MiMo 可选）',
-                ),
-              ),
-              TextField(
-                controller: audio,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(labelText: '音频 ¥ / 小时（可选）'),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                '智谱内置分段单价会按输入/输出 Token 自动匹配；DeepSeek 内置北京时间工作日高峰价（09:00–12:00、14:00–18:00）。MiMo、智谱视觉和 DeepSeek 视觉的媒体 Token 已计入输入 Token，不另加图片费。NVIDIA NIM 与自定义模型没有统一公价，请手动配置；Token Plan 额度不按按量价格自动折算。',
-                style: TextStyle(fontSize: 12),
+              FilledButton(
+                onPressed: () {
+                  if (provider.text.trim().isEmpty || model.text.trim().isEmpty) {
+                    return;
+                  }
+                  if (_hasInvalidPriceField([
+                    cachedInput,
+                    input,
+                    output,
+                    peakCachedInput,
+                    peakInput,
+                    peakOutput,
+                    image,
+                    audio,
+                  ])) {
+                    setDialogState(() {
+                      validationError = '单价须为有限的非负数字，留空按 0 处理';
+                    });
+                    return;
+                  }
+                  final providerValue = provider.text.trim();
+                  final modelValue = model.text.trim();
+                  final cachedInputValue = AiUsageCostService.yuanToMicros(
+                    cachedInput.text,
+                  );
+                  final inputValue = AiUsageCostService.yuanToMicros(input.text);
+                  final outputValue = AiUsageCostService.yuanToMicros(output.text);
+                  final peakCachedInputValue = AiUsageCostService.yuanToMicros(
+                    peakCachedInput.text,
+                  );
+                  final peakInputValue = AiUsageCostService.yuanToMicros(
+                    peakInput.text,
+                  );
+                  final peakOutputValue = AiUsageCostService.yuanToMicros(
+                    peakOutput.text,
+                  );
+                  final sameIdentity =
+                      current != null &&
+                      current.provider == providerValue &&
+                      current.model == modelValue;
+                  final preservesTiers =
+                      sameIdentity &&
+                      current.tiers.isNotEmpty &&
+                      current.cachedInputMicrosPerMillion == cachedInputValue &&
+                      current.inputMicrosPerMillion == inputValue &&
+                      current.outputMicrosPerMillion == outputValue;
+                  final preservesFree =
+                      sameIdentity &&
+                      current.isFree &&
+                      cachedInputValue == 0 &&
+                      inputValue == 0 &&
+                      outputValue == 0 &&
+                      peakCachedInputValue == 0 &&
+                      peakInputValue == 0 &&
+                      peakOutputValue == 0 &&
+                      AiUsageCostService.yuanToMicros(image.text) == 0 &&
+                      AiUsageCostService.yuanToMicros(audio.text) == 0;
+                  Navigator.pop(
+                    context,
+                    AiUsagePricing(
+                      provider: providerValue,
+                      model: modelValue,
+                      cachedInputMicrosPerMillion: cachedInputValue,
+                      inputMicrosPerMillion: inputValue,
+                      outputMicrosPerMillion: outputValue,
+                      imageMicrosPerImage: AiUsageCostService.yuanToMicros(
+                        image.text,
+                      ),
+                      audioMicrosPerHour: AiUsageCostService.yuanToMicros(
+                        audio.text,
+                      ),
+                      peakCachedInputMicrosPerMillion: peakCachedInputValue,
+                      peakInputMicrosPerMillion: peakInputValue,
+                      peakOutputMicrosPerMillion: peakOutputValue,
+                      imageTokensIncluded:
+                          sameIdentity && current.imageTokensIncluded,
+                      isFree: preservesFree,
+                      tiers: preservesTiers ? current.tiers : const [],
+                    ),
+                  );
+                },
+                child: const Text('保存'),
               ),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (provider.text.trim().isEmpty || model.text.trim().isEmpty) {
-                return;
-              }
-              final providerValue = provider.text.trim();
-              final modelValue = model.text.trim();
-              final cachedInputValue = AiUsageCostService.yuanToMicros(
-                cachedInput.text,
-              );
-              final inputValue = AiUsageCostService.yuanToMicros(input.text);
-              final outputValue = AiUsageCostService.yuanToMicros(output.text);
-              final peakCachedInputValue = AiUsageCostService.yuanToMicros(
-                peakCachedInput.text,
-              );
-              final peakInputValue = AiUsageCostService.yuanToMicros(
-                peakInput.text,
-              );
-              final peakOutputValue = AiUsageCostService.yuanToMicros(
-                peakOutput.text,
-              );
-              final sameIdentity =
-                  current != null &&
-                  current.provider == providerValue &&
-                  current.model == modelValue;
-              final preservesTiers =
-                  sameIdentity &&
-                  current.tiers.isNotEmpty &&
-                  current.cachedInputMicrosPerMillion == cachedInputValue &&
-                  current.inputMicrosPerMillion == inputValue &&
-                  current.outputMicrosPerMillion == outputValue;
-              final preservesFree =
-                  sameIdentity &&
-                  current.isFree &&
-                  cachedInputValue == 0 &&
-                  inputValue == 0 &&
-                  outputValue == 0 &&
-                  peakCachedInputValue == 0 &&
-                  peakInputValue == 0 &&
-                  peakOutputValue == 0 &&
-                  AiUsageCostService.yuanToMicros(image.text) == 0 &&
-                  AiUsageCostService.yuanToMicros(audio.text) == 0;
-              Navigator.pop(
-                context,
-                AiUsagePricing(
-                  provider: providerValue,
-                  model: modelValue,
-                  cachedInputMicrosPerMillion: cachedInputValue,
-                  inputMicrosPerMillion: inputValue,
-                  outputMicrosPerMillion: outputValue,
-                  imageMicrosPerImage: AiUsageCostService.yuanToMicros(
-                    image.text,
-                  ),
-                  audioMicrosPerHour: AiUsageCostService.yuanToMicros(
-                    audio.text,
-                  ),
-                  peakCachedInputMicrosPerMillion: peakCachedInputValue,
-                  peakInputMicrosPerMillion: peakInputValue,
-                  peakOutputMicrosPerMillion: peakOutputValue,
-                  imageTokensIncluded:
-                      sameIdentity && current.imageTokensIncluded,
-                  isFree: preservesFree,
-                  tiers: preservesTiers ? current.tiers : const [],
-                ),
-              );
-            },
-            child: const Text('保存'),
-          ),
-        ],
       ),
     );
-    provider.dispose();
-    model.dispose();
-    cachedInput.dispose();
-    input.dispose();
-    output.dispose();
-    peakCachedInput.dispose();
-    peakInput.dispose();
-    peakOutput.dispose();
-    image.dispose();
-    audio.dispose();
     if (result == null) return;
     await AiUsageCostService.savePricing(result);
     await _load();
@@ -684,4 +728,25 @@ class _AiUsageCostScreenState extends State<AiUsageCostScreen> {
     }
     return parts.isEmpty ? '未配置可用单价' : parts.join(' · ');
   }
+}
+
+class _DisposeOnUnmount extends StatefulWidget {
+  const _DisposeOnUnmount({required this.child, required this.onDispose});
+
+  final Widget child;
+  final VoidCallback onDispose;
+
+  @override
+  State<_DisposeOnUnmount> createState() => _DisposeOnUnmountState();
+}
+
+class _DisposeOnUnmountState extends State<_DisposeOnUnmount> {
+  @override
+  void dispose() {
+    widget.onDispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

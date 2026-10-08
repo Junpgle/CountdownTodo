@@ -1278,8 +1278,10 @@ abstract final class AiUsageCostService {
 
   static int yuanToMicros(String value) {
     final parsed = double.tryParse(value.trim());
-    if (parsed == null || parsed < 0) return 0;
-    return (parsed * _microsPerYuan).round();
+    if (parsed == null || !parsed.isFinite || parsed < 0) return 0;
+    final micros = parsed * _microsPerYuan;
+    if (!micros.isFinite || micros > maxFinanceAmountMinor) return 0;
+    return micros.round();
   }
 
   static String microsToYuan(int micros) =>
