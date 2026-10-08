@@ -251,6 +251,24 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('收入周期规则使用到账账户并提示未指定时不更新余额', (tester) async {
+    final rule = _rule()..type = FinanceTransactionType.income;
+    await _openEditor(
+      tester,
+      FinanceAutomationEditor.rule(
+        rule: rule,
+        categories: _categories(),
+        paymentMethods: const [],
+        onSave: (_) async {},
+      ),
+    );
+
+    expect(find.text('到账账户'), findsOneWidget);
+    expect(find.text('未指定（不更新账户余额）'), findsOneWidget);
+    expect(find.text('付款方式'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('保存失败不丢草稿，保存进行中不能重复提交', (tester) async {
     var calls = 0;
     final pending = Completer<void>();
