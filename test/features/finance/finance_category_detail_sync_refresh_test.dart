@@ -150,7 +150,7 @@ void main() {
       find.byKey(ValueKey('finance-overview-category-${root.uuid}')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('食品'), findsOneWidget);
+    expect(find.text('日常支出 - 食品'), findsOneWidget);
     expect(find.text('¥10.00'), findsNWidgets(2));
 
     final remoteChild = FinanceCategory.fromMap(child.toMap())
@@ -178,8 +178,11 @@ void main() {
       '餐饮',
     );
 
-    await _waitFor(tester, () => find.text('餐饮').evaluate().isNotEmpty);
-    expect(find.text('食品'), findsNothing);
+    await _waitFor(
+      tester,
+      () => find.text('日常支出 - 餐饮').evaluate().isNotEmpty,
+    );
+    expect(find.text('日常支出 - 食品'), findsNothing);
     expect(find.text('¥25.00'), findsNWidgets(2));
     await tester.tap(
       find.byKey(const ValueKey('finance-category-detail-detail-food')),
@@ -244,7 +247,7 @@ void main() {
     final db = await _openDatabase(tester);
     _closeDatabase(db);
     var now = DateTime.now();
-    final dueAt = now.add(const Duration(seconds: 5));
+    final dueAt = now.add(const Duration(seconds: 3));
     final periodStart = DateTime(now.year, now.month);
     final periodEnd = DateTime(now.year, now.month + 1);
     final root = FinanceCategory(uuid: 'due-detail-root', name: '固定支出');
@@ -283,15 +286,22 @@ void main() {
       ),
     );
     await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      () => Future<void>.delayed(const Duration(milliseconds: 500)),
     );
     await tester.pump();
-    expect(find.text('网络费'), findsNothing);
+    expect(find.text('固定支出 - 网络费'), findsNothing);
     expect(find.text('这个大类下暂无可展示的小类账单'), findsOneWidget);
 
     now = dueAt;
     await tester.pump(const Duration(seconds: 5));
-    await _waitFor(tester, () => find.text('网络费').evaluate().isNotEmpty);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(seconds: 4)),
+    );
+    await tester.pump();
+    await _waitFor(
+      tester,
+      () => find.text('固定支出 - 网络费').evaluate().isNotEmpty,
+    );
 
     expect(find.text('¥12.00'), findsNWidgets(2));
     expect(tester.takeException(), isNull);
