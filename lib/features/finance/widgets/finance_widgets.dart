@@ -1246,9 +1246,12 @@ class _FinanceLedgerPanelState extends State<FinanceLedgerPanel> {
     final category = isUncategorized ? null : categories[categoryUuid];
     final label = isUncategorized
         ? '分类 · 未分类'
-        : category == null
+        : categoryUuid == null
         ? '分类筛选'
-        : '分类 · ${financeCategoryDisplayName(category, categories.values)}';
+        : '分类 · ${financeCategoryReferenceDisplayName(
+            categoryUuid,
+            categories.values,
+          )}';
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: FilterChip(

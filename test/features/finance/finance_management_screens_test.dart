@@ -4243,6 +4243,7 @@ void main() {
 
     expect(find.text('删除分类后的历史账单'), findsOneWidget);
     expect(find.text('分类已删除或不可用'), findsOneWidget);
+    expect(find.text('分类 · 分类已删除或不可用'), findsOneWidget);
     expect(find.text('未分类'), findsNothing);
     expect(tester.takeException(), isNull);
   });
