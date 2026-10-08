@@ -170,10 +170,12 @@ abstract final class ThirtyDayChallengeRepository {
       bundle['habit_center_promotion_dismissed'] == true,
     );
     final corruptBackupKey = await _scopedCorruptBackupKey(username);
-    if (corruptStateBackup is String && corruptStateBackup.isNotEmpty) {
-      await prefs.setString(corruptBackupKey, corruptStateBackup);
-    } else {
-      await prefs.remove(corruptBackupKey);
+    if (bundle.containsKey('corrupt_state_backup')) {
+      if (corruptStateBackup is String && corruptStateBackup.isNotEmpty) {
+        await prefs.setString(corruptBackupKey, corruptStateBackup);
+      } else {
+        await prefs.remove(corruptBackupKey);
+      }
     }
     activityRevision.value++;
     return state.tasks.length;
