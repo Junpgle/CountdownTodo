@@ -211,6 +211,16 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final selectedParent = _selectedParent;
+    final selectedParentPath = selectedParent == null
+        ? null
+        : financeCategoryDisplayName(selectedParent, widget.availableParents);
+    final selectedParentName = selectedParent == null
+        ? null
+        : financeCategorySiblingDisplayName(
+            selectedParent,
+            widget.availableParents,
+          );
     return PopScope(
       canPop: !_isSaving,
       child: AlertDialog(
@@ -244,9 +254,9 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                             Text(
                               _nameController.text.trim().isEmpty
                                   ? '你的$_label'
-                                  : _selectedParent == null
+                                  : selectedParentPath == null
                                       ? _nameController.text.trim()
-                                      : '${_selectedParent!.name} - ${_nameController.text.trim()}',
+                                      : '$selectedParentPath - ${_nameController.text.trim()}',
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.titleMedium?.copyWith(
@@ -337,7 +347,7 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                       helperText: _hasChildren
                           ? '已有二级分类，请先移动二级分类后再调整上级'
                           : widget.lockParent && _selectedParent != null
-                              ? '已选择“${_selectedParent!.name}”，这是该大类下的细分类'
+                              ? '已选择“$selectedParentName”，这是该大类下的细分类'
                               : '不选择上级时，会创建为一级分类',
                       helperMaxLines: 2,
                       border: OutlineInputBorder(
@@ -351,7 +361,12 @@ class _FinanceCatalogEditorState extends State<FinanceCatalogEditor> {
                       for (final parent in _parentCandidates)
                         DropdownMenuItem<String>(
                           value: parent.uuid,
-                          child: Text('${parent.icon} ${parent.name}'),
+                          child: Text(
+                            '${parent.icon} ${financeCategorySiblingDisplayName(
+                              parent,
+                              widget.availableParents,
+                            )}',
+                          ),
                         ),
                     ],
                     onChanged: _isSaving || widget.lockParent || _hasChildren

@@ -1241,6 +1241,49 @@ void main() {
     );
   });
 
+  test('分类路径区分同级重名分类并保留父子层级', () {
+    final firstParent = FinanceCategory(
+      uuid: 'duplicate-category-parent-first',
+      name: '重复分类',
+      sortOrder: 10,
+    );
+    final secondParent = FinanceCategory(
+      uuid: 'duplicate-category-parent-second',
+      name: '重复分类',
+      sortOrder: 20,
+    );
+    final firstChild = FinanceCategory(
+      uuid: 'duplicate-category-child-first',
+      name: '子分类',
+      parentUuid: firstParent.uuid,
+      sortOrder: 10,
+    );
+    final secondChild = FinanceCategory(
+      uuid: 'duplicate-category-child-second',
+      name: '子分类',
+      parentUuid: firstParent.uuid,
+      sortOrder: 20,
+    );
+    final categories = [firstParent, secondParent, firstChild, secondChild];
+
+    expect(
+      financeCategoryDisplayName(firstParent, categories),
+      '重复分类（同名分类 1/2）',
+    );
+    expect(
+      financeCategoryDisplayName(secondParent, categories),
+      '重复分类（同名分类 2/2）',
+    );
+    expect(
+      financeCategoryDisplayName(firstChild, categories),
+      '重复分类（同名分类 1/2） - 子分类（同名分类 1/2）',
+    );
+    expect(
+      financeCategoryDisplayName(secondChild, categories),
+      '重复分类（同名分类 1/2） - 子分类（同名分类 2/2）',
+    );
+  });
+
   test('餐饮默认分类包含网购小类', () {
     final onlineShopping = FinanceDefaults.categories.firstWhere(
       (item) => item['uuid'] == 'finance-system-category-food-online-shopping',

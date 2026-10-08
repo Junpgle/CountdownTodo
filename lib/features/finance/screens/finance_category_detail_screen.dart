@@ -205,7 +205,8 @@ class _FinanceCategoryDetailScreenState
   }
 
   String _categoryLabel(FinanceCategory category) =>
-      '${category.name}${category.isArchived ? '（已归档）' : ''}';
+      '${financeCategoryDisplayName(category, categories.values)}'
+      '${category.isArchived ? '（已归档）' : ''}';
 
   bool _belongsToRoot(FinanceTransaction transaction) {
     final category = categories[transaction.categoryUuid];

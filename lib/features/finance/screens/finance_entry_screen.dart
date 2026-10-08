@@ -1517,7 +1517,7 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       optionBuilder: (context, item, isSelected, onTap) =>
           _buildFinanceOptionTile(
             context,
-            title: item.name,
+            title: financeCategorySiblingDisplayName(item, _categories),
             subtitle: '一级分类',
             iconText: item.icon,
             accent: _optionAccent(
@@ -1546,8 +1546,11 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
         current != null &&
         (current.uuid == selectedParent.uuid ||
             current.parentUuid?.trim() == selectedParent.uuid);
+    final selectedParentDisplayName =
+        financeCategorySiblingDisplayName(selectedParent, _categories);
     final selected = await _showFinanceOptionPicker<FinanceCategory>(
-      title: '${selectedParent.name} · 选择小类',
+      title:
+          '${financeCategoryDisplayName(selectedParent, _categories)} · 选择小类',
       subtitle: '可以只记为大类，也可以选择更具体的细分',
       headerIcon: Icons.account_tree_outlined,
       options: [selectedParent, ...children],
@@ -1557,10 +1560,16 @@ class _FinanceEntryScreenState extends State<FinanceEntryScreen> {
       onAdd: () => _addSubcategory(selectedParent),
       optionBuilder: (context, item, isSelected, onTap) {
         final isParent = item.uuid == selectedParent.uuid;
+        final itemDisplayName =
+            financeCategorySiblingDisplayName(item, _categories);
         return _buildFinanceOptionTile(
           context,
-          title: isParent ? '仅记为${selectedParent.name}' : item.name,
-          subtitle: isParent ? '不选择小类' : '${selectedParent.name}下的细分类',
+          title: isParent
+              ? '仅记为$selectedParentDisplayName'
+              : itemDisplayName,
+          subtitle: isParent
+              ? '不选择小类'
+              : '$selectedParentDisplayName下的细分类',
           iconText: item.icon,
           accent: _optionAccent(item.colorValue, Theme.of(context).colorScheme),
           isSelected: isSelected,

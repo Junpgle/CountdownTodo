@@ -176,13 +176,16 @@ class _FinanceSettingsScreenState extends State<FinanceSettingsScreen> {
     );
     if (saved != true || !mounted) return;
     await _load();
-    _showMessage('细分类已添加到“${parent.name}”');
+    _showMessage(
+      '细分类已添加到“${financeCategoryDisplayName(parent, _categories)}”',
+    );
   }
 
   Future<void> _archiveCategory(FinanceCategory category) async {
     if (category.isSystem) return;
+    final displayName = financeCategoryDisplayName(category, _categories);
     final confirmed = await _confirmArchive(
-      title: '归档“${category.name}”？',
+      title: '归档“$displayName”？',
       message: '归档后，新建账单中不再显示该分类；历史账单和统计不受影响。',
     );
     if (confirmed != true) return;

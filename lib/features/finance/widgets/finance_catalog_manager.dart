@@ -97,12 +97,12 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
       entries.add(
         _CatalogEntry(
           uuid: category.uuid,
-          name: category.name,
+          name: financeCategorySiblingDisplayName(category, widget.categories),
           icon: category.icon,
           isSystem: category.isSystem,
           isArchived: category.isArchived || parent?.isArchived == true,
           parentUuid: category.parentUuid,
-          searchName: _categorySearchName(category, categoriesByUuid),
+          searchName: financeCategoryDisplayName(category, widget.categories),
           onEdit: () => widget.onEditCategory(category),
           onArchive: () => widget.onArchiveCategory(category),
           onRestore: () => widget.onRestoreCategory(category),
@@ -115,24 +115,6 @@ class _FinanceCatalogManagerState extends State<FinanceCatalogManager> {
       );
     }
     return entries;
-  }
-
-  String _categorySearchName(
-    FinanceCategory category,
-    Map<String, FinanceCategory> categoriesByUuid,
-  ) {
-    final names = <String>[];
-    final visited = <String>{};
-    FinanceCategory? current = category;
-    while (current != null && visited.add(current.uuid)) {
-      names.insert(0, current.name);
-      final parentUuid = current.parentUuid?.trim();
-      if (parentUuid == null || parentUuid.isEmpty) break;
-      final parent = categoriesByUuid[parentUuid];
-      if (parent == null || parent.type != current.type) break;
-      current = parent;
-    }
-    return names.join(' - ');
   }
 
   bool _matchesFilter(_CatalogEntry entry, _CatalogFilter filter) =>

@@ -670,6 +670,68 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('记账分类选择器区分同级重名分类', (tester) async {
+    final db = await _seed(tester);
+    final firstParent = FinanceCategory(
+      uuid: 'entry-duplicate-parent-first',
+      name: '选择重复大类',
+      sortOrder: 10,
+    );
+    final secondParent = FinanceCategory(
+      uuid: 'entry-duplicate-parent-second',
+      name: '选择重复大类',
+      sortOrder: 20,
+    );
+    final firstChild = FinanceCategory(
+      uuid: 'entry-duplicate-child-first',
+      name: '选择重复小类',
+      parentUuid: secondParent.uuid,
+      sortOrder: 10,
+    );
+    final secondChild = FinanceCategory(
+      uuid: 'entry-duplicate-child-second',
+      name: '选择重复小类',
+      parentUuid: secondParent.uuid,
+      sortOrder: 20,
+    );
+    await tester.runAsync(() async {
+      for (final category in [
+        firstParent,
+        secondParent,
+        firstChild,
+        secondChild,
+      ]) {
+        await db.insert('finance_categories', category.toMap());
+      }
+    });
+
+    await _pump(tester, const FinanceEntryScreen());
+    final categoryField = find.byWidgetPredicate(
+      (widget) =>
+          widget.key is ValueKey<String> &&
+          (widget.key! as ValueKey<String>).value.startsWith(
+            'finance-category-',
+          ),
+    );
+    await _tap(tester, categoryField);
+    expect(find.text('选择重复大类（同名分类 1/2）'), findsOneWidget);
+    expect(find.text('选择重复大类（同名分类 2/2）'), findsOneWidget);
+
+    await _tap(tester, find.text('选择重复大类（同名分类 2/2）'));
+    expect(find.text('选择重复大类（同名分类 2/2） · 选择小类'), findsOneWidget);
+    expect(find.text('选择重复小类（同名分类 1/2）'), findsOneWidget);
+    expect(find.text('选择重复小类（同名分类 2/2）'), findsOneWidget);
+    await _tap(tester, find.text('选择重复小类（同名分类 2/2）'));
+
+    expect(
+      find.text(
+        '选择重复大类（同名分类 2/2） - 选择重复小类（同名分类 2/2）',
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('AI草稿遇到重复账户名称时不会猜测到账账户', (tester) async {
     final db = await _seed(tester);
     await tester.runAsync(() async {
@@ -4037,12 +4099,12 @@ void main() {
     );
     expect(find.text('归档大类（已归档）'), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.text('归档小类（已归档）'),
+      find.text('归档大类 - 归档小类（已归档）'),
       250,
       maxScrolls: 20,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('归档小类（已归档）'), findsOneWidget);
+    expect(find.text('归档大类 - 归档小类（已归档）'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -1368,7 +1368,7 @@ class FinanceCategory {
   }
 }
 
-/// Returns the readable path for a category, such as `餐饮 - 奶茶`.
+/// Returns a readable, unambiguous category path such as `餐饮 - 奶茶`.
 ///
 /// The parent is resolved by UUID instead of by its display name so duplicate
 /// names remain unambiguous and old transactions can keep their stored UUID.
@@ -1377,14 +1377,15 @@ String financeCategoryDisplayName(
   Iterable<FinanceCategory> categories, {
   String separator = ' - ',
 }) {
+  final allCategories = categories.toList();
   final byUuid = <String, FinanceCategory>{
-    for (final item in categories) item.uuid: item,
+    for (final item in allCategories) item.uuid: item,
   };
   final names = <String>[];
   final visited = <String>{};
   FinanceCategory? current = category;
   while (current != null && visited.add(current.uuid)) {
-    names.insert(0, current.name);
+    names.insert(0, financeCategorySiblingDisplayName(current, allCategories));
     final parentUuid = current.parentUuid?.trim();
     if (parentUuid == null || parentUuid.isEmpty) break;
     final parent = byUuid[parentUuid];
@@ -1393,6 +1394,37 @@ String financeCategoryDisplayName(
   }
   return names.join(separator);
 }
+
+/// Adds a stable ordinal when a category has a same-type sibling with the
+/// same normalized name. Use this in lists where the surrounding hierarchy is
+/// already visible.
+String financeCategorySiblingDisplayName(
+  FinanceCategory category,
+  Iterable<FinanceCategory> categories,
+) {
+  final normalizedName = _normalizeFinanceCategoryName(category.name);
+  final parentUuid = category.parentUuid?.trim() ?? '';
+  final siblings = categories
+      .where(
+        (item) =>
+            !item.isDeleted &&
+            item.type == category.type &&
+            (item.parentUuid?.trim() ?? '') == parentUuid &&
+            _normalizeFinanceCategoryName(item.name) == normalizedName,
+      )
+      .toList()
+    ..sort((left, right) {
+      final sortOrder = left.sortOrder.compareTo(right.sortOrder);
+      return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
+    });
+  if (siblings.length < 2) return category.name;
+  final index = siblings.indexWhere((item) => item.uuid == category.uuid);
+  if (index < 0) return category.name;
+  return '${category.name}（同名分类 ${index + 1}/${siblings.length}）';
+}
+
+String _normalizeFinanceCategoryName(String value) =>
+    value.replaceAll(RegExp(r'\s+'), '').trim().toLowerCase();
 
 class FinancePaymentMethod {
   String uuid;

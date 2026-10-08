@@ -150,6 +150,44 @@ void main() {
         find.descendant(of: parent, matching: find.text('奶茶')), findsNothing);
   });
 
+  testWidgets('分类目录区分同级重名分类', (tester) async {
+    final firstParent = FinanceCategory(
+      uuid: 'catalog-duplicate-parent-first',
+      name: '目录重复大类',
+      sortOrder: 10,
+    );
+    final secondParent = FinanceCategory(
+      uuid: 'catalog-duplicate-parent-second',
+      name: '目录重复大类',
+      sortOrder: 20,
+    );
+    final firstChild = FinanceCategory(
+      uuid: 'catalog-duplicate-child-first',
+      name: '目录重复小类',
+      parentUuid: firstParent.uuid,
+      sortOrder: 10,
+    );
+    final secondChild = FinanceCategory(
+      uuid: 'catalog-duplicate-child-second',
+      name: '目录重复小类',
+      parentUuid: firstParent.uuid,
+      sortOrder: 20,
+    );
+
+    await _pumpCatalog(
+      tester,
+      categories: [firstParent, secondParent, firstChild, secondChild],
+    );
+
+    expect(find.text('目录重复大类（同名分类 1/2）'), findsOneWidget);
+    expect(find.text('目录重复大类（同名分类 2/2）'), findsOneWidget);
+    await tester.tap(find.text('目录重复大类（同名分类 1/2）'));
+    await tester.pumpAndSettle();
+    expect(find.text('目录重复小类（同名分类 1/2）'), findsOneWidget);
+    expect(find.text('目录重复小类（同名分类 2/2）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('分类按收支分开，搜索与归档筛选不会显示已删除项目', (tester) async {
     String? restored;
     await _pumpCatalog(tester,
