@@ -15,6 +15,8 @@ import 'package:countdown_todo/features/finance/screens/finance_trash_screen.dar
 import 'package:countdown_todo/features/finance/services/finance_storage.dart';
 import 'package:countdown_todo/features/finance/services/finance_repository.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_amount_calculator.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_automation_editor.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_automation_manager.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_catalog_editor.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_loan_payment_dialog.dart';
 import 'package:countdown_todo/features/finance/widgets/finance_management_widgets.dart';
@@ -6032,6 +6034,80 @@ void main() {
       ),
     );
     expect(row!.single['is_deleted'], 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('周期账单编辑器区分同名付款方式', (tester) async {
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'automation-duplicate-account-one',
+      name: '周期同名账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'automation-duplicate-account-two',
+      name: '周期同名账户',
+      sortOrder: 20,
+    );
+    await _pump(
+      tester,
+      FinanceAutomationEditor.rule(
+        categories: const [],
+        paymentMethods: [firstMethod, secondMethod],
+        onSave: (_) async {},
+      ),
+    );
+
+    await _tap(tester, _key('finance-automation-payment-null'));
+    await tester.pumpAndSettle();
+    expect(find.text('💼 周期同名账户（同名账户 1/2）'), findsOneWidget);
+    await tester.tap(find.text('💼 周期同名账户（同名账户 2/2）'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('周期同名账户（同名账户 2/2）'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('周期账单卡片区分同名付款方式', (tester) async {
+    final firstMethod = FinancePaymentMethod(
+      uuid: 'automation-card-duplicate-one',
+      name: '规则同名账户',
+      sortOrder: 10,
+    );
+    final secondMethod = FinancePaymentMethod(
+      uuid: 'automation-card-duplicate-two',
+      name: '规则同名账户',
+      sortOrder: 20,
+    );
+    final rule = FinanceRecurringRule(
+      uuid: 'automation-duplicate-account-rule',
+      name: '每月订阅',
+      amountMinor: 10000,
+      paymentMethodUuid: secondMethod.uuid,
+      startDate: '2026-01-01',
+    );
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceAutomationManager(
+          rules: [rule],
+          templates: const [],
+          categories: const [],
+          paymentMethods: [firstMethod, secondMethod],
+          onAddRule: () async => false,
+          onAddTemplate: () async => false,
+          onEditRule: (_) async {},
+          onToggleRule: (_, _) async {},
+          onDeleteRule: (_) async {},
+          onEditTemplate: (_) async {},
+          onUseTemplate: (_) async {},
+          onDeleteTemplate: (_) async {},
+        ),
+      ),
+    );
+
+    expect(
+      find.textContaining('付款方式 · 规则同名账户（同名账户 2/2）'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 

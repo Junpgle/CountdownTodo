@@ -376,7 +376,7 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
           DropdownMenuItem(
               value: method.uuid,
               child: Text(
-                  '${method.icon} ${method.name}${method.isArchived ? '（已归档）' : ''}',
+                  _paymentMethodOptionLabel(method, methods),
                   overflow: TextOverflow.ellipsis)),
         if (_paymentUuid != null &&
             methods.every((item) => item.uuid != _paymentUuid))
@@ -390,6 +390,15 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
       ],
       onChanged: (value) => setState(() => _paymentUuid = value),
     );
+  }
+
+  String _paymentMethodOptionLabel(
+    FinancePaymentMethod method,
+    List<FinancePaymentMethod> methods,
+  ) {
+    final name = financePaymentMethodDisplayName(method, methods);
+    final archivedLabel = method.isArchived ? '（已归档）' : '';
+    return '${method.icon} $name$archivedLabel';
   }
 
   Widget _scheduleSection() {

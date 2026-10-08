@@ -113,7 +113,12 @@ class _FinanceAutomationManagerState extends State<FinanceAutomationManager> {
     }
     for (final method in widget.paymentMethods) {
       if (method.uuid == uuid) {
-        return '$label · ${method.name}${method.isArchived ? '（已归档）' : ''}';
+        final name = financePaymentMethodDisplayName(
+          method,
+          widget.paymentMethods,
+        );
+        final archivedLabel = method.isArchived ? '（已归档）' : '';
+        return '$label · $name$archivedLabel';
       }
     }
     return type == FinanceTransactionType.income
