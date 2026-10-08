@@ -717,7 +717,7 @@ class PomodoroSyncService {
     _channel = null;
     try {
       await channel?.sink
-          .close(ws_status.goingAway)
+          .close(ws_status.normalClosure)
           .timeout(const Duration(seconds: 2));
     } catch (_) {}
     _connecting = false;
@@ -846,7 +846,7 @@ class PomodoroSyncService {
     await _wsSub?.cancel();
     _wsSub = null;
     try {
-      await _channel?.sink.close(ws_status.goingAway);
+      await _channel?.sink.close(ws_status.normalClosure);
     } catch (_) {}
     _channel = null;
     _userId = null;
