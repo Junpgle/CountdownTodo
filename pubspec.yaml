@@ -26,6 +26,7 @@ dependencies:
   path_provider: ^2.1.2
   path: ^1.9.0
   permission_handler: ^13.0.2
+  record: ^7.1.1
   uuid: ^4.2.2
   cached_network_image: ^4.0.2
   flutter_cache_manager: ^3.4.1
