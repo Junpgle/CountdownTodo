@@ -17,6 +17,7 @@ import '../utils/page_transitions.dart';
 
 // 引入服务和模型
 import '../models.dart';
+import '../models/chat_message.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
 import '../services/api_service.dart';
@@ -48,6 +49,12 @@ import '../services/storage/app_settings_storage.dart';
 import '../services/conflict_visibility_service.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/ai_todo_chat_launcher.dart';
+import '../services/llm_service.dart';
+import '../services/mimo_asr_service.dart';
+import '../services/minor_mode_service.dart';
+import '../widgets/quick_voice_chat_sheet.dart';
+import '../widgets/quick_voice_gesture.dart';
+import 'settings/llm_config_page.dart';
 import '../services/ai_recognition_chat_bridge.dart';
 import '../services/chat_storage_service.dart';
 import '../services/recognized_todo_adapter.dart';

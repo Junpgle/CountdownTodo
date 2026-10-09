@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models.dart';
+import '../models/chat_message.dart';
 import '../models/ai_todo_action.dart';
 import '../screens/todo_chat_screen.dart';
 import '../storage_service.dart';
@@ -30,6 +31,9 @@ class AiTodoChatLauncher {
     List<FixedScheduleItem>? fixedSchedules,
     Map<String, int> categoryReminderDefaults = const {},
     GlobalKey? sourceKey,
+    String? initialMessage,
+    bool sendInitialMessage = true,
+    ChatUsageSummary? initialVoiceUsageSummary,
     void Function(List<TodoItem> inserted, List<TodoItem> updated)?
         onTodosBatchAction,
     void Function(List<TodoGroup> groups)? onTodoGroupsChanged,
@@ -52,12 +56,13 @@ class AiTodoChatLauncher {
       return;
     }
 
-    final initialCategorizationActions =
-        await TodoClassificationService.buildCategorizeActions(
-      todos: todos,
-      groups: todoGroups,
-      categoryReminderDefaults: categoryReminderDefaults,
-    );
+    final initialCategorizationActions = initialMessage != null
+        ? const <AiTodoAction>[]
+        : await TodoClassificationService.buildCategorizeActions(
+            todos: todos,
+            groups: todoGroups,
+            categoryReminderDefaults: categoryReminderDefaults,
+          );
     final resolvedFixedSchedules = fixedSchedules ??
         await StorageService.getFixedSchedules(
           username,
@@ -66,6 +71,9 @@ class AiTodoChatLauncher {
     if (!context.mounted) return;
     final page = TodoChatScreen(
       username: username,
+      initialMessage: initialMessage,
+      sendInitialMessage: sendInitialMessage,
+      initialVoiceUsageSummary: initialVoiceUsageSummary,
       todos: toChatTodoMaps(todos),
       todoGroups: todoGroups,
       courses: courses,

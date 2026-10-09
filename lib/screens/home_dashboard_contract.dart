@@ -4,7 +4,18 @@ part of 'home_dashboard.dart';
 // 所有页面分片共享的成员契约。
 // 具体实现仍位于各职责 mixin，这里只为 Dart 提供跨分片的静态类型信息。
 mixin _HomeDashboardContract {
-  Future<void> _openAiAssistantFromAppBar({GlobalKey? sourceKey});
+  Future<void> _openAiAssistantFromAppBar({
+    GlobalKey? sourceKey,
+    String? initialMessage,
+    bool sendInitialMessage = true,
+    ChatUsageSummary? initialVoiceUsageSummary,
+  });
+
+  Future<void> _openQuickVoiceChat({QuickVoiceGestureController? gesture});
+  void _startQuickVoiceGesture(LongPressStartDetails details);
+  void _moveQuickVoiceGesture(LongPressMoveUpdateDetails details);
+  void _endQuickVoiceGesture(LongPressEndDetails details);
+  void _cancelQuickVoiceGesture();
 
   Future<void> _openPendingRecognitionChat();
 

@@ -3,6 +3,75 @@ part of 'todo_chat_screen.dart';
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _TodoChatSend on _TodoChatScreenStateBase {
+  bool _openingVoiceInput = false;
+
+  ChatUsageSummary? _takePendingVoiceUsageSummary() {
+    final usage = _pendingVoiceUsageSummary;
+    _pendingVoiceUsageSummary = null;
+    return usage;
+  }
+
+  Future<void> _openVoiceInput() async {
+    if (_isLoading || _openingVoiceInput || _pendingAttachment != null) return;
+    _openingVoiceInput = true;
+    try {
+      final globalConfig = await LLMService.getConfig();
+      final hasChatApi =
+          (_chatModel.isNotEmpty && _chatApiKey.isNotEmpty) ||
+          (globalConfig?.isConfigured ?? false);
+      final key = await MimoAsrService.resolveApiKey(
+        chatConfig: {
+          'provider': _chatProvider,
+          'apiUrl': _chatApiUrl,
+          'apiKey': _chatApiKey,
+        },
+      );
+      if (!mounted) return;
+      if (!hasChatApi || key.isEmpty) {
+        AppSnackBars.showSnackBar(
+          context,
+          SnackBar(
+            content: const Text('请配置 AI 对话模型，并填写普通小米 MiMo API Key 以识别语音'),
+            action: SnackBarAction(label: '配置', onPressed: _openLlmConfigPage),
+          ),
+        );
+        return;
+      }
+      if (!await MinorModeService.instance.authorizeAiInteraction()) return;
+      if (!mounted) return;
+      ChatUsageSummary? voiceUsage;
+      final text = await showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        isDismissible: false,
+        enableDrag: false,
+        backgroundColor: Colors.transparent,
+        builder: (_) => QuickVoiceChatSheet(
+          apiKey: key,
+          onUsageSummary: (usage) => voiceUsage = usage,
+        ),
+      );
+      if (!mounted || text == null || _isLoading) return;
+      _pendingVoiceUsageSummary = ChatUsageSummary.combine([
+        ?_pendingVoiceUsageSummary,
+        ?voiceUsage,
+      ]);
+      // Preserve a typed draft; otherwise send in this session for follow-ups.
+      final draft = _inputCtrl.text.trim();
+      _inputCtrl.text = draft.isEmpty ? text : '$draft\n$text';
+      if (draft.isEmpty) await _sendMessage();
+    } catch (_) {
+      if (mounted) {
+        AppSnackBars.showSnackBar(
+          context,
+          const SnackBar(content: Text('无法打开语音对话，请稍后重试')),
+        );
+      }
+    } finally {
+      _openingVoiceInput = false;
+    }
+  }
+
   Future<void> _sendMessage() async {
     final text = _inputCtrl.text.trim();
     final attachment = _pendingAttachment;
@@ -183,6 +252,7 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         attachmentKind: attachment?.kind,
       ),
       attachment: attachmentForMessage,
+      usageSummary: _takePendingVoiceUsageSummary(),
     );
     final requestText = userMsg.content;
     final previousUserMessage = _latestUserTextFromHistory();
@@ -861,7 +931,11 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
     final sessionId = _activeSessionId;
     if (sessionId == null) return false;
 
-    final userMsg = ChatMessage(role: ChatRole.user, content: text);
+    final userMsg = ChatMessage(
+      role: ChatRole.user,
+      content: text,
+      usageSummary: _takePendingVoiceUsageSummary(),
+    );
     final assistantMsg = ChatMessage(
       role: ChatRole.assistant,
       content: _financeDraftSummary(drafts.length),
@@ -946,7 +1020,11 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
         : false;
     final historyNeedsSave =
         legacyMessageNeedsMigration || supersededDraftsIgnored;
-    final userMessage = ChatMessage(role: ChatRole.user, content: text);
+    final userMessage = ChatMessage(
+      role: ChatRole.user,
+      content: text,
+      usageSummary: _takePendingVoiceUsageSummary(),
+    );
     final assistantMessage = ChatMessage(
       role: ChatRole.assistant,
       content: drafts.length == 1
@@ -1343,254 +1421,12 @@ mixin _TodoChatSend on _TodoChatScreenStateBase {
   }
 
   Future<void> _showPromptSettings() async {
-    final promptCtrl = TextEditingController(text: _customPrompt);
-    bool enabled = _promptEnabled;
-    bool smartContext = _smartContext;
-    AiContextMode contextMode = _contextMode;
-    bool showContextPreview = _showInjectedContextPreview;
-    bool injectMoreContext = _injectMoreContext;
-    bool deepThinking = _deepThinking;
-
-    Future<void> persistAssistantSettings() async {
-      await ChatStorageService.saveCustomPrompt(promptCtrl.text);
-      await ChatStorageService.setPromptEnabled(enabled);
-      await Future.wait([
-        ChatStorageService.setSmartContextEnabled(smartContext),
-        ChatStorageService.setContextMode(contextMode),
-        ChatStorageService.setShowContextPreview(showContextPreview),
-        ChatStorageService.setInjectMoreContext(injectMoreContext),
-        ChatStorageService.setDeepThinkingEnabled(deepThinking),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _customPrompt = promptCtrl.text;
-        _promptEnabled = enabled;
-        _smartContext = smartContext;
-        _contextMode = contextMode;
-        _showInjectedContextPreview = showContextPreview;
-        _injectMoreContext = injectMoreContext;
-        _deepThinking = deepThinking;
-        _liveSmartContextPreview = _buildSmartContextPreview(
-          _inputCtrl.text.trim(),
-        );
-        _liveActionProtocolPreview = _buildActionProtocolPreview(
-          _inputCtrl.text.trim(),
-        );
-        _liveEstimatedTokens = _estimateTokensForPendingInput(
-          _inputCtrl.text.trim(),
-        );
-      });
-    }
-
-    await showAppDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('AI 助手设置'),
-          content: SizedBox(
-            width: MediaQuery.of(context).size.width * 0.85,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '这里管理助手的行为、上下文与协议。模型、API Key 和服务商在独立的“模型与 API 配置”中管理。',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 13,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    '行为与上下文',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  LiquidGlassSwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('智能上下文'),
-                    subtitle: const Text('允许助手通过所选模式读取待办、课程、账单、习惯等业务数据'),
-                    value: smartContext,
-                    onChanged: (value) =>
-                        setDialogState(() => smartContext = value),
-                  ),
-                  AiContextModeSelector(
-                    value: contextMode,
-                    onChanged: (value) =>
-                        setDialogState(() => contextMode = value),
-                  ),
-                  const SizedBox(height: 8),
-                  LiquidGlassSwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('在输入区显示注入预览'),
-                    subtitle: const Text('关闭只会隐藏 UI 详情，不会停止上下文注入'),
-                    value: showContextPreview,
-                    onChanged:
-                        smartContext &&
-                            contextMode == AiContextMode.smartContextInjection
-                        ? (value) =>
-                              setDialogState(() => showContextPreview = value)
-                        : null,
-                  ),
-                  LiquidGlassSwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('默认扩展上下文范围'),
-                    subtitle: const Text('相关日期问题默认查看未来 30 天'),
-                    value: injectMoreContext,
-                    onChanged:
-                        smartContext &&
-                            contextMode == AiContextMode.smartContextInjection
-                        ? (value) =>
-                              setDialogState(() => injectMoreContext = value)
-                        : null,
-                  ),
-                  LiquidGlassSwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('默认开启深度思考'),
-                    subtitle: const Text('模型支持时附带 thinking 参数'),
-                    value: deepThinking,
-                    onChanged: (value) =>
-                        setDialogState(() => deepThinking = value),
-                  ),
-                  const Divider(height: 24),
-                  const Text(
-                    '动作与上下文协议',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest
-                          .withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      'CDT Actions v2 · Smart Context v2\n'
-                      '新回复使用带版本的动作信封；仍可读取旧版 ACTION 数组和历史聊天记录。',
-                      style: TextStyle(fontSize: 12.5, height: 1.45),
-                    ),
-                  ),
-                  const Divider(height: 24),
-                  LiquidGlassSwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('启用自定义提示词'),
-                    subtitle: const Text('关闭后将使用默认提示词'),
-                    value: enabled,
-                    onChanged: (val) {
-                      setDialogState(() => enabled = val);
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '提示词内容',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: promptCtrl,
-                    maxLines: 12,
-                    minLines: 6,
-                    enabled: enabled,
-                    decoration: InputDecoration(
-                      hintText: '输入自定义提示词...\n\n可用变量：\n{now} - 当前时间\n{todos} - 待办清单\n固定日程、规划块等上下文会按当前问题自动注入',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      isDense: true,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      TextButton.icon(
-                        onPressed: () {
-                          promptCtrl.text = ChatStorageService.defaultPrompt;
-                          setDialogState(() => enabled = true);
-                        },
-                        icon: const Icon(Icons.restore),
-                        label: const Text('恢复默认'),
-                      ),
-                      const Spacer(),
-                      TextButton.icon(
-                        onPressed: () {
-                          _showPromptPreview(promptCtrl.text, enabled);
-                        },
-                        icon: const Icon(Icons.visibility_outlined),
-                        label: const Text('预览'),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 24),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.hub_rounded),
-                    title: const Text('模型与 API 配置'),
-                    subtitle: const Text('服务商、API Key、文本模型与多模态模型'),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () async {
-                      await persistAssistantSettings();
-                      if (!ctx.mounted) return;
-                      Navigator.pop(ctx);
-                      if (mounted) unawaited(_openLlmConfigPage());
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                await persistAssistantSettings();
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
-              child: const Text('保存'),
-            ),
-          ],
-        ),
+    await Navigator.of(context).push<void>(
+      PageTransitions.material<void>(
+        builder: (_) => const AiAssistantSettingsPage(),
       ),
     );
-    promptCtrl.dispose();
-  }
-
-  void _showPromptPreview(String prompt, bool enabled) {
-    final resolvedPrompt = AiTodoContextBuilder.buildPromptPreview(
-      customPrompt: prompt,
-      promptEnabled: enabled,
-      todos: widget.todos,
-      todoGroups: widget.todoGroups,
-    );
-
-    showAppDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('提示词预览'),
-        content: SizedBox(
-          width: MediaQuery.of(context).size.width * 0.85,
-          height: 400,
-          child: SingleChildScrollView(
-            child: SelectableText(
-              resolvedPrompt,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('关闭'),
-          ),
-        ],
-      ),
-    );
+    if (!mounted) return;
+    await Future.wait([_loadPromptSettings(), _loadDeepThinking()]);
   }
 }

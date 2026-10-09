@@ -8,22 +8,52 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
     super.initState();
     _inputCtrl.addListener(_handleInputChanged);
     AiRecognitionChatBridge.changes.addListener(_handleRecognitionChatChanged);
-    _initSessions();
-    _loadPromptSettings();
-    _loadChatConfig();
-    _loadDeepThinking();
-    _loadCategoryDefaults();
-    _loadPlanBlocks();
-    _loadHabitGoals();
     _fixedSchedules = List<FixedScheduleItem>.from(widget.fixedSchedules);
+    _pendingVoiceUsageSummary = widget.initialVoiceUsageSummary;
+
+    if (widget.initialMessage?.trim().isNotEmpty ?? false) {
+      _initializeVoiceChat();
+    } else {
+      _initSessions();
+      _loadPromptSettings();
+      _loadChatConfig();
+      _loadDeepThinking();
+      _loadCategoryDefaults();
+      _loadPlanBlocks();
+      _loadHabitGoals();
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkCoachMarks();
     });
   }
 
+  Future<void> _initializeVoiceChat() async {
+    try {
+      await Future.wait([
+        _initSessions(),
+        _loadPromptSettings(),
+        _loadChatConfig(),
+        _loadDeepThinking(),
+        _loadCategoryDefaults(),
+        _loadPlanBlocks(),
+        _loadHabitGoals(),
+      ]);
+      if (!mounted) return;
+      _inputCtrl.text = widget.initialMessage!.trim();
+      if (widget.sendInitialMessage) await _sendMessage();
+    } catch (_) {
+      if (!mounted) return;
+      _inputCtrl.text = widget.initialMessage!.trim();
+      AppSnackBars.showSnackBar(
+        context,
+        const SnackBar(content: Text('语音内容已保留，请重试发送')),
+      );
+    }
+  }
+
   void _checkCoachMarks() async {
-    if (!mounted || _showCoachMarks) return;
+    if (!mounted || _showCoachMarks || widget.initialMessage != null) return;
 
     final hasShown = await FeatureTipService.hasTipBeenShown('todo_chat_guide');
     if (hasShown || !mounted) return;
@@ -351,28 +381,14 @@ mixin _TodoChatLifecycle on _TodoChatScreenStateBase {
   }
 
   Future<void> _initSessions() async {
-    var sessions = await ChatStorageService.loadSessions();
-    final activeId = await ChatStorageService.getActiveSessionId();
-
-    if (sessions.isEmpty) {
-      final newSession = await ChatStorageService.createSession();
-      sessions = [newSession];
-      if (mounted) {
-        setState(() {
-          _sessions = sessions;
-          _activeSessionId = newSession.id;
-        });
-        _loadHistory();
-      }
-    } else {
-      if (mounted) {
-        setState(() {
-          _sessions = sessions;
-          _activeSessionId = activeId ?? sessions.first.id;
-        });
-        _loadHistory();
-      }
-    }
+    final session = await ChatStorageService.openEmptySession();
+    final sessions = await ChatStorageService.loadSessions();
+    if (!mounted) return;
+    setState(() {
+      _sessions = sessions;
+      _activeSessionId = session.id;
+    });
+    await _loadHistory();
   }
 
   Future<void> _switchSession(String sessionId) async {

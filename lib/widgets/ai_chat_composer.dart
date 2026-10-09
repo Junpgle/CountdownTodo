@@ -30,6 +30,7 @@ class AiChatComposer extends StatefulWidget {
     this.onCopyPrompt,
     this.onPasteReply,
     this.onRetry,
+    this.onVoice,
     this.keyboardInset,
   });
 
@@ -52,6 +53,7 @@ class AiChatComposer extends StatefulWidget {
   final VoidCallback? onCopyPrompt;
   final VoidCallback? onPasteReply;
   final VoidCallback? onRetry;
+  final VoidCallback? onVoice;
 
   /// Pass the inset from above Scaffold, which removes it from its body.
   final double? keyboardInset;
@@ -257,6 +259,16 @@ class _AiChatComposerState extends State<AiChatComposer> {
                               )
                             : const Icon(Icons.attach_file_rounded, size: 20),
                       ),
+                      if (widget.onVoice != null)
+                        IconButton(
+                          key: const ValueKey('ai-chat-voice'),
+                          onPressed: widget.isLoading || widget.hasAttachment
+                              ? null
+                              : widget.onVoice,
+                          tooltip: '语音对话',
+                          style: plainStyle,
+                          icon: const Icon(Icons.mic_rounded, size: 20),
+                        ),
                       option(
                         Icons.psychology_rounded,
                         widget.deepThinking,

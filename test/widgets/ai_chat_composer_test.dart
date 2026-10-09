@@ -59,6 +59,7 @@ Widget _page(
                 contextEnabled: true,
                 hasAttachment: attachment,
                 onSend: onSend ?? () {},
+                onVoice: () => onAction?.call('voice'),
                 onStop: onStop ?? () {},
                 onAttach: () => onAction?.call('attach'),
                 onToggleThinking: () => onAction?.call('thinking'),

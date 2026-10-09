@@ -12,7 +12,6 @@ import '../models/ai_todo_action.dart';
 import '../services/suggestion_feedback_service.dart';
 import '../models/chat_message.dart';
 import '../models/ai_context_mode.dart';
-import '../widgets/ai_context_mode_selector.dart';
 import '../widgets/ai_chat_markdown.dart';
 import '../widgets/ai_chat_thinking_panel.dart';
 import '../widgets/ai_chat_composer.dart';
@@ -21,6 +20,8 @@ import '../services/ai_tool_result_context.dart';
 import '../services/ai_tool_chat_runner.dart';
 import '../services/ai_action_parser.dart';
 import '../services/ai_chat_service.dart';
+import '../services/mimo_asr_service.dart';
+import '../widgets/quick_voice_chat_sheet.dart';
 import '../services/ai_chat_history_window.dart';
 import '../services/ai_native_tool_call_parser.dart';
 import '../services/ai_native_tool_definition_builder.dart';
@@ -36,6 +37,7 @@ import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_service.dart';
 import '../services/power_save_mode_service.dart';
 import '../screens/ai_assistant_tutorial_screen.dart';
+import 'settings/pages/ai_assistant_settings_page.dart';
 import '../screens/settings/llm_config_page.dart';
 import '../storage_service.dart';
 import '../utils/page_transitions.dart';
@@ -73,6 +75,10 @@ part 'todo_chat_screen_messages.dart';
 part 'todo_chat_screen_widgets.dart';
 
 class TodoChatScreen extends StatefulWidget {
+  /// A voice transcript prepared after session, settings, and context are ready.
+  final String? initialMessage;
+  final bool sendInitialMessage;
+  final ChatUsageSummary? initialVoiceUsageSummary;
   final String username;
   final List<Map<String, dynamic>> todos;
   final List<TodoGroup> todoGroups;
@@ -97,6 +103,9 @@ class TodoChatScreen extends StatefulWidget {
     super.key,
     required this.username,
     required this.todos,
+    this.initialMessage,
+    this.sendInitialMessage = true,
+    this.initialVoiceUsageSummary,
     this.todoGroups = const [],
     this.courses = const [],
     this.timeLogs = const [],

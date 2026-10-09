@@ -136,12 +136,16 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
     if (!mounted) return;
     await SettingsNavigation.push<bool>(
       context: context,
-      page: const LLMConfigPage(),
+      page: LLMConfigPage(isEmbedded: widget.isEmbedded),
       sourceKey: _modelConfigKey,
       isEmbedded: widget.isEmbedded,
+      settings: const RouteSettings(name: '模型与 API 配置'),
     );
     if (!mounted) return;
-    setState(() => _llmConfigFuture = LLMService.getConfig());
+    final llmConfigFuture = LLMService.getConfig();
+    setState(() {
+      _llmConfigFuture = llmConfigFuture;
+    });
   }
 
   void _showPromptPreview() {
@@ -357,9 +361,12 @@ class _AiAssistantSettingsPageState extends State<AiAssistantSettingsPage> {
                     ),
                     Padding(
                       padding: const EdgeInsets.all(16),
-                      child: AiContextModeSelector(
-                        value: _contextMode,
-                        onChanged: _setContextMode,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: AiContextModeSelector(
+                          value: _contextMode,
+                          onChanged: _setContextMode,
+                        ),
                       ),
                     ),
                     const AppSettingsDivider(indent: 16),

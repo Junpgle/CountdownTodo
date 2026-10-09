@@ -62,6 +62,11 @@ class FloatingBottomNavigationItem {
     this.builder,
     this.selectable = true,
     this.onPressed,
+    this.onLongPress,
+    this.onLongPressStart,
+    this.onLongPressMoveUpdate,
+    this.onLongPressEnd,
+    this.onLongPressCancel,
     this.semanticsLabel,
     this.key,
   })  : assert(
@@ -84,6 +89,11 @@ class FloatingBottomNavigationItem {
       BuildContext context, bool selectedLayer, bool interactive)? builder;
   final bool selectable;
   final VoidCallback? onPressed;
+  final VoidCallback? onLongPress;
+  final GestureLongPressStartCallback? onLongPressStart;
+  final GestureLongPressMoveUpdateCallback? onLongPressMoveUpdate;
+  final GestureLongPressEndCallback? onLongPressEnd;
+  final VoidCallback? onLongPressCancel;
   final String? semanticsLabel;
   final Key? key;
 }
@@ -175,6 +185,26 @@ class _FloatingBottomNavigationContentState
   int? _awaitingWidgetIndex;
   bool _notifyTargetWhenReady = false;
   int _motionEpoch = 0;
+  FloatingBottomNavigationItem? _heldItem;
+
+  bool get _hasLongPress => widget.items.any(
+        (item) => item.onLongPress != null || item.onLongPressStart != null,
+      );
+
+  void _moveBarLongPress(LongPressMoveUpdateDetails details) =>
+      _heldItem?.onLongPressMoveUpdate?.call(details);
+
+  void _endBarLongPress(LongPressEndDetails details) {
+    final item = _heldItem;
+    _heldItem = null;
+    item?.onLongPressEnd?.call(details);
+  }
+
+  void _cancelBarLongPress() {
+    final item = _heldItem;
+    _heldItem = null;
+    item?.onLongPressCancel?.call();
+  }
 
   String _keyName(String suffix) => '${widget.keyPrefix}-$suffix';
 
@@ -320,6 +350,19 @@ class _FloatingBottomNavigationContentState
       return;
     }
     _handleTabTap(slot);
+  }
+
+  void _handleBarLongPress(LongPressStartDetails details, double width) {
+    if (width <= 0) return;
+    final slot = (details.localPosition.dx / (width / _slotCount))
+        .floor()
+        .clamp(0, _slotCount - 1);
+    _heldItem = widget.items[slot];
+    if (_heldItem?.onLongPressStart != null) {
+      _heldItem!.onLongPressStart!(details);
+    } else {
+      _heldItem?.onLongPress?.call();
+    }
   }
 
   void _animateToTab(
@@ -644,6 +687,13 @@ class _FloatingBottomNavigationContentState
                 _finishSelectionDrag(details, constraints.maxWidth),
             onHorizontalDragCancel: _cancelSelectionDrag,
             onTapUp: (details) => _handleBarTap(details, constraints.maxWidth),
+            onLongPressStart: _hasLongPress
+                ? (details) =>
+                    _handleBarLongPress(details, constraints.maxWidth)
+                : null,
+            onLongPressMoveUpdate: _hasLongPress ? _moveBarLongPress : null,
+            onLongPressEnd: _hasLongPress ? _endBarLongPress : null,
+            onLongPressCancel: _hasLongPress ? _cancelBarLongPress : null,
             child: Stack(
               fit: StackFit.expand,
               clipBehavior: Clip.none,
@@ -770,6 +820,13 @@ class _FloatingBottomNavigationContentState
             key: ValueKey<String>(_keyName('navigation-gesture-layer')),
             behavior: HitTestBehavior.translucent,
             onTapUp: (details) => _handleBarTap(details, constraints.maxWidth),
+            onLongPressStart: _hasLongPress
+                ? (details) =>
+                    _handleBarLongPress(details, constraints.maxWidth)
+                : null,
+            onLongPressMoveUpdate: _hasLongPress ? _moveBarLongPress : null,
+            onLongPressEnd: _hasLongPress ? _endBarLongPress : null,
+            onLongPressCancel: _hasLongPress ? _cancelBarLongPress : null,
             child: SizedBox.expand(
               child: _buildNavigationRow(
                 context,
@@ -1006,6 +1063,7 @@ class HomeBottomNavigationActionButton extends StatelessWidget {
     required this.onPressed,
     required this.semanticsLabel,
     required this.child,
+    this.onLongPress,
     this.width = 56,
   });
 
@@ -1016,6 +1074,7 @@ class HomeBottomNavigationActionButton extends StatelessWidget {
   final String semanticsLabel;
   final Widget child;
   final double width;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -1045,6 +1104,8 @@ class HomeBottomNavigationActionButton extends StatelessWidget {
               label: semanticsLabel,
               excludeSemantics: true,
               onTap: onPressed,
+              onLongPress: onLongPress,
+              hint: onLongPress == null ? null : '长按与 AI 语音对话',
               child: visual,
             )
           : visual,

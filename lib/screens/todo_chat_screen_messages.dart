@@ -99,6 +99,13 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
                                     height: 1.35,
                                   ),
                                 ),
+                              if (msg.usageSummary != null)
+                                _buildUsageSummaryFooter(
+                                  msg.usageSummary!,
+                                  isVoice: msg.usageSummary!.model ==
+                                      MimoAsrService.model,
+                                  foregroundColor: colorScheme.onPrimary,
+                                ),
                             ],
                           )
                         : Column(
@@ -454,15 +461,29 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
     );
   }
 
-  Widget _buildUsageSummaryFooter(ChatUsageSummary usage) {
+  Widget _buildUsageSummaryFooter(
+    ChatUsageSummary usage, {
+    bool isVoice = false,
+    Color? foregroundColor,
+  }) {
     final scheme = Theme.of(context).colorScheme;
+    final color = foregroundColor ?? scheme.onSurfaceVariant;
     final parts = <String>[];
     if (usage.costMicros != null) {
-      parts.add('本次花费 ${AiUsageCostService.formatMicros(usage.costMicros!)}');
+      parts.add(
+        '${isVoice ? '语音识别' : '本次花费'} '
+        '${AiUsageCostService.formatMicros(usage.costMicros!)}',
+      );
     } else {
-      parts.add('本次费用暂无可用价格');
+      parts.add(isVoice ? '语音识别费用待定价' : '本次费用暂无可用价格');
     }
-    if (usage.totalTokens > 0) parts.add('${usage.totalTokens} tokens');
+    if (isVoice) {
+      parts.add(
+        usage.audioSeconds > 0 ? '录音 ${usage.audioSeconds} 秒' : '录音时长未返回',
+      );
+    } else if (usage.totalTokens > 0) {
+      parts.add('${usage.totalTokens} tokens');
+    }
     if (usage.calls > 1) parts.add('${usage.calls} 次调用');
     if (usage.unpricedCalls > 0 && usage.costMicros != null) {
       parts.add('含 ${usage.unpricedCalls} 次未定价');
@@ -473,7 +494,10 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
       padding: const EdgeInsets.only(top: 7),
       decoration: BoxDecoration(
         border: Border(
-          top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.55)),
+          top: BorderSide(
+            color: (foregroundColor ?? scheme.outlineVariant)
+                .withValues(alpha: 0.55),
+          ),
         ),
       ),
       child: Row(
@@ -481,14 +505,14 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
           Icon(
             Icons.toll_rounded,
             size: 12,
-            color: scheme.onSurfaceVariant.withValues(alpha: 0.75),
+            color: color.withValues(alpha: 0.75),
           ),
           const SizedBox(width: 5),
           Expanded(
             child: Text(
               parts.join(' · '),
               style: TextStyle(
-                color: scheme.onSurfaceVariant.withValues(alpha: 0.8),
+                color: color.withValues(alpha: 0.8),
                 fontSize: 10.5,
                 height: 1.25,
               ),
@@ -887,6 +911,7 @@ mixin _TodoChatMessages on _TodoChatScreenStateBase {
               hasAttachment: _pendingAttachment != null,
               isPickingAttachment: _isPickingAttachment,
               onSend: _sendMessage,
+              onVoice: _openVoiceInput,
               onStop: _stopGeneration,
               onAttach: _pickChatAttachment,
               onToggleThinking: () async {

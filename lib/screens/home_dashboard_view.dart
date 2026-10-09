@@ -1569,6 +1569,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       onAddPressed: () {
         _openHomeAddMenu();
       },
+      onAddLongPress: _openQuickVoiceChat,
+      onAddLongPressStart: _startQuickVoiceGesture,
+      onAddLongPressMoveUpdate: _moveQuickVoiceGesture,
+      onAddLongPressEnd: _endQuickVoiceGesture,
+      onAddLongPressCancel: _cancelQuickVoiceGesture,
       onPomodoroPressed: () {
         _openHomePomodoro(sourceKey: _homePomodoroActionKey);
       },
@@ -1701,6 +1706,11 @@ class _HomeDashboardBottomBar extends StatelessWidget {
     required this.onTabSelected,
     required this.onWeeklyPressed,
     required this.onAddPressed,
+    required this.onAddLongPress,
+    required this.onAddLongPressStart,
+    required this.onAddLongPressMoveUpdate,
+    required this.onAddLongPressEnd,
+    required this.onAddLongPressCancel,
     required this.onPomodoroPressed,
     required this.height,
     required this.margin,
@@ -1719,6 +1729,11 @@ class _HomeDashboardBottomBar extends StatelessWidget {
   final ValueChanged<int> onTabSelected;
   final VoidCallback onWeeklyPressed;
   final VoidCallback onAddPressed;
+  final VoidCallback onAddLongPress;
+  final GestureLongPressStartCallback onAddLongPressStart;
+  final GestureLongPressMoveUpdateCallback onAddLongPressMoveUpdate;
+  final GestureLongPressEndCallback onAddLongPressEnd;
+  final VoidCallback onAddLongPressCancel;
   final VoidCallback onPomodoroPressed;
   final double height;
   final EdgeInsets margin;
@@ -1743,12 +1758,18 @@ class _HomeDashboardBottomBar extends StatelessWidget {
         label: '新增',
         selectable: false,
         onPressed: onAddPressed,
+        onLongPress: onAddLongPress,
+        onLongPressStart: onAddLongPressStart,
+        onLongPressMoveUpdate: onAddLongPressMoveUpdate,
+        onLongPressEnd: onAddLongPressEnd,
+        onLongPressCancel: onAddLongPressCancel,
         builder: (context, selectedLayer, interactive) => Center(
           child: HomeBottomNavigationActionButton(
             buttonKey: selectedLayer ? null : addButtonKey,
             primaryColor: primaryColor,
             interactive: interactive,
             onPressed: onAddPressed,
+            onLongPress: onAddLongPress,
             semanticsLabel: '新增',
             child: Icon(
               Icons.add_rounded,

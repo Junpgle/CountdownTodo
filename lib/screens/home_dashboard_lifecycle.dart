@@ -261,6 +261,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
 
   @override
   void dispose() {
+    _cancelQuickVoiceGesture();
     FinanceAutomationService.cancelScheduledAutoGeneration();
     _permissionCoordinator.dispose();
     for (final sub in _notifSubs) {

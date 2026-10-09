@@ -41,6 +41,7 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   String _liveActionProtocolPreview = '';
   int _liveEstimatedTokens = 0;
   ChatImageAttachment? _pendingAttachment;
+  ChatUsageSummary? _pendingVoiceUsageSummary;
   bool _isPickingAttachment = false;
   String? _activeSessionId;
   Map<String, int> _categoryReminderDefaults = {};
@@ -135,6 +136,8 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   });
   String _buildContextSummary();
   Future<void> _sendMessage();
+  ChatUsageSummary? _takePendingVoiceUsageSummary();
+  Future<void> _openVoiceInput();
   Future<void> _pickChatAttachment();
   Future<List<Map<String, dynamic>>> _buildApiMessagesForRequest({
     required String financeContext,
@@ -154,7 +157,6 @@ abstract class _TodoChatScreenStateBase extends State<TodoChatScreen> {
   Future<void> _generateSessionTitle({required String sessionId});
   Future<void> _clearHistory();
   Future<void> _showPromptSettings();
-  void _showPromptPreview(String prompt, bool enabled);
   Widget build(BuildContext context);
   PreferredSizeWidget _buildResponsiveAppBar(
     bool isDark,
