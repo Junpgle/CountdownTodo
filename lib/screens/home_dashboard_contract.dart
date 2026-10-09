@@ -188,6 +188,8 @@ mixin _HomeDashboardContract {
 
   Future<void> _checkCoachMarks();
 
+  Future<void> _checkQuickVoiceCoachMarks();
+
   Future<void> _checkDeviceCalendarReadCoachMark();
 
   Future<void> _checkFocusTabCoachMarks();

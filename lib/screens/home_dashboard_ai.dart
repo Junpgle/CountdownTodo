@@ -74,6 +74,7 @@ mixin _HomeDashboardAiMixin on _HomeDashboardStateBase {
           context: context,
           apiKey: asrKey,
           gesture: gesture,
+          sourceKey: _homeAddActionKey,
         );
         text = result?.text;
         voiceUsage = result?.usageSummary;

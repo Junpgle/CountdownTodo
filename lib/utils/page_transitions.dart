@@ -132,6 +132,17 @@ class _AnimSettings {
 }
 
 class PageTransitions {
+  /// Overlay transitions share the same motion policy as page transitions.
+  static Duration containerDuration({bool reverse = false}) =>
+      _AnimSettings.animationsEnabled
+          ? Duration(
+              milliseconds:
+                  (_AnimSettings.duration * (reverse ? 0.75 : 1)).round(),
+            )
+          : Duration.zero;
+
+  static Curve get containerCurve => _pageLayerCurve;
+  static Curve get containerReverseCurve => _containerTransformReverseCurve;
   static Future<void> init() => _AnimSettings.load();
 
   /// Applies Android's transient system Battery Saver state without changing

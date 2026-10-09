@@ -8,10 +8,13 @@ import 'package:countdown_todo/services/quick_voice_recorder.dart';
 import 'package:countdown_todo/widgets/home_bottom_navigation_content.dart';
 import 'package:countdown_todo/widgets/quick_voice_chat_sheet.dart';
 import 'package:countdown_todo/widgets/quick_voice_gesture.dart';
+import 'package:countdown_todo/utils/page_transitions.dart';
+import 'package:countdown_todo/widgets/quick_voice_container_transition.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _Recorder implements QuickVoiceRecorder {
   Completer<void>? startup;
@@ -35,6 +38,7 @@ class _Recorder implements QuickVoiceRecorder {
 }
 
 class _Harness {
+  final addKey = GlobalKey();
   final recorder = _Recorder();
   QuickVoiceGestureController? gesture;
   HeldQuickVoiceResult? result;
@@ -71,6 +75,7 @@ class _Harness {
                         icon: Icons.home,
                       ),
                       FloatingBottomNavigationItem(
+                        key: addKey,
                         label: '新增',
                         icon: Icons.add,
                         selectable: false,
@@ -84,6 +89,7 @@ class _Harness {
                               context: context,
                               apiKey: 'synthetic-key',
                               gesture: gesture!,
+                              sourceKey: addKey,
                               recorder: recorder,
                               asrService: MimoAsrService(
                                 authorize: () async => true,
@@ -165,6 +171,79 @@ class _Harness {
 }
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    PageTransitions.setPowerSaveMode(false);
+  });
+
+  Rect containerBounds(WidgetTester tester) {
+    final clip = tester.widget<ClipPath>(
+      find.byKey(const ValueKey('quick-voice-container-transform')),
+    );
+    return clip.clipper!.getClip(const Size(800, 600)).getBounds();
+  }
+
+  testWidgets(
+    'container expands from actual plus and returns on cancellation',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({'animation_duration': 800});
+      final harness = _Harness();
+      await harness.pump(tester);
+      final source = tester.getRect(find.byKey(harness.addKey));
+      final pointer = await tester.startGesture(source.center);
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump();
+      final transition = tester.widget<QuickVoiceContainerTransition>(
+        find.byType(QuickVoiceContainerTransition),
+      );
+      expect(transition.sourceRect, source);
+      final initial = containerBounds(tester);
+      expect(initial.left, closeTo(source.left, 0.001));
+      expect(initial.top, closeTo(source.top, 0.001));
+      expect(initial.width, closeTo(source.width, 0.001));
+      expect(initial.height, closeTo(source.height, 0.001));
+      await tester.pump(const Duration(milliseconds: 200));
+      final middle = containerBounds(tester);
+      expect(middle.width, greaterThan(source.width));
+      expect(middle.width, lessThan(520));
+      await tester.pump(const Duration(milliseconds: 600));
+      final expanded = containerBounds(tester);
+      expect(expanded.width, 520);
+      expect(expanded.bottom, 600);
+      await pointer.cancel();
+      await tester.pump();
+      expect(harness.recorder.disposed, true);
+      expect(harness.completions, 0);
+      await tester.pump(const Duration(milliseconds: 200));
+      final shrinking = containerBounds(tester);
+      expect(shrinking.width, lessThan(expanded.width));
+      expect(shrinking.width, greaterThan(source.width));
+      await tester.pumpAndSettle();
+      expect(harness.completions, 1);
+      expect(harness.requests, 0);
+      expect(find.byType(QuickVoiceContainerTransition), findsNothing);
+    },
+  );
+
+  for (final policy in ['disabled', 'reduced', 'powerSaver']) {
+    testWidgets('container respects $policy motion policy', (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'enable_animations': policy != 'disabled',
+        'animation_duration': 2000,
+      });
+      PageTransitions.setPowerSaveMode(policy == 'powerSaver');
+      final harness = _Harness();
+      await harness.pump(tester, reduceMotion: policy == 'reduced');
+      final pointer = await harness.hold(tester);
+      expect(containerBounds(tester).width, 520);
+      await pointer.cancel();
+      await tester.pump();
+      expect(harness.completions, 1);
+      expect(harness.requests, 0);
+      await tester.pumpAndSettle();
+      expect(find.byType(QuickVoiceContainerTransition), findsNothing);
+    });
+  }
   for (final lens in [true, false]) {
     for (final target in QuickVoiceTarget.values) {
       testWidgets(

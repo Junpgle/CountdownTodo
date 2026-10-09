@@ -8,6 +8,8 @@ import 'package:permission_handler/permission_handler.dart';
 import '../services/mimo_asr_service.dart';
 import '../models/chat_message.dart';
 import '../services/quick_voice_recorder.dart';
+import '../utils/page_transitions.dart';
+import 'quick_voice_container_transition.dart';
 import 'quick_voice_gesture.dart';
 
 class HeldQuickVoiceResult {
@@ -26,9 +28,25 @@ Future<HeldQuickVoiceResult?> showHeldQuickVoiceChat({
   required BuildContext context,
   required String apiKey,
   required QuickVoiceGestureController gesture,
+  GlobalKey? sourceKey,
   QuickVoiceRecorder? recorder,
   MimoAsrService? asrService,
 }) async {
+  await PageTransitions.init();
+  if (!context.mounted || gesture.isReleased) return null;
+  final overlay = Overlay.of(context);
+  if (!overlay.mounted) return null;
+  final overlayBox = overlay.context.findRenderObject() as RenderBox;
+  final source = sourceKey?.currentContext?.findRenderObject() as RenderBox?;
+  final sourceRect = source != null && source.hasSize
+      ? overlayBox.globalToLocal(source.localToGlobal(Offset.zero)) &
+            source.size
+      : Rect.fromCenter(
+          center: overlayBox.globalToLocal(gesture.origin),
+          width: 48,
+          height: 48,
+        );
+  final transitionKey = GlobalKey<QuickVoiceContainerTransitionState>();
   final completion = Completer<HeldQuickVoiceResult?>();
   final colors = Theme.of(context);
   final media = MediaQuery.of(context);
@@ -43,33 +61,31 @@ Future<HeldQuickVoiceResult?> showHeldQuickVoiceChat({
         data: colors,
         child: MediaQuery(
           data: media,
-          child: Material(
-            color: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.4),
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: ListenableBuilder(
-                listenable: gesture,
-                builder: (context, child) =>
-                    IgnorePointer(ignoring: !gesture.isReleased, child: child),
-                child: QuickVoiceChatSheet(
-                  apiKey: apiKey,
-                  gesture: gesture,
-                  recorder: recorder,
-                  asrService: asrService,
-                  onUsageSummary: (value) => usage = value,
-                  onCompleted: (text) {
-                    if (completion.isCompleted) return;
-                    completion.complete(
-                      text == null
-                          ? null
-                          : HeldQuickVoiceResult(
-                              text,
-                              usage,
-                              gesture.target == QuickVoiceTarget.send,
-                            ),
-                    );
-                  },
-                ),
+          child: QuickVoiceContainerTransition(
+            key: transitionKey,
+            sourceRect: sourceRect,
+            child: ListenableBuilder(
+              listenable: gesture,
+              builder: (context, child) =>
+                  IgnorePointer(ignoring: !gesture.isReleased, child: child),
+              child: QuickVoiceChatSheet(
+                apiKey: apiKey,
+                gesture: gesture,
+                recorder: recorder,
+                asrService: asrService,
+                onUsageSummary: (value) => usage = value,
+                onCompleted: (text) {
+                  if (completion.isCompleted) return;
+                  completion.complete(
+                    text == null
+                        ? null
+                        : HeldQuickVoiceResult(
+                            text,
+                            usage,
+                            gesture.target == QuickVoiceTarget.send,
+                          ),
+                  );
+                },
               ),
             ),
           ),
@@ -77,9 +93,11 @@ Future<HeldQuickVoiceResult?> showHeldQuickVoiceChat({
       ),
     ),
   );
-  Overlay.of(context).insert(entry);
+  overlay.insert(entry);
   try {
-    return await completion.future;
+    final result = await completion.future;
+    await transitionKey.currentState?.close();
+    return result;
   } finally {
     history.remove();
     entry.remove();
@@ -309,7 +327,9 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
   Widget build(BuildContext context) {
     if (widget.gesture != null &&
         _phase != _VoicePhase.failed &&
-        (!widget.gesture!.isReleased || _phase == _VoicePhase.transcribing)) {
+        (_closing ||
+            !widget.gesture!.isReleased ||
+            _phase == _VoicePhase.transcribing)) {
       return _buildHeldRecording(context);
     }
     final colors = Theme.of(context).colorScheme;
@@ -423,98 +443,86 @@ class _QuickVoiceChatSheetState extends State<QuickVoiceChatSheet>
             QuickVoiceTarget.cancel => '松手取消',
             QuickVoiceTarget.openAi => '松手进入 AI · 保留草稿',
           };
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: Duration(milliseconds: _reduceMotion ? 0 : 220),
-      curve: Curves.easeOutCubic,
-      builder: (context, value, child) => Opacity(
-        opacity: value,
-        child: Transform.translate(
-          offset: Offset(0, 24 * (1 - value)),
-          child: child,
-        ),
-      ),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Material(
-          color: colors.surfaceContainerHigh,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          child: SafeArea(
-            top: false,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildDragTarget(
-                        '进入 AI',
-                        Icons.auto_awesome_rounded,
-                        QuickVoiceTarget.openAi,
-                        colors.primary,
-                      ),
-                      _buildDragTarget(
-                        '取消',
-                        Icons.close_rounded,
-                        QuickVoiceTarget.cancel,
-                        colors.error,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  AnimatedSwitcher(
-                    duration: Duration(milliseconds: _reduceMotion ? 0 : 160),
-                    child: Text(
-                      title,
-                      key: ValueKey(title),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 520),
+      child: Material(
+        color: colors.surfaceContainerHigh,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildDragTarget(
+                      '进入 AI',
+                      Icons.auto_awesome_rounded,
+                      QuickVoiceTarget.openAi,
+                      colors.primary,
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    recording ? '${_seconds}s / 60s' : '请稍候',
-                    style: TextStyle(color: colors.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 18),
-                  if (recording)
-                    AnimatedBuilder(
-                      animation: _pulse,
-                      builder: (context, _) {
-                        final source = _recorder;
-                        if (source is QuickVoiceLevelSource) {
-                          return ValueListenableBuilder<double>(
-                            valueListenable:
-                                (source as QuickVoiceLevelSource).level,
-                            builder: (context, level, _) =>
-                                _buildWave(color, level),
-                          );
-                        }
-                        return _buildWave(color, 0);
-                      },
-                    )
-                  else
-                    const SizedBox(
-                      width: 32,
-                      height: 32,
-                      child: CircularProgressIndicator(strokeWidth: 3),
+                    _buildDragTarget(
+                      '取消',
+                      Icons.close_rounded,
+                      QuickVoiceTarget.cancel,
+                      colors.error,
                     ),
-                  const SizedBox(height: 20),
-                  Text(
-                    recording ? '按住说话 · 左上进入 AI · 右上取消' : '语音内容将交给 AI 理解需求',
+                  ],
+                ),
+                const SizedBox(height: 18),
+                AnimatedSwitcher(
+                  duration: Duration(milliseconds: _reduceMotion ? 0 : 160),
+                  child: Text(
+                    title,
+                    key: ValueKey(title),
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: colors.onSurfaceVariant),
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  if (_phase == _VoicePhase.transcribing)
-                    TextButton(onPressed: _cancel, child: const Text('取消等待')),
-                ],
-              ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  recording ? '${_seconds}s / 60s' : '请稍候',
+                  style: TextStyle(color: colors.onSurfaceVariant),
+                ),
+                const SizedBox(height: 18),
+                if (recording)
+                  AnimatedBuilder(
+                    animation: _pulse,
+                    builder: (context, _) {
+                      final source = _recorder;
+                      if (source is QuickVoiceLevelSource) {
+                        return ValueListenableBuilder<double>(
+                          valueListenable:
+                              (source as QuickVoiceLevelSource).level,
+                          builder: (context, level, _) =>
+                              _buildWave(color, level),
+                        );
+                      }
+                      return _buildWave(color, 0);
+                    },
+                  )
+                else
+                  const SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: CircularProgressIndicator(strokeWidth: 3),
+                  ),
+                const SizedBox(height: 20),
+                Text(
+                  recording ? '按住说话 · 左上进入 AI · 右上取消' : '语音内容将交给 AI 理解需求',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: colors.onSurfaceVariant),
+                ),
+                if (_phase == _VoicePhase.transcribing)
+                  TextButton(onPressed: _cancel, child: const Text('取消等待')),
+              ],
             ),
           ),
         ),

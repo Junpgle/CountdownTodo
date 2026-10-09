@@ -53,6 +53,7 @@ import '../services/llm_service.dart';
 import '../services/mimo_asr_service.dart';
 import '../services/minor_mode_service.dart';
 import '../widgets/quick_voice_chat_sheet.dart';
+import '../widgets/quick_voice_chat_guide.dart';
 import '../widgets/quick_voice_gesture.dart';
 import 'settings/llm_config_page.dart';
 import '../services/ai_recognition_chat_bridge.dart';
