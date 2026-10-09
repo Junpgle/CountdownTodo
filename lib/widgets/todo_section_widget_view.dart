@@ -442,6 +442,10 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                                 );
 
                                                 if (val && !wasDone) {
+                                                  TodoCompletionCelebrationService.playCompletionImpact();
+                                                  _checkAndTriggerTodayAllDoneCelebration(
+                                                    todo,
+                                                  );
                                                   // 播放动画后清理
                                                   _completingAnimations[todo.id]
                                                       ?.dispose();
@@ -1168,23 +1172,34 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                     ),
                     child: Row(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: allTodayDone
-                                ? Colors.green.withValues(alpha: 0.1)
-                                : Theme.of(context).colorScheme.primary
-                                      .withValues(alpha: 0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            allTodayDone
-                                ? Icons.celebration_rounded
-                                : Icons.task_alt_rounded,
-                            size: 20,
-                            color: allTodayDone
-                                ? Colors.green
-                                : Theme.of(context).colorScheme.primary,
+                        GestureDetector(
+                          onTap: allTodayDone
+                              ? () {
+                                  TodoCompletionCelebrationService.playCelebrationImpact();
+                                  showTodoAllDoneCelebration(
+                                    context,
+                                    completedTodayCount: todayItems.length,
+                                  );
+                                }
+                              : null,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: allTodayDone
+                                  ? Colors.green.withValues(alpha: 0.1)
+                                  : Theme.of(context).colorScheme.primary
+                                        .withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              allTodayDone
+                                  ? Icons.celebration_rounded
+                                  : Icons.task_alt_rounded,
+                              size: 20,
+                              color: allTodayDone
+                                  ? Colors.green
+                                  : Theme.of(context).colorScheme.primary,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -1796,11 +1811,16 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
           widget.onGroupsChanged(widget.todoGroups);
         },
         onTodoToggle: (todo) {
+          final bool wasDone = todo.isDone;
           if (!todo.isDone) {
             PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
           }
           todo.isDone = !todo.isDone;
           todo.markAsChanged();
+          if (todo.isDone && !wasDone) {
+            TodoCompletionCelebrationService.playCompletionImpact();
+            _checkAndTriggerTodayAllDoneCelebration(todo);
+          }
           widget.onTodosChanged(widget.todos);
         },
         onTodoDropped: (todoId) {
@@ -2100,5 +2120,45 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
       onTodosChanged: widget.onTodosChanged,
       onRefreshRequested: widget.onRefreshRequested,
     );
+  }
+
+  void _checkAndTriggerTodayAllDoneCelebration(TodoItem justCompletedTodo) {
+    final vm = _cachedVm;
+    if (vm == null || vm.todayItems.isEmpty) return;
+
+    bool wasAllDoneBefore = true;
+    bool isAllDoneNow = true;
+    int totalTodayCount = 0;
+
+    for (final item in vm.todayItems) {
+      if (item.todo != null) {
+        totalTodayCount++;
+        final bool isCurrent = item.todo!.id == justCompletedTodo.id;
+        final bool wasDone = isCurrent ? false : item.todo!.isDone;
+        final bool isDone = isCurrent ? true : item.todo!.isDone;
+        if (!wasDone) wasAllDoneBefore = false;
+        if (!isDone) isAllDoneNow = false;
+      } else if (item.groupTodos != null) {
+        totalTodayCount += item.groupTodos!.length;
+        for (final t in item.groupTodos!) {
+          final bool isCurrent = t.id == justCompletedTodo.id;
+          final bool wasDone = isCurrent ? false : t.isDone;
+          final bool isDone = isCurrent ? true : t.isDone;
+          if (!wasDone) wasAllDoneBefore = false;
+          if (!isDone) isAllDoneNow = false;
+        }
+      } else {
+        totalTodayCount++;
+        if (!item.isDone) {
+          wasAllDoneBefore = false;
+          isAllDoneNow = false;
+        }
+      }
+    }
+
+    if (!wasAllDoneBefore && isAllDoneNow && totalTodayCount > 0) {
+      TodoCompletionCelebrationService.playCelebrationImpact();
+      showTodoAllDoneCelebration(context, completedTodayCount: totalTodayCount);
+    }
   }
 }
