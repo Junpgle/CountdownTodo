@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../widgets/floating_bottom_bar.dart';
@@ -31,6 +33,7 @@ class FinanceOverviewPanel extends StatefulWidget {
   final Map<String, FinanceCategory> categories;
   final VoidCallback onAdd;
   final GlobalKey addActionKey;
+  final bool categoryTapOpensLedger;
   final Future<void> Function() onRefresh;
   final ValueChanged<DateTime>? onMonthChanged;
   final FinanceCategorySelectionCallback? onCategorySelected;
@@ -45,6 +48,7 @@ class FinanceOverviewPanel extends StatefulWidget {
     required this.categories,
     required this.onAdd,
     required this.addActionKey,
+    this.categoryTapOpensLedger = true,
     required this.onRefresh,
     this.onMonthChanged,
     this.onCategorySelected,
@@ -100,6 +104,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     final colorScheme = Theme.of(context).colorScheme;
     final period = _currentPeriod;
     final topCategories = _topExpenseCategories(period);
+    final categoryExpenseShares = _categoryExpenseShares(period);
     final maxCategory = topCategories.isEmpty ? 1 : topCategories.first.value;
     final bottomPadding = financeBottomContentPaddingFor(context);
 
@@ -158,7 +163,6 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
                 ),
               ),
             ),
-          const SizedBox(height: 24),
           Text(
             _spendingChartTitle(period),
             style: Theme.of(context).textTheme.titleMedium
@@ -171,8 +175,20 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
               child: _buildSpendingChart(context, colorScheme, period),
             ),
           ),
-          const SizedBox(height: 24),
           _buildInsightCard(context, colorScheme, period),
+          const SizedBox(height: 24),
+          Text(
+            period.isPlanned ? '计划支出占比' : '各类别支出占比',
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          _buildCategoryShareCard(
+            context,
+            colorScheme,
+            categoryExpenseShares,
+            period,
+          ),
         ],
       ),
     );
@@ -657,6 +673,155 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
     );
   }
 
+  Widget _buildCategoryShareCard(
+    BuildContext context,
+    ColorScheme colorScheme,
+    List<_FinanceCategoryTotal> categoryTotals,
+    _FinanceOverviewPeriod period,
+  ) {
+    final total = categoryTotals.fold<int>(
+      0,
+      (sum, entry) => sum + entry.value,
+    );
+    if (total <= 0) {
+      return _buildEmptyCard(
+        context,
+        icon: Icons.pie_chart_outline,
+        message: period.isPlanned ? '暂无计划支出占比' : '暂无消费占比数据',
+        nested: true,
+      );
+    }
+
+    final slices = <_FinancePieSlice>[
+      for (var index = 0; index < categoryTotals.length; index++)
+        _FinancePieSlice(
+          value: categoryTotals[index].value,
+          color: _categoryShareColor(categoryTotals[index], index, colorScheme),
+        ),
+    ];
+    final semanticSummary = [
+      for (var index = 0; index < categoryTotals.length; index++)
+        '${_categoryShareLabel(categoryTotals[index])} '
+            '${(categoryTotals[index].value / total * 100).toStringAsFixed(1)}%',
+    ].join('、');
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Semantics(
+              label: period.isPlanned
+                  ? '计划支出占比：$semanticSummary'
+                  : '各类别支出占比：$semanticSummary',
+              child: SizedBox(
+                height: 176,
+                child: Center(
+                  child: CustomPaint(
+                    size: const Size.square(168),
+                    painter: _FinancePiePainter(
+                      slices: slices,
+                      total: total,
+                      separatorColor: colorScheme.surface,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const Divider(height: 24),
+            for (var index = 0; index < categoryTotals.length; index++)
+              _buildCategoryShareLegendEntry(
+                context,
+                categoryTotals[index],
+                color: slices[index].color,
+                total: total,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryShareLegendEntry(
+    BuildContext context,
+    _FinanceCategoryTotal entry, {
+    required Color color,
+    required int total,
+  }) {
+    final category = entry.categoryUuid == null
+        ? null
+        : categories[entry.categoryUuid];
+    final percentage = (entry.value / total * 100).toStringAsFixed(1);
+    final label = _categoryShareLabel(entry);
+    final colorScheme = Theme.of(context).colorScheme;
+    return Semantics(
+      label: '$label，支出${formatFinanceAmount(entry.value)}，占$percentage%',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          children: [
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 8),
+            if (category != null) ...[
+              Text(category.icon),
+              const SizedBox(width: 6),
+            ],
+            Expanded(
+              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '$percentage%',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                Text(
+                  formatFinanceAmount(entry.value),
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _categoryShareLabel(_FinanceCategoryTotal entry) {
+    return financeCategoryReferenceDisplayName(
+      entry.categoryUuid,
+      categories.values,
+    );
+  }
+
+  Color _categoryShareColor(
+    _FinanceCategoryTotal entry,
+    int index,
+    ColorScheme colorScheme,
+  ) {
+    final category = entry.categoryUuid == null
+        ? null
+        : categories[entry.categoryUuid];
+    final customColor = category?.colorValue;
+    if (customColor != null) return Color(customColor);
+
+    final primary = HSLColor.fromColor(colorScheme.primary);
+    return primary
+        .withHue((primary.hue + index * 137.508) % 360)
+        .withSaturation(primary.saturation.clamp(0.55, 0.85).toDouble())
+        .withLightness(colorScheme.brightness == Brightness.dark ? 0.68 : 0.52)
+        .toColor();
+  }
+
   List<_FinanceCategoryTotal> _topExpenseCategories(
     _FinanceOverviewPeriod period,
   ) {
@@ -684,6 +849,35 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
             categoryUuid: entry.key.isEmpty ? null : entry.key,
             value: entry.value,
           ),
+    ];
+    result.sort((a, b) => b.value.compareTo(a.value));
+    return result;
+  }
+
+  List<_FinanceCategoryTotal> _categoryExpenseShares(
+    _FinanceOverviewPeriod period,
+  ) {
+    final totals = <String, int>{};
+    for (final transaction in period.transactions) {
+      if (transaction.type != FinanceTransactionType.expense ||
+          transaction.amountMinor <= 0) {
+        continue;
+      }
+      final categoryUuid = transaction.categoryUuid?.trim();
+      final category = categoryUuid == null || categoryUuid.isEmpty
+          ? null
+          : categories[categoryUuid];
+      final rootUuid = category == null
+          ? categoryUuid ?? ''
+          : _rootCategory(category).uuid;
+      totals[rootUuid] = (totals[rootUuid] ?? 0) + transaction.amountMinor;
+    }
+    final result = [
+      for (final entry in totals.entries)
+        _FinanceCategoryTotal(
+          categoryUuid: entry.key.isEmpty ? null : entry.key,
+          value: entry.value,
+        ),
     ];
     result.sort((a, b) => b.value.compareTo(a.value));
     return result;
@@ -719,6 +913,7 @@ class _FinanceOverviewPanelState extends State<FinanceOverviewPanel> {
       clock: clock,
       isPlanned: period.isPlanned,
       rootCategoryUuid: entry.categoryUuid,
+      categoryTapOpensLedger: widget.categoryTapOpensLedger,
       transactions: period.transactions,
       categories: categories,
       onCategorySelected: onCategorySelected == null
@@ -1522,6 +1717,75 @@ class _FinanceCategoryTotal {
     required this.categoryUuid,
     required this.value,
   });
+}
+
+class _FinancePieSlice {
+  final int value;
+  final Color color;
+
+  const _FinancePieSlice({required this.value, required this.color});
+}
+
+class _FinancePiePainter extends CustomPainter {
+  final List<_FinancePieSlice> slices;
+  final int total;
+  final Color separatorColor;
+
+  const _FinancePiePainter({
+    required this.slices,
+    required this.total,
+    required this.separatorColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (total <= 0 || slices.isEmpty) return;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = math.min(size.width, size.height) / 2 - 1;
+    final bounds = Rect.fromCircle(center: center, radius: radius);
+    final fillPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+    final separatorPaint = Paint()
+      ..color = separatorColor
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke
+      ..isAntiAlias = true;
+    var startAngle = -math.pi / 2;
+
+    for (final slice in slices) {
+      final sweepAngle = math.pi * 2 * slice.value / total;
+      fillPaint.color = slice.color;
+      canvas.drawArc(bounds, startAngle, sweepAngle, true, fillPaint);
+      if (slices.length > 1) {
+        final edge = Offset(
+          center.dx + radius * math.cos(startAngle),
+          center.dy + radius * math.sin(startAngle),
+        );
+        canvas.drawLine(center, edge, separatorPaint);
+      }
+      startAngle += sweepAngle;
+    }
+
+    canvas.drawCircle(center, radius, separatorPaint..strokeWidth = 1);
+  }
+
+  @override
+  bool shouldRepaint(covariant _FinancePiePainter oldDelegate) {
+    if (oldDelegate.total != total ||
+        oldDelegate.separatorColor != separatorColor ||
+        oldDelegate.slices.length != slices.length) {
+      return true;
+    }
+    for (var index = 0; index < slices.length; index++) {
+      if (oldDelegate.slices[index].value != slices[index].value ||
+          oldDelegate.slices[index].color != slices[index].color) {
+        return true;
+      }
+    }
+    return false;
+  }
 }
 
 String _formatFinanceDateRange(DateTime from, DateTime to) {

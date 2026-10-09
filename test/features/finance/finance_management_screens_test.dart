@@ -3221,6 +3221,57 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('类别消费占比按支出计算，不被某类超额退款放大', (tester) async {
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'share-expense-a',
+        amountMinor: 10000,
+        categoryUuid: 'share-category-a',
+        transactionDate: '2026-09-02',
+      ),
+      FinanceTransaction(
+        uuid: 'share-expense-b',
+        amountMinor: 5000,
+        categoryUuid: 'share-category-b',
+        transactionDate: '2026-09-02',
+      ),
+      FinanceTransaction(
+        uuid: 'share-refund-b',
+        type: FinanceTransactionType.refund,
+        amountMinor: 10000,
+        categoryUuid: 'share-category-b',
+        transactionDate: '2026-09-03',
+      ),
+    ];
+
+    await _pump(
+      tester,
+      Scaffold(
+        body: FinanceOverviewPanel(
+          month: _month,
+          summary: FinanceSummary.fromTransactions(transactions),
+          transactions: transactions,
+          categories: const {},
+          onAdd: () {},
+          addActionKey: GlobalKey(),
+          onRefresh: () async {},
+        ),
+      ),
+      size: const Size(1100, 1500),
+    );
+
+    final shareSemantics = tester.widget<Semantics>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.label?.startsWith('各类别支出占比：') == true,
+      ),
+    );
+    expect(shareSemantics.properties.label, contains('66.7%'));
+    expect(shareSemantics.properties.label, contains('33.3%'));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('支出与同日退款相抵时图表说明净额为零', (tester) async {
     final occurredAt = DateTime(2026, 9, 2, 10).millisecondsSinceEpoch;
     final transactions = [
@@ -4350,7 +4401,13 @@ void main() {
       size: const Size(900, 1500),
     );
 
-    expect(find.textContaining('历史分类（已删除）'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: _key('finance-overview-category-deleted-overview-category'),
+        matching: find.textContaining('历史分类（已删除）'),
+      ),
+      findsOneWidget,
+    );
     expect(
       _key('finance-overview-category-deleted-overview-category'),
       findsOneWidget,
