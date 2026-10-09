@@ -33,6 +33,7 @@ WidgetStateProperty<Color?> _glassButtonOverlay(Color color) {
 ButtonLayerBuilder _glassButtonBackgroundBuilder({
   required Color Function(Set<WidgetState> states) tintForStates,
   required double Function(Set<WidgetState> states) opacityForStates,
+  double Function(Set<WidgetState> states)? tintOpacityForStates,
   required bool isDark,
   required double borderRadius,
   required LiquidGlassEffectConfiguration configuration,
@@ -41,8 +42,11 @@ ButtonLayerBuilder _glassButtonBackgroundBuilder({
   return (context, states, child) {
     final colorScheme = Theme.of(context).colorScheme;
     final tint = tintForStates(states);
+    final tintOpacity = _clampOpacity(
+      tintOpacityForStates?.call(states) ?? (isDark ? 0.16 : 0.12),
+    );
     final base = Color.alphaBlend(
-      tint.withValues(alpha: isDark ? 0.16 : 0.12),
+      tint.withValues(alpha: tintOpacity),
       isDark ? colorScheme.scrim : colorScheme.surface,
     );
     final opacity = liquidGlassBackerOpacity(
@@ -253,6 +257,12 @@ ThemeData applyAppLiquidGlassTheme(
       tintForStates: (states) {
         final selected = states.contains(WidgetState.selected);
         return selected ? scheme.secondaryContainer : glassSurface;
+      },
+      tintOpacityForStates: (states) {
+        final selected = states.contains(WidgetState.selected);
+        // Give the selected segment a clear fill even when the liquid-glass
+        // backer is translucent.
+        return selected ? 0.52 : (isDark ? 0.16 : 0.12);
       },
       opacityForStates: (states) {
         final selected = states.contains(WidgetState.selected);

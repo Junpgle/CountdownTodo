@@ -88,6 +88,30 @@ ButtonStyle _floatingGlassChildButtonStyle(ButtonStyle? style) {
   );
 }
 
+Widget _floatingGlassSegmentedButtonBackground(
+  BuildContext context,
+  Set<WidgetState> states,
+  Widget? child,
+) {
+  final selected = states.contains(WidgetState.selected);
+  final colorScheme = Theme.of(context).colorScheme;
+  return DecoratedBox(
+    decoration: BoxDecoration(
+      color: selected ? colorScheme.secondaryContainer : Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: child ?? const SizedBox.shrink(),
+  );
+}
+
+ButtonStyle _floatingGlassChildSegmentedButtonStyle(ButtonStyle? style) {
+  return _floatingGlassChildButtonStyle(style).copyWith(
+    // The floating control suppresses nested glass surfaces, but selected
+    // segments still need a solid fill to remain distinguishable.
+    backgroundBuilder: _floatingGlassSegmentedButtonBackground,
+  );
+}
+
 ThemeData _floatingGlassChildTheme(BuildContext context) {
   final theme = Theme.of(context);
   return theme.copyWith(
@@ -107,7 +131,9 @@ ThemeData _floatingGlassChildTheme(BuildContext context) {
       style: _floatingGlassChildButtonStyle(theme.iconButtonTheme.style),
     ),
     segmentedButtonTheme: SegmentedButtonThemeData(
-      style: _floatingGlassChildButtonStyle(theme.segmentedButtonTheme.style),
+      style: _floatingGlassChildSegmentedButtonStyle(
+        theme.segmentedButtonTheme.style,
+      ),
     ),
   );
 }
