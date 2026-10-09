@@ -104,7 +104,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         .map((g) => TodoGroup(
               id: g['uuid']?.toString(),
               name: g['name']?.toString() ?? '未命名分组',
-              isExpanded: g['is_expanded'] == 1,
+              isExpanded: g['is_expanded'] == 1 || g['is_expanded'] == true,
               teamUuid: teamUuid,
               teamName: teamName,
             ))
