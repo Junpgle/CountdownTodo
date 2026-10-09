@@ -14,11 +14,15 @@ class PlanBusyInterval {
     this.end, {
     required this.source,
     this.id = '',
+    this.title,
+    this.record,
   });
   final DateTime start;
   final DateTime end;
   final PlanBusySource source;
   final String id;
+  final String? title;
+  final Object? record;
 }
 
 class PlanAvailabilityQuery {
@@ -120,4 +124,37 @@ class PlanAvailabilityException implements Exception {
   final bool canUseAppOnly;
   @override
   String toString() => message;
+}
+
+/// Shared read-only occupancy for a local date, independent of any target todo.
+class PlanAvailabilityDaySources {
+  const PlanAvailabilityDaySources({
+    required this.date,
+    required this.busy,
+    required this.unknownTimes,
+  });
+  final DateTime date;
+  final List<PlanBusyInterval> busy;
+  final List<String> unknownTimes;
+}
+
+/// One account-scoped read of all sources, including one device-calendar range.
+class PlanAvailabilityRangeSnapshot {
+  const PlanAvailabilityRangeSnapshot({
+    required this.username,
+    required this.start,
+    required this.end,
+    required this.blocks,
+    required this.todos,
+    required this.days,
+    required this.coverage,
+    required this.deviceCalendarIncluded,
+  });
+  final String username;
+  final DateTime start, end;
+  final List<TodoPlanBlock> blocks;
+  final List<TodoItem> todos;
+  final List<PlanAvailabilityDaySources> days;
+  final String coverage;
+  final bool deviceCalendarIncluded;
 }

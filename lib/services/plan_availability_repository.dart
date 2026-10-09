@@ -164,14 +164,48 @@ class PlanAvailabilityRepository {
     if (todo == null || todo.isDeleted || todo.isDone) {
       throw const PlanAvailabilityException('待办已完成或删除，请重新选择');
     }
+    final sources = _daySources(query, local, external: external);
+    return PlanAvailabilitySnapshot(
+      todo: todo,
+      busy: sources.busy,
+      coverage: coverage,
+      unknownTimes: sources.unknownTimes,
+      deviceCalendarIncluded: included,
+      courseFingerprint: local.courseFingerprint,
+      settingsFingerprint: settingsFingerprint,
+      calendarRevision: calendarRevision,
+    );
+  }
+
+  PlanAvailabilityDaySources _daySources(
+    PlanAvailabilityQuery query,
+    _LocalAvailabilityData local, {
+    List<PlanBusyInterval> external = const [],
+  }) {
     final busy = <PlanBusyInterval>[...external];
     final unknown = <String>[];
     final day = DateFormat('yyyy-MM-dd').format(query.dayStart);
-    void add(DateTime start, DateTime end, PlanBusySource source, String id) {
+    void add(
+      DateTime start,
+      DateTime end,
+      PlanBusySource source,
+      String id,
+      String title,
+      Object record,
+    ) {
       if (end.isAfter(start) &&
           end.isAfter(query.dayStart) &&
           start.isBefore(query.dayEnd)) {
-        busy.add(PlanBusyInterval(start, end, source: source, id: id));
+        busy.add(
+          PlanBusyInterval(
+            start,
+            end,
+            source: source,
+            id: id,
+            title: title,
+            record: record,
+          ),
+        );
       }
     }
 
@@ -207,6 +241,8 @@ class PlanAvailabilityRepository {
         ),
         PlanBusySource.course,
         course.uuid,
+        course.courseName,
+        course,
       );
     }
     for (final item in local.schedules) {
@@ -224,6 +260,8 @@ class PlanAvailabilityRepository {
         DateTime.fromMillisecondsSinceEpoch(item.endTime!),
         PlanBusySource.fixedSchedule,
         item.id,
+        item.title,
+        item,
       );
     }
     final plannedTodoIds = local.blocks
@@ -253,6 +291,8 @@ class PlanAvailabilityRepository {
         DateTime.fromMillisecondsSinceEpoch(item.endTime),
         PlanBusySource.planBlock,
         item.id,
+        item.titleSnapshot ?? '未命名规划',
+        item,
       );
     }
     for (final item in local.todos) {
@@ -282,50 +322,56 @@ class PlanAvailabilityRepository {
         item.dueDate!.toLocal(),
         PlanBusySource.legacyTodo,
         item.id,
+        item.title,
+        item,
       );
     }
-    return PlanAvailabilitySnapshot(
-      todo: todo,
-      busy: busy,
-      coverage: coverage,
-      unknownTimes: unknown,
-      deviceCalendarIncluded: included,
-      courseFingerprint: local.courseFingerprint,
-      settingsFingerprint: settingsFingerprint,
-      calendarRevision: calendarRevision,
+    return PlanAvailabilityDaySources(
+      date: query.dayStart,
+      busy: List.unmodifiable(
+        busy.where(
+          (item) =>
+              item.end.isAfter(query.dayStart) &&
+              item.start.isBefore(query.dayEnd),
+        ),
+      ),
+      unknownTimes: List.unmodifiable(unknown),
     );
   }
 
-  Future<PlanAvailabilitySnapshot> read(
-    PlanAvailabilityQuery query, {
+  Future<_AvailabilityReadSources> _readSources(
+    String username,
+    DateTime start,
+    DateTime end, {
+    bool appOnly = false,
     bool forceRefresh = false,
     bool requireCalendar = false,
   }) async {
-    await _checkAccount(query.username);
+    await _checkAccount(username);
     // Let existing account/semester compatibility migrations settle before
     // capturing the settings revision; validate first so corrupt data is fatal.
-    await _settingsFingerprint(query.username);
+    await _settingsFingerprint(username);
     await CourseCalendarAdjustmentService.load();
     await StorageService.getSemesters();
     await StorageService.getSemesterStart();
-    await _checkAccount(query.username);
-    final settings = await _settingsFingerprint(query.username);
+    await _checkAccount(username);
+    final settings = await _settingsFingerprint(username);
     final revision = DeviceCalendarReadService.revision.value;
     final db =
         databaseOverride ??
-        await DatabaseHelper.instance.databaseForUser(query.username);
+        await DatabaseHelper.instance.databaseForUser(username);
     final local = await _readLocal(db);
     final external = <PlanBusyInterval>[];
     var included = false;
     var coverage = '已检查课程、固定日程和规划；未计入手机日历';
     try {
-      if (!query.appOnly &&
+      if (!appOnly &&
           DeviceCalendarReadService.isSupported &&
           await DeviceCalendarReadService.isEnabled() &&
           await DeviceCalendarReadService.checkPermission()) {
         final events = await DeviceCalendarReadService.readEvents(
-          start: query.dayStart,
-          end: query.dayEnd,
+          start: start,
+          end: end,
           forceRefresh: forceRefresh,
         );
         if (!await DeviceCalendarReadService.isEnabled() ||
@@ -342,6 +388,8 @@ class PlanAvailabilityRepository {
                   item.end,
                   source: PlanBusySource.deviceCalendar,
                   id: item.id,
+                  title: item.title,
+                  record: item,
                 ),
               ),
         );
@@ -356,19 +404,85 @@ class PlanAvailabilityRepository {
     if (requireCalendar && !included) {
       throw const PlanAvailabilityException('手机日历读取范围已变化，请重新查找时段');
     }
-    if (settings != await _settingsFingerprint(query.username) ||
+    if (settings != await _settingsFingerprint(username) ||
         revision != DeviceCalendarReadService.revision.value) {
       throw const PlanAvailabilityException('日程设置已变化，请重新查找时段');
     }
-    await _checkAccount(query.username);
+    await _checkAccount(username);
+    return _AvailabilityReadSources(
+      local,
+      external,
+      included,
+      coverage,
+      settings,
+      revision,
+    );
+  }
+
+  Future<PlanAvailabilitySnapshot> read(
+    PlanAvailabilityQuery query, {
+    bool forceRefresh = false,
+    bool requireCalendar = false,
+  }) async {
+    final sources = await _readSources(
+      query.username,
+      query.dayStart,
+      query.dayEnd,
+      appOnly: query.appOnly,
+      forceRefresh: forceRefresh,
+      requireCalendar: requireCalendar,
+    );
     return _snapshot(
       query,
-      local,
-      external: external,
-      included: included,
-      coverage: coverage,
-      settingsFingerprint: settings,
-      calendarRevision: revision,
+      sources.local,
+      external: sources.external,
+      included: sources.included,
+      coverage: sources.coverage,
+      settingsFingerprint: sources.settings,
+      calendarRevision: sources.calendarRevision,
+    );
+  }
+
+  Future<PlanAvailabilityRangeSnapshot> readRange(
+    String username,
+    DateTime date, {
+    int days = 1,
+    bool appOnly = false,
+    bool forceRefresh = false,
+  }) async {
+    if (days < 1 || days > 7) {
+      throw const PlanAvailabilityException('检查范围须为1至7天');
+    }
+    final start = DateTime(date.year, date.month, date.day);
+    final end = DateTime(start.year, start.month, start.day + days);
+    final sources = await _readSources(
+      username,
+      start,
+      end,
+      appOnly: appOnly,
+      forceRefresh: forceRefresh,
+    );
+    return PlanAvailabilityRangeSnapshot(
+      username: username,
+      start: start,
+      end: end,
+      blocks: List.unmodifiable(sources.local.blocks),
+      todos: List.unmodifiable(sources.local.todos),
+      coverage: sources.coverage,
+      deviceCalendarIncluded: sources.included,
+      days: List.unmodifiable([
+        for (var i = 0; i < days; i++)
+          _daySources(
+            PlanAvailabilityQuery(
+              username: username,
+              todoId: '',
+              date: DateTime(start.year, start.month, start.day + i),
+              minutes: 1,
+            ),
+            sources.local,
+            external: sources.external,
+          ),
+      ]),
     );
   }
 
@@ -462,4 +576,20 @@ class _LocalAvailabilityData {
   final List<TodoItem> todos;
   final List<FixedScheduleItem> schedules;
   final List<TodoPlanBlock> blocks;
+}
+
+class _AvailabilityReadSources {
+  const _AvailabilityReadSources(
+    this.local,
+    this.external,
+    this.included,
+    this.coverage,
+    this.settings,
+    this.calendarRevision,
+  );
+  final _LocalAvailabilityData local;
+  final List<PlanBusyInterval> external;
+  final bool included;
+  final String coverage, settings;
+  final int calendarRevision;
 }

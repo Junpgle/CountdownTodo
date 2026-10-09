@@ -17,6 +17,7 @@ import '../widgets/coach_mark_overlay.dart';
 import '../widgets/floating_glass_control.dart';
 import '../widgets/plan_block_editor_sheet.dart';
 import '../widgets/missed_plan_recovery_flow.dart';
+import '../widgets/plan_conflict_review.dart';
 
 // 复用 TimeLog 的颜色和基础常量
 const double kTimeAxisW = 46.0;
@@ -131,6 +132,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     if (signal.affects(DataRefreshDomain.todos) ||
         signal.affects(DataRefreshDomain.todoGroups) ||
         signal.affects(DataRefreshDomain.courses) ||
+        signal.affects(DataRefreshDomain.fixedSchedules) ||
         signal.affects(DataRefreshDomain.planBlocks) ||
         signal.affects(DataRefreshDomain.pomodoro) ||
         signal.affects(DataRefreshDomain.timeLogs)) {
@@ -345,7 +347,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
               icon: const Icon(Icons.chevron_left),
               onPressed: _prevDay,
             ),
-            GestureDetector(
+            Flexible(child: GestureDetector(
               onTap: _pickDate,
               child: Text(
                 DateFormat('MM月dd日').format(_focusedDate),
@@ -354,7 +356,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
                   fontSize: 18,
                 ),
               ),
-            ),
+            )),
             IconButton(
               icon: const Icon(Icons.chevron_right),
               onPressed: _nextDay,
@@ -363,6 +365,8 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
         ),
         centerTitle: true,
         actions: [
+          PlanConflictIndicator(username: widget.username, date: _focusedDate,
+            compact: true, onSaved: _loadData),
           IconButton(
             icon: const Icon(Icons.bar_chart_rounded),
             tooltip: '规划统计',

@@ -10,6 +10,7 @@ import '../screens/plan_block_stats_screen.dart';
 import '../utils/page_transitions.dart';
 import 'optional_liquid_glass_surface.dart';
 import 'missed_plan_recovery_flow.dart';
+import 'plan_conflict_review.dart';
 
 class PlanBlockTodaySection extends StatefulWidget {
   final String username;
@@ -236,6 +237,8 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildHeader(theme, planned, rate),
+            PlanConflictIndicator(username: widget.username,
+              refreshTrigger: widget.refreshTrigger, onSaved: _loadData),
             const SizedBox(height: 12),
             if (_blocks.isEmpty && freeRecords.isEmpty)
               _buildEmpty(theme)

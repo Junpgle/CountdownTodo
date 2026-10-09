@@ -266,3 +266,6 @@ todo.md
 !/test/widgets/plan_execution_view_test.dart
 !/test/services/missed_plan_recovery_service_test.dart
 !/test/widgets/missed_plan_recovery_flow_test.dart
+
+!/test/services/plan_conflict_review_service_test.dart
+!/test/widgets/plan_conflict_review_test.dart

@@ -11,6 +11,7 @@ import '../storage_service.dart';
 import '../screens/pomodoro_screen.dart';
 import '../services/plan_availability_repository.dart';
 import '../services/plan_availability_service.dart';
+import '../services/plan_conflict_review_service.dart';
 import '../services/missed_plan_recovery_service.dart';
 import '../services/time_estimation_service.dart';
 import '../services/pomodoro_service.dart';
@@ -85,6 +86,8 @@ class PlanBlockEditorSheet extends StatefulWidget {
   final Future<void> Function(BuildContext)? reviewRecovery;
   final bool autoRecommendTime;
   final bool fullPage;
+  final PlanConflictEditContext? conflictEdit;
+  final PlanConflictReviewService? conflictService;
 
   const PlanBlockEditorSheet({
     super.key,
@@ -109,6 +112,8 @@ class PlanBlockEditorSheet extends StatefulWidget {
     this.reviewRecovery,
     this.autoRecommendTime = false,
     this.fullPage = false,
+    this.conflictEdit,
+    this.conflictService,
   });
 
   @override
@@ -403,6 +408,18 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet> {
     TodoPlanStatus? newStatus,
   }) async {
     final existing = _persistedBlock;
+    if (widget.conflictEdit != null && widget.saver == null) {
+      return (widget.conflictService ??
+              PlanConflictReviewService(clock: widget.clock))
+          .save(
+            widget.conflictEdit!,
+            draft,
+            selection,
+            expectedBlock: existing ?? widget.conflictEdit!.block,
+            manualQuery: _manualQuery,
+            newStatus: newStatus,
+          );
+    }
     if (widget.recovery != null && widget.saver == null) {
       return (widget.recoveryService ??
               MissedPlanRecoveryService(clock: widget.clock))
@@ -931,7 +948,10 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet> {
                         ),
                 )
                 .toList(),
-            onChanged: widget.recovery != null || !_hasSelectableTodos
+            onChanged:
+                widget.recovery != null ||
+                    widget.conflictEdit != null ||
+                    !_hasSelectableTodos
                 ? null
                 : (value) {
                     if (value == null || value.startsWith('__todo_header_')) {
@@ -1305,7 +1325,15 @@ class _PlanBlockEditorSheetState extends State<PlanBlockEditorSheet> {
     canPop: !_busy,
     child: Scaffold(
       key: const ValueKey('plan-block-editor-page'),
-      appBar: AppBar(title: Text(widget.recovery != null ? '重新安排' : '新建规划块')),
+      appBar: AppBar(
+        title: Text(
+          widget.conflictEdit != null
+              ? '调整规划'
+              : widget.recovery != null
+              ? '重新安排'
+              : '新建规划块',
+        ),
+      ),
       body: SafeArea(
         top: false,
         child: Center(
