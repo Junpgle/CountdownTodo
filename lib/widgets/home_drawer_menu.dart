@@ -1,6 +1,6 @@
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
-import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,6 +11,10 @@ import 'optional_liquid_glass_surface.dart';
 import 'platform_backdrop_filter.dart';
 
 const double _homeWideDrawerMaxWidth = 360.0;
+
+typedef HomeDrawerNavigationCallback = Future<void> Function(
+  GlobalKey sourceKey,
+);
 
 /// Returns the horizontal space reserved for the home drawer when it opens.
 ///
@@ -102,19 +106,19 @@ int _compareVersionNames(String left, String right) {
 class HomeDrawerMenu extends StatefulWidget {
   final String username;
   final String timeSalutation;
-  final VoidCallback onSettings;
-  final VoidCallback onAiAssistant;
-  final VoidCallback onTeams;
-  final VoidCallback onFinance;
-  final VoidCallback onChangelog;
-  final VoidCallback onChallengeCenter;
-  final VoidCallback onUpdate;
-  final VoidCallback onOpenUpdateSettings;
-  final VoidCallback onTimeline;
-  final VoidCallback onJournal;
-  final VoidCallback onScreenTime;
-  final VoidCallback onPlanCenter;
-  final VoidCallback onHabits;
+  final HomeDrawerNavigationCallback onSettings;
+  final HomeDrawerNavigationCallback onAiAssistant;
+  final HomeDrawerNavigationCallback onTeams;
+  final HomeDrawerNavigationCallback onFinance;
+  final HomeDrawerNavigationCallback onChangelog;
+  final HomeDrawerNavigationCallback onChallengeCenter;
+  final HomeDrawerNavigationCallback onUpdate;
+  final HomeDrawerNavigationCallback onOpenUpdateSettings;
+  final HomeDrawerNavigationCallback onTimeline;
+  final HomeDrawerNavigationCallback onJournal;
+  final HomeDrawerNavigationCallback onScreenTime;
+  final HomeDrawerNavigationCallback onPlanCenter;
+  final HomeDrawerNavigationCallback onHabits;
   final int teamPendingCount;
   final bool hasTeamConflictDot;
 
@@ -144,6 +148,8 @@ class HomeDrawerMenu extends StatefulWidget {
 }
 
 class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
+  final Map<String, GlobalKey> _menuItemKeys = {};
+  bool _isOpeningPage = false;
   late final Future<PackageInfo> _packageInfoFuture;
   late final Future<int?> _companionDaysFuture;
   // 可为空以兼容热重载保留的旧 State；初始化完成前只显示版本号。
@@ -188,10 +194,30 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
 
   bool _isMenuVisible(String key) => _menuVisibility[key] ?? true;
 
+  GlobalKey _sourceKeyFor(String key) => _menuItemKeys.putIfAbsent(
+    key,
+    () => GlobalKey(debugLabel: 'home-drawer-$key'),
+  );
+
+  Future<void> _openMenuItem(
+    HomeDrawerNavigationCallback onTap,
+    GlobalKey sourceKey,
+  ) async {
+    if (_isOpeningPage) return;
+    _isOpeningPage = true;
+    try {
+      // Keep the drawer and its scroll position behind the route so the
+      // return transition can contract into the same visible menu item.
+      await onTap(sourceKey);
+    } finally {
+      _isOpeningPage = false;
+    }
+  }
+
   Widget? _buildConfiguredMenuItem(BuildContext context, String key) {
     if (!_isMenuVisible(key)) return null;
     final definition = SidebarMenuService.definition(key);
-    final VoidCallback? onTap = switch (key) {
+    final HomeDrawerNavigationCallback? onTap = switch (key) {
       'teams' => widget.onTeams,
       'finance' => widget.onFinance,
       'aiAssistant' => widget.onAiAssistant,
@@ -210,10 +236,8 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
       context,
       icon: definition.icon,
       title: definition.title,
-      onTap: () {
-        ZoomDrawer.of(context)?.close();
-        onTap();
-      },
+      sourceKey: _sourceKeyFor(key),
+      onTap: onTap,
       badgeCount: key == 'teams' ? widget.teamPendingCount : 0,
       showAlertDot: key == 'teams' && widget.hasTeamConflictDot,
       isCompact: true,
@@ -470,10 +494,8 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                                   context,
                                   icon: Icons.settings_rounded,
                                   title: '设置中心',
-                                  onTap: () {
-                                    ZoomDrawer.of(context)?.close();
-                                    widget.onSettings();
-                                  },
+                                  sourceKey: _sourceKeyFor('settings'),
+                                  onTap: widget.onSettings,
                                   isCompact: true,
                                 ),
                               ],
@@ -549,11 +571,12 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                                     Padding(
                                       padding: const EdgeInsets.only(top: 4),
                                       child: InkWell(
+                                        key: _sourceKeyFor('updateSettings'),
                                         borderRadius: BorderRadius.circular(6),
-                                        onTap: () {
-                                          ZoomDrawer.of(context)?.close();
-                                          widget.onOpenUpdateSettings();
-                                        },
+                                        onTap: () => _openMenuItem(
+                                          widget.onOpenUpdateSettings,
+                                          _sourceKeyFor('updateSettings'),
+                                        ),
                                         child: Padding(
                                           padding: const EdgeInsets.symmetric(
                                               horizontal: 2, vertical: 2),
@@ -605,7 +628,8 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
     BuildContext context, {
     required IconData icon,
     required String title,
-    required VoidCallback onTap,
+    required GlobalKey sourceKey,
+    required HomeDrawerNavigationCallback onTap,
     int badgeCount = 0,
     bool showAlertDot = false,
     bool isCompact = false,
@@ -616,10 +640,11 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
       padding: EdgeInsets.symmetric(
           vertical: isCompact ? 0.0 : 2.0, horizontal: 8.0),
       child: Material(
+        key: sourceKey,
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
+          onTap: () => _openMenuItem(onTap, sourceKey),
           splashColor: colorScheme.primary.withValues(alpha: 0.1),
           highlightColor: colorScheme.primary.withValues(alpha: 0.05),
           child: Padding(

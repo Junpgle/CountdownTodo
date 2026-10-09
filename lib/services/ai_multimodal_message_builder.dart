@@ -26,7 +26,7 @@ class AiMultimodalMessageBuilder {
     required String provider,
   }) {
     final normalizedText =
-        text.trim().isEmpty ? _defaultPrompt(attachment.kind) : text.trim();
+        requestTextForAttachment(text: text, attachmentKind: attachment.kind);
     final encoded = base64Encode(bytes);
     final dataUrl = 'data:${attachment.mimeType};base64,$encoded';
     final content = <Map<String, dynamic>>[
@@ -86,11 +86,22 @@ class AiMultimodalMessageBuilder {
   static bool isTextDocument(ChatImageAttachment attachment) =>
       _isTextDocument(attachment.mimeType, attachment.name);
 
-  static String _defaultPrompt(ChatAttachmentKind kind) => switch (kind) {
-        ChatAttachmentKind.image => '请分析图片内容，并结合我的待办与日程给出结果。',
+  static String requestTextForAttachment({
+    required String text,
+    required ChatAttachmentKind? attachmentKind,
+  }) {
+    final normalizedText = text.trim();
+    return normalizedText.isNotEmpty
+        ? normalizedText
+        : defaultPromptFor(attachmentKind);
+  }
+
+  static String defaultPromptFor(ChatAttachmentKind? kind) => switch (kind) {
+        ChatAttachmentKind.image => '请分析图片内容，并提取重要信息、待办与建议。',
         ChatAttachmentKind.audio => '请理解这段音频，并提取重要信息、待办与建议。',
         ChatAttachmentKind.video => '请分析这段视频，并提取重要信息、待办与建议。',
         ChatAttachmentKind.document => '请阅读这份文件，并提取重要信息、待办与建议。',
+        null => '',
       };
 
   static String _audioFormat(String mimeType) {

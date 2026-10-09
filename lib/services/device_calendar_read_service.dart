@@ -15,17 +15,35 @@ class DeviceCalendarEvent {
     required this.title,
     required this.start,
     required this.end,
-    required this.allDay,
+    required bool allDay,
+    DateTime? providerEnd,
     this.location,
     this.colorValue,
-  });
+  }) : _providerAllDay = allDay,
+       _providerEnd = providerEnd ?? end;
 
   final String id;
   final String calendarId;
   final String title;
   final DateTime start;
   final DateTime end;
-  final bool allDay;
+  final bool _providerAllDay;
+  final DateTime _providerEnd;
+
+  /// Cross-date phone events are presented as all-day information. They do
+  /// not reserve every intervening hour for execution. Keep provider times
+  /// intact for overlap checks and the inclusive date span in details.
+  bool get allDay {
+    final localStart = start.toLocal();
+    // Minimum presentation duration must not turn a 23:59 instant reminder
+    // into an all-day event merely because its hit area crosses midnight.
+    final localEnd = _providerEnd.toLocal();
+    return _providerAllDay ||
+        localStart.year != localEnd.year ||
+        localStart.month != localEnd.month ||
+        localStart.day != localEnd.day;
+  }
+
   final String? location;
   final int? colorValue;
 
@@ -56,6 +74,7 @@ class DeviceCalendarEvent {
           ? rawEnd
           : start.add(const Duration(minutes: 1)),
       allDay: raw['allDay'] == true,
+      providerEnd: rawEnd,
       location: raw['location']?.toString().trim().isNotEmpty == true
           ? raw['location'].toString().trim()
           : null,
@@ -111,6 +130,7 @@ class DeviceCalendarReadService {
   // devices. Keep each foreground range in process memory only: returning to
   // the homepage or rebuilding a card must not query the provider again.
   static final List<_DeviceCalendarReadRange> _sessionReadRanges = [];
+  static int _cacheGeneration = 0;
   static final Map<String, Future<List<DeviceCalendarEvent>>> _inFlightReads =
       {};
 
@@ -156,6 +176,7 @@ class DeviceCalendarReadService {
   static void clearSessionReadCacheForTesting() => _clearSessionReadCache();
 
   static void _clearSessionReadCache() {
+    _cacheGeneration++;
     _sessionReadRanges.clear();
     _inFlightReads.clear();
   }
@@ -202,10 +223,13 @@ class DeviceCalendarReadService {
   static Future<List<DeviceCalendarEvent>> readEvents({
     required DateTime start,
     required DateTime end,
+    bool forceRefresh = false,
   }) async {
     if (!end.isAfter(start) || !await isEnabled() || !await checkPermission()) {
       return const [];
     }
+    if (forceRefresh) _clearSessionReadCache();
+    final generation = _cacheGeneration;
     final cached =
         _sessionReadRanges.where((range) => range.covers(start, end));
     if (cached.isNotEmpty) return cached.first.eventsFor(start, end);
@@ -214,19 +238,22 @@ class DeviceCalendarReadService {
         '${start.millisecondsSinceEpoch}:${end.millisecondsSinceEpoch}';
     final pending = _inFlightReads.putIfAbsent(
       rangeKey,
-      () => _readAndCacheRange(start: start, end: end),
+      () => _readAndCacheRange(start: start, end: end, generation: generation),
     );
     try {
       final events = await pending;
       return events.where((event) => event.overlaps(start, end)).toList();
     } finally {
-      _inFlightReads.remove(rangeKey);
+      if (identical(_inFlightReads[rangeKey], pending)) {
+        _inFlightReads.remove(rangeKey);
+      }
     }
   }
 
   static Future<List<DeviceCalendarEvent>> _readAndCacheRange({
     required DateTime start,
     required DateTime end,
+    required int generation,
   }) async {
     final raw = await _channel.invokeMethod<List<dynamic>>(
           'readEvents',
@@ -242,9 +269,11 @@ class DeviceCalendarReadService {
         .where((event) => event.id.isNotEmpty && event.overlaps(start, end))
         .toList()
       ..sort((a, b) => a.start.compareTo(b.start));
-    _sessionReadRanges.add(
-      _DeviceCalendarReadRange(start: start, end: end, events: events),
-    );
+    if (generation == _cacheGeneration) {
+      _sessionReadRanges.add(
+        _DeviceCalendarReadRange(start: start, end: end, events: events),
+      );
+    }
     return events;
   }
 }

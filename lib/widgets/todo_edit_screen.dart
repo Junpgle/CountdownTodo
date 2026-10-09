@@ -1563,6 +1563,33 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     );
   }
 
+  Future<void> _createPlanBlock() async {
+    final todo = _editingTodo;
+    if (_isDone || todo.isDone || todo.isDeleted) return;
+    final now = DateTime.now();
+    final dayStart = DateTime(now.year, now.month, now.day, 8);
+    final start = PlanAvailabilityService.minuteCeiling(
+      now.isAfter(dayStart) ? now : dayStart,
+    );
+    await showPlanBlockEditorPage<void>(
+      context: context,
+      builder: (_) => PlanBlockEditorSheet(
+        fullPage: true,
+        username: widget.username,
+        todos: [todo],
+        todoGroups: widget.todoGroups,
+        initialTodoId: todo.id,
+        startTime: start,
+        endTime: start.add(const Duration(minutes: 30)),
+        autoFillEstimateOnTodoChange: false,
+        autoRecommendTime: true,
+        onSaved: () {
+          if (mounted) _loadRelatedPlans();
+        },
+      ),
+    );
+  }
+
   Widget _buildPlanBlockSection() {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -1572,11 +1599,22 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       children: [
         KeyedSubtree(
           key: _planKey,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               const Text("计划安排",
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              TextButton.icon(
+                key: const ValueKey('todo-create-plan-block'),
+                onPressed:
+                    _isDone || _editingTodo.isDone || _editingTodo.isDeleted
+                        ? null
+                        : _createPlanBlock,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('新建规划块'),
+              ),
               TextButton.icon(
                 onPressed: () async {
                   await Navigator.push(

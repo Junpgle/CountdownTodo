@@ -7,8 +7,6 @@ class PlatformBootstrap {
 
   static Future<bool> routeSecondaryWindow(List<String> args) async => false;
 
-  static void configureHttpOverrides() {}
-
   static Future<void> initDatabaseFactory() async {
     databaseFactory = databaseFactoryFfiWeb;
   }

@@ -36,6 +36,7 @@ Future<void> _pumpCatalog(
   double textScale = 1,
   Brightness brightness = Brightness.light,
   List<FinanceCategory>? categories,
+  List<FinancePaymentMethod>? paymentMethods,
   Future<FinanceCategory?> Function(FinanceCategoryType)? onAdd,
   Future<void> Function(FinanceCategory)? onAddSubcategory,
   Future<void> Function(FinanceCategory)? onEdit,
@@ -60,7 +61,7 @@ Future<void> _pumpCatalog(
         padding: const EdgeInsets.all(16),
         child: FinanceCatalogManager(
           categories: categories ?? _categories(),
-          paymentMethods: [
+          paymentMethods: paymentMethods ?? [
             FinancePaymentMethod(
                 uuid: 'wechat', name: '微信', icon: '💬', isSystem: true),
             FinancePaymentMethod(uuid: 'card', name: '日常银行卡', icon: '💳'),
@@ -149,6 +150,44 @@ void main() {
         find.descendant(of: parent, matching: find.text('奶茶')), findsNothing);
   });
 
+  testWidgets('分类目录区分同级重名分类', (tester) async {
+    final firstParent = FinanceCategory(
+      uuid: 'catalog-duplicate-parent-first',
+      name: '目录重复大类',
+      sortOrder: 10,
+    );
+    final secondParent = FinanceCategory(
+      uuid: 'catalog-duplicate-parent-second',
+      name: '目录重复大类',
+      sortOrder: 20,
+    );
+    final firstChild = FinanceCategory(
+      uuid: 'catalog-duplicate-child-first',
+      name: '目录重复小类',
+      parentUuid: firstParent.uuid,
+      sortOrder: 10,
+    );
+    final secondChild = FinanceCategory(
+      uuid: 'catalog-duplicate-child-second',
+      name: '目录重复小类',
+      parentUuid: firstParent.uuid,
+      sortOrder: 20,
+    );
+
+    await _pumpCatalog(
+      tester,
+      categories: [firstParent, secondParent, firstChild, secondChild],
+    );
+
+    expect(find.text('目录重复大类（同名分类 1/2）'), findsOneWidget);
+    expect(find.text('目录重复大类（同名分类 2/2）'), findsOneWidget);
+    await tester.tap(find.text('目录重复大类（同名分类 1/2）'));
+    await tester.pumpAndSettle();
+    expect(find.text('目录重复小类（同名分类 1/2）'), findsOneWidget);
+    expect(find.text('目录重复小类（同名分类 2/2）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('分类按收支分开，搜索与归档筛选不会显示已删除项目', (tester) async {
     String? restored;
     await _pumpCatalog(tester,
@@ -182,6 +221,65 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('日常银行卡'), findsOneWidget);
     expect(find.text('微信'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('付款方式目录区分同名账户', (tester) async {
+    await _pumpCatalog(
+      tester,
+      paymentMethods: [
+        FinancePaymentMethod(
+          uuid: 'duplicate-account-first',
+          name: '目录同名账户',
+          sortOrder: 1,
+        ),
+        FinancePaymentMethod(
+          uuid: 'duplicate-account-second',
+          name: '目录同名账户',
+          sortOrder: 2,
+        ),
+      ],
+    );
+
+    await tester.tap(find.text('付款方式'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('目录同名账户（同名账户 1/2）'), findsOneWidget);
+    expect(find.text('目录同名账户（同名账户 2/2）'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('归档大类下遗留的活跃小类在归档筛选中仍可恢复', (tester) async {
+    String? restored;
+    final categories = [
+      ..._categories(),
+      FinanceCategory(
+        uuid: 'archived-parent',
+        name: '已归档大类',
+        isArchived: true,
+      ),
+      FinanceCategory(
+        uuid: 'legacy-active-child',
+        name: '历史活跃小类',
+        parentUuid: 'archived-parent',
+      ),
+    ];
+    await _pumpCatalog(
+      tester,
+      categories: categories,
+      onRestore: (category) async => restored = category.uuid,
+    );
+
+    expect(find.text('历史活跃小类'), findsNothing);
+    await tester
+        .tap(find.byKey(const ValueKey('finance-catalog-filter-archived')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('已归档大类'));
+    await tester.pumpAndSettle();
+    expect(find.text('历史活跃小类'), findsOneWidget);
+    await tester.tap(find.byTooltip('恢复历史活跃小类'));
+    await tester.pumpAndSettle();
+    expect(restored, 'legacy-active-child');
     expect(tester.takeException(), isNull);
   });
 
@@ -466,6 +564,118 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('未细分'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('未分类支出详情可以进入对应账单', (tester) async {
+    final transaction = FinanceTransaction(
+      uuid: 'uncategorized-entry',
+      amountMinor: 2450,
+      transactionDate: '2026-09-24',
+      merchant: '临时支出',
+    );
+    String? selectedCategoryUuid;
+    List<FinanceTransaction>? selectedPeriodTransactions;
+
+    await tester.pumpWidget(MaterialApp(
+      home: FinanceCategoryDetailScreen(
+        periodTitle: '本月',
+        rootCategoryUuid: null,
+        transactions: [transaction],
+        categories: const {},
+        onCategorySelected: (categoryUuid, _, periodTransactions) async {
+          selectedCategoryUuid = categoryUuid;
+          selectedPeriodTransactions = periodTransactions;
+        },
+      ),
+    ));
+
+    final item = find.byKey(
+      const ValueKey(
+        'finance-category-detail-$financeUncategorizedCategoryFilterUuid',
+      ),
+    );
+    expect(find.text('没有可筛选的分类账单'), findsNothing);
+    expect(
+      find.descendant(of: item, matching: find.text('未分类')),
+      findsOneWidget,
+    );
+    expect(find.text('1 笔账单 · 点击查看'), findsOneWidget);
+
+    await tester.tap(item);
+    await tester.pump();
+
+    expect(selectedCategoryUuid, financeUncategorizedCategoryFilterUuid);
+    expect(selectedPeriodTransactions, [transaction]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('退款超过小类支出时详情仍显示负净额以便对账', (tester) async {
+    final root = FinanceCategory(
+      uuid: 'daily-expenses',
+      name: '日常支出',
+      icon: '🧾',
+    );
+    final dining = FinanceCategory(
+      uuid: 'dining',
+      name: '餐饮',
+      parentUuid: root.uuid,
+    );
+    final transport = FinanceCategory(
+      uuid: 'transport',
+      name: '交通',
+      parentUuid: root.uuid,
+    );
+    final transactions = [
+      FinanceTransaction(
+        uuid: 'dining-expense',
+        amountMinor: 1000,
+        categoryUuid: dining.uuid,
+        transactionDate: '2026-09-01',
+      ),
+      FinanceTransaction(
+        uuid: 'transport-expense',
+        amountMinor: 1000,
+        categoryUuid: transport.uuid,
+        transactionDate: '2026-09-01',
+      ),
+      FinanceTransaction(
+        uuid: 'transport-refund',
+        type: FinanceTransactionType.refund,
+        amountMinor: 1800,
+        categoryUuid: transport.uuid,
+        transactionDate: '2026-09-02',
+      ),
+    ];
+
+    await tester.pumpWidget(MaterialApp(
+      home: FinanceCategoryDetailScreen(
+        periodTitle: '2026年9月',
+        rootCategoryUuid: root.uuid,
+        transactions: transactions,
+        categories: {
+          root.uuid: root,
+          dining.uuid: dining,
+          transport.uuid: transport,
+        },
+      ),
+    ));
+
+    final transportItem = find.byKey(
+      const ValueKey('finance-category-detail-transport'),
+    );
+    expect(find.text('¥2.00'), findsOneWidget);
+    expect(
+      find.descendant(of: transportItem, matching: find.text('-¥8.00')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: transportItem,
+        matching: find.text('2 笔账单 · 点击查看'),
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 }

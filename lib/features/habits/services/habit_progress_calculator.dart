@@ -39,7 +39,7 @@ abstract final class HabitProgressCalculator {
     final nowValue = now ?? DateTime.now();
     final fromDay = DateTime(from.year, from.month, from.day);
     final toDay = DateTime(to.year, to.month, to.day);
-    final dayCount = toDay.difference(fromDay).inDays;
+    final dayCount = HabitRuleResolver.calendarDayDifference(toDay, fromDay);
     // 上限覆盖 60 个月（60*31≈1860 天）的统计回看窗口。
     if (dayCount < 0 || dayCount > 2400) return const [];
 
@@ -61,7 +61,7 @@ abstract final class HabitProgressCalculator {
     // 避免规则在周期中途变更（如 3 月 15 日生效新规则）时丢失部分周期进度。
     String? lastPeriodId;
     for (int i = 0; i <= dayCount; i++) {
-      final date = fromDay.add(Duration(days: i));
+      final date = HabitRuleResolver.addCalendarDays(fromDay, i);
       if (periodLevel) {
         final rule = HabitRuleResolver.effectiveRule(rules, date);
         if (rule != null &&
@@ -135,8 +135,8 @@ abstract final class HabitProgressCalculator {
         (rules.isNotEmpty ? rules.last : null);
     if (rule == null) return const [];
     // 查询窗口前后各放宽一天，覆盖跨午夜的日期分界。
-    final from = fromDay.subtract(const Duration(days: 1));
-    final to = toDay.add(const Duration(days: 1));
+    final from = HabitRuleResolver.addCalendarDays(fromDay, -1);
+    final to = HabitRuleResolver.addCalendarDays(toDay, 1);
     return HabitSourceResolver.recordsForTags(
       tagUuids: habit.sourceIds,
       from: from,
@@ -403,7 +403,7 @@ abstract final class HabitProgressCalculator {
     final end = HabitRuleResolver.periodEndExclusive(rule, logicalDate);
     final startKey = HabitRuleResolver.dayKey(start);
     final endKey =
-        HabitRuleResolver.dayKey(end.subtract(const Duration(days: 1)));
+        HabitRuleResolver.dayKey(HabitRuleResolver.addCalendarDays(end, -1));
 
     final dayCheckIns = checkIns.where((c) {
       if (c.isDeleted) return false;
@@ -457,7 +457,7 @@ abstract final class HabitProgressCalculator {
     final end = HabitRuleResolver.periodEndExclusive(rule, logicalDate);
     final startKey = HabitRuleResolver.dayKey(start);
     final endKey =
-        HabitRuleResolver.dayKey(end.subtract(const Duration(days: 1)));
+        HabitRuleResolver.dayKey(HabitRuleResolver.addCalendarDays(end, -1));
     final dayCheckIns = checkIns.where((checkIn) {
       if (checkIn.isDeleted || checkIn.source == HabitCheckInSource.skip) {
         return false;
@@ -513,7 +513,7 @@ abstract final class HabitProgressCalculator {
     final end = HabitRuleResolver.periodEndExclusive(rule, logicalDate);
     final startKey = HabitRuleResolver.dayKey(start);
     final endKey =
-        HabitRuleResolver.dayKey(end.subtract(const Duration(days: 1)));
+        HabitRuleResolver.dayKey(HabitRuleResolver.addCalendarDays(end, -1));
 
     final dayCheckIns = checkIns.where((c) {
       if (c.isDeleted) return false;

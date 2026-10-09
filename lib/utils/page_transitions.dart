@@ -132,6 +132,17 @@ class _AnimSettings {
 }
 
 class PageTransitions {
+  /// Overlay transitions share the same motion policy as page transitions.
+  static Duration containerDuration({bool reverse = false}) =>
+      _AnimSettings.animationsEnabled
+          ? Duration(
+              milliseconds:
+                  (_AnimSettings.duration * (reverse ? 0.75 : 1)).round(),
+            )
+          : Duration.zero;
+
+  static Curve get containerCurve => _pageLayerCurve;
+  static Curve get containerReverseCurve => _containerTransformReverseCurve;
   static Future<void> init() => _AnimSettings.load();
 
   /// Applies Android's transient system Battery Saver state without changing
@@ -247,6 +258,7 @@ class PageTransitions {
     required BuildContext context,
     required Widget page,
     required GlobalKey sourceKey,
+    RouteSettings? settings,
     Rect? targetRect,
     BorderRadius? targetBorderRadius,
     Color? sourceColor,
@@ -263,7 +275,10 @@ class PageTransitions {
       return null;
     }
     if (!_AnimSettings.animationsEnabled) {
-      return Navigator.push(context, material(builder: (_) => page));
+      return Navigator.push<T>(
+        context,
+        material<T>(builder: (_) => page, settings: settings),
+      );
     }
 
     await Future.delayed(const Duration(milliseconds: 16));
@@ -274,7 +289,10 @@ class PageTransitions {
         sourceKey.currentContext?.findRenderObject() as RenderBox?;
 
     if (renderBox == null || renderBox.size.isEmpty) {
-      return Navigator.push(context, material(builder: (_) => page));
+      return Navigator.push<T>(
+        context,
+        material<T>(builder: (_) => page, settings: settings),
+      );
     }
 
     final position = renderBox.localToGlobal(Offset.zero);
@@ -286,6 +304,7 @@ class PageTransitions {
       context,
       ContainerTransformRoute<T>(
         page: page,
+        settings: settings,
         sourceRect: rect,
         targetRect: targetRect,
         targetBorderRadius: targetBorderRadius,
@@ -864,6 +883,7 @@ class ContainerTransformRoute<T> extends PageRouteBuilder<T> {
 
   ContainerTransformRoute({
     required this.page,
+    super.settings,
     this.placeholderIcon,
     this.placeholderBuilder,
     required this.sourceRect,
@@ -1184,7 +1204,8 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
                   child: !_contentVisible
                       ? Center(child: _buildPlaceholder(context))
                       : IgnorePointer(
-                          ignoring: fadeIn < 1.0,
+                          // A completed animation can round to 0.9999999999999999.
+                          ignoring: fadeIn < 1.0 - _epsilon,
                           child: content,
                         ),
                 ),

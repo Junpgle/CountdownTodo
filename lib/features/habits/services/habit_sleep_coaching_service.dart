@@ -457,7 +457,7 @@ abstract final class HabitSleepCoachingService {
     );
     final firstDay = checkpoint == null
         ? DateTime(start.year, start.month, start.day)
-        : checkpoint.add(const Duration(days: 1));
+        : HabitRuleResolver.addCalendarDays(checkpoint, 1);
     if (firstDay.isAfter(today)) {
       return _Progression(
         stageIndex: stage.clamp(0, maxStage).toInt(),
@@ -466,7 +466,7 @@ abstract final class HabitSleepCoachingService {
     }
     for (var day = firstDay;
         !day.isAfter(today);
-        day = day.add(const Duration(days: 1))) {
+        day = HabitRuleResolver.addCalendarDays(day, 1)) {
       if (stage >= maxStage) break;
       final actuals = <HabitAdaptationKind, int>{};
       for (final input in inputs.values) {

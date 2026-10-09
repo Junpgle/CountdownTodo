@@ -171,9 +171,13 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
   }
 
   Future<void> _pickDate(TextEditingController controller) async {
-    final current = DateTime.tryParse(controller.text.trim()) ??
-        DateTime.tryParse(_start.text.trim()) ??
-        DateTime.now();
+    final controllerDate = controller.text.trim();
+    final startDate = _start.text.trim();
+    final current = isFinanceDateKey(controllerDate)
+        ? dateFromKey(controllerDate)
+        : isFinanceDateKey(startDate)
+            ? dateFromKey(startDate)
+            : DateTime.now();
     final picked = await showAppDatePicker(
       context: context,
       initialDate: current,
@@ -350,6 +354,7 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
   }
 
   Widget _paymentField() {
+    final isIncome = _type == FinanceTransactionType.income;
     final methods = widget.paymentMethods
         .where((item) =>
             !item.isDeleted && (!item.isArchived || item.uuid == _paymentUuid))
@@ -358,23 +363,42 @@ class _FinanceAutomationEditorState extends State<FinanceAutomationEditor> {
       key: ValueKey('finance-automation-payment-$_paymentUuid'),
       initialValue: _paymentUuid,
       isExpanded: true,
-      decoration: financeFieldDecoration(context, label: '付款方式'),
+      decoration: financeFieldDecoration(
+        context,
+        label: isIncome ? '到账账户' : '付款方式',
+      ),
       items: [
-        const DropdownMenuItem(value: null, child: Text('未指定付款方式')),
+        DropdownMenuItem(
+          value: null,
+          child: Text(isIncome ? '未指定（不更新账户余额）' : '未指定付款方式'),
+        ),
         for (final method in methods)
           DropdownMenuItem(
               value: method.uuid,
               child: Text(
-                  '${method.icon} ${method.name}${method.isArchived ? '（已归档）' : ''}',
+                  _paymentMethodOptionLabel(method, methods),
                   overflow: TextOverflow.ellipsis)),
         if (_paymentUuid != null &&
             methods.every((item) => item.uuid != _paymentUuid))
           DropdownMenuItem(
-              value: _paymentUuid,
-              child: const Text('已归档或未知付款方式', overflow: TextOverflow.ellipsis)),
+            value: _paymentUuid,
+            child: Text(
+              isIncome ? '已归档或未知到账账户' : '已归档或未知付款方式',
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
       ],
       onChanged: (value) => setState(() => _paymentUuid = value),
     );
+  }
+
+  String _paymentMethodOptionLabel(
+    FinancePaymentMethod method,
+    List<FinancePaymentMethod> methods,
+  ) {
+    final name = financePaymentMethodDisplayName(method, methods);
+    final archivedLabel = method.isArchived ? '（已归档）' : '';
+    return '${method.icon} $name$archivedLabel';
   }
 
   Widget _scheduleSection() {

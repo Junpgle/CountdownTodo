@@ -1056,6 +1056,19 @@ mixin _StorageTodos on _StorageServiceBase {
     triggerRefresh(const {DataRefreshDomain.todos});
   }
 
+  Future<TodoItem?> getTodoByUuid(String username, String uuid) async {
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final rows = await DatabaseHelper.instance.getTodoMaps(
+      includeDeleted: true,
+      uuids: [uuid],
+      limit: 1,
+      includeConflictData: true,
+      databaseOverride: db,
+    );
+    if (rows.isEmpty) return null;
+    return _parseTodoItemsIsolate(rows).first;
+  }
+
   Future<void> permanentlyDeleteTodo(String username, String uuid) async {
     final db = await DatabaseHelper.instance.databaseForUser(username);
     final existingRows = await db.query(
@@ -1222,11 +1235,12 @@ mixin _StorageTodos on _StorageServiceBase {
   }
 
   Future<List<TodoItem>> getTodos(String username,
-      {bool includeDeleted = false, int? limit}) async {
+      {bool includeDeleted = false, int? limit, int offset = 0}) async {
     final requestKey = _todoRequestKey(
       username,
       includeDeleted: includeDeleted,
       limit: limit,
+      offset: offset,
     );
     final inflight = _inflightTodoRequests[requestKey];
     if (inflight != null) {
@@ -1239,6 +1253,7 @@ mixin _StorageTodos on _StorageServiceBase {
       username,
       includeDeleted: includeDeleted,
       limit: limit,
+      offset: offset,
     );
     _inflightTodoRequests[requestKey] = future;
 
@@ -1253,7 +1268,7 @@ mixin _StorageTodos on _StorageServiceBase {
   }
 
   Future<List<TodoItem>> _getTodosInternal(String username,
-      {bool includeDeleted = false, int? limit}) async {
+      {bool includeDeleted = false, int? limit, int offset = 0}) async {
     final prefs = await StorageService.prefs;
     final startedAt = DateTime.now();
     // 🚀 Uni-Sync 安全方案：双轨读取 + 逃生通道
@@ -1308,6 +1323,7 @@ mixin _StorageTodos on _StorageServiceBase {
       List<Map<String, dynamic>> maps = await dbHelper.getTodoMaps(
         includeDeleted: includeDeleted,
         limit: limit,
+        offset: offset,
         includeConflictData: true,
       );
       if (limit != null && maps.isNotEmpty) {
@@ -1321,6 +1337,7 @@ mixin _StorageTodos on _StorageServiceBase {
           final seriesMaps = await dbHelper.getTodoMaps(
             includeDeleted: includeDeleted,
             recurrenceSeriesIds: activeSeriesIds,
+            limit: limit,
             includeConflictData: true,
           );
           final mapsById = <String, Map<String, dynamic>>{
@@ -1426,6 +1443,7 @@ mixin _StorageTodos on _StorageServiceBase {
     if (!includeDeleted) {
       filtered = filtered.where((todo) => !todo.isDeleted);
     }
+    if (offset > 0) filtered = filtered.skip(offset);
     if (limit != null && limit >= 0) {
       filtered = filtered.take(limit);
     }

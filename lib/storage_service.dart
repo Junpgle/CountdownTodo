@@ -12,6 +12,7 @@ import 'models.dart';
 import 'services/api_service.dart';
 import 'services/band_sync_service.dart';
 import 'services/pomodoro_service.dart';
+import 'services/reminder_schedule_service.dart';
 import 'services/database_helper.dart'; // 🚀 引入 Uni-Sync 新引擎
 import 'services/sync_capability_service.dart';
 import 'services/sync_oplog_policy.dart';
@@ -109,6 +110,9 @@ class StorageService {
   static const String keyAuthToken = _storageService_keyAuthToken;
 
   static const String keyDeviceId = _storageService_keyDeviceId;
+
+  static const String keyDeviceInstallId =
+      _storageService_keyDeviceInstallId;
 
   static const String keySyncInterval = _storageService_keySyncInterval;
 
@@ -339,6 +343,25 @@ class StorageService {
       _storage.savePlanBlocks(username, items,
           sync: sync, isSyncSource: isSyncSource);
 
+  /// Editor-only conditional write; synchronization retains its existing path.
+  static Future<TodoPlanBlock> savePlanBlockEdited(
+    String username,
+    TodoPlanBlock draft, {
+    int? expectedVersion,
+    int? expectedUpdatedAt,
+    Future<void> Function(DatabaseExecutor executor)? beforeWrite,
+    bool sync = true,
+    TodoPlanStatus? newStatus,
+  }) => _storage.savePlanBlockEdited(
+    username,
+    draft,
+    expectedVersion: expectedVersion,
+    expectedUpdatedAt: expectedUpdatedAt,
+    beforeWrite: beforeWrite,
+    sync: sync,
+    newStatus: newStatus,
+  );
+
   static Future<List<TodoPlanBlock>> getPlanBlocks(String username,
           {bool includeDeleted = false}) =>
       _storage.getPlanBlocks(username, includeDeleted: includeDeleted);
@@ -477,6 +500,9 @@ class StorageService {
           {bool sync = true}) =>
       _storage.updateSingleTodo(username, item, sync: sync);
 
+  static Future<TodoItem?> getTodoByUuid(String username, String uuid) =>
+      _storage.getTodoByUuid(username, uuid);
+
   static Future<void> permanentlyDeleteTodo(String username, String uuid) =>
       _storage.permanentlyDeleteTodo(username, uuid);
 
@@ -491,8 +517,9 @@ class StorageService {
       _storage.permanentlyDeleteCountdown(username, uuid);
 
   static Future<List<TodoItem>> getTodos(String username,
-          {bool includeDeleted = false, int? limit}) =>
-      _storage.getTodos(username, includeDeleted: includeDeleted, limit: limit);
+          {bool includeDeleted = false, int? limit, int offset = 0}) =>
+      _storage.getTodos(username,
+          includeDeleted: includeDeleted, limit: limit, offset: offset);
 
   static Future<void> clearTeamItems(String teamUuid) =>
       _storage.clearTeamItems(teamUuid);

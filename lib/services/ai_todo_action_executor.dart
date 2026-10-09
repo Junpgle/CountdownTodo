@@ -923,6 +923,18 @@ class AiTodoActionExecutor {
       nextEnd = DateTime.fromMillisecondsSinceEpoch(nextStart)
           .add(Duration(minutes: action.durationMinutes!))
           .millisecondsSinceEpoch;
+    } else if (action.hasStartTime) {
+      if (suppliedStart != null &&
+          existing.startTime != null &&
+          existing.endTime != null) {
+        nextEnd = suppliedStart
+            .add(
+              Duration(
+                milliseconds: existing.endTime! - existing.startTime!,
+              ),
+            )
+            .millisecondsSinceEpoch;
+      }
     } else if (action.hasDate && oldDate != null && existing.endTime != null) {
       nextEnd = _moveEpochToDate(existing.endTime!, nextDate);
     }
@@ -1041,30 +1053,39 @@ class AiTodoActionExecutor {
         if (action.title?.trim().isNotEmpty == true) {
           updated.titleSnapshot = action.title!.trim();
         }
+        final originalStart = DateTime.fromMillisecondsSinceEpoch(
+          updated.startTime,
+        );
+        final originalEnd = DateTime.fromMillisecondsSinceEpoch(updated.endTime);
         final start = action.startTime != null
             ? DateTime.tryParse(action.startTime!)
             : null;
-        final end = action.dueDate != null
+        if (action.startTime != null && start == null) return null;
+        final nextStart = start ?? originalStart;
+        final suppliedEnd = action.dueDate != null
             ? DateTime.tryParse(action.dueDate!)
-            : (start != null && action.durationMinutes != null
-                ? start.add(Duration(minutes: action.durationMinutes!))
-                : null);
+            : null;
+        if (action.dueDate != null && suppliedEnd == null) return null;
+        final end = suppliedEnd ??
+            (action.durationMinutes != null
+                ? nextStart.add(Duration(minutes: action.durationMinutes!))
+                : start != null
+                    ? nextStart.add(originalEnd.difference(originalStart))
+                    : null);
+        if (end != null && !end.isAfter(nextStart)) return null;
         if (start != null) updated.startTime = start.millisecondsSinceEpoch;
-        if (end != null &&
-            end.isAfter(
-                DateTime.fromMillisecondsSinceEpoch(updated.startTime))) {
-          updated.endTime = end.millisecondsSinceEpoch;
-        }
+        if (end != null) updated.endTime = end.millisecondsSinceEpoch;
         updated.plannedMinutes = max(
           1,
           DateTime.fromMillisecondsSinceEpoch(updated.endTime)
               .difference(
-                  DateTime.fromMillisecondsSinceEpoch(updated.startTime))
+                DateTime.fromMillisecondsSinceEpoch(updated.startTime),
+              )
               .inMinutes,
         );
-        if (action.remark != null) updated.remark = action.remark;
-        if (action.reminderMinutes != null) {
-          updated.reminderMinutes = action.reminderMinutes!;
+        if (action.hasRemark) updated.remark = action.remark;
+        if (action.hasReminderMinutes) {
+          updated.reminderMinutes = action.reminderMinutes ?? 0;
         }
       }
       updated.markAsChanged();
@@ -1087,11 +1108,11 @@ class AiTodoActionExecutor {
     final match = existingTodos
         .where((todo) => todo['id']?.toString() == todoId)
         .toList();
+    if (match.isEmpty) return null;
     final title = action.title?.trim().isNotEmpty == true
         ? action.title!.trim()
-        : (match.isNotEmpty ? match.first['title']?.toString() : null);
-    final plannedMinutes =
-        action.durationMinutes ?? end.difference(start).inMinutes;
+        : match.first['title']?.toString();
+    final plannedMinutes = max(1, end.difference(start).inMinutes);
 
     return TodoPlanBlock(
       todoId: todoId,
@@ -1306,19 +1327,25 @@ class AiTodoActionExecutor {
         : (start != null && action.durationMinutes != null
             ? start.add(Duration(minutes: action.durationMinutes!))
             : (existing != null
-                ? DateTime.fromMillisecondsSinceEpoch(existing.endTime)
+                ? action.startTime != null && start != null
+                    ? start.add(
+                        Duration(
+                          milliseconds: existing.endTime - existing.startTime,
+                        ),
+                      )
+                    : DateTime.fromMillisecondsSinceEpoch(existing.endTime)
                 : null));
     if (start == null || end == null || !end.isAfter(start)) return null;
 
     final log = TimeLogItem(
       id: existing?.id,
       title: action.title ?? existing?.title ?? '专注记录',
-      tagUuids: action.tagUuids.isNotEmpty
+      tagUuids: action.hasTagUuids
           ? action.tagUuids
           : existing?.tagUuids ?? [],
       startTime: start.millisecondsSinceEpoch,
       endTime: end.millisecondsSinceEpoch,
-      remark: action.remark ?? existing?.remark,
+      remark: action.hasRemark ? action.remark : existing?.remark,
       version: existing?.version ?? 1,
       createdAt: existing?.createdAt,
       isDeleted: existing?.isDeleted ?? false,
@@ -1499,11 +1526,28 @@ class AiTodoActionExecutor {
     final nextCustomInterval = action.hasCustomIntervalDays
         ? action.customIntervalDays
         : existingCustomInterval;
+    if ((action.hasRecurrence || action.hasCustomIntervalDays) &&
+        nextRecurrence == RecurrenceType.customDays &&
+        (nextCustomInterval == null || nextCustomInterval <= 0)) {
+      return null;
+    }
     final nextRecurrenceEnd = action.hasRecurrenceEndDate
         ? _parseExistingDate(action.recurrenceEndDate)
         : _parseExistingDate(
             existing['recurrenceEndDate'] ?? existing['recurrence_end_date'],
           );
+    if (action.hasRecurrence &&
+        nextRecurrence != RecurrenceType.none &&
+        normalizedTime.start == null) {
+      return null;
+    }
+    if ((action.hasRecurrence || action.hasRecurrenceEndDate || hasTimePatch) &&
+        nextRecurrence != RecurrenceType.none &&
+        nextRecurrenceEnd != null &&
+        normalizedTime.start != null &&
+        _day(nextRecurrenceEnd).isBefore(_day(normalizedTime.start!))) {
+      return null;
+    }
     var recurrenceSeriesId = _nullableString(
         existing['recurrenceSeriesId'] ?? existing['recurrence_series_id']);
     if (nextRecurrence != RecurrenceType.none && recurrenceSeriesId == null) {
@@ -1627,6 +1671,10 @@ class AiTodoActionExecutor {
     DateTime? existingDue,
     TodoTimeMode existingMode = TodoTimeMode.unscheduled,
   }) {
+    if (action.hasDueDate && action.dueDate == null) {
+      return (start: null, due: null, isDateOnly: false);
+    }
+
     final requestedMode = TodoTimeMode.values.firstWhere(
       (mode) => mode.name == action.timeMode,
       orElse: () {

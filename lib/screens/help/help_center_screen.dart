@@ -9,6 +9,7 @@ import '../../storage_service.dart';
 import '../../update_service.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/page_transitions.dart';
+import '../../utils/settings_navigation.dart';
 import '../feature_guide_screen.dart';
 import '../pomodoro_screen.dart';
 import '../add_todo_screen.dart';
@@ -29,6 +30,26 @@ class HelpCenterScreen extends StatefulWidget {
 }
 
 class _HelpCenterScreenState extends State<HelpCenterScreen> {
+  final Map<String, GlobalKey> _navigationKeys = {};
+
+  GlobalKey _navigationKey(String id) => _navigationKeys.putIfAbsent(
+        id,
+        () => GlobalKey(debugLabel: 'settings-help-$id'),
+      );
+
+  Future<T?> _openSettingsPage<T>(
+    String id,
+    Widget page, {
+    bool rootNavigator = false,
+  }) =>
+      SettingsNavigation.push<T>(
+        context: context,
+        page: page,
+        sourceKey: _navigationKey(id),
+        isEmbedded: widget.isEmbedded,
+        rootNavigator: rootNavigator,
+      );
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -82,10 +103,10 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
                   Icons.auto_awesome_rounded,
                   scheme.tertiary,
                   () {
-                    Navigator.of(context, rootNavigator: true).push(
-                      PageTransitions.slideHorizontal(
-                        const ChallengeCenterScreen(),
-                      ),
+                    _openSettingsPage(
+                      '挑战中心',
+                      const ChallengeCenterScreen(),
+                      rootNavigator: true,
                     );
                   },
                 ),
@@ -399,7 +420,10 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
         '桌面小组件和系统集成功能',
         Icons.widgets_rounded,
         Colors.indigo,
-        () => _openArticle(_buildPlatformArticle()),
+        () => _openArticle(
+          _buildPlatformArticle(),
+          sourceId: '小组件与桌面功能',
+        ),
       ),
       _HelpEntry(
         '权限设置',
@@ -532,12 +556,10 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
     );
   }
 
-  void _openArticle(HelpArticle article) {
-    Navigator.push(
-      context,
-      PageTransitions.slideHorizontal(
-        HelpArticleScreen(article: article, isEmbedded: widget.isEmbedded),
-      ),
+  void _openArticle(HelpArticle article, {String? sourceId}) {
+    _openSettingsPage(
+      sourceId ?? article.title,
+      HelpArticleScreen(article: article, isEmbedded: widget.isEmbedded),
     );
   }
 
@@ -572,14 +594,14 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
   }
 
   void _showChangelog() {
-    Navigator.of(context, rootNavigator: true).push(
-      PageTransitions.slideHorizontal(
-        FeatureGuideScreen(
-          mode: FeatureGuideMode.changelog,
-          loggedInUser: widget.username,
-          isEmbedded: widget.isEmbedded,
-        ),
+    _openSettingsPage(
+      '查看更新日志',
+      FeatureGuideScreen(
+        mode: FeatureGuideMode.changelog,
+        loggedInUser: widget.username,
+        isEmbedded: widget.isEmbedded,
       ),
+      rootNavigator: true,
     );
   }
 
@@ -631,6 +653,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
         if (entry != _buildArticleEntries().first)
           Divider(height: 1, indent: 72, color: scheme.outlineVariant),
         ListTile(
+          key: _navigationKey(entry.title),
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           leading: Container(

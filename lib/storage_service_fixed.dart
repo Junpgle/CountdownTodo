@@ -271,6 +271,72 @@ mixin _StorageFixed on _StorageServiceBase {
     }
   }
 
+  Future<TodoPlanBlock> savePlanBlockEdited(
+    String username,
+    TodoPlanBlock draft, {
+    int? expectedVersion,
+    int? expectedUpdatedAt,
+    Future<void> Function(DatabaseExecutor executor)? beforeWrite,
+    bool sync = true,
+    TodoPlanStatus? newStatus,
+  }) async {
+    final db = await DatabaseHelper.instance.databaseForUser(username);
+    final saved = await db.transaction((txn) async {
+      final rows = await txn.query(
+        'todo_plan_blocks',
+        where: 'uuid = ?',
+        whereArgs: [draft.id],
+        limit: 1,
+      );
+      final existing = rows.isEmpty
+          ? null
+          : TodoPlanBlock.fromJson(rows.single);
+      if (expectedVersion == null
+          ? existing != null
+          : existing == null ||
+                existing.isDeleted ||
+                existing.version != expectedVersion ||
+                existing.updatedAt != expectedUpdatedAt) {
+        throw StateError('规划已被修改或删除，请读取最新记录后重新编辑');
+      }
+      if (beforeWrite != null) await beforeWrite(txn);
+      final result = existing == null
+          ? TodoPlanBlock.fromJson(draft.toJson())
+          : TodoPlanBlock.fromJson(existing.toJson());
+      result
+        ..todoId = draft.todoId
+        ..titleSnapshot = draft.titleSnapshot ?? existing?.titleSnapshot ?? ''
+        ..startTime = draft.startTime
+        ..endTime = draft.endTime
+        ..plannedMinutes = draft.plannedMinutes
+        ..remark = draft.remark
+        ..reminderMinutes = draft.reminderMinutes
+        ..pomodoroMinutes = draft.pomodoroMinutes
+        ..pomodoroRounds = draft.pomodoroRounds;
+      if (newStatus != null) result.status = newStatus;
+      if (existing != null) result.markAsChanged();
+      final data = result.toDbJson();
+      await txn.insert(
+        'todo_plan_blocks',
+        data,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      await txn.insert('op_logs', {
+        'op_type': 'UPSERT',
+        'target_table': 'todo_plan_blocks',
+        'target_uuid': result.id,
+        'data_json': jsonEncode(data),
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'is_synced': 0,
+        'sync_error': '',
+      });
+      return result;
+    });
+    if (sync) requestSync(username);
+    triggerRefresh(const {DataRefreshDomain.planBlocks});
+    return saved;
+  }
+
   Future<List<TodoPlanBlock>> getPlanBlocks(String username,
       {bool includeDeleted = false}) async {
     try {

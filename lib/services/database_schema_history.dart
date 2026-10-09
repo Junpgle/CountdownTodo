@@ -11,10 +11,18 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 56;
+  static const int currentVersion = 57;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 57,
+      title: '还款账户与余额同步',
+      changes: [
+        '贷款还款保存付款账户，账户余额扣减本金及利息。',
+        '已有付款方式余额记录加入待同步队列。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 56,
       title: '付款余额快照时间',

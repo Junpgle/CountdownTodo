@@ -245,8 +245,11 @@ class HabitGoalRuleRevision {
       habitUuid: json['habit_uuid']?.toString() ?? '',
       effectiveFromDate: json['effective_from_date']?.toString(),
       effectiveToDate: json['effective_to_date']?.toString(),
-      periodType: HabitPeriodType
-          .values[int.tryParse(json['period_type']?.toString() ?? '') ?? 0],
+      periodType: JsonValueParser.enumByIndex(
+        HabitPeriodType.values,
+        json['period_type'],
+        fallback: HabitPeriodType.daily,
+      ),
       weekdaysMask:
           int.tryParse(json['weekdays_mask']?.toString() ?? '') ?? 127,
       customIntervalDays: json['custom_interval_days'] != null
@@ -257,8 +260,11 @@ class HabitGoalRuleRevision {
       targetTimeMinute: json['target_time_minute'] != null
           ? int.tryParse(json['target_time_minute'].toString())
           : null,
-      timeComparison: HabitTimeComparison
-          .values[int.tryParse(json['time_comparison']?.toString() ?? '') ?? 0],
+      timeComparison: JsonValueParser.enumByIndex(
+        HabitTimeComparison.values,
+        json['time_comparison'],
+        fallback: HabitTimeComparison.before,
+      ),
       timeToleranceMinutes:
           int.tryParse(json['time_tolerance_minutes']?.toString() ?? '') ?? 0,
       dayBoundaryMinute:

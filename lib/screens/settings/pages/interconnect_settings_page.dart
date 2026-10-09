@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/app_platform.dart';
-import '../../../utils/page_transitions.dart';
+import '../../../utils/settings_navigation.dart';
 import '../../band_sync_screen.dart';
 import '../../../services/band_sync_service.dart';
 import '../../../services/device_calendar_read_service.dart';
@@ -46,6 +46,26 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
 
   String? _highlightTarget;
   bool _bandServiceBusy = false;
+
+  GlobalKey _navigationKey(String id) => _itemKeys.putIfAbsent(
+        id,
+        () => GlobalKey(debugLabel: 'settings-$id'),
+      );
+
+  Future<T?> _openSettingsPage<T>(
+    String id,
+    Widget page, {
+    RouteSettings? settings,
+    bool rootNavigator = false,
+  }) =>
+      SettingsNavigation.push<T>(
+        context: context,
+        page: page,
+        sourceKey: _navigationKey(id),
+        isEmbedded: widget.isEmbedded,
+        rootNavigator: rootNavigator,
+        settings: settings,
+      );
 
   @override
   void initState() {
@@ -217,12 +237,10 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         title: 'MCP 接入',
         subtitle: '让外部 AI 助手连接并管理个人待办',
         onTap: () {
-          Navigator.push(
-            context,
-            PageTransitions.slideHorizontal(
-              McpIntroductionPage(isEmbedded: widget.isEmbedded),
-              settings: const RouteSettings(name: 'MCP 接入说明'),
-            ),
+          _openSettingsPage(
+            'mcp',
+            McpIntroductionPage(isEmbedded: widget.isEmbedded),
+            settings: const RouteSettings(name: 'MCP 接入说明'),
           );
         },
       ),
@@ -233,12 +251,10 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
           title: '局域网同步',
           subtitle: '同账号设备间无缝互传数据',
           onTap: () {
-            Navigator.push(
-              context,
-              PageTransitions.slideHorizontal(
-                LanSyncScreen(isEmbedded: widget.isEmbedded),
-                settings: const RouteSettings(name: '局域网互传与同步'),
-              ),
+            _openSettingsPage(
+              'lan_sync',
+              LanSyncScreen(isEmbedded: widget.isEmbedded),
+              settings: const RouteSettings(name: '局域网互传与同步'),
             );
           },
         ),
@@ -249,12 +265,10 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
             title: '小米手环',
             subtitle: '借助快应用将待办同步至手环',
             onTap: () {
-              Navigator.push(
-                context,
-                PageTransitions.slideHorizontal(
-                  BandSyncScreen(isEmbedded: widget.isEmbedded),
-                  settings: const RouteSettings(name: '智能手环同步'),
-                ),
+              _openSettingsPage(
+                'band_sync',
+                BandSyncScreen(isEmbedded: widget.isEmbedded),
+                settings: const RouteSettings(name: '智能手环同步'),
               );
             },
           ),
@@ -265,12 +279,10 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
             title: '读取手机日历',
             subtitle: '只读展示到首页、周视图和半月/月视图，永不写入或同步',
             onTap: () {
-              Navigator.push(
-                context,
-                PageTransitions.slideHorizontal(
-                  const DeviceCalendarReadPage(),
-                  settings: const RouteSettings(name: '读取手机日历'),
-                ),
+              _openSettingsPage(
+                'calendar_read',
+                const DeviceCalendarReadPage(),
+                settings: const RouteSettings(name: '读取手机日历'),
               );
             },
           ),
@@ -280,12 +292,10 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
           title: '写入手机系统日历',
           subtitle: '将 App 内课程、待办和规划写入系统日历',
           onTap: () {
-            Navigator.push(
-              context,
-              PageTransitions.slideHorizontal(
-                CalendarSyncPage(isEmbedded: widget.isEmbedded),
-                settings: const RouteSettings(name: '日历同步向导'),
-              ),
+            _openSettingsPage(
+              'calendar_sync',
+              CalendarSyncPage(isEmbedded: widget.isEmbedded),
+              settings: const RouteSettings(name: '日历同步向导'),
             );
           },
         ),
@@ -297,12 +307,10 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
           title: '日历 ICS',
           subtitle: '导出课程、待办、倒数日和规划',
           onTap: () {
-            Navigator.push(
-              context,
-              PageTransitions.slideHorizontal(
-                CalendarSyncPage(isEmbedded: widget.isEmbedded),
-                settings: const RouteSettings(name: '导出日历文件'),
-              ),
+            _openSettingsPage(
+              'calendar_sync',
+              CalendarSyncPage(isEmbedded: widget.isEmbedded),
+              settings: const RouteSettings(name: '导出日历文件'),
             );
           },
         ),
@@ -312,15 +320,13 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         title: '批量标签',
         subtitle: '为番茄钟和时间日志批量添加标签',
         onTap: () {
-          Navigator.push(
-            context,
-            PageTransitions.slideHorizontal(
-              BatchTagPage(
-                username: widget.username,
-                isEmbedded: widget.isEmbedded,
-              ),
-              settings: const RouteSettings(name: '批量添加标签'),
+          _openSettingsPage(
+            'batch_tag',
+            BatchTagPage(
+              username: widget.username,
+              isEmbedded: widget.isEmbedded,
             ),
+            settings: const RouteSettings(name: '批量添加标签'),
           );
         },
       ),
@@ -330,15 +336,13 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         title: '重复待办合并',
         subtitle: '手动选择并归并被拆开的循环系列',
         onTap: () {
-          Navigator.push(
-            context,
-            PageTransitions.slideHorizontal(
-              RecurrenceSeriesMergePage(
-                username: widget.username,
-                isEmbedded: widget.isEmbedded,
-              ),
-              settings: const RouteSettings(name: '合并重复待办'),
+          _openSettingsPage(
+            'recurrence_merge',
+            RecurrenceSeriesMergePage(
+              username: widget.username,
+              isEmbedded: widget.isEmbedded,
             ),
+            settings: const RouteSettings(name: '合并重复待办'),
           );
         },
       ),
@@ -348,12 +352,10 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         title: '数据导出',
         subtitle: isWeb ? '下载为浏览器文件' : '将待办、课程、倒计时等数据导出为文件',
         onTap: () {
-          Navigator.push(
-            context,
-            PageTransitions.slideHorizontal(
-              DataExportPage(isEmbedded: widget.isEmbedded),
-              settings: const RouteSettings(name: '数据导出'),
-            ),
+          _openSettingsPage(
+            'data_export',
+            DataExportPage(isEmbedded: widget.isEmbedded),
+            settings: const RouteSettings(name: '数据导出'),
           );
         },
       ),
@@ -363,12 +365,10 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         title: '数据导入',
         subtitle: isWeb ? '从浏览器选择备份文件' : '从备份文件恢复或合并数据',
         onTap: () {
-          Navigator.push(
-            context,
-            PageTransitions.slideHorizontal(
-              DataImportPage(isEmbedded: widget.isEmbedded),
-              settings: const RouteSettings(name: '数据导入'),
-            ),
+          _openSettingsPage(
+            'data_import',
+            DataImportPage(isEmbedded: widget.isEmbedded),
+            settings: const RouteSettings(name: '数据导入'),
           );
         },
       ),

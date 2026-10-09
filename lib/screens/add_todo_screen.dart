@@ -28,6 +28,7 @@ import '../utils/persistent_image_storage.dart';
 import '../utils/page_transitions.dart';
 import 'dart:async';
 import '../utils/app_dialogs.dart';
+import '../utils/semester_week_context.dart';
 
 enum _CaptureSaveTarget { todo, fixedSchedule, cancel }
 
@@ -86,6 +87,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   late TimeOfDay _scheduleEndTime;
   bool _scheduleTimeTbd = false;
   bool _scheduleEndTimeTbd = false;
+  SemesterWeekContext? _semesterWeekContext;
 
   int _selectedTabIndex = 0;
   bool _isParsing = false;
@@ -174,6 +176,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     if (_localTodoGroups.isEmpty) {
       _loadTodoGroups();
     }
+    _loadSemesterWeekContext();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final route = ModalRoute.of(context);
       if (route != null && route.animation != null) {
@@ -775,6 +778,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
       initialDate: _scheduleDate,
+      semesterWeekContext: _semesterWeekContext,
     );
     if (picked == null || !mounted) return;
     setState(() {
@@ -785,6 +789,16 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       }
     });
   }
+
+  Future<void> _loadSemesterWeekContext() async {
+    final semesterWeekContext = await SemesterWeekContext.loadForToday();
+    if (!mounted) return;
+    setState(() => _semesterWeekContext = semesterWeekContext);
+  }
+
+  String _dateWithSemesterWeek(DateTime date, String formattedDate) =>
+      _semesterWeekContext?.appendWeekLabel(date, formattedDate) ??
+      formattedDate;
 
   Future<void> _pickScheduleStartTime() async {
     final picked = await showAppTimePicker(
@@ -1322,6 +1336,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
       initialDate: _createdAt,
+      semesterWeekContext: _semesterWeekContext,
     );
     if (pickedDate != null) {
       if (_isAllDay) {
@@ -1357,6 +1372,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
       initialDate: _dueDate ?? _createdAt,
+      semesterWeekContext: _semesterWeekContext,
     );
     if (pickedDate != null) {
       if (_isAllDay) {
@@ -2072,10 +2088,13 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                           leading: const Icon(Icons.event),
                           title: Text(_isAllDay ? "完成日期" : "截止时间"),
                           subtitle: Text(_isAllDay
-                              ? DateFormat('MM-dd').format(_createdAt)
+                              ? _dateWithSemesterWeek(
+                                  _createdAt,
+                                  DateFormat('MM-dd').format(_createdAt),
+                                )
                               : (_dueDate == null
                                   ? "未安排"
-                                  : "${DateFormat('MM-dd HH:mm').format(_dueDate!)} 前完成")),
+                                  : "${_dateWithSemesterWeek(_dueDate!, DateFormat('MM-dd HH:mm').format(_dueDate!))} 前完成")),
                           trailing: _dueDate != null && !_isAllDay
                               ? IconButton(
                                   icon: const Icon(Icons.clear),
@@ -2093,7 +2112,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                               ? '日期'
                               : '首次日期'),
                           subtitle: Text(
-                              DateFormat('yyyy-MM-dd').format(_scheduleDate)),
+                              _dateWithSemesterWeek(
+                            _scheduleDate,
+                            DateFormat('yyyy-MM-dd').format(_scheduleDate),
+                          )),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -2238,6 +2260,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                                         _recurrenceEndDate ?? DateTime.now(),
                                     firstDate: DateTime.now(),
                                     lastDate: DateTime(2100),
+                                    semesterWeekContext: _semesterWeekContext,
                                   );
                                   if (picked != null) {
                                     setState(() => _recurrenceEndDate = picked);
@@ -2256,9 +2279,12 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                                           Text(
                                             _recurrenceEndDate == null
                                                 ? "未指定"
-                                                : DateFormat('yyyy-MM-dd')
-                                                    .format(
-                                                        _recurrenceEndDate!),
+                                                : _dateWithSemesterWeek(
+                                                    _recurrenceEndDate!,
+                                                    DateFormat('yyyy-MM-dd')
+                                                        .format(
+                                                            _recurrenceEndDate!),
+                                                  ),
                                             style: TextStyle(
                                                 color:
                                                     _recurrenceEndDate == null

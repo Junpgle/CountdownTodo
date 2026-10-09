@@ -1,5 +1,7 @@
 import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/services/finance_automation_service.dart';
+import 'package:countdown_todo/features/finance/widgets/finance_automation_editor.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -44,6 +46,43 @@ void main() {
     );
   });
 
+  test('自动记账调度会找到下一次尚未生成的到期时刻', () {
+    final now = DateTime(2026, 9, 15, 8, 59);
+    final monthly = monthlyRule(day: 15, startDate: '2026-01-01');
+    final yearly = FinanceRecurringRule(
+      uuid: 'rule-yearly-next',
+      name: '年度保险',
+      amountMinor: 120000,
+      frequency: FinanceRecurringFrequency.yearly,
+      monthOfYear: 12,
+      dayOfMonth: 31,
+      startDate: '2026-01-01',
+    );
+
+    expect(
+      FinanceAutomationService.nextAutoGenerationDueAfter([monthly], now: now),
+      DateTime(2026, 9, 15, 9),
+    );
+    expect(
+      FinanceAutomationService.nextAutoGenerationDueAfter([
+        monthly..lastGeneratedPeriod = '2026-09',
+      ], now: now),
+      DateTime(2026, 10, 15, 9),
+    );
+    expect(
+      FinanceAutomationService.nextAutoGenerationDueAfter([
+        yearly,
+      ], now: DateTime(2026, 11, 30)),
+      DateTime(2026, 12, 31, 9),
+    );
+    expect(
+      FinanceAutomationService.nextAutoGenerationDueAfter([
+        monthly..autoGenerate = false,
+      ], now: now),
+      isNull,
+    );
+  });
+
   test('开始日期会过滤掉之前的周期', () {
     final rule = monthlyRule(day: 1, startDate: '2026-08-15');
     final due = FinanceAutomationService.dueDateFor(rule, 2026, 8);
@@ -84,6 +123,51 @@ void main() {
   test('自动化来源和频率标签可读', () {
     expect(FinanceEntrySource.automation.label, '自动');
     expect(FinanceRecurringFrequency.yearly.label, '每年');
+  });
+
+  testWidgets('无效周期日期打开选择器时不会跳到解析后的月份', (tester) async {
+    tester.view.physicalSize = const Size(1200, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => FinanceAutomationEditor.rule(
+                  categories: const [],
+                  paymentMethods: const [],
+                  onSave: (_) async {},
+                ),
+              ),
+              child: const Text('打开周期账单'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开周期账单'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('finance-automation-start')),
+      '2026-02-30',
+    );
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('finance-automation-start')),
+        matching: find.byIcon(Icons.calendar_month_outlined),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final picker = tester.widget<DatePickerDialog>(
+      find.byType(DatePickerDialog),
+    );
+    expect(picker.initialDate, DateUtils.dateOnly(DateTime.now()));
   });
 
   test('恢复运行时按顺序补齐遗漏周期', () {

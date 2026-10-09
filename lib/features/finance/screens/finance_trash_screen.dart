@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
@@ -26,11 +29,28 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
   bool _isLoading = true;
   String? _loadError;
   int _loadGeneration = 0;
+  Timer? _financeChangeRefreshTimer;
 
   @override
   void initState() {
     super.initState();
+    FinanceStorage.revision.addListener(_onFinanceChanged);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _financeChangeRefreshTimer?.cancel();
+    FinanceStorage.revision.removeListener(_onFinanceChanged);
+    super.dispose();
+  }
+
+  void _onFinanceChanged() {
+    _financeChangeRefreshTimer?.cancel();
+    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
+      _financeChangeRefreshTimer = null;
+      if (mounted) unawaited(_load());
+    });
   }
 
   Future<void> _load() async {
@@ -101,24 +121,36 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
           )
         : 'single';
     if (restoreMode == null || !mounted) return;
-    if (restoreMode == 'group' && transaction.installmentGroupUuid != null) {
-      await FinanceStorage.restoreInstallmentGroup(
-        transaction.installmentGroupUuid!,
+    final restoreGroup =
+        restoreMode == 'group' && transaction.installmentGroupUuid != null;
+    try {
+      if (restoreGroup) {
+        await FinanceRepository.restoreInstallmentGroup(
+          transaction.installmentGroupUuid!,
+        );
+      } else {
+        await FinanceRepository.restoreTransaction(transaction.uuid);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      AppSnackBars.showSnackBar(
+        context,
+        SnackBar(content: Text('恢复账单失败：$error')),
       );
-    } else {
-      await FinanceStorage.restoreTransaction(transaction.uuid);
+      return;
     }
     if (!mounted) return;
     AppSnackBars.showSnackBar(
       context,
-      const SnackBar(content: Text('账单已恢复')),
+      SnackBar(
+        content: Text(restoreGroup ? '整组分期账单已恢复' : '账单已恢复'),
+      ),
     );
-    await _load();
   }
 
   Future<void> _restoreBudget(FinanceBudget budget) async {
     try {
-      await FinanceStorage.restoreBudget(budget.uuid);
+      await FinanceRepository.restoreBudget(budget.uuid);
     } catch (error) {
       if (!mounted) return;
       AppSnackBars.showSnackBar(
@@ -132,7 +164,6 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
       context,
       const SnackBar(content: Text('预算已恢复')),
     );
-    await _load();
   }
 
   Future<void> _restoreLoan(FinanceLoan loan) async {
@@ -151,17 +182,15 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
       context,
       const SnackBar(content: Text('贷款已恢复')),
     );
-    await _load();
   }
 
   Future<void> _restoreRule(FinanceRecurringRule rule) async {
-    await FinanceStorage.restoreRecurringRule(rule.uuid);
+    await FinanceRepository.restoreRecurringRule(rule.uuid);
     if (!mounted) return;
     AppSnackBars.showSnackBar(
       context,
       const SnackBar(content: Text('周期账单已恢复')),
     );
-    await _load();
   }
 
   Future<void> _restoreTemplate(FinanceEntryTemplate template) async {
@@ -171,7 +200,6 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
       context,
       const SnackBar(content: Text('快捷模板已恢复')),
     );
-    await _load();
   }
 
   List<FinanceTrashEntry> get _entries {
@@ -181,6 +209,20 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
     final paymentMethods = {
       for (final method in _paymentMethods) method.uuid: method
     };
+    String categoryName(String? uuid) {
+      final category = categories[uuid];
+      if (category == null) return '已归档或未知分类';
+      return '${financeCategoryDisplayName(category, _categories)}${category.isArchived ? '（已归档）' : ''}';
+    }
+
+    String paymentMethodName(String? uuid) {
+      final method = paymentMethods[uuid];
+      if (method == null) return '已归档或未知付款方式';
+      final name = financePaymentMethodDisplayName(method, _paymentMethods);
+      final archivedLabel = method.isArchived ? '（已归档）' : '';
+      return '$name$archivedLabel';
+    }
+
     return [
       for (final item in _transactions)
         FinanceTrashEntry(
@@ -209,14 +251,14 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
           uuid: item.uuid,
           kind: FinanceTrashKind.budget,
           title: item.isPaymentMethod
-              ? '${paymentMethods[item.paymentMethodUuid]?.name ?? '已归档或未知付款方式'}余额'
+              ? '${paymentMethodName(item.paymentMethodUuid)}余额'
               : item.isOverall
                   ? '全部支出预算'
-                  : '${categories[item.categoryUuid] == null ? '已归档或未知分类' : financeCategoryDisplayName(categories[item.categoryUuid]!, _categories)}预算',
+                  : '${categoryName(item.categoryUuid)}预算',
           details: [
             item.monthKey,
             if (item.isPaymentMethod)
-              '${DateTime.fromMillisecondsSinceEpoch(item.updatedAt).month}月${DateTime.fromMillisecondsSinceEpoch(item.updatedAt).day}日录入',
+              '余额对应时间 ${DateFormat('yyyy年M月d日 HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.effectiveBalanceSnapshotAt))}',
             if (item.note?.isNotEmpty == true) item.note!
           ].join(' · '),
           amountLabel: item.isPaymentMethod ? '录入时余额' : '预算额度',
@@ -227,7 +269,7 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
         FinanceTrashEntry(
           uuid: item.uuid,
           kind: FinanceTrashKind.loan,
-          title: item.name,
+          title: financeLoanDisplayName(item, _loans, includeDeleted: true),
           details:
               '${item.startDate} · ${item.repaymentMethod.label} · 年利率 ${formatFinanceInterestRate(item.annualInterestRateBps)}',
           amountLabel: '借款本金',
@@ -238,7 +280,11 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
         FinanceTrashEntry(
           uuid: item.uuid,
           kind: FinanceTrashKind.rule,
-          title: item.name,
+          title: financeRecurringRuleDisplayName(
+            item,
+            _rules,
+            includeDeleted: true,
+          ),
           details: item.frequency == FinanceRecurringFrequency.yearly
               ? '每年 ${item.monthOfYear} 月 ${item.dayOfMonth} 日'
               : '每月 ${item.dayOfMonth} 日',
@@ -250,7 +296,11 @@ class _FinanceTrashScreenState extends State<FinanceTrashScreen> {
         FinanceTrashEntry(
           uuid: item.uuid,
           kind: FinanceTrashKind.template,
-          title: item.name,
+          title: financeEntryTemplateDisplayName(
+            item,
+            _templates,
+            includeDeleted: true,
+          ),
           details: [
             if (item.merchant?.isNotEmpty == true) item.merchant!,
             if (item.note?.isNotEmpty == true) item.note!,

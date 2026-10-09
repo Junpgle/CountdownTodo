@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:countdown_todo/features/finance/models/finance_ai_action.dart';
+import 'package:countdown_todo/features/finance/models/finance_models.dart';
 import 'package:countdown_todo/features/finance/services/finance_text_parser.dart';
 import 'package:countdown_todo/models/chat_message.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -59,5 +62,70 @@ void main() {
     expect(restored.financeActions!.single.transactionId, 'tx-1');
     expect(restored.financeActions!.single.amountMinor, 3000);
     expect(restored.financeActions!.single.isAdded, isFalse);
+  });
+
+  test('大额账单操作写入聊天历史后保留精确分值', () {
+    const amountMinor = maxFinanceAmountMinor - 1;
+    final message = ChatMessage(
+      role: ChatRole.assistant,
+      content: '请确认大额账单操作',
+      financeActions: [
+        FinanceAiAction(
+          type: FinanceAiActionType.update,
+          transactionId: 'large-tx',
+          amountMinor: amountMinor,
+          hasAmount: true,
+        ),
+      ],
+    );
+
+    final serialized = jsonEncode(message.toJson());
+    final restored = ChatMessage.fromJson(
+      jsonDecode(serialized) as Map<String, dynamic>,
+    );
+
+    expect(restored.financeActions!.single.amountMinor, amountMinor);
+  });
+
+  test('字符串元金额按分精确解析', () {
+    final action = FinanceAiAction.fromJson({
+      'action': 'update_finance',
+      'transactionId': 'large-tx',
+      'amount': '90,071,992,547,409.90',
+    });
+
+    expect(action.amountMinor, maxFinanceAmountMinor - 1);
+  });
+
+  test('无效的 amount_minor 不截断也不接受超上限金额', () {
+    for (final amountMinor in [2850.5, maxFinanceAmountMinor + 1]) {
+      final action = FinanceAiAction.tryParse({
+        'action': 'update_finance',
+        'transactionId': 'tx-1',
+        'amount_minor': amountMinor,
+        'amount': 30.00,
+      });
+
+      expect(action, isNull, reason: '$amountMinor');
+    }
+
+    final yuanFallback = FinanceAiAction.tryParse({
+      'action': 'update_finance',
+      'transactionId': 'tx-1',
+      'amount_minor': null,
+      'amount': 30.00,
+    });
+    expect(yuanFallback?.amountMinor, 3000);
+  });
+
+  test('AI 记账草案优先使用精确的 amount_minor 字符串', () {
+    final draft = FinanceEntryDraft.fromJson({
+      'type': 'expense',
+      'amount': 90071992547409.91,
+      'amount_minor': '9007199254740990',
+      'date': '2026-10-03',
+    });
+
+    expect(draft.amountMinor, maxFinanceAmountMinor - 1);
   });
 }

@@ -4,7 +4,18 @@ part of 'home_dashboard.dart';
 // 所有页面分片共享的成员契约。
 // 具体实现仍位于各职责 mixin，这里只为 Dart 提供跨分片的静态类型信息。
 mixin _HomeDashboardContract {
-  Future<void> _openAiAssistantFromAppBar();
+  Future<void> _openAiAssistantFromAppBar({
+    GlobalKey? sourceKey,
+    String? initialMessage,
+    bool sendInitialMessage = true,
+    ChatUsageSummary? initialVoiceUsageSummary,
+  });
+
+  Future<void> _openQuickVoiceChat({QuickVoiceGestureController? gesture});
+  void _startQuickVoiceGesture(LongPressStartDetails details);
+  void _moveQuickVoiceGesture(LongPressMoveUpdateDetails details);
+  void _endQuickVoiceGesture(LongPressEndDetails details);
+  void _cancelQuickVoiceGesture();
 
   Future<void> _openPendingRecognitionChat();
 
@@ -177,6 +188,8 @@ mixin _HomeDashboardContract {
 
   Future<void> _checkCoachMarks();
 
+  Future<void> _checkQuickVoiceCoachMarks();
+
   Future<void> _checkDeviceCalendarReadCoachMark();
 
   Future<void> _checkFocusTabCoachMarks();
@@ -241,7 +254,7 @@ mixin _HomeDashboardContract {
 
   void _tryAnotherRandomWallpaper();
 
-  Future<void> _fetchBingWallpaper({bool isFallback = false});
+  Future<void> _fetchBingWallpaper();
 
   Future<void> _initManifestWallpaper();
 
@@ -253,7 +266,7 @@ mixin _HomeDashboardContract {
 
   void _disposeWallpaperListeners();
 
-  Future<void> _fetchRandomWallpaper({bool isFallback = false});
+  Future<void> _fetchRandomWallpaper();
 
   Widget _buildSemesterProgressBar(bool isLight);
 

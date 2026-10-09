@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:uuid/uuid.dart';
+
 import 'ai_todo_action.dart';
 import '../features/finance/models/finance_ai_action.dart';
 import '../features/finance/models/finance_models.dart';
+import '../services/ai_tool_result_context.dart';
 
 enum ChatRole { user, assistant }
 
@@ -36,19 +38,19 @@ class ChatImageAttachment {
   }) : kind = kind ?? _attachmentKindFromMimeType(mimeType);
 
   String get typeLabel => switch (kind) {
-        ChatAttachmentKind.image => '图片',
-        ChatAttachmentKind.audio => '音频',
-        ChatAttachmentKind.video => '视频',
-        ChatAttachmentKind.document => '文件',
-      };
+    ChatAttachmentKind.image => '图片',
+    ChatAttachmentKind.audio => '音频',
+    ChatAttachmentKind.video => '视频',
+    ChatAttachmentKind.document => '文件',
+  };
 
   Map<String, dynamic> toJson() => {
-        'path': path,
-        'name': name,
-        'mimeType': mimeType,
-        'sizeBytes': sizeBytes,
-        'kind': kind.name,
-      };
+    'path': path,
+    'name': name,
+    'mimeType': mimeType,
+    'sizeBytes': sizeBytes,
+    'kind': kind.name,
+  };
 
   factory ChatImageAttachment.fromJson(Map<String, dynamic> json) {
     return ChatImageAttachment(
@@ -104,22 +106,22 @@ class ChatUsageSummary {
   bool get isFullyPriced => costMicros != null && unpricedCalls == 0;
 
   Map<String, dynamic> toJson() => {
-        'provider': provider,
-        'model': model,
-        'calls': calls,
-        'promptTokens': promptTokens,
-        'completionTokens': completionTokens,
-        'totalTokens': totalTokens,
-        'cachedPromptTokens': cachedPromptTokens,
-        'imageTokens': imageTokens,
-        'audioTokens': audioTokens,
-        'videoTokens': videoTokens,
-        'reasoningTokens': reasoningTokens,
-        'audioSeconds': audioSeconds,
-        'imageCount': imageCount,
-        'costMicros': costMicros,
-        'unpricedCalls': unpricedCalls,
-      };
+    'provider': provider,
+    'model': model,
+    'calls': calls,
+    'promptTokens': promptTokens,
+    'completionTokens': completionTokens,
+    'totalTokens': totalTokens,
+    'cachedPromptTokens': cachedPromptTokens,
+    'imageTokens': imageTokens,
+    'audioTokens': audioTokens,
+    'videoTokens': videoTokens,
+    'reasoningTokens': reasoningTokens,
+    'audioSeconds': audioSeconds,
+    'imageCount': imageCount,
+    'costMicros': costMicros,
+    'unpricedCalls': unpricedCalls,
+  };
 
   factory ChatUsageSummary.fromJson(Map<String, dynamic> json) {
     return ChatUsageSummary(
@@ -152,11 +154,15 @@ class ChatUsageSummary {
       model: models.length == 1 ? models.single : '多模型',
       calls: items.fold(0, (sum, item) => sum + item.calls),
       promptTokens: items.fold(0, (sum, item) => sum + item.promptTokens),
-      completionTokens:
-          items.fold(0, (sum, item) => sum + item.completionTokens),
+      completionTokens: items.fold(
+        0,
+        (sum, item) => sum + item.completionTokens,
+      ),
       totalTokens: items.fold(0, (sum, item) => sum + item.totalTokens),
-      cachedPromptTokens:
-          items.fold(0, (sum, item) => sum + item.cachedPromptTokens),
+      cachedPromptTokens: items.fold(
+        0,
+        (sum, item) => sum + item.cachedPromptTokens,
+      ),
       imageTokens: items.fold(0, (sum, item) => sum + item.imageTokens),
       audioTokens: items.fold(0, (sum, item) => sum + item.audioTokens),
       videoTokens: items.fold(0, (sum, item) => sum + item.videoTokens),
@@ -166,8 +172,8 @@ class ChatUsageSummary {
       costMicros: priced.isEmpty
           ? null
           : priced
-              .map((item) => item.costMicros ?? 0)
-              .fold<int>(0, (sum, cost) => sum + cost),
+                .map((item) => item.costMicros ?? 0)
+                .fold<int>(0, (sum, cost) => sum + cost),
       unpricedCalls: items.fold(0, (sum, item) => sum + item.unpricedCalls),
     );
   }
@@ -225,17 +231,17 @@ class ChatRecognitionInfo {
   }
 
   Map<String, dynamic> toJson() => {
-        'source': source,
-        'status': status.name,
-        'recognizer': recognizer,
-        'inputText': inputText,
-        'imagePath': imagePath,
-        'todoResults': todoResults,
-        'suggestions': suggestions,
-        'error': error,
-        'startedAt': startedAt.millisecondsSinceEpoch,
-        'completedAt': completedAt?.millisecondsSinceEpoch,
-      };
+    'source': source,
+    'status': status.name,
+    'recognizer': recognizer,
+    'inputText': inputText,
+    'imagePath': imagePath,
+    'todoResults': todoResults,
+    'suggestions': suggestions,
+    'error': error,
+    'startedAt': startedAt.millisecondsSinceEpoch,
+    'completedAt': completedAt?.millisecondsSinceEpoch,
+  };
 
   factory ChatRecognitionInfo.fromJson(Map<String, dynamic> json) {
     final statusName = json['status']?.toString();
@@ -252,11 +258,12 @@ class ChatRecognitionInfo {
       imagePath: json['imagePath']?.toString(),
       todoResults: rawResults is List
           ? rawResults
-              .whereType<Map>()
-              .map((item) => Map<String, dynamic>.from(item))
-              .toList()
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .toList()
           : const [],
-      suggestions: (json['suggestions'] as List?)
+      suggestions:
+          (json['suggestions'] as List?)
               ?.map((item) => item.toString().trim())
               .where((item) => item.isNotEmpty)
               .toList() ??
@@ -266,6 +273,47 @@ class ChatRecognitionInfo {
       completedAt: _readDateTime(json['completedAt']),
     );
   }
+}
+
+/// A native function call returned by the model and the app-side handling
+/// summary. These calls are proposals; they do not imply a storage mutation.
+class ChatNativeToolCall {
+  const ChatNativeToolCall({
+    required this.id,
+    required this.name,
+    required this.arguments,
+    this.resultSummary = '',
+    this.result,
+    this.argumentsComplete = true,
+  });
+
+  final String id;
+  final String name;
+  final String arguments;
+  final String resultSummary;
+  final Map<String, dynamic>? result;
+  final bool argumentsComplete;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'arguments': arguments,
+    'resultSummary': resultSummary,
+    if (result != null) 'result': result,
+    'argumentsComplete': argumentsComplete,
+  };
+
+  factory ChatNativeToolCall.fromJson(Map<String, dynamic> json) =>
+      ChatNativeToolCall(
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        arguments: json['arguments']?.toString() ?? '',
+        resultSummary: json['resultSummary']?.toString() ?? '',
+        result: json['result'] is Map
+            ? Map<String, dynamic>.from(json['result'] as Map)
+            : null,
+        argumentsComplete: json['argumentsComplete'] != false,
+      );
 }
 
 class ChatMessage {
@@ -283,6 +331,7 @@ class ChatMessage {
   final List<AiTodoAction>? todoActions;
   final List<FinanceEntryDraft>? financeDrafts;
   final List<FinanceAiAction>? financeActions;
+  final List<ChatNativeToolCall>? nativeToolCalls;
 
   ChatMessage({
     String? id,
@@ -299,25 +348,27 @@ class ChatMessage {
     this.todoActions,
     this.financeDrafts,
     this.financeActions,
-  })  : id = id ?? const Uuid().v4(),
-        timestamp = timestamp ?? DateTime.now();
+    this.nativeToolCalls,
+  }) : id = id ?? const Uuid().v4(),
+       timestamp = timestamp ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'role': role.name,
-        'content': content,
-        'rawContent': rawContent,
-        'reasoningContent': reasoningContent,
-        'smartContext': smartContext,
-        'timestamp': timestamp.millisecondsSinceEpoch,
-        'kind': kind.name,
-        'attachment': attachment?.toJson(),
-        'recognition': recognition?.toJson(),
-        'usageSummary': usageSummary?.toJson(),
-        'todoActions': todoActions?.map((e) => e.toJson()).toList(),
-        'financeDrafts': financeDrafts?.map((e) => e.toJson()).toList(),
-        'financeActions': financeActions?.map((e) => e.toJson()).toList(),
-      };
+    'id': id,
+    'role': role.name,
+    'content': content,
+    'rawContent': rawContent,
+    'reasoningContent': reasoningContent,
+    'smartContext': smartContext,
+    'timestamp': timestamp.millisecondsSinceEpoch,
+    'kind': kind.name,
+    'attachment': attachment?.toJson(),
+    'recognition': recognition?.toJson(),
+    'usageSummary': usageSummary?.toJson(),
+    'todoActions': todoActions?.map((e) => e.toJson()).toList(),
+    'financeDrafts': financeDrafts?.map((e) => e.toJson()).toList(),
+    'financeActions': financeActions?.map((e) => e.toJson()).toList(),
+    'nativeToolCalls': nativeToolCalls?.map((e) => e.toJson()).toList(),
+  };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     return ChatMessage(
@@ -363,6 +414,10 @@ class ChatMessage {
           .map((e) => FinanceAiAction.fromJson(Map<String, dynamic>.from(e)))
           .where((action) => action.type != FinanceAiActionType.unknown)
           .toList(),
+      nativeToolCalls: (json['nativeToolCalls'] as List?)
+          ?.whereType<Map>()
+          .map((e) => ChatNativeToolCall.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
     );
   }
 
@@ -380,6 +435,7 @@ class ChatMessage {
     List<FinanceEntryDraft>? financeDrafts,
     bool clearFinanceDrafts = false,
     List<FinanceAiAction>? financeActions,
+    List<ChatNativeToolCall>? nativeToolCalls,
   }) {
     return ChatMessage(
       id: id,
@@ -392,16 +448,21 @@ class ChatMessage {
       kind: kind ?? this.kind,
       attachment: attachment ?? this.attachment,
       recognition: recognition ?? this.recognition,
-      usageSummary:
-          clearUsageSummary ? null : usageSummary ?? this.usageSummary,
+      usageSummary: clearUsageSummary
+          ? null
+          : usageSummary ?? this.usageSummary,
       todoActions: todoActions ?? this.todoActions,
-      financeDrafts:
-          clearFinanceDrafts ? null : financeDrafts ?? this.financeDrafts,
+      financeDrafts: clearFinanceDrafts
+          ? null
+          : financeDrafts ?? this.financeDrafts,
       financeActions: financeActions ?? this.financeActions,
+      nativeToolCalls: nativeToolCalls ?? this.nativeToolCalls,
     );
   }
 
-  String toLLMMessage() {
+  String toLLMMessage({
+    int toolHistoryBudget = AiToolResultContext.maxHistoryChars,
+  }) {
     final contextDrafts = financeDrafts
         ?.where((draft) => !draft.isIgnored)
         .map(
@@ -422,6 +483,24 @@ class ChatMessage {
         .map((action) => action.toJson())
         .toList();
     final sections = <String>[content];
+    final queryResults = [
+      for (final call in nativeToolCalls ?? <ChatNativeToolCall>[])
+        if (call.result != null && call.name.startsWith('query_'))
+          {
+            'tool': call.name,
+            'arguments': call.arguments,
+            'result': call.result,
+          },
+    ];
+    final queryHistory = AiToolResultContext.history(
+      queryResults,
+      maxChars: toolHistoryBudget,
+    );
+    if (queryHistory.isNotEmpty) {
+      sections.add(
+        '[READ_ONLY_TOOL_HISTORY]\n$queryHistory\n[/READ_ONLY_TOOL_HISTORY]',
+      );
+    }
     if (contextDrafts != null && contextDrafts.isNotEmpty) {
       sections.add(
         '[FINANCE_DRAFT_CONTEXT]\n${jsonEncode(contextDrafts)}\n'

@@ -7,7 +7,7 @@ import '../services/api_service.dart';
 import '../services/tai_service.dart';
 import '../services/storage/user_session_storage.dart';
 import '../utils/app_platform.dart';
-import '../../storage_service.dart';
+import '../storage_service.dart';
 
 class ScreenTimeService {
   static const _channel = MethodChannel('com.math_quiz_app/screen_time');

@@ -4,6 +4,8 @@ part of 'home_dashboard.dart';
 mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
   bool _didEnterBackground = false;
   bool _isCompletingTodoFromNotification = false;
+  DateTime? _semesterWeekLoadedDate;
+  bool _semesterWeekRefreshPending = false;
 
   @override
   void initState() {
@@ -202,6 +204,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     if (lifecycleState != null && lifecycleState != AppLifecycleState.resumed) {
       return;
     }
+    unawaited(FinanceAutomationService.resumeAutoGenerationSchedule());
     _scheduleDashboardMinuteTick();
   }
 
@@ -219,10 +222,24 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     _dashboardMinuteTimer = Timer(delay, () {
       _dashboardMinuteTimer = null;
       if (!mounted || !_isDashboardInForeground) return;
+      _refreshSemesterWeekIfDateChanged();
       unawaited(_checkUpcomingEvents());
       _pomodoroTickNotifier.value++;
       _scheduleDashboardMinuteTick();
     });
+  }
+
+  void _refreshSemesterWeekIfDateChanged() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (_semesterWeekLoadedDate == today || _semesterWeekRefreshPending) return;
+
+    _semesterWeekRefreshPending = true;
+    unawaited(
+      _loadSemesterSettings()
+          .catchError((Object _) {})
+          .whenComplete(() => _semesterWeekRefreshPending = false),
+    );
   }
 
   void _stopDashboardTimers() {
@@ -244,6 +261,8 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
 
   @override
   void dispose() {
+    _cancelQuickVoiceGesture();
+    FinanceAutomationService.cancelScheduledAutoGeneration();
     _permissionCoordinator.dispose();
     for (final sub in _notifSubs) {
       sub.cancel();
@@ -605,12 +624,17 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     bool enabled = await StorageService.getSemesterEnabled();
     DateTime? start = await StorageService.getSemesterStart();
     DateTime? end = await StorageService.getSemesterEnd();
+    final now = DateTime.now();
+    final semesterWeekContext = await SemesterWeekContext.loadForToday();
+    final currentSemesterWeek = semesterWeekContext?.weekForDate(now);
     if (mounted) {
       setState(() {
         _semesterEnabled = enabled;
         _semesterStart = start;
         _semesterEnd = end;
+        _currentSemesterWeek = currentSemesterWeek;
       });
+      _semesterWeekLoadedDate = DateTime(now.year, now.month, now.day);
     }
   }
 

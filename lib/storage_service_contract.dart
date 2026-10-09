@@ -31,6 +31,8 @@ const String keyAuthToken = "auth_session_token";
 const String _storageService_keyAuthToken = "auth_session_token";
 const String keyDeviceId = "app_device_uuid";
 const String _storageService_keyDeviceId = "app_device_uuid";
+const String keyDeviceInstallId = "app_device_install_id";
+const String _storageService_keyDeviceInstallId = "app_device_install_id";
 const String keySyncInterval = "app_sync_interval";
 const String _storageService_keySyncInterval = "app_sync_interval";
 const String keyThemeMode = "app_theme_mode";
@@ -232,6 +234,15 @@ abstract class _StorageServiceBase {
   Future<void> saveHabitCheckIns(List<HabitCheckIn> items);
   Future<void> savePlanBlocks(String username, List<TodoPlanBlock> items,
       {bool sync = true, bool isSyncSource = false});
+  Future<TodoPlanBlock> savePlanBlockEdited(
+    String username,
+    TodoPlanBlock draft, {
+    int? expectedVersion,
+    int? expectedUpdatedAt,
+    Future<void> Function(DatabaseExecutor executor)? beforeWrite,
+    bool sync = true,
+    TodoPlanStatus? newStatus,
+  });
   Future<List<TodoPlanBlock>> getPlanBlocks(String username,
       {bool includeDeleted = false});
   Future<void> deletePlanBlockGlobally(String username, String idToDelete);
@@ -264,6 +275,7 @@ abstract class _StorageServiceBase {
     String username, {
     required bool includeDeleted,
     required int? limit,
+    required int offset,
   });
   List<TodoItem> _cloneTodoItems(List<TodoItem> items);
   Future<void> _clearTodoPrefsMirror(String username);
@@ -323,15 +335,16 @@ abstract class _StorageServiceBase {
   Future<void> _syncTodosToBand(List<TodoItem> items);
   Future<void> updateSingleTodo(String username, TodoItem item,
       {bool sync = true});
+  Future<TodoItem?> getTodoByUuid(String username, String uuid);
   Future<void> permanentlyDeleteTodo(String username, String uuid);
   Future<void> clearTodoRecycleBin(String username);
   bool _isHistoricalTodo(TodoItem todo, DateTime today);
   Future<int> clearHistoricalTodos(String username);
   Future<void> permanentlyDeleteCountdown(String username, String uuid);
   Future<List<TodoItem>> getTodos(String username,
-      {bool includeDeleted = false, int? limit});
+      {bool includeDeleted = false, int? limit, int offset = 0});
   Future<List<TodoItem>> _getTodosInternal(String username,
-      {bool includeDeleted = false, int? limit});
+      {bool includeDeleted = false, int? limit, int offset = 0});
   Future<void> clearTeamItems(String teamUuid);
   Future<List<TodoItem>> _handleRecurrenceLogic(
       String username, List<TodoItem> todos);

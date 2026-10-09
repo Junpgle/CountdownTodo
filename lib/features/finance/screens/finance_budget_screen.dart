@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
 import '../services/finance_storage.dart';
+import '../services/finance_sync_service.dart';
 import '../widgets/finance_management_widgets.dart';
 import '../../../widgets/floating_glass_control.dart';
 import 'finance_budget_entry_screen.dart';
@@ -34,6 +35,9 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   List<FinancePaymentMethod> _paymentMethods = const [];
   List<FinanceTransaction> _transactions = const [];
   List<FinanceTransaction> _balanceTransactions = const [];
+  List<FinanceLoanInstallment> _loanRepayments = const [];
+  Set<String> _loanInterestTransactionUuids = const {};
+  bool? _balanceSyncSupported;
   FinanceSummary _summary = const FinanceSummary();
   bool _isLoading = true;
   String? _loadError;
@@ -92,6 +96,15 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     return _month.year == now.year && _month.month == now.month;
   }
 
+  String get _monthLabel =>
+      _isCurrentMonth ? '本月' : DateFormat('yyyy年M月').format(_month);
+
+  String get _paymentBalanceSectionTitle {
+    if (_isCurrentMonth) return '付款方式实时余额';
+    if (_isFutureMonth) return '付款方式余额';
+    return '月末付款方式余额';
+  }
+
   int get _balanceAsOfAt {
     if (_isCurrentMonth) return widget.clock().millisecondsSinceEpoch;
     return DateTime(_month.year, _month.month + 1).millisecondsSinceEpoch - 1;
@@ -101,26 +114,11 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     Iterable<FinanceBudget> budgets,
     int asOfAt,
   ) {
-    final now = widget.clock().millisecondsSinceEpoch;
-    final latestByMethod = <String, FinanceBudget>{};
-    for (final budget in budgets) {
-      final paymentMethodUuid = budget.paymentMethodUuid;
-      final snapshotAt = budget.effectiveBalanceSnapshotAt;
-      if (paymentMethodUuid == null ||
-          paymentMethodUuid.isEmpty ||
-          snapshotAt > asOfAt ||
-          snapshotAt > now) {
-        continue;
-      }
-      final current = latestByMethod[paymentMethodUuid];
-      if (current == null ||
-          snapshotAt > current.effectiveBalanceSnapshotAt ||
-          (snapshotAt == current.effectiveBalanceSnapshotAt &&
-              budget.updatedAt > current.updatedAt)) {
-        latestByMethod[paymentMethodUuid] = budget;
-      }
-    }
-    final snapshots = latestByMethod.values.toList()
+    final snapshots = FinanceRepository.latestPaymentBalanceSnapshots(
+      budgets,
+      asOfAt: asOfAt,
+      nowAt: widget.clock().millisecondsSinceEpoch,
+    ).toList()
       ..sort((left, right) => _budgetTitle(left).compareTo(_budgetTitle(right)));
     return snapshots;
   }
@@ -140,7 +138,9 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       final from = DateTime(month.year, month.month);
       final to = DateTime(month.year, month.month + 1);
       final now = widget.clock();
-      final asOfAt = month.year == now.year && month.month == now.month
+      final isCurrentMonth =
+          month.year == now.year && month.month == now.month;
+      final asOfAt = isCurrentMonth
           ? now.millisecondsSinceEpoch
           : to.millisecondsSinceEpoch - 1;
       final values = await Future.wait<dynamic>([
@@ -151,6 +151,8 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         ),
         FinanceRepository.getPaymentMethods(includeArchived: true),
         FinanceRepository.getTransactions(from: from, to: to),
+        FinanceRepository.getPaidLoanInstallments(),
+        FinanceSyncService.balanceSyncSupport(),
       ]);
       final allBudgets = values[0] as List<FinanceBudget>;
       final balanceSnapshots = allBudgets
@@ -172,6 +174,9 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
           : await FinanceRepository.getBalanceTransactions(
               snapshotAt: earliestSnapshotAt,
               before: to,
+              paymentMethodUuids: applicableSnapshots
+                  .map((budget) => budget.paymentMethodUuid!)
+                  .toSet(),
             );
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -183,7 +188,13 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         _paymentMethods = values[2] as List<FinancePaymentMethod>;
         _transactions = values[3] as List<FinanceTransaction>;
         _balanceTransactions = balanceTransactions;
-        _summary = FinanceRepository.summarizeTransactions(_transactions);
+        _loanRepayments = values[4] as List<FinanceLoanInstallment>;
+        _loanInterestTransactionUuids = _loanRepayments
+            .map((item) => item.interestTransactionUuid)
+            .whereType<String>()
+            .toSet();
+        _balanceSyncSupported = values[5] as bool?;
+        _summary = _summaryForCurrentView();
         _isLoading = false;
         _loadError = null;
       });
@@ -200,28 +211,49 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   void _scheduleBalanceRefresh() {
     _balanceRefreshTimer?.cancel();
     _balanceRefreshTimer = null;
-    if (!mounted || !_isCurrentMonth) return;
+    if (!mounted) return;
+
+    final currentDate = widget.clock();
+    final currentMonth = DateTime(currentDate.year, currentDate.month);
+    if (_month.isBefore(currentMonth)) return;
 
     final snapshotsByMethod = {
       for (final budget in _paymentBudgets)
         budget.paymentMethodUuid!: budget.effectiveBalanceSnapshotAt,
     };
-    if (snapshotsByMethod.isEmpty) return;
 
-    final now = widget.clock().millisecondsSinceEpoch;
-    final monthEndAt =
-        DateTime(_month.year, _month.month + 1).millisecondsSinceEpoch - 1;
-    int? nextEventAt;
+    final now = currentDate.millisecondsSinceEpoch;
+    final monthStart = DateTime(_month.year, _month.month);
+    final nextMonthAt = DateTime(
+      _month.year,
+      _month.month + 1,
+    ).millisecondsSinceEpoch;
+    final monthEndAt = nextMonthAt - 1;
+    // Refresh when a future selected month starts, or when the current month
+    // ends, even if there are no scheduled finance events.
+    final refreshDataAtMonthStart = monthStart.isAfter(currentMonth);
+    int? nextEventAt = refreshDataAtMonthStart
+        ? monthStart.millisecondsSinceEpoch
+        : nextMonthAt;
+    for (final transaction in _transactions) {
+      final eventAt = _balanceEventTime(transaction);
+      if (eventAt <= now ||
+          eventAt > monthEndAt ||
+          (nextEventAt != null && eventAt >= nextEventAt)) {
+        continue;
+      }
+      nextEventAt = eventAt;
+    }
     for (final transaction in _balanceTransactions) {
       final paymentMethodUuid = transaction.paymentMethodUuid;
       final snapshotAt = snapshotsByMethod[paymentMethodUuid];
       if (paymentMethodUuid == null || snapshotAt == null) continue;
-      final eventAt = _balanceEventTime(transaction);
+      final eventAt = _balanceEventTime(
+        transaction,
+        snapshotAt: snapshotAt,
+      );
       if (eventAt <= snapshotAt) continue;
-      final dateStartAt = dateFromKey(
-        transaction.transactionDate,
-      ).millisecondsSinceEpoch;
-      final eligibleAt = math.max(eventAt, dateStartAt).toInt();
+      final eligibleAt = eventAt;
       if (eligibleAt <= now ||
           eligibleAt > monthEndAt ||
           (nextEventAt != null && eligibleAt >= nextEventAt)) {
@@ -229,14 +261,41 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       }
       nextEventAt = eligibleAt;
     }
+    for (final repayment in _loanRepayments) {
+      final snapshotAt = snapshotsByMethod[repayment.paymentMethodUuid];
+      final paidAt = repayment.paidAt;
+      if (snapshotAt == null || paidAt == null) continue;
+      // Match paymentMethodBalanceAt: picker precision can put a repayment's
+      // paidAt in the same minute as a balance snapshot even though the
+      // repayment was recorded later. Refresh when that record becomes active.
+      final eventAt = paidAt <= snapshotAt &&
+              paidAt ~/ 60000 == snapshotAt ~/ 60000 &&
+              repayment.updatedAt > snapshotAt
+          ? repayment.updatedAt
+          : paidAt;
+      if (eventAt <= snapshotAt ||
+          eventAt <= now ||
+          eventAt > monthEndAt ||
+          (nextEventAt != null && eventAt >= nextEventAt)) {
+        continue;
+      }
+      nextEventAt = eventAt;
+    }
     if (nextEventAt == null) return;
 
     final delay = Duration(
-      milliseconds: math.max(1, nextEventAt - now + 1).toInt(),
+      milliseconds: math
+          .max(1, nextEventAt - now + 1)
+          .clamp(1, const Duration(days: 24).inMilliseconds)
+          .toInt(),
     );
     _balanceRefreshTimer = Timer(delay, () {
       if (!mounted) return;
-      setState(() {});
+      if (refreshDataAtMonthStart) {
+        unawaited(_load(showLoading: false));
+        return;
+      }
+      setState(() => _summary = _summaryForCurrentView());
       _scheduleBalanceRefresh();
     });
   }
@@ -295,7 +354,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
             for (final method in methods)
               ListTile(
                 leading: Text(method.icon),
-                title: Text(method.name),
+                title: Text(financePaymentMethodDisplayName(method, methods)),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).pop(method.uuid),
               ),
@@ -318,11 +377,14 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
 
   Future<void> _deleteBudget(FinanceBudget budget) async {
     final itemName = budget.isPaymentMethod ? '付款方式余额' : '预算';
+    final warning = budget.isPaymentMethod
+        ? '删除这条余额快照后，会按更早的余额快照和账单重新计算；如果没有更早快照，该付款方式将不再显示余额。已有账单不会删除。'
+        : '删除预算记录不会影响已有账单。';
     final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('删除$itemName？'),
-        content: Text('删除$itemName记录不会影响已有账单。'),
+        content: Text(warning),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -352,8 +414,19 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   }
 
   void _changeMonth(int delta) {
+    if (!_canChangeMonth(delta)) return;
     setState(() => _month = DateTime(_month.year, _month.month + delta));
     _load();
+  }
+
+  bool _canChangeMonth(int delta) {
+    final nextMonth = DateTime(_month.year, _month.month + delta);
+    final firstAllowedMonth = DateTime(2000);
+    final lastAllowedDate = widget.clock().add(const Duration(days: 3650));
+    final lastAllowedMonth =
+        DateTime(lastAllowedDate.year, lastAllowedDate.month);
+    return !nextMonth.isBefore(firstAllowedMonth) &&
+        !nextMonth.isAfter(lastAllowedMonth);
   }
 
   void _showCurrentMonth() {
@@ -377,74 +450,51 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
 
   int _usedFor(FinanceBudget budget) {
     if (budget.paymentMethodUuid != null) {
-      final paymentMethodUuid = budget.paymentMethodUuid!;
-      final snapshotAt = budget.effectiveBalanceSnapshotAt;
-      final asOfAt = _balanceAsOfAt;
-      final asOfDate = dateKey(DateTime.fromMillisecondsSinceEpoch(asOfAt));
-      final transactionsAfterSnapshot = _balanceTransactions.where(
-        (transaction) {
-          if (transaction.paymentMethodUuid != paymentMethodUuid ||
-              transaction.transactionDate.compareTo(asOfDate) > 0) {
-            return false;
-          }
-          final eventAt = _balanceEventTime(
-            transaction,
-            snapshotAt: snapshotAt,
-          );
-          return eventAt > snapshotAt && eventAt <= asOfAt;
-        },
+      return budget.amountMinor - FinanceRepository.paymentMethodBalanceAt(
+        snapshot: budget,
+        transactions: _balanceTransactions,
+        loanRepayments: _loanRepayments,
+        loanInterestTransactionUuids: _loanInterestTransactionUuids,
+        asOfAt: _balanceAsOfAt,
       );
-      final balanceChange =
-          FinanceRepository.summarizePaymentMethodBalanceChanges(
-            transactionsAfterSnapshot,
-          )[paymentMethodUuid];
-      return -(balanceChange ?? 0);
     }
-    if (budget.isOverall) {
-      return math.max(0, _summary.netExpenseMinor);
-    }
-    return math.max(0, _summary.expenseByCategory[budget.categoryUuid] ?? 0);
+    return _summary.spendingForBudget(budget, _categories);
   }
 
   int _balanceEventTime(
     FinanceTransaction transaction, {
     int? snapshotAt,
   }) {
-    final occurredAt = transaction.occurredAt;
-    if (occurredAt == null || occurredAt <= 0) return transaction.createdAt;
-    final occurred = DateTime.fromMillisecondsSinceEpoch(occurredAt);
-    if (dateKey(occurred) != transaction.transactionDate) {
-      return transaction.createdAt;
-    }
-    if (snapshotAt != null &&
-        occurredAt <= snapshotAt &&
-        _minuteStartAt(occurredAt) == _minuteStartAt(snapshotAt) &&
-        transaction.createdAt > snapshotAt) {
-      return transaction.createdAt;
-    }
-    return occurredAt;
+    return transaction.balanceEventAt(snapshotAt: snapshotAt);
   }
 
-  int _minuteStartAt(int timestamp) {
-    final dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    return DateTime(
-      dateTime.year,
-      dateTime.month,
-      dateTime.day,
-      dateTime.hour,
-      dateTime.minute,
-    ).millisecondsSinceEpoch;
+  FinanceSummary _summaryForCurrentView([int? asOfAt]) {
+    if (!_isCurrentMonth) {
+      return FinanceRepository.summarizeTransactions(_transactions);
+    }
+    final cutoff = asOfAt ?? _balanceAsOfAt;
+    return FinanceSummary.fromTransactions(
+      _transactions,
+      asOfAt: cutoff,
+    );
   }
 
   String _budgetTitle(FinanceBudget budget) {
     if (budget.isOverall) return '全部支出';
     if (budget.paymentMethodUuid != null) {
-      return _paymentMethodMap[budget.paymentMethodUuid]?.name ?? '已归档或未知付款方式';
+      final paymentMethod = _paymentMethodMap[budget.paymentMethodUuid];
+      if (paymentMethod == null) return '已归档或未知付款方式';
+      final name = financePaymentMethodDisplayName(
+        paymentMethod,
+        _paymentMethods,
+      );
+      final archivedLabel = paymentMethod.isArchived ? '（已归档）' : '';
+      return '$name$archivedLabel';
     }
     final category = _categoryMap[budget.categoryUuid];
     return category == null
         ? '已归档或未知分类'
-        : financeCategoryDisplayName(category, _categories);
+        : '${financeCategoryDisplayName(category, _categories)}${category.isArchived ? '（已归档）' : ''}';
   }
 
   String _budgetIcon(FinanceBudget budget) {
@@ -528,7 +578,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            '付款方式实时余额',
+                            _paymentBalanceSectionTitle,
                             style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.w700),
                           ),
@@ -540,12 +590,24 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                         const SizedBox(width: 4),
                         IconButton(
                           tooltip: '录入付款方式余额',
-                          onPressed: _choosePaymentMethodForBudget,
+                          onPressed: _isFutureMonth
+                              ? null
+                              : _choosePaymentMethodForBudget,
                           icon: const Icon(Icons.add_circle_outline),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
+                    if (_balanceSyncSupported == false) ...[
+                      Text(
+                        '当前服务暂不支持余额云同步，余额和还款账户保存在本机。',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: colorScheme.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     if (_paymentBudgets.isEmpty)
                       _buildPaymentEmptyState(colorScheme)
                     else
@@ -575,7 +637,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
       children: [
         IconButton(
           tooltip: '上个月',
-          onPressed: () => _changeMonth(-1),
+          onPressed: _canChangeMonth(-1) ? () => _changeMonth(-1) : null,
           icon: const Icon(Icons.chevron_left),
         ),
         Expanded(
@@ -607,7 +669,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
         ),
         IconButton(
           tooltip: '下个月',
-          onPressed: () => _changeMonth(1),
+          onPressed: _canChangeMonth(1) ? () => _changeMonth(1) : null,
           icon: const Icon(Icons.chevron_right),
         ),
       ],
@@ -617,19 +679,35 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   Widget _buildSummaryCard(ColorScheme colorScheme) {
     final overall = _overallBudget;
     final categoryBudgets = _categoryBudgets;
+    final summaryBudgets = FinanceBudget.nonOverlappingCategories(
+      categoryBudgets,
+      _categories,
+    );
     final budgetTotal =
         overall?.amountMinor ??
-        categoryBudgets.fold<int>(0, (sum, item) => sum + item.amountMinor);
+        summaryBudgets.fold<int>(0, (sum, item) => sum + item.amountMinor);
     final used = overall == null
-        ? categoryBudgets.fold<int>(0, (sum, item) => sum + _usedFor(item))
+        ? summaryBudgets.fold<int>(0, (sum, item) => sum + _usedFor(item))
         : _usedFor(overall);
     final remaining = budgetTotal - used;
     final progress = budgetTotal == 0
         ? 0.0
         : (used / budgetTotal).clamp(0.0, 1.0).toDouble();
     final isOver = remaining < 0;
-    final title = overall == null ? '分类预算合计' : '本月总预算';
-    final subtitle = overall == null ? '只汇总已设置分类的预算' : '所有支出按本月账单计算';
+    final monthLabel = _monthLabel;
+    final title = overall == null
+        ? '$monthLabel分类预算合计'
+        : '$monthLabel总预算';
+    final subtitle = overall != null
+        ? _isFutureMonth
+            ? '根据$monthLabel待发生账单估算'
+            : '所有支出按$monthLabel账单计算'
+        : summaryBudgets.length < categoryBudgets.length
+            ? '父子分类按大类汇总，细分类预算单独显示'
+            : '只汇总已设置分类的预算';
+    final remainingLabel = _isFutureMonth ? '计划剩余' : '剩余';
+    final overBudgetLabel = _isFutureMonth ? '计划超出' : '已超支';
+    final usedLabel = _isFutureMonth ? '计划使用' : '已使用';
     final foreground = isOver
         ? colorScheme.onErrorContainer
         : colorScheme.onPrimaryContainer;
@@ -657,8 +735,8 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
           const SizedBox(height: 8),
           Text(
             isOver
-                ? '已超支 ${formatFinanceAmount(-remaining)}'
-                : '剩余 ${formatFinanceAmount(remaining)}',
+                ? '$overBudgetLabel ${formatFinanceAmount(-remaining)}'
+                : '$remainingLabel ${formatFinanceAmount(remaining)}',
             style: TextStyle(color: foreground),
           ),
           const SizedBox(height: 20),
@@ -671,7 +749,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
           ),
           const SizedBox(height: 10),
           Text(
-            '已使用 ${formatFinanceAmount(used)} / ${formatFinanceAmount(budgetTotal)}',
+            '$usedLabel ${formatFinanceAmount(used)} / ${formatFinanceAmount(budgetTotal)}',
             style: Theme.of(context).textTheme.bodySmall
                 ?.copyWith(color: foreground.withValues(alpha: 0.8)),
           ),
@@ -686,7 +764,9 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
           if (_paymentBudgets.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
-              '付款方式实时余额单独显示，不计入总额和分类预算。',
+              _isCurrentMonth
+                  ? '付款方式实时余额单独显示，不计入总额和分类预算。'
+                  : '余额按所选月份月末计算，不计入总额和分类预算。',
               style: Theme.of(context).textTheme.bodySmall
                   ?.copyWith(color: foreground.withValues(alpha: 0.75)),
             ),
@@ -700,6 +780,15 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
     final used = _usedFor(budget);
     final remaining = budget.amountMinor - used;
     final isOver = remaining < 0;
+    final usageLabel = _isFutureMonth
+        ? '计划使用'
+        : budget.isPaymentMethod
+        ? (used < 0
+            ? '录入后净增加'
+            : used > 0
+                ? '录入后净扣减'
+                : '录入后余额不变')
+        : '已使用';
     final snapshotAt = DateTime.fromMillisecondsSinceEpoch(
       budget.effectiveBalanceSnapshotAt,
     );
@@ -751,11 +840,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
             minChildWidth: 150,
             children: [
               _budgetMetric(
-                budget.isPaymentMethod && used < 0
-                    ? '录入后净增加'
-                    : budget.isPaymentMethod
-                    ? '录入后净扣减'
-                    : '已使用',
+                usageLabel,
                 budget.isPaymentMethod ? used.abs() : used,
               ),
               _budgetMetric(
@@ -783,8 +868,8 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
                       ? '${_isCurrentMonth ? '当前余额' : '该月余额'}不足 ${formatFinanceAmount(-remaining)}'
                       : '${_isCurrentMonth ? '当前余额' : '该月余额'} ${formatFinanceAmount(remaining)}'
                 : isOver
-                ? '超支 ${formatFinanceAmount(-remaining)}'
-                : '剩余 ${formatFinanceAmount(remaining)}',
+                ? '${_isFutureMonth ? '计划超出' : '超支'} ${formatFinanceAmount(-remaining)}'
+                : '${_isFutureMonth ? '计划剩余' : '剩余'} ${formatFinanceAmount(remaining)}',
             isError: isOver,
             highlighted: !isOver,
           ),
@@ -821,10 +906,11 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   }
 
   Widget _buildEmptyState(ColorScheme colorScheme) {
+    final monthLabel = _monthLabel;
     return FinanceEmptyState(
       icon: Icons.track_changes_outlined,
-      title: '本月还没有预算',
-      description: '设置总预算或分类额度，随时了解还能花多少。',
+      title: '$monthLabel还没有预算',
+      description: '设置总预算或分类额度，随时了解$monthLabel的支出预算。',
       actionLabel: '添加预算',
       onAction: () => _openEditor(),
     );
@@ -833,7 +919,7 @@ class _FinanceBudgetScreenState extends State<FinanceBudgetScreen> {
   Widget _buildPaymentEmptyState(ColorScheme colorScheme) {
     return FinanceEmptyState(
       icon: Icons.account_balance_wallet_outlined,
-      title: '还没有付款方式余额记录',
+      title: _isFutureMonth ? '未来月份不显示余额' : '还没有付款方式余额记录',
       description: _isFutureMonth
           ? '余额对应时间不能在未来；切换回当前月份后再记录。'
           : '填写余额并选择对应的日期和时刻；之后同账户账单会跨月连续更新，支出扣减，收入和退款加回。',

@@ -139,7 +139,7 @@ class _FinanceLoanEntryScreenState extends State<FinanceLoanEntryScreen> {
     );
 
     try {
-      await FinanceRepository.saveLoan(loan);
+      await FinanceRepository.saveLoan(loan, original: old);
       if (!mounted) return;
       Navigator.of(context).pop(loan);
     } catch (error) {

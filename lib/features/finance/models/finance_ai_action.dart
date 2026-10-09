@@ -90,6 +90,7 @@ class FinanceAiAction {
         'keyword': keyword,
         'type': transactionType?.name,
         'amount': amountMinor == null ? null : amountMinor! / 100,
+        'amount_minor': amountMinor,
         'transactionDate': transactionDate,
         'categoryUuid': categoryUuid,
         'category': categoryName,
@@ -120,23 +121,30 @@ class FinanceAiAction {
         : json.containsKey('transactionType') ||
             json.containsKey('transaction_type') ||
             (isMutationType && json.containsKey('type'));
-    final amountValue = json.containsKey('amount_minor')
-        ? _parseMinor(json['amount_minor'])
-        : json.containsKey('amountMinor')
-            ? _parseMinor(json['amountMinor'])
-            : _parseYuan(json['amount'] ?? json['amount_yuan']);
+    final amountMinorValue = json['amount_minor'] ?? json['amountMinor'];
+    final amountValue = amountMinorValue != null
+        ? _parseMinor(amountMinorValue)
+        : _parseYuan(json['amount'] ?? json['amount_yuan']);
     final hasAmount = json['hasAmount'] is bool
         ? json['hasAmount'] as bool
         : json.containsKey('amount') ||
             json.containsKey('amount_yuan') ||
-            json.containsKey('amount_minor') ||
-            json.containsKey('amountMinor');
+            amountMinorValue != null;
     final categoryValue = json['category'] ?? json['categoryName'];
     final paymentValue = json['paymentMethod'] ??
         json['payment_method'] ??
         json['paymentMethodName'];
     final dateValue =
         json['transactionDate'] ?? json['transaction_date'] ?? json['date'];
+    final rawTransactionDate = _string(dateValue)?.trim();
+    final hasDateValue = json['hasDate'] is bool
+        ? json['hasDate'] as bool
+        : json.containsKey('transactionDate') ||
+              json.containsKey('transaction_date') ||
+              json.containsKey('date');
+    final hasDate = hasDateValue &&
+        rawTransactionDate != null &&
+        isFinanceDateKey(rawTransactionDate);
 
     return FinanceAiAction(
       type: type,
@@ -152,7 +160,7 @@ class FinanceAiAction {
       keyword: _string(json['keyword'] ?? json['query']),
       transactionType: _parseTransactionType(rawTransactionType),
       amountMinor: amountValue,
-      transactionDate: _string(dateValue),
+      transactionDate: hasDate ? rawTransactionDate : null,
       categoryUuid: _string(json['categoryUuid'] ?? json['category_uuid']),
       categoryName: _string(categoryValue),
       paymentMethodUuid: _string(
@@ -164,11 +172,7 @@ class FinanceAiAction {
       reason: _string(json['reason']),
       hasType: hasType,
       hasAmount: hasAmount,
-      hasDate: json['hasDate'] is bool
-          ? json['hasDate'] as bool
-          : json.containsKey('transactionDate') ||
-              json.containsKey('transaction_date') ||
-              json.containsKey('date'),
+      hasDate: hasDate,
       hasCategory: json['hasCategory'] is bool
           ? json['hasCategory'] as bool
           : json.containsKey('category') ||
@@ -194,6 +198,10 @@ class FinanceAiAction {
 
   /// Parses only the finance operations understood by the app.
   static FinanceAiAction? tryParse(Map<String, dynamic> json) {
+    final amountMinorValue = json['amount_minor'] ?? json['amountMinor'];
+    if (amountMinorValue != null && _parseMinor(amountMinorValue) == null) {
+      return null;
+    }
     final action = FinanceAiAction.fromJson(json);
     if (action.type == FinanceAiActionType.unknown) return null;
     if (action.isMutation && (action.transactionId?.isNotEmpty != true)) {
@@ -256,23 +264,47 @@ class FinanceAiAction {
   }
 
   static int? _parseMinor(dynamic value) {
-    if (value is num) return value.toInt().abs();
-    final parsed = int.tryParse(value?.toString().trim() ?? '');
-    return parsed?.abs();
+    BigInt? parsed;
+    if (value is int) {
+      parsed = BigInt.from(value);
+    } else if (value is num &&
+        value.isFinite &&
+        value.abs() <= maxFinanceAmountMinor &&
+        value == value.roundToDouble()) {
+      parsed = BigInt.from(value.toInt());
+    } else if (value is String) {
+      parsed = BigInt.tryParse(value.trim());
+    }
+    if (parsed == null) return null;
+    final amountMinor = parsed.abs();
+    if (amountMinor > BigInt.from(maxFinanceAmountMinor)) return null;
+    return amountMinor.toInt();
   }
 
   static int? _parseYuan(dynamic value) {
-    if (value is num) return (value.toDouble().abs() * 100).round();
-    final text = value?.toString().trim();
+    if (value is num && !value.isFinite) return null;
+    final text = (value is num ? value.toString() : value?.toString())?.trim();
     if (text == null || text.isEmpty) return null;
     final normalized = text
         .replaceAll(',', '')
         .replaceAll(RegExp(r'^[¥￥$€£]'), '')
         .replaceAll(RegExp(r'\s*(?:元|块|CNY)\s*$', caseSensitive: false), '')
         .replaceFirst(RegExp(r'^[-+]'), '');
-    final parsed = double.tryParse(normalized);
-    if (parsed == null || parsed <= 0) return null;
-    return (parsed * 100).round();
+    final match = RegExp(r'^(\d*)(?:\.(\d*))?$').firstMatch(normalized);
+    if (match == null) return null;
+    final wholeText = match.group(1) ?? '';
+    final fraction = match.group(2) ?? '';
+    if (wholeText.isEmpty && fraction.isEmpty) return null;
+    final whole = BigInt.tryParse(wholeText.isEmpty ? '0' : wholeText);
+    if (whole == null) return null;
+    var amountMinor =
+        whole * BigInt.from(100) +
+        BigInt.parse(fraction.padRight(2, '0').substring(0, 2));
+    if (fraction.length > 2 && fraction.codeUnitAt(2) >= 53) {
+      amountMinor += BigInt.one;
+    }
+    if (amountMinor > BigInt.from(maxFinanceAmountMinor)) return null;
+    return amountMinor.toInt();
   }
 
   static String? _string(dynamic value) {

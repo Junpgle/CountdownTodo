@@ -265,9 +265,6 @@ Future<void> main(List<String> args) async {
 
   _configureRuntimeCaches();
 
-  // 原生端绕过 SSL 证书验证，解决迁移时旧服务器握手失败问题；Web 端 no-op。
-  PlatformBootstrap.configureHttpOverrides();
-
   final platformReady = _initializePlatformBeforeHome(args);
 
   // 预热 SharedPreferences 缓存，避免启动时多次重复 load

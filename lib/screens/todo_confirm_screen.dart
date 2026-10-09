@@ -16,6 +16,7 @@ import '../services/ai_recognition_chat_bridge.dart';
 import '../utils/local_image_provider.dart';
 import '../utils/persistent_image_storage.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/semester_week_context.dart';
 
 enum _TodoConfirmationAction { addTodo, addFixedSchedule, cancel }
 
@@ -135,13 +136,25 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   String? _retryStatus;
   List<TodoGroup> _todoGroups = [];
   Map<String, int> _categoryReminderDefaults = {};
+  SemesterWeekContext? _semesterWeekContext;
 
   @override
   void initState() {
     super.initState();
     _allTodos = _parseResults(widget.llmResults);
+    _loadSemesterWeekContext();
     _loadTodoMetadata();
   }
+
+  Future<void> _loadSemesterWeekContext() async {
+    final semesterWeekContext = await SemesterWeekContext.loadForToday();
+    if (!mounted) return;
+    setState(() => _semesterWeekContext = semesterWeekContext);
+  }
+
+  String _dateWithSemesterWeek(DateTime date, String formattedDate) =>
+      _semesterWeekContext?.appendWeekLabel(date, formattedDate) ??
+      formattedDate;
 
   Future<void> _loadTodoMetadata() async {
     final username = await StorageService.getLoginSession();
@@ -491,7 +504,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(
-                        '完成日期: ${DateFormat('yyyy-MM-dd').format(createdAt)}',
+                        '完成日期: ${_dateWithSemesterWeek(createdAt, DateFormat('yyyy-MM-dd').format(createdAt))}',
                       ),
                       onTap: () async {
                         final pickedDate = await showAppDatePicker(
@@ -499,6 +512,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                           firstDate: DateTime(2000),
                           lastDate: DateTime(2100),
                           initialDate: createdAt,
+                          semesterWeekContext: _semesterWeekContext,
                         );
                         if (pickedDate != null) {
                           if (isAllDay) {
@@ -541,7 +555,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       title: Text(
                         dueDate == null
                             ? '设置截止时间（当前未安排）'
-                            : '${DateFormat('yyyy-MM-dd HH:mm').format(dueDate!)} 前完成',
+                            : '${_dateWithSemesterWeek(dueDate!, DateFormat('yyyy-MM-dd HH:mm').format(dueDate!))} 前完成',
                       ),
                       onTap: () async {
                         final pickedDate = await showAppDatePicker(
@@ -549,6 +563,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                           firstDate: DateTime(2000),
                           lastDate: DateTime(2100),
                           initialDate: dueDate ?? createdAt,
+                          semesterWeekContext: _semesterWeekContext,
                         );
                         if (pickedDate != null) {
                           if (isAllDay) {
@@ -708,7 +723,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       title: Text(
                         recurrenceEndDate == null
                             ? '重复结束日期 (可选)'
-                            : '循环截止: ${DateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}',
+                            : '循环截止: ${_dateWithSemesterWeek(recurrenceEndDate!, DateFormat('yyyy-MM-dd').format(recurrenceEndDate!))}',
                       ),
                       trailing: const Icon(Icons.event_busy, size: 20),
                       onTap: () async {
@@ -717,6 +732,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                           initialDate: recurrenceEndDate ?? DateTime.now(),
                           firstDate: DateTime.now(),
                           lastDate: DateTime(2100),
+                          semesterWeekContext: _semesterWeekContext,
                         );
                         if (picked != null) {
                           setDialogState(() => recurrenceEndDate = picked);

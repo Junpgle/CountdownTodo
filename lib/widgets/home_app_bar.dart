@@ -94,6 +94,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
   final String username;
   final String timeSalutation;
   final String currentGreeting;
+  final int? semesterWeek;
   final HomeTextConfig? textConfig;
   final bool isLight;
   final bool isSyncing;
@@ -119,6 +120,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
     required this.username,
     required this.timeSalutation,
     required this.currentGreeting,
+    this.semesterWeek,
     this.textConfig,
     required this.isLight,
     required this.isSyncing,
@@ -411,15 +413,33 @@ class _HomeAppBarState extends State<HomeAppBar>
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            DateFormat(displayDateFormat, 'zh_CN').format(DateTime.now()),
-            style: TextStyle(
-              fontSize: dateSize,
-              fontWeight: FontWeight.w500,
-              color: widget.isLight
-                  ? Colors.white.withValues(alpha: 0.9)
-                  : Colors.blueGrey,
-            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 2,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                DateFormat(displayDateFormat, 'zh_CN').format(DateTime.now()),
+                style: TextStyle(
+                  fontSize: dateSize,
+                  fontWeight: FontWeight.w500,
+                  color: widget.isLight
+                      ? Colors.white.withValues(alpha: 0.9)
+                      : Colors.blueGrey,
+                ),
+              ),
+              if (widget.semesterWeek != null)
+                Text(
+                  '第${widget.semesterWeek}周',
+                  style: TextStyle(
+                    fontSize: dateSize,
+                    fontWeight: FontWeight.w500,
+                    color: widget.isLight
+                        ? Colors.white.withValues(alpha: 0.9)
+                        : Colors.blueGrey,
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 2),
           Text(

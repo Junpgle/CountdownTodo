@@ -27,7 +27,7 @@ abstract final class HabitSleepDurationService {
   static DateTime displayLogicalDateFor(HabitGoal goal, DateTime date) {
     final day = DateTime(date.year, date.month, date.day);
     return isSleepDurationGoal(goal)
-        ? day.subtract(const Duration(days: 1))
+        ? HabitRuleResolver.addCalendarDays(day, -1)
         : day;
   }
 

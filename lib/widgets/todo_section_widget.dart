@@ -43,6 +43,8 @@ import 'version_history_sheet.dart';
 import 'ai_water_border.dart';
 import 'optional_liquid_glass_surface.dart';
 import '../screens/todo_plan_screen.dart';
+import 'plan_block_editor_sheet.dart';
+import '../services/plan_availability_service.dart';
 import '../features/habits/repositories/habit_repository.dart';
 
 part 'todo_section_widget_contract.dart';

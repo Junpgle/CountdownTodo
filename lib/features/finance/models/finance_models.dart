@@ -9,9 +9,20 @@ import '../../../utils/json_value_parser.dart';
 /// 金额在模型中始终保存为正整数（人民币分），方向由该枚举决定。
 enum FinanceTransactionType { expense, income, refund }
 
+/// Reserved ledger filter value for transactions without a category.
+const String financeUncategorizedCategoryFilterUuid =
+    '__finance_uncategorized__';
+
 enum FinanceCategoryType { expense, income }
 
 enum FinanceEntrySource { manual, import, ai, automation }
+
+/// Largest amount in minor units that remains exact on every supported
+/// platform and in JSON/SQLite storage.
+const int maxFinanceAmountMinor = 9007199254740991;
+
+bool isSafeFinanceAmountMinor(int amountMinor) =>
+    amountMinor >= 0 && amountMinor <= maxFinanceAmountMinor;
 
 FinanceCategoryType financeCategoryTypeForTransaction(
   FinanceTransactionType type,
@@ -47,7 +58,7 @@ abstract final class FinanceInstallmentCalculator {
     required int count,
     required DateTime startDate,
   }) {
-    if (totalMinor <= 0) {
+    if (!isSafeFinanceAmountMinor(totalMinor) || totalMinor == 0) {
       throw ArgumentError.value(totalMinor, 'totalMinor', '金额必须大于 0');
     }
     if (count < minCount || count > maxCount) {
@@ -152,7 +163,7 @@ abstract final class FinanceLoanCalculator {
     FinanceLoanRepaymentMethod repaymentMethod =
         FinanceLoanRepaymentMethod.equalPrincipalInterest,
   }) {
-    if (principalMinor <= 0) {
+    if (!isSafeFinanceAmountMinor(principalMinor) || principalMinor == 0) {
       throw ArgumentError.value(principalMinor, 'principalMinor', '本金必须大于 0');
     }
     if (annualInterestRateBps < 0 ||
@@ -187,7 +198,7 @@ abstract final class FinanceLoanCalculator {
             monthlyRate > 0
         ? _annuityPayment(
             principalMinor: principalMinor,
-            monthlyRate: monthlyRate,
+            annualInterestRateBps: annualInterestRateBps,
             termMonths: termMonths,
           )
         : 0;
@@ -196,7 +207,7 @@ abstract final class FinanceLoanCalculator {
     var remaining = principalMinor;
 
     return List<FinanceLoanScheduleAllocation>.generate(termMonths, (index) {
-      final interest = (remaining * monthlyRate).round();
+      final interest = _monthlyInterestMinor(remaining, annualInterestRateBps);
       int principalPayment;
       if (repaymentMethod ==
               FinanceLoanRepaymentMethod.equalPrincipalInterest &&
@@ -210,6 +221,13 @@ abstract final class FinanceLoanCalculator {
             equalPrincipal + (index < principalRemainder ? 1 : 0);
       }
       if (principalPayment > remaining) principalPayment = remaining;
+      if (principalPayment > maxFinanceAmountMinor - interest) {
+        throw ArgumentError.value(
+          principalPayment,
+          'paymentMinor',
+          '每期还款金额超出可保存范围',
+        );
+      }
       final payment = principalPayment + interest;
       remaining -= principalPayment;
       return FinanceLoanScheduleAllocation(
@@ -225,12 +243,50 @@ abstract final class FinanceLoanCalculator {
 
   static int _annuityPayment({
     required int principalMinor,
-    required double monthlyRate,
+    required int annualInterestRateBps,
     required int termMonths,
   }) {
-    final factor = math.pow(1 + monthlyRate, termMonths).toDouble();
-    final payment = principalMinor * monthlyRate * factor / (factor - 1);
-    return payment.round().clamp(1, 9007199254740991).toInt();
+    const monthlyRateDenominator = 120000;
+    final denominatorBase = BigInt.from(monthlyRateDenominator);
+    final rateNumerator = BigInt.from(annualInterestRateBps);
+    final growth = (denominatorBase + rateNumerator).pow(termMonths);
+    final baseGrowth = denominatorBase.pow(termMonths);
+    final payment = _roundPositiveFractionHalfUp(
+      BigInt.from(principalMinor) * rateNumerator * growth,
+      denominatorBase * (growth - baseGrowth),
+    );
+    if (payment > BigInt.from(maxFinanceAmountMinor)) {
+      throw ArgumentError.value(
+        principalMinor,
+        'principalMinor',
+        '每期还款金额超出可保存范围',
+      );
+    }
+    return payment.toInt();
+  }
+
+  /// Round monthly interest in integer minor units. Multiplying large balances
+  /// by a double rate can move a value across a half-cent boundary.
+  static int _monthlyInterestMinor(int principalMinor, int annualRateBps) {
+    final numerator =
+        BigInt.from(principalMinor) * BigInt.from(annualRateBps);
+    final rounded = _roundPositiveFractionHalfUp(
+      numerator,
+      BigInt.from(120000),
+    );
+    return rounded.toInt();
+  }
+
+  static BigInt _roundPositiveFractionHalfUp(
+    BigInt numerator,
+    BigInt denominator,
+  ) {
+    final quotient = numerator ~/ denominator;
+    final remainder = numerator % denominator;
+    return quotient +
+        (remainder * BigInt.from(2) >= denominator
+            ? BigInt.one
+            : BigInt.zero);
   }
 
   static DateTime _dueDate(
@@ -353,6 +409,29 @@ class FinanceLoan {
   }
 }
 
+String financeLoanDisplayName(
+  FinanceLoan loan,
+  Iterable<FinanceLoan> loans, {
+  bool includeDeleted = false,
+}) {
+  final normalizedName = _normalizeFinanceDisplayName(loan.name);
+  final sameNameLoans = loans
+      .where(
+        (item) =>
+            (includeDeleted || !item.isDeleted) &&
+            _normalizeFinanceDisplayName(item.name) == normalizedName,
+      )
+      .toList()
+    ..sort((left, right) {
+      final createdAt = left.createdAt.compareTo(right.createdAt);
+      return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+    });
+  if (sameNameLoans.length < 2) return loan.name;
+  final index = sameNameLoans.indexWhere((item) => item.uuid == loan.uuid);
+  if (index < 0) return loan.name;
+  return '${loan.name}（同名贷款 ${index + 1}/${sameNameLoans.length}）';
+}
+
 /// 贷款的一期还款记录，保存计划金额和是否已完成还款。
 class FinanceLoanInstallment {
   String uuid;
@@ -365,6 +444,7 @@ class FinanceLoanInstallment {
   int remainingPrincipalMinor;
   bool isPaid;
   int? paidAt;
+  String? paymentMethodUuid;
   String? interestTransactionUuid;
   bool isDeleted;
   int version;
@@ -384,6 +464,7 @@ class FinanceLoanInstallment {
     required this.remainingPrincipalMinor,
     this.isPaid = false,
     this.paidAt,
+    this.paymentMethodUuid,
     this.interestTransactionUuid,
     this.isDeleted = false,
     this.version = 1,
@@ -395,11 +476,12 @@ class FinanceLoanInstallment {
        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
-  bool get isOverdue {
+  bool get isOverdue => isOverdueAt(DateTime.now());
+
+  bool isOverdueAt(DateTime now) {
     if (isPaid) return false;
-    final today = DateTime.now();
     return dateFromKey(dueDate)
-        .isBefore(DateTime(today.year, today.month, today.day));
+        .isBefore(DateTime(now.year, now.month, now.day));
   }
 
   void markAsChanged() {
@@ -420,6 +502,7 @@ class FinanceLoanInstallment {
     'remaining_principal_minor': remainingPrincipalMinor,
     'is_paid': isPaid ? 1 : 0,
     'paid_at': paidAt,
+    'payment_method_uuid': paymentMethodUuid,
     'interest_transaction_uuid': interestTransactionUuid,
     'is_deleted': isDeleted ? 1 : 0,
     'version': version,
@@ -450,6 +533,9 @@ class FinanceLoanInstallment {
       ).abs(),
       isPaid: _bool(map['is_paid'] ?? map['isPaid']),
       paidAt: _nullableInt(map['paid_at'] ?? map['paidAt']),
+      paymentMethodUuid: _nullableString(
+        map['payment_method_uuid'] ?? map['paymentMethodUuid'],
+      ),
       interestTransactionUuid: _nullableString(
         map['interest_transaction_uuid'] ?? map['interestTransactionUuid'],
       ),
@@ -1305,7 +1391,7 @@ class FinanceCategory {
   }
 }
 
-/// Returns the readable path for a category, such as `餐饮 - 奶茶`.
+/// Returns a readable, unambiguous category path such as `餐饮 - 奶茶`.
 ///
 /// The parent is resolved by UUID instead of by its display name so duplicate
 /// names remain unambiguous and old transactions can keep their stored UUID.
@@ -1314,14 +1400,15 @@ String financeCategoryDisplayName(
   Iterable<FinanceCategory> categories, {
   String separator = ' - ',
 }) {
+  final allCategories = categories.toList();
   final byUuid = <String, FinanceCategory>{
-    for (final item in categories) item.uuid: item,
+    for (final item in allCategories) item.uuid: item,
   };
   final names = <String>[];
   final visited = <String>{};
   FinanceCategory? current = category;
   while (current != null && visited.add(current.uuid)) {
-    names.insert(0, current.name);
+    names.insert(0, financeCategorySiblingDisplayName(current, allCategories));
     final parentUuid = current.parentUuid?.trim();
     if (parentUuid == null || parentUuid.isEmpty) break;
     final parent = byUuid[parentUuid];
@@ -1330,6 +1417,62 @@ String financeCategoryDisplayName(
   }
   return names.join(separator);
 }
+
+String financeCategoryReferenceDisplayName(
+  String? categoryUuid,
+  Iterable<FinanceCategory> categories,
+) {
+  final normalizedUuid = categoryUuid?.trim();
+  if (normalizedUuid == null || normalizedUuid.isEmpty) return '未分类';
+  final allCategories = categories.toList();
+  final byUuid = {for (final category in allCategories) category.uuid: category};
+  var current = byUuid[normalizedUuid];
+  if (current == null) return '分类已删除或不可用';
+
+  final names = <String>[];
+  final visited = <String>{};
+  while (current != null && visited.add(current.uuid)) {
+    final name = financeCategorySiblingDisplayName(current, allCategories);
+    names.insert(0, current.isDeleted ? '$name（已删除）' : name);
+    final parentUuid = current.parentUuid?.trim();
+    if (parentUuid == null || parentUuid.isEmpty) break;
+    final parent = byUuid[parentUuid];
+    if (parent == null || parent.type != current.type) break;
+    current = parent;
+  }
+  return names.join(' - ');
+}
+
+/// Adds a stable ordinal when a category has a same-type sibling with the
+/// same normalized name. Use this in lists where the surrounding hierarchy is
+/// already visible.
+String financeCategorySiblingDisplayName(
+  FinanceCategory category,
+  Iterable<FinanceCategory> categories,
+) {
+  final normalizedName = _normalizeFinanceCategoryName(category.name);
+  final parentUuid = category.parentUuid?.trim() ?? '';
+  final siblings = categories
+      .where(
+        (item) =>
+            !item.isDeleted &&
+            item.type == category.type &&
+            (item.parentUuid?.trim() ?? '') == parentUuid &&
+            _normalizeFinanceCategoryName(item.name) == normalizedName,
+      )
+      .toList()
+    ..sort((left, right) {
+      final sortOrder = left.sortOrder.compareTo(right.sortOrder);
+      return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
+    });
+  if (siblings.length < 2) return category.name;
+  final index = siblings.indexWhere((item) => item.uuid == category.uuid);
+  if (index < 0) return category.name;
+  return '${category.name}（同名分类 ${index + 1}/${siblings.length}）';
+}
+
+String _normalizeFinanceCategoryName(String value) =>
+    value.replaceAll(RegExp(r'\s+'), '').trim().toLowerCase();
 
 class FinancePaymentMethod {
   String uuid;
@@ -1404,6 +1547,40 @@ class FinancePaymentMethod {
   }
 }
 
+String financePaymentMethodDisplayName(
+  FinancePaymentMethod paymentMethod,
+  Iterable<FinancePaymentMethod> paymentMethods,
+) {
+  final normalizedName =
+      _normalizeFinancePaymentMethodName(paymentMethod.name);
+  final sameNameMethods = paymentMethods
+      .where(
+        (item) =>
+            !item.isDeleted &&
+            _normalizeFinancePaymentMethodName(item.name) == normalizedName,
+      )
+      .toList()
+    ..sort((left, right) {
+      final sortOrder = left.sortOrder.compareTo(right.sortOrder);
+      return sortOrder != 0 ? sortOrder : left.uuid.compareTo(right.uuid);
+    });
+  if (sameNameMethods.length < 2) return paymentMethod.name;
+  final index = sameNameMethods.indexWhere(
+    (item) => item.uuid == paymentMethod.uuid,
+  );
+  if (index < 0) return paymentMethod.name;
+  final duplicateNumber = '${index + 1}/${sameNameMethods.length}';
+  return '${paymentMethod.name}（同名账户 $duplicateNumber）';
+}
+
+String _normalizeFinancePaymentMethodName(String value) {
+  return value
+      .replaceAll(RegExp(r'^[^\u4e00-\u9fffA-Za-z0-9]+'), '')
+      .replaceAll(RegExp(r'\s+'), '')
+      .trim()
+      .toLowerCase();
+}
+
 class FinanceTransaction {
   String uuid;
   FinanceTransactionType type;
@@ -1440,7 +1617,7 @@ class FinanceTransaction {
     this.paymentMethodUuid,
     required this.transactionDate,
     int? occurredAt,
-    this.timezoneOffsetMinutes = 0,
+    int? timezoneOffsetMinutes,
     this.merchant,
     this.note,
     this.source = FinanceEntrySource.manual,
@@ -1457,7 +1634,9 @@ class FinanceTransaction {
     int? updatedAt,
     this.deviceId,
     this.pendingSync = false,
-  }) : uuid = uuid ?? const Uuid().v4(),
+  }) : timezoneOffsetMinutes =
+           timezoneOffsetMinutes ?? DateTime.now().timeZoneOffset.inMinutes,
+       uuid = uuid ?? const Uuid().v4(),
        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
        occurredAt = occurredAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -1473,6 +1652,60 @@ class FinanceTransaction {
 
   String? get installmentLabel =>
       isInstallment ? '${installmentIndex!}/${installmentCount!} 期' : null;
+
+  /// Wall-clock time in the timezone saved with the transaction. Using the
+  /// viewing device's timezone would make a valid occurrence look unrelated
+  /// to its ledger date after travel or a sync to another timezone.
+  DateTime? get occurrenceLocalTime {
+    final timestamp = occurredAt;
+    if (timestamp == null || timestamp <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(
+      timestamp,
+      isUtc: true,
+    ).add(Duration(minutes: timezoneOffsetMinutes));
+  }
+
+  int balanceEventAt({int? snapshotAt}) {
+    final timestamp = occurredAt;
+    final occurred = occurrenceLocalTime;
+    final ledgerDate = dateFromKey(transactionDate);
+    final dateStartAt =
+        DateTime.utc(
+          ledgerDate.year,
+          ledgerDate.month,
+          ledgerDate.day,
+        ).millisecondsSinceEpoch -
+        timezoneOffsetMinutes * 60000;
+    var eventAt = timestamp;
+    if (eventAt == null || occurred == null) {
+      // Legacy rows without a reliable time use their entry time, while a
+      // future ledger date must still wait until that date begins.
+      eventAt = createdAt > dateStartAt ? createdAt : dateStartAt;
+    } else if (dateKey(occurred) != transactionDate) {
+      final createdDate = dateKey(
+        DateTime.fromMillisecondsSinceEpoch(createdAt, isUtc: true).add(
+          Duration(minutes: timezoneOffsetMinutes),
+        ),
+      );
+      final occurrencePredatesEntry =
+          timestamp != null && timestamp < createdAt;
+      if (transactionDate.compareTo(createdDate) <= 0 ||
+          occurrencePredatesEntry) {
+        // A mismatched legacy occurrence timestamp should not rewrite an
+        // account's balance before the row was entered. A future ledger day
+        // may use its known occurrence time only if it is not older than the
+        // row itself; stale timestamps must not make a planned bill apply now.
+        eventAt = createdAt > dateStartAt ? createdAt : dateStartAt;
+      }
+    }
+    if (snapshotAt != null &&
+        eventAt <= snapshotAt &&
+        eventAt ~/ 60000 == snapshotAt ~/ 60000 &&
+        createdAt > snapshotAt) {
+      return createdAt;
+    }
+    return eventAt;
+  }
 
   void markAsChanged() {
     version++;
@@ -1515,6 +1748,12 @@ class FinanceTransaction {
     final amount = _int(map['amount_minor'] ?? map['amountMinor']);
     final createdAt = _timestamp(map['created_at'] ?? map['createdAt']);
     final occurredAt = _nullableInt(map['occurred_at'] ?? map['occurredAt']);
+    final transactionDate =
+        _string(map['transaction_date'] ?? map['transactionDate']) ??
+        dateKey(DateTime.now());
+    final timezoneOffsetMinutes = _nullableInt(
+      map['timezone_offset_minutes'] ?? map['timezoneOffsetMinutes'],
+    );
     final transaction = FinanceTransaction(
       uuid: _string(map['uuid'] ?? map['id']) ?? const Uuid().v4(),
       type: _transactionType(map['type']),
@@ -1528,13 +1767,11 @@ class FinanceTransaction {
       paymentMethodUuid: _nullableString(
         map['payment_method_uuid'] ?? map['paymentMethodUuid'],
       ),
-      transactionDate:
-          _string(map['transaction_date'] ?? map['transactionDate']) ??
-          dateKey(DateTime.now()),
+      transactionDate: transactionDate,
       occurredAt: occurredAt,
-      timezoneOffsetMinutes: _int(
-        map['timezone_offset_minutes'] ?? map['timezoneOffsetMinutes'],
-      ),
+      timezoneOffsetMinutes:
+          timezoneOffsetMinutes ??
+          dateFromKey(transactionDate).timeZoneOffset.inMinutes,
       merchant: _nullableString(map['merchant']),
       note: _nullableString(map['note']),
       source: _entrySource(map['source']),
@@ -1623,7 +1860,11 @@ class FinanceEntryDraft {
     'is_ignored': isIgnored,
   };
 
-  factory FinanceEntryDraft.fromJson(Map<String, dynamic> map) {
+  factory FinanceEntryDraft.fromJson(
+    Map<String, dynamic> map, {
+    DateTime? now,
+    bool preserveRawDate = false,
+  }) {
     final minorValue = map['amount_minor'] ?? map['amountMinor'];
     final amountMinor = minorValue == null
         ? _draftAmountMinor(
@@ -1636,20 +1877,20 @@ class FinanceEntryDraft {
                 map['money'] ??
                 map['price'],
           )
-        : _int(minorValue).abs();
+        : _safeDraftMinorValue(minorValue);
     return FinanceEntryDraft(
       type: _draftTransactionType(
         map['type'] ?? map['transaction_type'] ?? map['transactionType'],
       ),
       amountMinor: amountMinor,
-      transactionDate:
-          _string(
-            map['transaction_date'] ??
-                map['transactionDate'] ??
-                map['date'] ??
-                map['transaction_day'],
-          ) ??
-          dateKey(DateTime.now()),
+      transactionDate: _draftTransactionDate(
+        map['transaction_date'] ??
+            map['transactionDate'] ??
+            map['date'] ??
+            map['transaction_day'],
+        now: now,
+        preserveRawDate: preserveRawDate,
+      ),
       categoryUuid: _string(map['category_uuid'] ?? map['categoryUuid']),
       categoryName: _string(
         map['category_name'] ?? map['categoryName'] ?? map['category'],
@@ -1672,19 +1913,80 @@ class FinanceEntryDraft {
     );
   }
 
+  static String _draftTransactionDate(
+    dynamic value, {
+    DateTime? now,
+    required bool preserveRawDate,
+  }) {
+    final fallback = dateKey(now ?? DateTime.now());
+    final raw = _string(value)?.trim();
+    if (raw == null || raw.isEmpty) return fallback;
+    if (preserveRawDate) return raw;
+
+    final normalized = raw
+        .replaceAll('年', '-')
+        .replaceAll('月', '-')
+        .replaceAll('日', '')
+        .replaceAll('/', '-')
+        .replaceAll('.', '-');
+    final match = RegExp(
+      r'^(\d{4})-(\d{1,2})-(\d{1,2})(?=$|[Tt ])',
+    ).firstMatch(normalized);
+    if (match == null) return fallback;
+
+    final year = int.parse(match.group(1)!);
+    final month = int.parse(match.group(2)!);
+    final day = int.parse(match.group(3)!);
+    final parsed = DateTime(year, month, day);
+    if (parsed.year != year || parsed.month != month || parsed.day != day) {
+      return fallback;
+    }
+    return dateKey(parsed);
+  }
+
   static int _draftAmountMinor(dynamic value) {
-    if (value is num) return (value.toDouble() * 100).round().abs();
-    final normalized = value
-        ?.toString()
-        .trim()
+    final normalized = (value is num ? value.toString() : value?.toString())
+        ?.trim()
         .replaceAll(',', '')
         .replaceAll(RegExp(r'^[¥￥$€£]'), '')
         .replaceAll(
           RegExp(r'\s*(?:元|块|人民币|CNY)\s*$', caseSensitive: false),
           '',
         );
-    final parsed = double.tryParse(normalized ?? '');
-    return parsed == null ? 0 : (parsed * 100).round().abs();
+    final match = RegExp(r'^([+-]?)(\d*)(?:\.(\d*))?$').firstMatch(
+      normalized ?? '',
+    );
+    if (match == null) return 0;
+    final wholeText = match.group(2) ?? '';
+    final fraction = match.group(3) ?? '';
+    if (wholeText.isEmpty && fraction.isEmpty) return 0;
+    final whole = BigInt.tryParse(wholeText.isEmpty ? '0' : wholeText);
+    if (whole == null) return 0;
+    var amountMinor = whole * BigInt.from(100) +
+        BigInt.tryParse(fraction.padRight(2, '0').substring(0, 2))!;
+    if (fraction.length > 2 && fraction.codeUnitAt(2) >= 53) {
+      amountMinor += BigInt.one;
+    }
+    if (amountMinor > BigInt.from(maxFinanceAmountMinor)) return 0;
+    return amountMinor.toInt();
+  }
+
+  static int _safeDraftMinorValue(dynamic value) {
+    BigInt? parsed;
+    if (value is int) {
+      parsed = BigInt.from(value);
+    } else if (value is num &&
+        value.isFinite &&
+        value.abs() <= maxFinanceAmountMinor &&
+        value == value.roundToDouble()) {
+      parsed = BigInt.from(value.toInt());
+    } else if (value is String) {
+      parsed = BigInt.tryParse(value.trim());
+    }
+    if (parsed == null) return 0;
+    final amountMinor = parsed.abs();
+    if (amountMinor > BigInt.from(maxFinanceAmountMinor)) return 0;
+    return amountMinor.toInt();
   }
 }
 
@@ -1761,6 +2063,47 @@ class FinanceBudget {
 
   bool get isOverall => categoryUuid == null && paymentMethodUuid == null;
 
+  /// Parent budgets already contain their child scopes in a combined total.
+  static List<FinanceBudget> nonOverlappingCategories(
+    Iterable<FinanceBudget> budgets,
+    Iterable<FinanceCategory> categories,
+  ) {
+    final categoryMap = {
+      for (final category in categories) category.uuid: category,
+    };
+    final scopes = <String, FinanceBudget>{};
+    for (final budget in budgets) {
+      final uuid = budget.categoryUuid;
+      if (uuid == null || budget.isPaymentMethod || budget.isDeleted) continue;
+      final current = scopes[uuid];
+      if (current == null || budget.updatedAt > current.updatedAt) {
+        scopes[uuid] = budget;
+      }
+    }
+    final ancestors = <String, Set<String>>{};
+    for (final uuid in scopes.keys) {
+      final parents = <String>{};
+      final visited = <String>{uuid};
+      var category = categoryMap[uuid];
+      while (category?.type == FinanceCategoryType.expense) {
+        final parent = category!.parentUuid;
+        if (parent == null || !visited.add(parent)) break;
+        parents.add(parent);
+        category = categoryMap[parent];
+      }
+      ancestors[uuid] = parents;
+    }
+    return [
+      for (final entry in scopes.entries)
+        if (!ancestors[entry.key]!.any(
+          (parent) => scopes.containsKey(parent) &&
+              (!ancestors[parent]!.contains(entry.key) ||
+                  parent.compareTo(entry.key) < 0),
+        ))
+          entry.value,
+    ];
+  }
+
   // Older rows used updated_at as the balance snapshot time. Keep that exact
   // instant even when a snapshot was edited from a different calendar month.
   int get effectiveBalanceSnapshotAt => balanceSnapshotAt ?? updatedAt;
@@ -1824,8 +2167,9 @@ class FinanceBudget {
 /// 周期账单规则。
 ///
 /// `dayOfMonth` 在每月/每年的目标月份中使用，遇到短月时自动落在该月
-/// 最后一天。`lastGeneratedPeriod` 是幂等标记：同一周期只允许生成一笔
-/// 自动账单，避免应用重复启动造成重复记账。
+/// 最后一天。`lastGeneratedPeriod` 记录自动生成进度：同一周期只允许生成一笔
+/// 自动账单；规则暂停、删除或切换为手动记账时也会推进进度，避免重新启用后
+/// 补出暂停期间的账单。
 class FinanceRecurringRule {
   String uuid;
   String name;
@@ -1881,7 +2225,60 @@ class FinanceRecurringRule {
        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
+  /// The local due time in a month, constrained by this rule's date range.
+  DateTime? dueDateFor(int year, int month) {
+    if (month < 1 || month > 12) return null;
+    if (frequency == FinanceRecurringFrequency.yearly && month != monthOfYear) {
+      return null;
+    }
+    final lastDay = DateTime(year, month + 1, 0).day;
+    final due = DateTime(year, month, dayOfMonth.clamp(1, lastDay), 9);
+    final start = dateFromKey(startDate);
+    if (due.isBefore(DateTime(start.year, start.month, start.day))) return null;
+    if (endDate != null) {
+      final end = dateFromKey(endDate!);
+      if (due.isAfter(DateTime(end.year, end.month, end.day, 23, 59, 59))) {
+        return null;
+      }
+    }
+    return due;
+  }
+
+  /// The last elapsed period in this schedule, used when changing frequency.
+  /// A due time which has already passed must not become a new backdated bill.
+  String generationPeriodBefore(DateTime at) {
+    final month = frequency == FinanceRecurringFrequency.yearly
+        ? monthOfYear
+        : at.month;
+    final lastDay = DateTime(at.year, month + 1, 0).day;
+    final due = DateTime(at.year, month, dayOfMonth.clamp(1, lastDay), 9);
+    if (frequency == FinanceRecurringFrequency.yearly) {
+      return '${at.isBefore(due) ? at.year - 1 : at.year}';
+    }
+    return financeMonthKey(
+      at.isBefore(due)
+          ? DateTime(at.year, at.month - 1)
+          : DateTime(at.year, at.month),
+    );
+  }
+
+  /// Older clients retained a monthly marker after switching to yearly (or
+  /// vice versa). Anchor those rows to their edit time instead of startDate.
+  String? get effectiveLastGeneratedPeriod {
+    final period = lastGeneratedPeriod;
+    if (period == null) return null;
+    final pattern = frequency == FinanceRecurringFrequency.yearly
+        ? r'^\d{4}$'
+        : r'^\d{4}-(0[1-9]|1[0-2])$';
+    return RegExp(pattern).hasMatch(period)
+        ? period
+        : generationPeriodBefore(
+            DateTime.fromMillisecondsSinceEpoch(updatedAt),
+          );
+  }
+
   void markAsChanged() {
+    lastGeneratedPeriod = effectiveLastGeneratedPeriod;
     version++;
     final now = DateTime.now().millisecondsSinceEpoch;
     updatedAt = now > updatedAt ? now : updatedAt + 1;
@@ -1964,6 +2361,30 @@ class FinanceRecurringRule {
       pendingSync: _bool(map['pending_sync'] ?? map['pendingSync']),
     );
   }
+}
+
+/// Adds a stable ordinal when non-deleted recurring rules share the same name.
+String financeRecurringRuleDisplayName(
+  FinanceRecurringRule rule,
+  Iterable<FinanceRecurringRule> rules, {
+  bool includeDeleted = false,
+}) {
+  final normalizedName = _normalizeFinanceDisplayName(rule.name);
+  final sameNameRules = rules
+      .where(
+        (item) =>
+            (includeDeleted || !item.isDeleted) &&
+            _normalizeFinanceDisplayName(item.name) == normalizedName,
+      )
+      .toList()
+    ..sort((left, right) {
+      final createdAt = left.createdAt.compareTo(right.createdAt);
+      return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+    });
+  if (sameNameRules.length < 2) return rule.name;
+  final index = sameNameRules.indexWhere((item) => item.uuid == rule.uuid);
+  if (index < 0) return rule.name;
+  return '${rule.name}（同名周期账单 ${index + 1}/${sameNameRules.length}）';
 }
 
 /// 快捷记账模板。模板只保存默认字段，不会直接产生账单。
@@ -2066,6 +2487,35 @@ class FinanceEntryTemplate {
   }
 }
 
+/// Adds a stable ordinal when active entry templates share the same name.
+String financeEntryTemplateDisplayName(
+  FinanceEntryTemplate template,
+  Iterable<FinanceEntryTemplate> templates, {
+  bool includeDeleted = false,
+}) {
+  final normalizedName = _normalizeFinanceDisplayName(template.name);
+  final sameNameTemplates = templates
+      .where(
+        (item) =>
+            (includeDeleted || !item.isDeleted) &&
+            _normalizeFinanceDisplayName(item.name) == normalizedName,
+      )
+      .toList()
+    ..sort((left, right) {
+      final createdAt = left.createdAt.compareTo(right.createdAt);
+      return createdAt != 0 ? createdAt : left.uuid.compareTo(right.uuid);
+    });
+  if (sameNameTemplates.length < 2) return template.name;
+  final index = sameNameTemplates.indexWhere(
+    (item) => item.uuid == template.uuid,
+  );
+  if (index < 0) return template.name;
+  return '${template.name}（同名模板 ${index + 1}/${sameNameTemplates.length}）';
+}
+
+String _normalizeFinanceDisplayName(String value) =>
+    value.replaceAll(RegExp(r'\s+'), '').trim().toLowerCase();
+
 class FinanceSummary {
   final int incomeMinor;
   final int expenseMinor;
@@ -2086,8 +2536,9 @@ class FinanceSummary {
   });
 
   static FinanceSummary fromTransactions(
-    Iterable<FinanceTransaction> transactions,
-  ) {
+    Iterable<FinanceTransaction> transactions, {
+    int? asOfAt,
+  }) {
     var income = 0;
     var expense = 0;
     var refund = 0;
@@ -2097,6 +2548,7 @@ class FinanceSummary {
     final expenseByDate = <String, int>{};
 
     for (final transaction in transactions) {
+      if (asOfAt != null && transaction.balanceEventAt() > asOfAt) continue;
       transactionCount++;
       final categoryUuid = transaction.categoryUuid ?? '';
       switch (transaction.type) {
@@ -2135,6 +2587,38 @@ class FinanceSummary {
   int get netExpenseMinor => expenseMinor - refundMinor;
 
   int get balanceMinor => incomeMinor - netExpenseMinor;
+
+  /// Category budgets cover the category itself and all of its descendants.
+  /// Sum refunds before clamping so the page, alerts and AI use one total.
+  int spendingForBudget(
+    FinanceBudget budget,
+    Iterable<FinanceCategory> categories,
+  ) {
+    if (budget.isPaymentMethod) {
+      throw ArgumentError('账户余额应按余额快照计算');
+    }
+    if (budget.isOverall) return math.max(0, netExpenseMinor);
+    final categoryMap = {
+      for (final category in categories) category.uuid: category,
+    };
+    var total = 0;
+    for (final entry in expenseByCategory.entries) {
+      String? uuid = entry.key;
+      final visited = <String>{};
+      while (uuid != null && visited.add(uuid)) {
+        if (uuid == budget.categoryUuid) {
+          total += entry.value;
+          break;
+        }
+        final category = categoryMap[uuid];
+        if (category == null || category.type != FinanceCategoryType.expense) {
+          break;
+        }
+        uuid = category.parentUuid;
+      }
+    }
+    return math.max(0, total);
+  }
 }
 
 String dateKey(DateTime date) =>
@@ -2142,9 +2626,36 @@ String dateKey(DateTime date) =>
     '${date.month.toString().padLeft(2, '0')}-'
     '${date.day.toString().padLeft(2, '0')}';
 
+int financeDefaultOccurrenceTimezoneOffsetMinutes({
+  required DateTime? occurrence,
+  required DateTime now,
+}) {
+  if (occurrence == null || dateKey(occurrence) == dateKey(now)) {
+    return now.timeZoneOffset.inMinutes;
+  }
+  return occurrence.timeZoneOffset.inMinutes;
+}
+
+DateTime financeCalendarDayOffset(DateTime value, int days) {
+  if (value.isUtc) {
+    return DateTime.utc(value.year, value.month, value.day + days);
+  }
+  return DateTime(value.year, value.month, value.day + days);
+}
+
 String financeMonthKey(DateTime date) =>
     '${date.year.toString().padLeft(4, '0')}-'
     '${date.month.toString().padLeft(2, '0')}';
+
+bool isFinanceDateKey(String value) {
+  final parsed = DateTime.tryParse(value);
+  return parsed != null && dateKey(parsed) == value;
+}
+
+String financeTimezoneLabel(int offsetMinutes) =>
+    'UTC${offsetMinutes < 0 ? '-' : '+'}'
+    '${(offsetMinutes.abs() ~/ 60).toString().padLeft(2, '0')}:'
+    '${(offsetMinutes.abs() % 60).toString().padLeft(2, '0')}';
 
 DateTime dateFromKey(String value) {
   final parsed = DateTime.tryParse(value);
@@ -2161,6 +2672,13 @@ FinanceTransactionType _transactionType(dynamic raw) {
     return FinanceTransactionType.values[index];
   }
   final value = raw?.toString();
+  final numericIndex = int.tryParse(value?.trim() ?? '');
+  if (numericIndex != null) {
+    return FinanceTransactionType.values[numericIndex.clamp(
+      0,
+      FinanceTransactionType.values.length - 1,
+    )];
+  }
   return FinanceTransactionType.values.firstWhere(
     (item) => item.name == value,
     orElse: () => FinanceTransactionType.expense,

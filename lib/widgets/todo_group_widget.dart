@@ -187,18 +187,24 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
             child: Column(
               children: [
                 // Collapsed stacked-papers effect stays outside the glass
-                // shell — it simulates cards peeking out from behind.
+                // shell — the visible layers distinguish two todos from
+                // larger folders.
                 if (totalCount > 1 && !isExpanded)
                   AnimatedOpacity(
                     duration: const Duration(milliseconds: 300),
                     opacity: 1.0,
                     child: Column(
-                      children: [
-                        _buildStackLayerInline(context, 0.94, 0.3),
-                        const SizedBox(height: 2),
-                        _buildStackLayerInline(context, 0.97, 0.6),
-                        const SizedBox(height: 2),
-                      ],
+                      children: totalCount == 2
+                          ? [
+                              _buildStackLayerInline(context, 0.97, 0.6),
+                              const SizedBox(height: 2),
+                            ]
+                          : [
+                              _buildStackLayerInline(context, 0.94, 0.3),
+                              const SizedBox(height: 2),
+                              _buildStackLayerInline(context, 0.97, 0.6),
+                              const SizedBox(height: 2),
+                            ],
                     ),
                   ),
                 // One continuous glass surface for the whole folder: the

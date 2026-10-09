@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../widgets/optional_liquid_glass_surface.dart';
@@ -13,12 +15,14 @@ class FinanceTodaySection extends StatefulWidget {
   final String username;
   final bool isLight;
   final VoidCallback? onTap;
+  final DateTime Function() clock;
 
   const FinanceTodaySection({
     super.key,
     required this.username,
     this.isLight = false,
     this.onTap,
+    this.clock = DateTime.now,
   });
 
   @override
@@ -28,9 +32,11 @@ class FinanceTodaySection extends StatefulWidget {
 class _FinanceTodaySectionState extends State<FinanceTodaySection> {
   FinanceSummary _summary = const FinanceSummary();
   FinanceTransaction? _latestTransaction;
+  FinanceTransaction? _upcomingTransaction;
   bool _isLoading = true;
   bool _hasError = false;
   int _loadGeneration = 0;
+  Timer? _upcomingTransactionTimer;
 
   @override
   void initState() {
@@ -48,6 +54,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
   @override
   void dispose() {
     FinanceStorage.revision.removeListener(_onFinanceChanged);
+    _upcomingTransactionTimer?.cancel();
     super.dispose();
   }
 
@@ -57,32 +64,63 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
 
   Future<void> _loadData() async {
     if (!mounted) return;
+    _upcomingTransactionTimer?.cancel();
+    _upcomingTransactionTimer = null;
     final generation = ++_loadGeneration;
     setState(() {
       _isLoading = true;
       _hasError = false;
     });
 
-    final now = DateTime.now();
+    final now = widget.clock();
     final monthStart = DateTime(now.year, now.month);
     final nextMonth = DateTime(now.year, now.month + 1);
     try {
-      final results = await Future.wait<dynamic>([
-        FinanceRepository.getSummary(from: monthStart, to: nextMonth),
-        FinanceRepository.getTransactions(
-          from: monthStart,
-          to: nextMonth,
-          limit: 1,
-        ),
-      ]);
+      final transactions = await FinanceRepository.getTransactions(
+        from: monthStart,
+        to: nextMonth,
+      );
       if (!mounted || generation != _loadGeneration) return;
-      final transactions = results[1] as List<FinanceTransaction>;
+      final asOfAt = widget.clock().millisecondsSinceEpoch;
+      final occurredTransactions = transactions
+          .where((transaction) => transaction.balanceEventAt() <= asOfAt)
+          .toList(growable: false);
+      final upcomingTransaction = transactions
+          .where((transaction) => transaction.balanceEventAt() > asOfAt)
+          .fold<FinanceTransaction?>(null, (upcoming, transaction) {
+            if (upcoming == null) return transaction;
+            final upcomingEventAt = upcoming.balanceEventAt();
+            final transactionEventAt = transaction.balanceEventAt();
+            if (transactionEventAt != upcomingEventAt) {
+              return transactionEventAt < upcomingEventAt
+                  ? transaction
+                  : upcoming;
+            }
+            return transaction.updatedAt > upcoming.updatedAt
+                ? transaction
+                : upcoming;
+          });
+      final latestTransaction = occurredTransactions
+          .fold<FinanceTransaction?>(null, (latest, transaction) {
+        if (latest == null) return transaction;
+        final latestEventAt = latest.balanceEventAt();
+        final transactionEventAt = transaction.balanceEventAt();
+        if (transactionEventAt != latestEventAt) {
+          return transactionEventAt > latestEventAt ? transaction : latest;
+        }
+        return transaction.updatedAt > latest.updatedAt ? transaction : latest;
+      });
       setState(() {
-        _summary = results[0] as FinanceSummary;
-        _latestTransaction = transactions.isEmpty ? null : transactions.first;
+        _summary = FinanceSummary.fromTransactions(
+          transactions,
+          asOfAt: asOfAt,
+        );
+        _latestTransaction = latestTransaction;
+        _upcomingTransaction = upcomingTransaction;
         _isLoading = false;
         _hasError = false;
       });
+      _scheduleUpcomingTransactionRefresh(transactions, asOfAt);
     } catch (_) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -90,6 +128,32 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
         _hasError = true;
       });
     }
+  }
+
+  void _scheduleUpcomingTransactionRefresh(
+    Iterable<FinanceTransaction> transactions,
+    int asOfAt,
+  ) {
+    _upcomingTransactionTimer?.cancel();
+    _upcomingTransactionTimer = null;
+    final now = DateTime.fromMillisecondsSinceEpoch(asOfAt);
+    int? nextEventAt =
+        DateTime(now.year, now.month + 1).millisecondsSinceEpoch;
+    for (final transaction in transactions) {
+      final eventAt = transaction.balanceEventAt();
+      if (eventAt > asOfAt &&
+          (nextEventAt == null || eventAt < nextEventAt)) {
+        nextEventAt = eventAt;
+      }
+    }
+    if (nextEventAt == null) return;
+    final delayMs = (nextEventAt - asOfAt + 1)
+        .clamp(1, const Duration(days: 24).inMilliseconds)
+        .toInt();
+    _upcomingTransactionTimer = Timer(
+      Duration(milliseconds: delayMs),
+      _loadData,
+    );
   }
 
   @override
@@ -211,7 +275,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
         Row(
           children: [
             _buildMetric(
-              label: '支出',
+              label: '净支出',
               value: formatFinanceAmount(_summary.netExpenseMinor),
               valueColor: widget.isLight ? Colors.white : colorScheme.error,
               labelColor: subColor,
@@ -225,7 +289,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
             ),
             _buildMetricDivider(dividerColor),
             _buildMetric(
-              label: '结余',
+              label: '本月结余',
               value: formatFinanceAmount(_summary.balanceMinor),
               valueColor: valueColor,
               labelColor: subColor,
@@ -235,7 +299,21 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
         const SizedBox(height: 12),
         Divider(height: 1, thickness: 0.8, color: dividerColor),
         const SizedBox(height: 10),
-        if (_latestTransaction == null)
+        if (_latestTransaction != null)
+          _buildLatestTransaction(
+            _latestTransaction!,
+            colorScheme,
+            subColor,
+            eventLabel: '最近一笔',
+          )
+        else if (_upcomingTransaction != null)
+          _buildLatestTransaction(
+            _upcomingTransaction!,
+            colorScheme,
+            subColor,
+            eventLabel: '下一笔待发生',
+          )
+        else
           Row(
             children: [
               Icon(Icons.receipt_long_outlined, size: 18, color: subColor),
@@ -249,9 +327,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
                 ),
               ),
             ],
-          )
-        else
-          _buildLatestTransaction(_latestTransaction!, colorScheme, subColor),
+          ),
       ],
     );
   }
@@ -302,8 +378,9 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
   Widget _buildLatestTransaction(
     FinanceTransaction transaction,
     ColorScheme colorScheme,
-    Color subColor,
-  ) {
+    Color subColor, {
+    required String eventLabel,
+  }) {
     final title = transaction.merchant?.trim().isNotEmpty == true
         ? transaction.merchant!.trim()
         : transaction.type.label;
@@ -333,7 +410,7 @@ class _FinanceTodaySectionState extends State<FinanceTodaySection> {
               ),
               const SizedBox(height: 2),
               Text(
-                '最近一笔 · ${transaction.transactionDate}'
+                '$eventLabel · ${transaction.transactionDate}'
                 '${transaction.installmentLabel == null ? '' : ' · 分期 ${transaction.installmentLabel}'}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

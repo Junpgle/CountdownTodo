@@ -876,19 +876,22 @@ class OptionalLiquidGlassSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return OptionalLiquidGlassPanel(
-      mode: OptionalLiquidGlassPanelMode.adaptiveRepeated,
-      highContrast: true,
-      clipBehavior: Clip.antiAlias,
-      borderRadiusGeometry:
-          BorderRadius.vertical(top: Radius.circular(topRadius)),
-      padding: padding,
-      fallback: Container(
+    return Material(
+      color: Colors.transparent,
+      child: OptionalLiquidGlassPanel(
+        mode: OptionalLiquidGlassPanelMode.adaptiveRepeated,
+        highContrast: true,
+        clipBehavior: Clip.antiAlias,
+        borderRadiusGeometry:
+            BorderRadius.vertical(top: Radius.circular(topRadius)),
         padding: padding,
-        decoration: fallbackDecoration,
+        fallback: Container(
+          padding: padding,
+          decoration: fallbackDecoration,
+          child: child,
+        ),
         child: child,
       ),
-      child: child,
     );
   }
 }

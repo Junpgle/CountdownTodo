@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/finance_models.dart';
 import '../services/finance_expression_calculator.dart';
 import '../../../utils/app_dialogs.dart';
 
@@ -152,7 +153,9 @@ class _FinanceAmountCalculatorSheetState
   bool get _canUseResult {
     final result = _result;
     if (result == null) return false;
-    return FinanceExpressionCalculator.roundToCents(result) > BigInt.zero;
+    final amountMinor = FinanceExpressionCalculator.roundToCents(result);
+    return amountMinor > BigInt.zero &&
+        amountMinor <= BigInt.from(maxFinanceAmountMinor);
   }
 
   String? get _formattedResult {
@@ -188,10 +191,16 @@ class _FinanceAmountCalculatorSheetState
     try {
       final value = FinanceExpressionCalculator.evaluate(expression);
       _result = value;
-      _error = _showValidationError &&
-              FinanceExpressionCalculator.roundToCents(value) <= BigInt.zero
-          ? '结果必须大于 0'
-          : null;
+      final amountMinor = FinanceExpressionCalculator.roundToCents(value);
+      if (!_showValidationError) {
+        _error = null;
+      } else if (amountMinor <= BigInt.zero) {
+        _error = '结果必须大于 0';
+      } else if (amountMinor > BigInt.from(maxFinanceAmountMinor)) {
+        _error = '结果超过可记录金额上限';
+      } else {
+        _error = null;
+      }
     } on FinanceExpressionException catch (error) {
       _result = null;
       _error = error.message;

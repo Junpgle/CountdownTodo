@@ -8,14 +8,28 @@ abstract final class HabitRuleResolver {
   /// 用于跨午夜容差的判定，避免容差把全时段变成恒真条件。
   static const int defaultDayBoundaryMinute = 4 * 60;
 
+  /// 将日期沿本地日历移动指定天数，不受夏令时日长变化影响。
+  static DateTime addCalendarDays(DateTime date, int days) =>
+      DateTime(date.year, date.month, date.day + days);
+
+  /// 计算两个日期之间的日历日差（[date] - [other]）。
+  static int calendarDayDifference(DateTime date, DateTime other) {
+    final dateUtc = DateTime.utc(date.year, date.month, date.day);
+    final otherUtc = DateTime.utc(other.year, other.month, other.day);
+    return dateUtc.difference(otherUtc).inDays;
+  }
+
   /// 计算逻辑日期：实际本地时间减去日期分界时长后的日期。
   ///
   /// 早睡习惯日期分界为 04:00 时：
   /// 7 月 31 日 23:30 → 7 月 31 日；8 月 1 日 00:40 → 7 月 31 日；
   /// 8 月 1 日 04:20 → 8 月 1 日。
   static DateTime logicalDateFor(DateTime localTime, int dayBoundaryMinute) {
-    final shifted = localTime.subtract(Duration(minutes: dayBoundaryMinute));
-    return DateTime(shifted.year, shifted.month, shifted.day);
+    final date = DateTime(localTime.year, localTime.month, localTime.day);
+    final minuteOfDay = localTime.hour * 60 + localTime.minute;
+    return minuteOfDay < dayBoundaryMinute
+        ? addCalendarDays(date, -1)
+        : date;
   }
 
   /// 逻辑日期键（'yyyy-MM-dd'），用于数据库存储与比较。
@@ -34,7 +48,11 @@ abstract final class HabitRuleResolver {
     final month = int.tryParse(parts[1]);
     final day = int.tryParse(parts[2]);
     if (year == null || month == null || day == null) return null;
-    return DateTime(year, month, day);
+    final parsed = DateTime(year, month, day);
+    if (parsed.year != year || parsed.month != month || parsed.day != day) {
+      return null;
+    }
+    return parsed;
   }
 
   /// 获取给定日期（逻辑日期）生效的规则版本：
@@ -93,9 +111,7 @@ abstract final class HabitRuleResolver {
         if (interval <= 0) return true;
         final anchor = _customAnchor(rule);
         if (anchor == null) return true;
-        final diffDays = logicalDate
-            .difference(DateTime(anchor.year, anchor.month, anchor.day))
-            .inDays;
+        final diffDays = calendarDayDifference(logicalDate, anchor);
         return diffDays % interval == 0;
     }
   }
@@ -122,7 +138,7 @@ abstract final class HabitRuleResolver {
       case HabitPeriodType.custom:
         return day;
       case HabitPeriodType.weekly:
-        return day.subtract(Duration(days: day.weekday - 1));
+        return addCalendarDays(day, 1 - day.weekday);
       case HabitPeriodType.monthly:
         return DateTime(day.year, day.month, 1);
     }
@@ -138,12 +154,23 @@ abstract final class HabitRuleResolver {
       case HabitPeriodType.daily:
       case HabitPeriodType.weekdays:
       case HabitPeriodType.custom:
-        return start.add(const Duration(days: 1));
+        return addCalendarDays(start, 1);
       case HabitPeriodType.weekly:
-        return start.add(const Duration(days: 7));
+        return addCalendarDays(start, 7);
       case HabitPeriodType.monthly:
         return DateTime(start.year, start.month + 1, 1);
     }
+  }
+
+  /// Daily heatmaps show a cumulative weekly or monthly goal once, on the
+  /// final logical day of its period, rather than repeating one result across
+  /// every day in that period.
+  static bool isDailyHeatmapCompletionDay(
+    HabitGoalRuleRevision rule,
+    DateTime logicalDate,
+  ) {
+    final day = DateTime(logicalDate.year, logicalDate.month, logicalDate.day);
+    return addCalendarDays(day, 1) == periodEndExclusive(rule, day);
   }
 
   /// 周期是否已经结束。
@@ -152,8 +179,15 @@ abstract final class HabitRuleResolver {
     DateTime logicalDate,
     DateTime now,
   ) {
-    final end = periodEndExclusive(rule, logicalDate);
-    return now.isAfter(end);
+    final periodEnd = periodEndExclusive(rule, logicalDate);
+    final end = DateTime(
+      periodEnd.year,
+      periodEnd.month,
+      periodEnd.day,
+      rule.dayBoundaryMinute ~/ 60,
+      rule.dayBoundaryMinute % 60,
+    );
+    return !now.isBefore(end);
   }
 
   /// 下一个周期起始日期。
@@ -165,9 +199,9 @@ abstract final class HabitRuleResolver {
       case HabitPeriodType.daily:
       case HabitPeriodType.weekdays:
       case HabitPeriodType.custom:
-        return periodStart(rule, logicalDate).add(const Duration(days: 1));
+        return addCalendarDays(periodStart(rule, logicalDate), 1);
       case HabitPeriodType.weekly:
-        return periodStart(rule, logicalDate).add(const Duration(days: 7));
+        return addCalendarDays(periodStart(rule, logicalDate), 7);
       case HabitPeriodType.monthly:
         final start = periodStart(rule, logicalDate);
         return DateTime(start.year, start.month + 1, 1);

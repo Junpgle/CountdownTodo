@@ -7,7 +7,7 @@ import '../../../storage_service.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/time_utils.dart';
-import '../../../utils/page_transitions.dart';
+import '../../../utils/settings_navigation.dart';
 import '../wallpaper_settings_page.dart';
 import '../home_text_config_page.dart';
 import 'home_layout_settings_page.dart';
@@ -64,6 +64,26 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
 
   String _cacheSizeStr = "计算中...";
   late StorageManagementHandler _storageManagementHandler;
+
+  GlobalKey _navigationKey(String id) => _itemKeys.putIfAbsent(
+        id,
+        () => GlobalKey(debugLabel: 'settings-$id'),
+      );
+
+  Future<T?> _openSettingsPage<T>(
+    String id,
+    Widget page, {
+    RouteSettings? settings,
+    bool rootNavigator = false,
+  }) =>
+      SettingsNavigation.push<T>(
+        context: context,
+        page: page,
+        sourceKey: _navigationKey(id),
+        isEmbedded: widget.isEmbedded,
+        rootNavigator: rootNavigator,
+        settings: settings,
+      );
 
   @override
   void initState() {
@@ -306,11 +326,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                 subtitle: const Text('使用指南、快速上手、常见问题'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    PageTransitions.slideHorizontal(HelpCenterScreen(
+                  _openSettingsPage(
+                    'help_center',
+                    HelpCenterScreen(
                       username: _username,
-                    )),
+                    ),
                   );
                 },
               ),
@@ -325,11 +345,13 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                 subtitle: const Text('查看当前版本及历史更新内容'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
-                  Navigator.of(context, rootNavigator: true).push(
-                    PageTransitions.slideHorizontal(FeatureGuideScreen(
+                  _openSettingsPage(
+                    'changelog',
+                    FeatureGuideScreen(
                       mode: FeatureGuideMode.changelog,
                       loggedInUser: _username,
-                    )),
+                    ),
+                    rootNavigator: true,
                   );
                 },
               ),
@@ -344,11 +366,13 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                 subtitle: const Text('查看新版本功能介绍与使用引导'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
-                  Navigator.of(context, rootNavigator: true).push(
-                    PageTransitions.slideHorizontal(FeatureGuideScreen(
+                  _openSettingsPage(
+                    'feature_guide',
+                    FeatureGuideScreen(
                       mode: FeatureGuideMode.guide,
                       loggedInUser: _username,
-                    )),
+                    ),
+                    rootNavigator: true,
                   );
                 },
               ),
@@ -391,12 +415,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                         fontWeight: FontWeight.bold,
                         color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    PageTransitions.slideHorizontal(
-                      WallpaperSettingsPage(isEmbedded: widget.isEmbedded),
-                      settings: const RouteSettings(name: '首页壁纸设置'),
-                    ),
+                  key: _navigationKey('wallpaper_advanced'),
+                  onTap: () => _openSettingsPage(
+                    'wallpaper_advanced',
+                    WallpaperSettingsPage(isEmbedded: widget.isEmbedded),
+                    settings: const RouteSettings(name: '首页壁纸设置'),
                   ),
                   child: Row(
                     children: [
@@ -591,13 +614,12 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                         fontWeight: FontWeight.bold,
                         color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 GestureDetector(
+                  key: _navigationKey('home_text_advanced'),
                   onTap: () async {
-                    final result = await Navigator.push<bool>(
-                      context,
-                      PageTransitions.slideHorizontal(
-                        HomeTextConfigPage(isEmbedded: widget.isEmbedded),
-                        settings: const RouteSettings(name: '首页文字自定义'),
-                      ),
+                    final result = await _openSettingsPage<bool>(
+                      'home_text_advanced',
+                      HomeTextConfigPage(isEmbedded: widget.isEmbedded),
+                      settings: const RouteSettings(name: '首页文字自定义'),
                     );
                     if (result == true && mounted) {
                       final newConfig =
@@ -621,13 +643,12 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             ),
             const SizedBox(height: 16),
             GestureDetector(
+              key: _navigationKey('home_text_preview'),
               onTap: () async {
-                final result = await Navigator.push<bool>(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    HomeTextConfigPage(isEmbedded: widget.isEmbedded),
-                    settings: const RouteSettings(name: '首页文字自定义'),
-                  ),
+                final result = await _openSettingsPage<bool>(
+                  'home_text_preview',
+                  HomeTextConfigPage(isEmbedded: widget.isEmbedded),
+                  settings: const RouteSettings(name: '首页文字自定义'),
                 );
                 if (result == true && mounted) {
                   final newConfig = await StorageService.getHomeTextConfig();
@@ -737,12 +758,12 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                         fontWeight: FontWeight.bold,
                         color: colorScheme.onSurfaceVariant)),
                 GestureDetector(
+                  key: _navigationKey('home_layout_advanced'),
                   onTap: () {
-                    Navigator.of(context).push(
-                      PageTransitions.slideHorizontal(
-                        HomeLayoutSettingsPage(isEmbedded: widget.isEmbedded),
-                        settings: const RouteSettings(name: '首页布局'),
-                      ),
+                    _openSettingsPage(
+                      'home_layout_advanced',
+                      HomeLayoutSettingsPage(isEmbedded: widget.isEmbedded),
+                      settings: const RouteSettings(name: '首页布局'),
                     );
                   },
                   child: Row(
@@ -759,12 +780,12 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             ),
             const SizedBox(height: 16),
             GestureDetector(
+              key: _navigationKey('home_layout_preview'),
               onTap: () {
-                Navigator.of(context).push(
-                  PageTransitions.slideHorizontal(
-                    HomeLayoutSettingsPage(isEmbedded: widget.isEmbedded),
-                    settings: const RouteSettings(name: '首页布局'),
-                  ),
+                _openSettingsPage(
+                  'home_layout_preview',
+                  HomeLayoutSettingsPage(isEmbedded: widget.isEmbedded),
+                  settings: const RouteSettings(name: '首页布局'),
                 );
               },
               child: OptionalLiquidGlassCard(
@@ -897,8 +918,9 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   ),
                 ),
                 InkWell(
+                  key: _navigationKey('sidebar_menu_advanced'),
                   borderRadius: BorderRadius.circular(8),
-                  onTap: _openSidebarMenuSettings,
+                  onTap: () => _openSidebarMenuSettings('sidebar_menu_advanced'),
                   child: Padding(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
@@ -927,7 +949,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               button: true,
               label: '配置侧边栏菜单',
               child: GestureDetector(
-                onTap: _openSidebarMenuSettings,
+                key: _navigationKey('sidebar_menu_preview'),
+                onTap: () => _openSidebarMenuSettings('sidebar_menu_preview'),
                 child: OptionalLiquidGlassCard(
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
@@ -978,12 +1001,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     );
   }
 
-  Future<void> _openSidebarMenuSettings() {
-    return Navigator.of(context).push(
-      PageTransitions.slideHorizontal(
-        SidebarMenuSettingsPage(isEmbedded: widget.isEmbedded),
-        settings: const RouteSettings(name: '侧边栏菜单'),
-      ),
+  Future<void> _openSidebarMenuSettings(String sourceId) {
+    return _openSettingsPage(
+      sourceId,
+      SidebarMenuSettingsPage(isEmbedded: widget.isEmbedded),
+      settings: const RouteSettings(name: '侧边栏菜单'),
     );
   }
 

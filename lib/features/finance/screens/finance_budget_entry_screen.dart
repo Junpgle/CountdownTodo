@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import '../../../widgets/floating_glass_control.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/finance_models.dart';
 import '../services/finance_repository.dart';
+import '../services/finance_storage.dart';
 import '../widgets/finance_management_widgets.dart';
 import '../../../utils/app_dialogs.dart';
 
@@ -39,6 +42,9 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
   bool _isLoading = true;
   String? _loadError;
   bool _isSaving = false;
+  bool _scopeRefreshPending = false;
+  bool _scopeRefreshInProgress = false;
+  Timer? _financeChangeRefreshTimer;
   DateTime? _balanceTime;
   bool _useSaveTime = true;
   bool _balanceTimeChanged = false;
@@ -68,9 +74,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
     _amountController = TextEditingController(
       text: budget == null
           ? ''
-          : (budget.amountMinor / 100)
-              .toStringAsFixed(2)
-              .replaceFirst(RegExp(r'\.00$'), ''),
+          : formatFinanceAmountInput(budget.amountMinor),
     );
     _noteController = TextEditingController(text: budget?.note ?? '');
     if (budget?.isPaymentMethod == true) {
@@ -79,14 +83,74 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
       );
       _useSaveTime = false;
     }
+    FinanceStorage.revision.addListener(_onFinanceChanged);
     _loadScopeOptions();
   }
 
   @override
   void dispose() {
+    _financeChangeRefreshTimer?.cancel();
+    FinanceStorage.revision.removeListener(_onFinanceChanged);
     _amountController.dispose();
     _noteController.dispose();
     super.dispose();
+  }
+
+  void _onFinanceChanged() {
+    _financeChangeRefreshTimer?.cancel();
+    _financeChangeRefreshTimer = Timer(const Duration(milliseconds: 100), () {
+      _financeChangeRefreshTimer = null;
+      if (!mounted || _isSaving) return;
+      if (_isLoading || _scopeRefreshInProgress) {
+        _scopeRefreshPending = true;
+        return;
+      }
+      unawaited(_refreshScopeOptions());
+    });
+  }
+
+  Future<void> _refreshScopeOptions() async {
+    if (!mounted) return;
+    if (_isLoading || _scopeRefreshInProgress) {
+      _scopeRefreshPending = true;
+      return;
+    }
+
+    _scopeRefreshInProgress = true;
+    try {
+      do {
+        _scopeRefreshPending = false;
+        final categories = await FinanceRepository.getCategories(
+          type: FinanceCategoryType.expense,
+          includeArchived: true,
+        );
+        final paymentMethods = await FinanceRepository.getPaymentMethods(
+          includeArchived: true,
+        );
+        if (!mounted) return;
+        setState(() {
+          _categories = categories;
+          _paymentMethods = paymentMethods;
+        });
+      } while (_scopeRefreshPending);
+    } catch (error) {
+      debugPrint('刷新预算范围选项失败：$error');
+    } finally {
+      _scopeRefreshInProgress = false;
+      _drainPendingScopeRefresh();
+    }
+  }
+
+  void _drainPendingScopeRefresh() {
+    if (!mounted ||
+        !_scopeRefreshPending ||
+        _isLoading ||
+        _scopeRefreshInProgress ||
+        _isSaving) {
+      return;
+    }
+    _scopeRefreshPending = false;
+    unawaited(_refreshScopeOptions());
   }
 
   Future<void> _loadScopeOptions() async {
@@ -108,12 +172,14 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
         _paymentMethods = values[1] as List<FinancePaymentMethod>;
         _isLoading = false;
       });
+      _drainPendingScopeRefresh();
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
         _loadError = error.toString();
       });
+      _drainPendingScopeRefresh();
     }
   }
 
@@ -163,14 +229,17 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
         DropdownMenuItem(
           value: '$_categoryPrefix${category.uuid}',
           child: Text(
-              '${category.icon}  分类 · ${financeCategoryDisplayName(category, _categories)}',
-              overflow: TextOverflow.ellipsis),
+            '${category.icon}  分类 · ${financeCategoryDisplayName(category, _categories)}${category.isArchived ? '（已归档）' : ''}',
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       for (final method in _visiblePaymentMethods)
         DropdownMenuItem(
           value: '$_paymentPrefix${method.uuid}',
-          child: Text('${method.icon}  付款方式 · ${method.name}',
-              overflow: TextOverflow.ellipsis),
+          child: Text(
+            _paymentMethodOptionTitle(method),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
     ];
     if (_scopeValue != _overallValue &&
@@ -185,6 +254,15 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
       );
     }
     return items;
+  }
+
+  String _paymentMethodOptionTitle(FinancePaymentMethod method) {
+    final name = financePaymentMethodDisplayName(
+      method,
+      _visiblePaymentMethods,
+    );
+    final archivedLabel = method.isArchived ? '（已归档）' : '';
+    return '${method.icon}  付款方式 · $name$archivedLabel';
   }
 
   Future<void> _pickBalanceTime() async {
@@ -279,8 +357,15 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
         }
       } else {
         final selected = _balanceTime;
+        final preservesStoredSnapshotTime =
+            old != null &&
+            old.isPaymentMethod &&
+            old.monthKey == financeMonthKey(widget.month) &&
+            old.paymentMethodUuid == paymentMethodUuid &&
+            selected?.millisecondsSinceEpoch == old.effectiveBalanceSnapshotAt;
         if (selected == null ||
-            financeMonthKey(selected) != financeMonthKey(widget.month) ||
+            (!preservesStoredSnapshotTime &&
+                financeMonthKey(selected) != financeMonthKey(widget.month)) ||
             selected.isAfter(DateTime.now())) {
           _showError('余额对应时间必须在所选月份内且不晚于现在');
           return;
@@ -313,6 +398,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
     try {
       await FinanceRepository.saveBudget(
         budget,
+        original: old,
         resetBalanceSnapshot:
             _isPaymentScope && changesBalance && _useSaveTime,
         balanceSnapshotAt: selectedBalanceTime,
@@ -429,7 +515,7 @@ class _FinanceBudgetEntryScreenState extends State<FinanceBudgetEntryScreen> {
                                   title: _isPaymentScope ? '付款方式' : '预算范围',
                                   icon: Icons.track_changes_outlined,
                                   description: _isPaymentScope
-                                      ? '记到此付款方式的支出会扣减余额，收入和退款会加回。'
+                                      ? '关联此付款方式的支出会扣减余额；收入和退款记到此账户时会加回。'
                                       : '总预算覆盖全部支出；分类预算和付款方式余额独立统计。',
                                   child: DropdownButtonFormField<String>(
                                     key: ValueKey(

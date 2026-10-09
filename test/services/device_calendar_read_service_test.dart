@@ -46,28 +46,72 @@ void main() {
       expect(event.colorValue, 0xff123456);
     });
 
-    test('keeps zero-duration provider events visible with a minimum duration',
-        () {
-      final start = DateTime(2026, 9, 2, 9);
-      final event = DeviceCalendarEvent.fromPlatformMap({
-        'id': 'event_2',
-        'calendarId': 'calendar_1',
-        'title': '   ',
-        'startMs': start.millisecondsSinceEpoch,
-        'endMs': start.millisecondsSinceEpoch,
-        'allDay': true,
-        'color': 0,
-      });
+    test(
+      'keeps zero-duration provider events visible with a minimum duration',
+      () {
+        final start = DateTime(2026, 9, 2, 9);
+        final event = DeviceCalendarEvent.fromPlatformMap({
+          'id': 'event_2',
+          'calendarId': 'calendar_1',
+          'title': '   ',
+          'startMs': start.millisecondsSinceEpoch,
+          'endMs': start.millisecondsSinceEpoch,
+          'allDay': true,
+          'color': 0,
+        });
 
-      expect(event.title, '未命名日程');
-      expect(event.end, start.add(const Duration(minutes: 1)));
-      expect(event.allDay, isTrue);
-      expect(event.colorValue, isNull);
-      expect(
-        event.overlaps(start, start.add(const Duration(days: 1))),
-        isTrue,
-      );
-    });
+        expect(event.title, '未命名日程');
+        expect(event.end, start.add(const Duration(minutes: 1)));
+        expect(event.allDay, isTrue);
+        expect(event.colorValue, isNull);
+        expect(
+          event.overlaps(start, start.add(const Duration(days: 1))),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'local cross-date events are all-day without changing provider times',
+      () {
+        for (final end in [DateTime(2026, 9, 3), DateTime(2026, 9, 3, 8)]) {
+          final start = DateTime(2026, 9, 2, 8);
+          final event = DeviceCalendarEvent.fromPlatformMap({
+            'id': 'overnight',
+            'startMs': start.millisecondsSinceEpoch,
+            'endMs': end.millisecondsSinceEpoch,
+            'allDay': false,
+          });
+          expect(event.allDay, isTrue);
+          expect(event.start, start);
+          expect(event.end, end);
+        }
+        final sameDay = DeviceCalendarEvent(
+          id: 'same-day',
+          calendarId: 'phone',
+          title: '会议',
+          start: DateTime(2026, 9, 2, 8),
+          end: DateTime(2026, 9, 2, 23, 59),
+          allDay: false,
+        );
+        expect(sameDay.allDay, isFalse);
+      },
+    );
+
+    test(
+      'late instant reminders stay timed despite their one-minute hit area',
+      () {
+        final start = DateTime(2026, 9, 2, 23, 59, 30);
+        final event = DeviceCalendarEvent.fromPlatformMap({
+          'id': 'late-reminder',
+          'startMs': start.millisecondsSinceEpoch,
+          'endMs': start.millisecondsSinceEpoch,
+          'allDay': false,
+        });
+        expect(event.allDay, isFalse);
+        expect(event.end, start.add(const Duration(minutes: 1)));
+      },
+    );
 
     test('uses half-open ranges when deciding whether to display an event', () {
       final event = DeviceCalendarEvent(
@@ -101,70 +145,74 @@ void main() {
     );
   });
 
-  test('reuses a foreground range instead of querying the calendar again',
-      () async {
-    var providerReads = 0;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'checkPermission') return true;
-      if (call.method == 'readEvents') {
-        providerReads++;
-        return [
-          {
-            'id': 'provider-event',
-            'calendarId': 'calendar',
-            'title': '日程',
-            'startMs': DateTime(2026, 9, 2, 9).millisecondsSinceEpoch,
-            'endMs': DateTime(2026, 9, 2, 10).millisecondsSinceEpoch,
-            'allDay': false,
-          },
-        ];
-      }
-      return null;
-    });
-    await DeviceCalendarReadService.setEnabled(true);
-    final start = DateTime(2026, 8, 31);
-    final end = start.add(const Duration(days: 7));
+  test(
+    'reuses a foreground range instead of querying the calendar again',
+    () async {
+      var providerReads = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            if (call.method == 'checkPermission') return true;
+            if (call.method == 'readEvents') {
+              providerReads++;
+              return [
+                {
+                  'id': 'provider-event',
+                  'calendarId': 'calendar',
+                  'title': '日程',
+                  'startMs': DateTime(2026, 9, 2, 9).millisecondsSinceEpoch,
+                  'endMs': DateTime(2026, 9, 2, 10).millisecondsSinceEpoch,
+                  'allDay': false,
+                },
+              ];
+            }
+            return null;
+          });
+      await DeviceCalendarReadService.setEnabled(true);
+      final start = DateTime(2026, 8, 31);
+      final end = start.add(const Duration(days: 7));
 
-    await DeviceCalendarReadService.readEvents(start: start, end: end);
-    await DeviceCalendarReadService.readEvents(
-      start: start.add(const Duration(days: 2)),
-      end: start.add(const Duration(days: 4)),
-    );
+      await DeviceCalendarReadService.readEvents(start: start, end: end);
+      await DeviceCalendarReadService.readEvents(
+        start: start.add(const Duration(days: 2)),
+        end: start.add(const Duration(days: 4)),
+      );
 
-    expect(providerReads, 1);
-  });
+      expect(providerReads, 1);
+    },
+  );
 
-  test('returns a zero-duration provider event from the read-only bridge',
-      () async {
-    final start = DateTime(2026, 9, 2, 9);
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'checkPermission') return true;
-      if (call.method == 'readEvents') {
-        return [
-          {
-            'id': 'zero-duration',
-            'calendarId': 'calendar',
-            'title': '瞬时提醒',
-            'startMs': start.millisecondsSinceEpoch,
-            'endMs': start.millisecondsSinceEpoch,
-            'allDay': false,
-          },
-        ];
-      }
-      return null;
-    });
+  test(
+    'returns a zero-duration provider event from the read-only bridge',
+    () async {
+      final start = DateTime(2026, 9, 2, 9);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            if (call.method == 'checkPermission') return true;
+            if (call.method == 'readEvents') {
+              return [
+                {
+                  'id': 'zero-duration',
+                  'calendarId': 'calendar',
+                  'title': '瞬时提醒',
+                  'startMs': start.millisecondsSinceEpoch,
+                  'endMs': start.millisecondsSinceEpoch,
+                  'allDay': false,
+                },
+              ];
+            }
+            return null;
+          });
 
-    await DeviceCalendarReadService.setEnabled(true);
-    final events = await DeviceCalendarReadService.readEvents(
-      start: DateTime(2026, 9, 2),
-      end: DateTime(2026, 9, 3),
-    );
+      await DeviceCalendarReadService.setEnabled(true);
+      final events = await DeviceCalendarReadService.readEvents(
+        start: DateTime(2026, 9, 2),
+        end: DateTime(2026, 9, 3),
+      );
 
-    expect(events, hasLength(1));
-    expect(events.single.id, 'zero-duration');
-    expect(events.single.start, start);
-    expect(events.single.end, start.add(const Duration(minutes: 1)));
-  });
+      expect(events, hasLength(1));
+      expect(events.single.id, 'zero-duration');
+      expect(events.single.start, start);
+      expect(events.single.end, start.add(const Duration(minutes: 1)));
+    },
+  );
 }

@@ -44,6 +44,17 @@ void main() {
       expect(missing.sourceIds, isEmpty);
     });
 
+    test('未知枚举编号回退为安全默认值', () {
+      final goal = HabitGoal.fromJson({
+        'uuid': 'x',
+        'source_type': 999,
+        'display_mode': -1,
+      });
+
+      expect(goal.sourceType, HabitSourceType.quantityCheckIn);
+      expect(goal.displayMode, HabitDisplayMode.habitOnly);
+    });
+
     test('markAsChanged 递增版本号', () {
       final goal = HabitGoal(uuid: 'x', name: 't');
       final v = goal.version;
@@ -134,6 +145,18 @@ void main() {
       });
       expect(fromString.hasConflict, true);
       expect(fromString.conflictData?['version'], 2);
+    });
+
+    test('未知枚举编号回退为安全默认值', () {
+      final rule = HabitGoalRuleRevision.fromJson({
+        'uuid': 'x',
+        'habit_uuid': 'h1',
+        'period_type': 999,
+        'time_comparison': -1,
+      });
+
+      expect(rule.periodType, HabitPeriodType.daily);
+      expect(rule.timeComparison, HabitTimeComparison.before);
     });
 
     test('coversDate 判断生效范围', () {

@@ -103,14 +103,22 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
     }
   }
 
-  Future<void> openAiAssistant({GlobalKey? sourceKey}) async {
+  Future<void> openAiAssistant({
+    GlobalKey? sourceKey,
+    String? initialMessage,
+    bool sendInitialMessage = true,
+    ChatUsageSummary? initialVoiceUsageSummary,
+  }) async {
     final aiContext = await _loadAiAssistantContext();
     if (!mounted) return;
 
-    AiTodoChatLauncher.open(
+    await AiTodoChatLauncher.open(
       context,
       username: widget.username,
       sourceKey: sourceKey,
+      initialMessage: initialMessage,
+      sendInitialMessage: sendInitialMessage,
+      initialVoiceUsageSummary: initialVoiceUsageSummary,
       todos: widget.todos
           .where((t) => !t.isDone && !_isHistoricalTodo(t))
           .toList(),

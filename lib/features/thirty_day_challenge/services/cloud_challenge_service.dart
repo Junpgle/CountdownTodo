@@ -57,7 +57,21 @@ class CloudChallengeService {
     DateTime? now,
   }) {
     final age = (now ?? DateTime.now()).toUtc().difference(cached.cachedAt);
-    return age < cacheLifetime;
+    return age >= Duration.zero && age < cacheLifetime;
+  }
+
+  /// Returns a fresh catalog while keeping stale results usable during an
+  /// outage.
+  Future<CloudChallengeCatalog> loadCatalogForSearch() async {
+    final cached = await readCachedCatalog();
+    if (cached != null && isCacheFresh(cached)) return cached.catalog;
+
+    try {
+      return await fetchCatalog().timeout(const Duration(seconds: 4));
+    } catch (_) {
+      if (cached != null) return cached.catalog;
+      rethrow;
+    }
   }
 
   Future<CloudChallengeCatalog> fetchCatalog() async {

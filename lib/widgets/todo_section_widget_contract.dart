@@ -14,7 +14,12 @@ mixin _TodoSectionContract {
 
   Key _getTodoDismissKey(String idPrefix, String todoId);
 
-  Future<void> openAiAssistant({GlobalKey? sourceKey});
+  Future<void> openAiAssistant({
+    GlobalKey? sourceKey,
+    String? initialMessage,
+    bool sendInitialMessage = true,
+    ChatUsageSummary? initialVoiceUsageSummary,
+  });
 
   bool _isHistoricalTodo(TodoItem t);
 
