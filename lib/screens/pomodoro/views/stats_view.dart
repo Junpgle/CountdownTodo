@@ -1025,11 +1025,18 @@ class PomodoroStatsState extends State<PomodoroStats> {
     );
   }
 
-  List<Widget> _buildTodoPickerItems(BuildContext dialogContext) {
-    final sortedTodos = _sortTodosForPicker(
-      collapseRecurrenceSeriesForTodoPicker(_todos),
-      _todoGroups,
-    );
+  List<Widget> _buildTodoPickerItems(
+    BuildContext dialogContext,
+    List<TodoItem> sortedTodos, {
+    String searchQuery = '',
+  }) {
+    final query = searchQuery.trim().toLowerCase();
+    final matchingTodos = sortedTodos.where((todo) {
+      if (query.isEmpty) return true;
+      return todo.title.toLowerCase().contains(query) ||
+          (todo.remark?.toLowerCase().contains(query) ?? false) ||
+          _todoGroupName(todo).toLowerCase().contains(query);
+    }).toList();
     final items = <Widget>[
       ListTile(
         title: const Text('自由专注（无绑定）'),
@@ -1040,7 +1047,15 @@ class PomodoroStatsState extends State<PomodoroStats> {
     ];
 
     String? currentHeader;
-    for (final todo in sortedTodos) {
+    if (matchingTodos.isEmpty) {
+      items.add(Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: Text(query.isEmpty ? '暂无可绑定的待办' : '没有找到匹配的任务'),
+        ),
+      ));
+    }
+    for (final todo in matchingTodos) {
       final header = '${todo.isDone ? "已完成" : "未完成"} · ${_todoGroupName(todo)}';
       if (header != currentHeader) {
         currentHeader = header;
@@ -1313,15 +1328,48 @@ class PomodoroStatsState extends State<PomodoroStats> {
                   InkWell(
                     borderRadius: BorderRadius.circular(12),
                     onTap: () async {
+                      var searchQuery = '';
+                      final sortedTodos = _sortTodosForPicker(
+                        collapseRecurrenceSeriesForTodoPicker(_todos),
+                        _todoGroups,
+                      );
                       final picked = await showAppDialog<TodoItem?>(
                         context: ctx,
-                        builder: (dctx) => AlertDialog(
-                          title: const Text('选择任务'),
-                          content: SizedBox(
+                        builder: (dctx) => StatefulBuilder(
+                          builder: (dctx, setDialogState) => AlertDialog(
+                            title: const Text('选择任务'),
+                            content: SizedBox(
                               width: double.maxFinite,
-                              child: ListView(shrinkWrap: true, children: [
-                                ..._buildTodoPickerItems(dctx),
-                              ])),
+                              height: (MediaQuery.sizeOf(dctx).height -
+                                      MediaQuery.viewInsetsOf(dctx).bottom) *
+                                  0.55,
+                              child: Column(
+                                children: [
+                                  TextField(
+                                    autofocus: true,
+                                    decoration: const InputDecoration(
+                                      prefixIcon: Icon(Icons.search),
+                                      hintText: '搜索任务名称、备注或分组',
+                                      border: OutlineInputBorder(),
+                                    ),
+                                    onChanged: (value) => setDialogState(() {
+                                      searchQuery = value;
+                                    }),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Expanded(
+                                    child: ListView(
+                                      children: _buildTodoPickerItems(
+                                        dctx,
+                                        sortedTodos,
+                                        searchQuery: searchQuery,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
                       );
                       if (picked != null) {

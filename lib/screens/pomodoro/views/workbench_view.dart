@@ -2637,8 +2637,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                   const Divider(height: 1),
                   ...(() {
                     final Map<String?, List<TodoItem>> grouped = {};
+                    final groupIds = _todoGroups.map((g) => g.id).toSet();
                     for (var t in pickerTodos) {
-                      grouped.putIfAbsent(t.groupId, () => []).add(t);
+                      final groupId = t.groupId;
+                      final effectiveGroupId = groupId != null &&
+                              groupId.isNotEmpty &&
+                              groupIds.contains(groupId)
+                          ? groupId
+                          : null;
+                      grouped.putIfAbsent(effectiveGroupId, () => []).add(t);
                     }
 
                     List<Widget> sections = [];
@@ -2662,15 +2669,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                             .map((t) => _buildTodoTile(ctx, t, isSwitching)));
                       }
                     }
-
-                    // Safety for any other IDs
-                    grouped.forEach((id, tasks) {
-                      if (tasks.isNotEmpty) {
-                        sections.add(_buildSectionHeader('其他'));
-                        sections.addAll(tasks
-                            .map((t) => _buildTodoTile(ctx, t, isSwitching)));
-                      }
-                    });
 
                     return sections;
                   })(),
