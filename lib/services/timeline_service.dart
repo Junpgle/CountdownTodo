@@ -5,6 +5,7 @@ import 'course_service.dart';
 import '../models.dart';
 import '../features/habits/models/habit_checkin.dart';
 import '../features/habits/models/habit_goal.dart';
+import '../features/habits/models/habit_progress.dart';
 import '../features/habits/repositories/habit_repository.dart';
 import '../features/habits/services/habit_progress_calculator.dart';
 import '../features/finance/models/finance_models.dart';
@@ -1117,6 +1118,62 @@ class TimelineService {
     }
   }
 
+  @visibleForTesting
+  static TimelineHabitSummary summarizeHabitProgress(
+    Map<HabitGoal, List<HabitDayProgress>> progressByHabit,
+  ) {
+    var habitCount = 0;
+    var plannedCount = 0;
+    var completedCount = 0;
+    var missedCount = 0;
+    var recordedCount = 0;
+
+    for (final entry in progressByHabit.entries) {
+      final habit = entry.key;
+      final progress = entry.value;
+      if (progress.isEmpty) continue;
+
+      var habitHasEffectiveProgress = false;
+      for (final item in progress) {
+        final value = item.progress;
+        // 归档代表停止后续执行。归档后的空计划周期不应继续计入计划和未达标，
+        // 但归档前产生过记录、已达标或已跳过的历史周期仍保留统计。
+        if (habit.isArchived &&
+            !value.hasRecord &&
+            !value.goalMet &&
+            !value.isSkipped) {
+          continue;
+        }
+        if (value.hasRecord) recordedCount++;
+        if (value.isPlanned) {
+          plannedCount++;
+          habitHasEffectiveProgress = true;
+          if (value.goalMet) {
+            completedCount++;
+          } else if (value.isFinished && !value.isSkipped) {
+            missedCount++;
+          }
+        } else if (value.goalMet) {
+          completedCount++;
+          habitHasEffectiveProgress = true;
+        } else if (value.hasRecord) {
+          habitHasEffectiveProgress = true;
+        }
+      }
+      if (habitHasEffectiveProgress) {
+        habitCount++;
+      }
+    }
+
+    return TimelineHabitSummary(
+      habitCount: habitCount,
+      plannedCount: plannedCount,
+      completedCount: completedCount,
+      missedCount: missedCount,
+      recordedCount: recordedCount,
+    );
+  }
+
   Future<TimelineHabitSummary> _calculateHabitSummary({
     required DateTime start,
     required DateTime end,
@@ -1128,12 +1185,7 @@ class TimelineService {
         .subtract(const Duration(days: 1));
     if (endDay.isBefore(startDay)) return const TimelineHabitSummary();
 
-    var habitCount = 0;
-    var plannedCount = 0;
-    var completedCount = 0;
-    var missedCount = 0;
-    var recordedCount = 0;
-
+    final progressByHabit = <HabitGoal, List<HabitDayProgress>>{};
     for (final habit in goals) {
       try {
         final rules = await HabitRepository.getRules(habitUuid: habit.uuid);
@@ -1146,31 +1198,15 @@ class TimelineService {
           now: now,
           periodLevel: true,
         );
-        if (progress.isEmpty) continue;
-        habitCount++;
-        for (final item in progress) {
-          final value = item.progress;
-          if (!value.isPlanned) continue;
-          plannedCount++;
-          if (value.goalMet) {
-            completedCount++;
-          } else if (value.isFinished && !value.isSkipped) {
-            missedCount++;
-          }
-          if (value.hasRecord) recordedCount++;
+        if (progress.isNotEmpty) {
+          progressByHabit[habit] = progress;
         }
       } catch (_) {
         // 单个习惯数据异常时不影响整份时间轴报告。
       }
     }
 
-    return TimelineHabitSummary(
-      habitCount: habitCount,
-      plannedCount: plannedCount,
-      completedCount: completedCount,
-      missedCount: missedCount,
-      recordedCount: recordedCount,
-    );
+    return summarizeHabitProgress(progressByHabit);
   }
 
   Future<int> _calculateConsecutiveActiveDays(

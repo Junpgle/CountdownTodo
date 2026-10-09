@@ -74,7 +74,8 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
     }
     if (refreshAll ||
         domains.contains(DataRefreshDomain.timeLogs) ||
-        domains.contains(DataRefreshDomain.pomodoro)) {
+        domains.contains(DataRefreshDomain.pomodoro) ||
+        domains.contains(DataRefreshDomain.habits)) {
       _timelineRevision.value++;
     }
     if (refreshAll || domains.contains(DataRefreshDomain.teams)) {
